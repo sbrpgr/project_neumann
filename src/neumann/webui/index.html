@@ -1501,7 +1501,7 @@
   }
   function genCls(g) { g = String(g || '').toLowerCase(); return g === 'astra' || g === 'llm' || g === 'openai' ? 'astra' : (g === 'rule' || g === 'mock' || g === 'sample' ? g : 'unknown'); }
   function genEl(g, model, genl) { return el('span', 'gen ' + genCls(g), genText(g, model, genl)); }
-  function originText(raw) { if (RV.restored) return '브라우저 보존값 · 출처·서명 재검증 안 됨'; return raw && raw.origin === 'server_signed' ? '서버 응답: HMAC 무결성 확인됨 · ' + (raw.generator === 'mock' ? '생성: 모의(mock)' : '생성 방식 별도 확인') : (raw && raw.origin === 'client_submitted_unverified' ? '서버 서명 확인 안 됨 · 생성자·모델·근거 출처 미확인' : '출처 확인 정보 없음'); }
+  function originText(raw) { if (RV.restored) return '브라우저 보존값 · 출처·서명 재검증 안 됨'; var gen = raw && (raw.generator || (raw.finalization && raw.finalization.generator)); var genl = gen === 'mock' ? '생성: 모의(mock, 테스트용 가짜)' : (gen === 'rule' ? '생성: 규칙(비상 경로)' : (gen === 'astra' ? '생성: 제품 LLM' : '생성 방식 별도 확인')); if (raw && raw.text_source === 'researcher_confirmed') return '연구자 입력 문안 · 서버 서명 없음 · 새 내용의 출처 미확인 · ' + genl; return raw && raw.origin === 'server_signed' ? '서버 응답: HMAC 무결성 확인됨 · ' + genl : (raw && raw.origin === 'client_submitted_unverified' ? '서버 서명 확인 안 됨 · 생성자·모델·근거 출처 미확인' + (raw.provenance && raw.provenance.inputs_signed && !raw.provenance.coupled ? ' · 입력 결속 불일치' : '') : '출처 확인 정보 없음'); }
   function outcomeLabel(v, label) { if (label) return String(label); v = String(v || '').toLowerCase(); return OUTCOME[v] || (v ? v.slice(0, 24) : '미정'); }
 
   /* ---------- 새 발췌(records) → 기존 근거 패널에 번호를 이어 등록(인용은 서버가 원문 오프셋으로 자른 text 그대로) ---------- */
@@ -1820,7 +1820,7 @@
     if (!st.finalSubmission || st.finalSubmission.payload !== payload) st.finalSubmission = { payload: payload, id: (window.crypto && crypto.randomUUID ? crypto.randomUUID() : 'final_' + Date.now() + '_' + Math.random().toString(36).slice(2)) };
     body.submission_id = st.finalSubmission.id;
     var stamp = st.finalStamp || 0, gen = st.gen; st.finalBusy = true; st.finalMsg = '수정 확정·검증 중 · 실제 검사와 의미 검토'; st.finalCtrl = new AbortController(); paintViewerBar();
-    fetch('premortem/revise/finalize', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: st.finalCtrl.signal }).then(asJson).then(function (x) {
+    fetch('premortem/finalize', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: st.finalCtrl.signal }).then(asJson).then(function (x) {
       if (!x.ok) throw new RevError(serverMsg(x.body, x.code), x.code);
       if (state().gen !== gen || (st.finalStamp || 0) !== stamp) return;
       st.finalization = x.body; st.finalMsg = '수정 확정·검증 결과 · ' + T((x.body.finalization || {}).status) + ' · ' + originText(x.body);

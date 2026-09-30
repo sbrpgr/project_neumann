@@ -87,6 +87,26 @@ class ReviseRequest(BaseModel):
         return out or None
 
 
+MAX_NESTED_STRING = 8_000   # 수정 권고·결정 안의 문자열 하나의 상한(발췌 ≤700·제안 ≤600·직접 수정 ≤2000보다 넉넉히)
+MAX_NESTED_DEPTH = 24
+
+
+def bounded_strings(value: Any, limit: int = MAX_NESTED_STRING, depth: int = 0) -> None:
+    """중첩 JSON 안의 모든 문자열 길이·깊이 상한. 정규식 게이트(기관명·서명 패턴)가 긴 입력을 받지 않게 한다."""
+    if depth > MAX_NESTED_DEPTH:
+        raise ValueError("nested input too deep")
+    if isinstance(value, str):
+        if len(value) > limit:
+            raise ValueError(f"string longer than {limit} characters")
+    elif isinstance(value, Mapping):
+        for k, v in value.items():
+            bounded_strings(k, limit, depth + 1)
+            bounded_strings(v, limit, depth + 1)
+    elif isinstance(value, (list, tuple)):
+        for v in value:
+            bounded_strings(v, limit, depth + 1)
+
+
 class AssembleRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -105,6 +125,12 @@ class AssembleRequest(BaseModel):
     def _not_blank(cls, v: str) -> str:
         if not v.strip():
             raise ValueError("plan_text가 비어 있다")
+        return v
+
+    @field_validator("revision", "decisions")
+    @classmethod
+    def _bounded(cls, v: Any) -> Any:
+        bounded_strings(v)
         return v
 
 
