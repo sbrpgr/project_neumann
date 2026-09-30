@@ -8,6 +8,7 @@ from __future__ import annotations
 import copy
 import json
 import re
+import shutil
 from pathlib import Path
 
 import pytest
@@ -71,8 +72,7 @@ def test_templates_catalog_checker_rejects_broken(mutate, needle: str) -> None:
 
 
 def test_templates_skeleton_missing_section_is_caught(tmp_path, monkeypatch) -> None:
-    for p in DATA.iterdir():
-        (tmp_path / p.name).write_bytes(p.read_bytes())
+    shutil.copytree(DATA, tmp_path, dirs_exist_ok=True)
     sk = tmp_path / "materials_gnn.md"
     sk.write_text(sk.read_text(encoding="utf-8").replace("## 5. 일정", "## 5. 기타"), encoding="utf-8")
     monkeypatch.setattr(T, "DATA_DIR", tmp_path)
