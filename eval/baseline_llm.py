@@ -101,35 +101,41 @@ class LiveCallLocked(RuntimeError):
     """SEC-3: NEUMANN_LIVE_LLM_OK 없이 실제 호출을 하려 했다."""
 
 
+def _require_live_call() -> None:
+    try:  # 프로세스 권한만 읽고, 설정을 못 읽으면 닫힌 쪽으로 간다.
+        from neumann.config import live_llm_allowed
+
+        allowed = live_llm_allowed()
+    except Exception:  # noqa: BLE001
+        allowed = False
+    if not allowed:
+        raise LiveCallLocked("실제 호출 잠김(NEUMANN_LIVE_LLM_OK 없음)")
+
+
+def _guard_model(model: str) -> str:
+    try:
+        from neumann.config import guard_model
+
+        return guard_model(model)
+    except Exception:  # noqa: BLE001 — 제품과 같은 닫힌 쪽 모델 경로
+        return DEFAULT_MODEL if "astra" in model.lower() else model
+
+
 class OpenAIBaseline:
     """OpenAI Responses API. 실패는 예외 대신 {"ok": False, "error": ...}로 돌려준다(키·헤더는 담지 않는다)."""
 
     name = "openai"
 
     def __init__(self, model: str | None = None, effort: str = EFFORT, timeout_s: float = TIMEOUT_S, client: Any = None) -> None:
-        self.model = model or os.environ.get("NEUMANN_LLM_MODEL") or DEFAULT_MODEL
-        if client is None:
-            try:  # astra 금지(대표 지시). 캐시 키가 실제 모델로 잡히도록 생성 시점에 바꾼다
-                from neumann.config import guard_model
-
-                self.model = guard_model(self.model)
-            except Exception:  # noqa: BLE001
-                if "astra" in self.model.lower():
-                    self.model = DEFAULT_MODEL
+        # 주입 클라이언트도 같은 모델 정책을 따른다. 캐시 키는 교체된 모델을 쓴다.
+        self.model = _guard_model(model or os.environ.get("NEUMANN_LLM_MODEL") or DEFAULT_MODEL)
         self.effort = effort
         self.timeout_s = timeout_s
         self._client = client
 
     def _get_client(self) -> Any:
+        _require_live_call()  # 주입·캐시된 클라이언트도 현재 프로세스 권한이 필요하다.
         if self._client is None:
-            try:  # SEC-3: 실제 호출은 NEUMANN_LIVE_LLM_OK가 있을 때만
-                from neumann.config import live_llm_allowed
-
-                allowed = live_llm_allowed()
-            except Exception:  # noqa: BLE001
-                allowed = False
-            if not allowed:
-                raise LiveCallLocked("실제 호출 잠김(NEUMANN_LIVE_LLM_OK 없음)")
             from openai import OpenAI
 
             key = None
@@ -155,6 +161,8 @@ class OpenAIBaseline:
         except Exception as exc:  # noqa: BLE001 — 키 없음 등. 예외 대신 실패로 돌려준다(키·헤더는 담지 않는다)
             return {"ok": False, "error": type(exc).__name__, "latency_s": 0.0}
         try:
+            self.model = _guard_model(self.model)  # 생성 후 Astra 권한이 철회된 경우도 반영한다.
+            _require_live_call()  # 클라이언트 취득 중 권한이 바뀌어도 SDK 호출 직전에 다시 검사한다.
             resp = client.responses.create(
                 model=self.model,
                 instructions=instructions,
@@ -163,6 +171,8 @@ class OpenAIBaseline:
                 text={"format": {"type": "json_schema", "name": "baseline_risks", "schema": SCHEMA, "strict": True}},
                 store=False,
             )
+        except LiveCallLocked as exc:
+            return {"ok": False, "error": f"locked: {exc}", "locked": True, "latency_s": 0.0}
         except Exception as exc:  # noqa: BLE001 — 분류만 남긴다
             code = getattr(exc, "status_code", None)
             return {"ok": False, "error": type(exc).__name__ + (f" HTTP {code}" if code else ""),
