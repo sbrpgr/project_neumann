@@ -1,0 +1,200 @@
+# E4-L2d 보고서 — 비동기 작업 API + 화면 폴링
+
+- 빌더: Claude Opus 5.5 · 검증 예정: Claude Sonnet 5.5 · 브랜치 `task/E4-L2d`(`task/E4-L2c` 위에서 시작, 시작 때 `main` 병합 1회, 충돌 없음)
+- 스펙: PM 배정 지시(과제 파일 없음). 배경: cloudflared quick tunnel은 응답을 약 100초에서 끊는다(524). 분석 1건 60~70초라 대기열에서 기다리면 넘는다.
+
+## 무엇을 했나
+
+| 파일 | 내용 |
+|---|---|
+| `src/neumann/api/jobs.py` (새) | `POST /premortem/jobs`, `GET /premortem/jobs/{id}`, `JobStore`(메모리·TTL·개수 상한), `report_stage()`, `install(app, …)` |
+| `src/neumann/api/serving.py` (후속, +50줄) | 작업 실행에 필요한 훅만: `Serving.protect()/kind_for()`(코드가 등록하는 보호 경로, 설정으로 못 뺌), `Serving.admit_new_analysis()`(미들웨어와 같은 입장 관문), `Serving.run(timeout_s=)`, `Gate.ticket_for_plan()`, `scrub_ok_payload()`, 앱이 만든 503 안내(`busy`·`unavailable`)는 문구 유지 |
+| `src/neumann/webui/index.html` | **분석 시작·대기 부분만**(`renderJob`·`startAnalysis`·새 `paintJob`, 라우터의 1단계 한 줄). 입력·템플릿·리포트·근거 패널은 안 건드림 |
+| `tests/e4/test_jobs.py` (새) | 15건 |
+| `tests/e4/test_jobs_live.py` (새) | 가짜 6단계 파이프라인 앱(uvicorn 경로 `tests.e4.test_jobs_live:app`), 실제 서버 시험 `load`·`ui`, pytest 1건(같은 시나리오를 시간 배율로) |
+| `docs/reports/E4-L2d_main.patch` | PM이 main.py에 적용(E4-L2c 패치 **다음**) |
+| `docs/reports/E4-L2d_loadtest.txt`, `E4-L2d_ui.txt`, `E4-L2d_1~4_*.png` | 완료 기준 시험 출력·스크린샷 |
+
+### API
+
+```
+POST /premortem/jobs   {"plan_text": str, "filename"?: str, "format"?: "view"(기본, 화면 모양) | "result"(PremortemResult)}
+  → 202 {job_id, status:"queued", position, eta_s, poll_after_s, message, ticket, status_url}
+  → 413·429·503: serving과 같은 {status:"error", error_code, message, request_id, retry_after_s?} (작업 안 만듦)
+GET  /premortem/jobs/{job_id}
+  → 200 {job_id, ticket, status: queued|running|done|error, position, eta_s, stage, stage_label, elapsed_s, message,
+         poll_after_s, result(done: ui_view 또는 결과), error_code(error), retry_after_s?, expires_in_s(끝난 뒤)}
+  → 404 {status:"error", error_code:"job_not_found", message}  (모르는 id·모양이 틀린 id·보관 시간 지난 id를 구분하지 않음)
+```
+
+- `job_id` = `secrets.token_urlsafe(24)`(32자, 192비트). 요청 번호(ticket)·plan_id와 무관하다. 로그에는 앞 6자만 남긴다.
+- 응답 헤더 `Cache-Control: no-store`.
+- 결과는 **메모리에만**. 끝난 뒤 `NEUMANN_JOB_TTL_S`(기본 900초)가 지나면 버린다(결과 안의 계획서 줄도 같이 사라진다). 개수 상한 `NEUMANN_JOB_MAX`(기본 200)를 넘으면 끝난 것부터 밀어내고, 끝나지 않은 것만으로 가득이면 503 `busy`("지금 보관 중인 분석 작업이 많습니다…"). 이때 잡은 자리·뗀 예산은 돌려준다.
+- 진행 단계: 파이프라인이 `on_stage` 키워드를 받으면 콜백을 넘기고, 파이프라인 안에서 `neumann.api.jobs.report_stage(name)`을 부르면(요청 문맥이 스레드로 복사되므로 동기 파이프라인에서도 됨) 그 단계가 `stage`로 보인다. **지금 `neumann.pipeline.run_premortem`은 둘 다 없어서 실서버에서는 queued/running만** 보인다(화면: "분석 중 · 진행 단계 보고 없음"). 가짜 파이프라인은 `report_stage`로 6단계를 알린다.
+- 오류: 사용자 문구 + `error_code`(internal·timeout·unavailable·blocked·busy·rate_limited·budget_exhausted)만. 예외 메시지·경로·트레이스·키 없음. 서버 로그에는 예외 **종류**만(`kind=RuntimeError`).
+- 시간 상한: 작업 하나 `NEUMANN_JOB_TIMEOUT_S`(기본 900초, 대기+실행). 넘으면 `timeout` 문구. 분석은 끝까지 돌고(슬롯도 그때 반납) 결과 캐시가 켜져 있으면 같은 계획서로 다시 요청할 때 바로 받는다.
+- 파이프라인이 없으면(main과 같은 흐름) 샘플 화면(`_status.source="sample"`, 화면에 샘플 표시), import 오류면 `unavailable` 문구.
+
+### 관문(우회 경로 없음)
+
+1. `jobs.install()`이 `POST /premortem/jobs`를 서빙 층의 **분석 보호 경로로 코드 등록**한다(`Serving.protect`). `NEUMANN_PROTECTED_PATHS`에서 빠져 있어도 보호된다(`test_jobs_path_is_gated_even_if_config_omits_it`).
+2. 그래서 POST 때 serving 미들웨어가 그대로 적용한다: 본문 바이트 상한(Content-Length → 스트리밍 누적, 파싱 전 413) → 글자 상한(413) → 캐시·합류면 통과 → 차단 스위치(503) → IP 속도 제한(429) → 일일 예산(503) → 대기열(가득이면 503).
+3. 핸들러는 미들웨어가 잡은 대기열 자리와 뗀 예산을 **동기적으로** 작업 문맥으로 넘긴다(미들웨어의 finally가 돌려주지 않게). 실행은 `Serving.run`(캐시 → 같은 계획서 합류 → 동시 상한·대기열)이 한다.
+4. 요청 문맥(미들웨어)이 없으면 핸들러가 503 `unavailable`로 거절한다. 서빙 층이 안 붙은 앱에는 `install()`이 라우트를 붙이지 않는다(→ 화면은 404를 받고 `/premortem/view`로 폴백, 그 경로도 serving 관문).
+5. 입장 때 캐시·합류라 자리 없이 들어왔는데 작업이 시작할 때 캐시·진행 중 분석이 사라졌으면 같은 관문을 **다시** 거친다(확인부터 대기열 등록까지 await가 없어 끼어들 틈 없음). `test_readmission_when_join_or_cache_vanished`.
+6. `GET /premortem/jobs/{id}`는 메모리 조회뿐이라 관문이 없다(아래 "못 한 것": 폴링 속도 제한).
+
+### 화면(index.html 분석 시작·대기 부분)
+
+- 시작 → `POST premortem/jobs` → `poll_after_s`(1~2초로 자름)마다 `GET premortem/jobs/{id}`.
+- 대기: "대기 N번째 · 약 M초"(순번 0이면 "곧 분석을 시작합니다"), 상태 글자 `queued`. 실행: 단계 타임라인(NORMALIZE → QUERIES → SEARCH → EXTRACT → SYNTHESIZE → VERIFY, 현재 단계 붉은 점) + "분석 중 · 유사 연구 검색 · 약 N초 남음". 단계 보고가 없으면 "분석 중 · 진행 단계 보고 없음".
+- 503·429·413·예산·차단·작업 오류·404(보관 시간 지남): 서버 `message`를 오류 상자에 **textContent**로(`#jobErrLabel`·`#jobErrMsg`). innerHTML에 서버 문자열을 넣지 않는다. 대기 문구(`#jobWait`)도 textContent.
+- 결과가 오면 기존 흐름 그대로(`D = view` → 0.7초 뒤 리포트, 기존 렌더 함수).
+- `POST premortem/jobs`가 404·405면 기존 `POST premortem/view`로 폴백(작업 API가 없는 서버, E6 정적 판의 fetch 가로채기도 `premortem/*`를 404로 주므로 정적 판도 폴백으로 그대로 돈다).
+- 폴링 중 네트워크 실패는 2초 간격으로 5번까지 다시 시도. "새 분석"·"다시 시도"로 작업이 바뀌면 이전 폴링은 멈춘다(`S.job.run` 토큰).
+
+## PM이 main.py에 붙일 코드 — 적용 순서: E4-L2c 패치 → E4-L2d 패치
+
+```bash
+git apply docs/reports/E4-L2c_main.patch   # serving.install(app), wrap_pipeline, 세마포어 제거
+git apply docs/reports/E4-L2d_main.patch   # 파일 끝: jobs.install(...)
+```
+
+```python
+# main.py 끝(E4-L2d)
+from neumann.api import jobs  # noqa: E402
+
+jobs.install(app, load_pipeline=lambda: _load_pipeline(), sample_result=lambda reason: _sample_result(reason))
+```
+
+- lambda로 넘기는 이유: 테스트·가짜 앱이 `main._load_pipeline`을 바꿔 끼워도 작업 API가 그걸 쓰게.
+- 확인(스크래치 사본: `git archive HEAD` → 두 패치 차례로 `git apply --check` 후 적용 → 전체 pytest): `930 passed, 21 skipped in 75.82s`.
+- `/premortem`·`/premortem/view`(동기)는 그대로 동작한다(`test_result_format_option_and_sync_endpoints_still_work`, 기존 test_e4_api·test_serving 통과).
+
+## 새 설정 키(jobs.py가 환경변수로 읽음. `.env.example`은 PM 소유라 안 고침)
+
+| 키 | 기본 | 뜻 |
+|---|---|---|
+| `NEUMANN_JOB_TTL_S` | 900 | 끝난 작업 결과 보관 시간(초) |
+| `NEUMANN_JOB_MAX` | 200 | 메모리에 두는 작업 수 상한 |
+| `NEUMANN_JOB_TIMEOUT_S` | 900 | 작업 하나 시간 상한(대기+실행) |
+| `NEUMANN_JOB_POLL_S` | 1.5 | 화면에 권하는 폴링 간격(1~2로 자름) |
+
+시험 전용: `NEUMANN_FAKE_RUN_S`(tests/e4/test_jobs_live.py 앱).
+
+## 완료 기준별 측정
+
+### 1) 테스트 — 16 passed
+
+```
+$ python -m pytest tests/e4/test_jobs.py tests/e4/test_jobs_live.py -q -rA
+tests/e4/test_jobs.py::test_post_returns_immediately_then_result_arrives        # POST < 1초, 폴링 중 단계 보임, 결과=ui_view
+tests/e4/test_jobs.py::test_result_format_option_and_sync_endpoints_still_work  # format=result, /premortem·/premortem/view 호환, 빈 입력 422
+tests/e4/test_jobs.py::test_queue_position_decreases_while_polling              # 순번 3→2→1→running, "대기 N번째 · 약 "
+tests/e4/test_jobs.py::test_stage_from_on_stage_kwarg_and_same_plan_runs_once   # on_stage 콜백, 같은 계획서 2건 → 1회 실행
+tests/e4/test_jobs.py::test_gates_apply_to_jobs_block_budget_rate_body          # 차단 파일 503, 바이트·글자 413, 예산 503, 분당 3건 429
+tests/e4/test_jobs.py::test_queue_full_and_block_env_refuse_jobs                # 대기열 가득 503, NEUMANN_BLOCK_NEW 503
+tests/e4/test_jobs.py::test_jobs_path_is_gated_even_if_config_omits_it          # 보호 경로 설정에서 빠져도 관문
+tests/e4/test_jobs.py::test_jobs_without_serving_middleware_is_refused          # 서빙 층 없으면 안 붙음·억지로 붙여도 503, 파이프라인 0회
+tests/e4/test_jobs.py::test_readmission_when_join_or_cache_vanished             # 자리 없이 시작하면 관문 다시(차단·대기열 가득)
+tests/e4/test_jobs.py::test_store_full_503_returns_slot_and_budget              # 보관 상한 503, 자리·예산 반환, 끝난 작업 밀어냄
+tests/e4/test_jobs.py::test_error_is_user_message_only                          # 스택·경로·키·본문·예외 메시지 없음(응답·로그)
+tests/e4/test_jobs.py::test_timeout_is_user_message_then_cache_serves           # 시간 상한 문구, 분석은 끝까지 → 캐시 적중
+tests/e4/test_jobs.py::test_pipeline_unavailable_gives_marked_sample            # 파이프라인 없음 → 샘플 표시, 자리 반환
+tests/e4/test_jobs.py::test_results_are_discarded_after_ttl                     # TTL 29초 200 → 31초 404, 메모리에서 삭제
+tests/e4/test_jobs.py::test_job_ids_are_unguessable_and_not_derived             # 30개 모두 다름·32자, 한 글자 바꾼 id 등 → 같은 404
+tests/e4/test_jobs_live.py::test_five_concurrent_jobs_scaled                     # 동시 5건(1건 60초×0.02), 모든 응답 < 1초, 5/5 결과
+16 passed in 7.47s
+```
+
+가짜 파이프라인만 쓴다(bge-m3·OpenAI 호출 0회).
+
+### 2) 실제 서버 동시 5건(포트 8136, serve.py, 가짜 분석 1건 60초, 동시 상한 2) — PASS
+
+```
+$ python tests/e4/test_jobs_live.py load --port 8136 --run-s 60 --jobs 5 --out docs/reports/E4-L2d_loadtest.txt
+[+   1.55s] health 정상까지 1.5s (serve.py --app tests.e4.test_jobs_live:app --port 8136)
+[+   1.77s]   POST L0: code=202 0.032s job_id=QGMfel… status=queued position=0 eta_s=0.0 message="곧 분석을 시작합니다"
+[+   1.77s]   POST L2: code=202 0.016s job_id=wDVhPT… status=queued position=1 eta_s=60.0 message="대기 1번째 · 약 60초"
+[+   1.77s]   POST L4: code=202 0.016s job_id=JSqhof… status=queued position=3 eta_s=120.0 message="대기 3번째 · 약 120초"
+[+   3.28s]   L0: running pos=0 stage=plan_normalize eta_s=58.5 … message="분석 중 · 계획서 정리 · 약 58초 남음"
+[+   3.28s]   queue active=2 waiting=3 avg_run_s=60.0
+[+  62.33s]   L0: 결과 받음 status=done 카드 2장 계획서 줄 18줄 대기 0.0s 실행 60.0s 작업 등록→결과 60.6s
+[+  62.33s]   L4: queued  pos=1 stage=queued eta_s=59.4 elapsed_s=60.6 message="대기 1번째 · 약 59초"
+[+ 122.78s]   L3: 결과 받음 status=done 카드 2장 계획서 줄 18줄 대기 60.0s 실행 60.0s 작업 등록→결과 121.1s
+[+ 181.97s]   L4: 결과 받음 status=done 카드 2장 계획서 줄 18줄 대기 120.0s 실행 60.2s 작업 등록→결과 180.2s
+[+ 181.97s] == HTTP 응답 373건(POST 5, GET 368): 가장 긴 응답 0.078s (GET code=200), POST 최장 0.032s, GET 최장 0.078s, 100초 이상 0건
+[+ 181.97s]    응답 코드: {"202": 5, "200": 368}
+[+ 181.97s] == 결과 받은 작업 5/5건, 등록→결과 시간 60.6s, 60.6s, 121.1s, 121.1s, 180.2s
+[+ 181.97s]    (동기 방식이었다면 마지막 건은 HTTP 응답 하나가 180s 걸려 Cloudflare 약 100초 상한에 끊긴다)
+[+ 201.50s] 서버 종료 확인(포트 8136 닫힘)
+[+ 201.50s] 판정: PASS
+   … INFO neumann.jobs job JSqhof ticket=15397af4f580456b ip_32c6d30162 plan_id=c1287fb9047c chars=669 status=done cache=off queue=queued pos=3 waited_s=120.0 run_s=60.2 total_s=180.2
+[+ 201.52s] 서버 로그 491줄 중 계획서 본문·트레이스가 든 줄: 0
+```
+
+- 전체 출력(순번 3→1→실행, 단계 6개 진행, 20초마다 대기열 요약, 서버 로그): `docs/reports/E4-L2d_loadtest.txt`.
+- 서버 설정: 공개 프로필은 아님(serve.py `--public`은 openai·키가 없으면 기동 거부) — 대신 속도 제한 분당 6건·일일 예산 100건을 환경변수로 켜고 돌렸다. 예산·차단 파일은 임시 폴더(시험 뒤 삭제), 공유 `data/`에는 쓰지 않았다. 시험 뒤 8136 포트·프로세스 없음 확인.
+
+### 3) 화면(Playwright, 포트 8137, 가짜 분석 1건 12초, 동시 상한 1) — PASS, 정상 흐름 콘솔 오류 0
+
+```
+$ python tests/e4/test_jobs_live.py ui --port 8137 --run-s 12 --out docs/reports --log docs/reports/E4-L2d_ui.txt
+[+   2.20s] 앞선 작업(API): code=202 status=queued position=0
+[+   3.23s] 화면 대기 표시: "대기 1번째 · 약 11초" · 상태 queued → E4-L2d_1_queued.png
+[+  19.38s] 화면 진행 표시: "분석 중 · 유사 연구 검색 · 약 7초 남음" · 현재 단계 "유사 연구 검색" → E4-L2d_2_running.png
+[+  27.95s] 결과 렌더: 리포트 화면, 위험카드 2장 → E4-L2d_3_report.png
+[+  27.95s] 정상 흐름(입력→대기→진행→결과) 콘솔 오류·페이지 오류·실패한 요청: 0건 []
+[+  28.27s] 차단 스위치 문구: [새 분석 일시 중지] "지금은 새 분석을 잠시 멈췄습니다. 이미 분석된 계획서와 예시 결과는 계속 볼 수 있습니다." → E4-L2d_4_blocked.png
+[+  41.33s] 작업 API 404 → 폴백 요청: ['premortem/jobs', 'premortem/view'] → 리포트 렌더 2장
+[+  41.41s] 차단·폴백 단계 콘솔 기록 2건(503·404 자원 로드 알림), 그 밖의 오류 0건 []
+[+  45.38s] 서버 종료 확인(포트 8137 닫힘)
+[+  45.38s] 판정: PASS
+```
+
+- 차단·폴백 단계의 2건은 일부러 낸 503·404에 브라우저가 적는 "Failed to load resource" 알림이다(스크립트가 그 문구만 허용하고 나머지는 실패로 센다).
+- 스크린샷: `E4-L2d_1_queued.png`(대기 1번째), `E4-L2d_2_running.png`(단계 타임라인), `E4-L2d_3_report.png`(기존 렌더 함수로 리포트), `E4-L2d_4_blocked.png`(서버 사용자 문구).
+
+### 4) `python scripts/verify.py` — 통과
+
+```
+$ python scripts/verify.py
+931 passed, 21 skipped in 77.07s (0:01:17)
+보안: 파일 326개
+계약: 2개
+테스트: 통과
+verify 통과
+```
+
+## 결정(스펙이 모호하거나 고른 것)
+
+- **작업 경로 보호를 설정이 아니라 코드로 등록**: `DEFAULT_PROTECTED`에 넣으면 E4-L2c 테스트(기본 보호 경로 4개를 잰다)를 고쳐야 하고, 운영자가 `NEUMANN_PROTECTED_PATHS`를 바꾸면 빠질 수 있다. `Serving.protect()`로 등록하고 설정보다 우선하게 했다.
+- **"예산 0"은 예산 소진으로 해석**: serving에서 `NEUMANN_DAILY_BUDGET=0`은 "끔"이라, 한도 2건을 다 쓴 뒤 503을 잰다.
+- **POST 응답 `status`는 항상 `queued`**(스펙대로). 빈 슬롯이면 `position=0`, 문구 "곧 분석을 시작합니다".
+- **대기 순번은 계획서의 대기열 자리로 계산**(같은 계획서에 합류한 작업은 같은 순번). `eta_s`는 serving `Gate.eta`(실측 평균 EMA).
+- **앱이 만든 503 문구 유지**: serving 미들웨어는 5xx 본문을 "처리 중 문제" 문구로 바꾼다. 보관 상한 503은 사용자 안내라 `error_code`가 `busy`·`unavailable`인 앱 503만 문구를 둔다(키·경로 가리기는 그대로).
+- **결과 보관 TTL 900초**: 화면은 끝나자마자 받아 간다. 계획서 줄을 담은 결과를 오래 들고 있지 않게 짧게 뒀다.
+- **GET 404는 모르는 id·보관 시간 지남·모양 틀림을 구분하지 않는다**(존재 여부를 흘리지 않게).
+- **단계 이름 짧은 표기**(화면 왼쪽 열 폭 110px): NORMALIZE·QUERIES·SEARCH·EXTRACT·SYNTHESIZE·VERIFY.
+- 실제 서버 시험은 1건 **실제 60초**로 돌렸다(배율 없이 약 3분). pytest는 배율 0.02.
+- 가짜 앱·시험 도구는 소유 범위(`tests/e4/test_jobs*.py`) 안에 두었다(`scripts/serve*.py`는 이번 소유가 아님). `scripts/serve_fake_app.py`의 `integrate`·`fake_result`는 가져다 쓰기만 했다.
+
+## 못 한 것
+
+- 실제 파이프라인의 진행 단계: `neumann.pipeline`(E3 소유)이 `on_stage`도 `report_stage`도 부르지 않아 실서버 화면은 queued/running만 보인다(아래 제안 1).
+- `GET /premortem/jobs/{id}` 폴링 속도 제한: 메모리 조회뿐이고 id를 추측할 수 없어 넣지 않았다. 공개 중 남용이 보이면 IP별 넉넉한 상한(예: 분당 120)을 serving 보조 속도 제한으로 붙일 수 있다.
+- 작업 취소(DELETE) 없음. 화면을 떠나도 분석은 끝까지 돌고 TTL 뒤 버려진다.
+- 실제 cloudflared 터널 뒤 실측(524가 안 나는지)은 하지 않았다(지시대로 로컬 가짜 파이프라인).
+- `.env.example`에 새 키 4개 추가(PM 소유).
+
+## 제안(다음 과제·PM)
+
+1. **E3(pipeline)**: `_Run.stage()` 진입 때 `neumann.api.jobs.report_stage(name)`을 부르거나(`try: from neumann.api.jobs import report_stage` 선택 import) `run_premortem(..., on_stage=None)` 키워드를 받아 단계마다 부르면 화면에 단계가 바로 보인다(API·화면은 이미 준비됨).
+2. **공개 운영**: 동기 경로(`/premortem/view`) 폴백도 터널 상한을 넘지 않게 `NEUMANN_REQUEST_TIMEOUT_S=90` 권장. 새 화면은 작업 API를 쓰므로 영향 없다.
+3. **E6 정적 판**: 지금 가로채기가 `premortem/jobs`를 404로 주고 화면이 `/premortem/view`로 폴백해 그대로 돈다. 폴백 없이 쓰려면 가로채기에 `POST premortem/jobs → {job_id}`·`GET premortem/jobs/{id} → {status:"done", result}`를 넣으면 된다.
+4. 작업 수·대기열을 `/queue/status`에 합쳐 보이려면 `app.state.jobs.summary()`를 쓰면 된다(이번에는 main.py·queue 응답 모양을 바꾸지 않으려고 넣지 않음).
+
+## 다음 과제에 넘길 것
+
+- worker 1개 전제(작업·대기열 상태가 프로세스 메모리). 서버를 다시 띄우면 진행 중·보관 중 작업은 사라지고 화면은 404 "작업을 찾을 수 없습니다…"를 띄운다(다시 누르면 새로 분석).
+- 폴링 1회는 수 밀리초(실측 최장 0.078s). 작업 1건 폴링 약 40회/분.
