@@ -192,6 +192,8 @@ def run_premortem(
                 "research_word_hits": rules.research_signal(plan),
             }
             extras["plan_checks"]["queries"] = {"queries": qp.queries, "generator": qp.generator, "notes": qp.notes}
+        if qp is None:
+            no_card_reason = "검색어·축 단계 오류로 분석하지 못했다"
     else:
         run.skip("query_axes", "INPUT", no_card_reason)
 

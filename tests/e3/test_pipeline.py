@@ -171,6 +171,19 @@ def test_search_failure_does_not_crash():
     assert r.risk_synthesis["no_card_reason"]
 
 
+def test_provider_that_raises_does_not_crash():
+    class Exploding:
+        name, model = "openai", "gpt-6-astra"
+
+        def complete_json(self, call):
+            raise RuntimeError("provider bug")
+
+    r = _run(PLAN_BATTERY, llm=Exploding())
+    assert r.risk_cards == [] and r.status == "degraded"
+    assert _state(r, "query_axes").state == "error"
+    assert "검색어" in r.risk_synthesis["no_card_reason"]
+
+
 def test_missing_index_backend_gives_reason(monkeypatch):
     import neumann.analyze.backend as bm
 
