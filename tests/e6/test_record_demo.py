@@ -153,6 +153,32 @@ def test_record_short_fake_page_makes_webm(tmp_path, chromium_ok):
     assert not list(tmp_path.glob(".rec-*")), "임시 녹화 폴더가 남았다"
 
 
+COVERED_PAGE = """<html><body style="margin:0">
+<header style="position:fixed;top:0;left:0;right:0;height:60px;background:#eee;z-index:5">머리글</header>
+<div style="height:1000px"></div><button id="cite" style="height:24px">#1</button><div style="height:1500px"></div>
+<script>window.hits = []; document.addEventListener('click', (e) => window.hits.push(e.target.id || e.target.tagName));</script>
+</body></html>"""
+
+
+def test_director_click_reaches_element_hidden_under_fixed_header(chromium_ok):
+    """(E6-L3c 라이브 녹화 실패 원인) 화면 안이지만 고정 머리글 밑에 가린 버튼을 누르면 머리글이 아니라 버튼이 눌려야 한다."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True)
+        try:
+            page = browser.new_page(viewport={"width": 800, "height": 600})
+            page.set_content(COVERED_PAGE)
+            page.evaluate("window.scrollTo(0, 1000 - 20)")  # 버튼이 y≈20, 머리글(0~60) 밑
+            btn = page.locator("#cite")
+            assert page.evaluate("document.elementFromPoint(40, 32).tagName") == "HEADER"  # 전제: 가려 있다
+            assert btn.evaluate(rd.HIT_JS) is False
+            rd.Director(page, pace=0.05).click(btn)
+            assert page.evaluate("window.hits") == ["cite"]
+        finally:
+            browser.close()
+
+
 def test_record_keeps_video_when_scenario_fails(tmp_path, chromium_ok):
     def scenario(page, tl):
         with tl.step("boom"):
@@ -175,9 +201,13 @@ var EXPORT_ON = __EXPORT__, D = null, $ = function (i) { return document.getElem
 function steps() { $('steps').innerHTML = ['계획서','분석','리포트','내보내기'].map(function (s, i) {
   var off = (i === 3 && !EXPORT_ON); return '<button class="stp" data-step="' + i + '"' + (off ? ' disabled' : '') + '>' + s + '</button>'; }).join(''); }
 function view(v, html) { document.body.dataset.ready = '0'; document.body.dataset.view = v; $('app').innerHTML = html; document.body.dataset.ready = '1'; }
-function input() { view('input', '<button data-mode="text">직접 입력</button><textarea id="ta" rows="8" cols="80"></textarea><button id="btnStart" disabled>실행</button>');
+var EXAMPLE_ON = __EXAMPLE__;
+function input() { view('input', (EXAMPLE_ON ? '<div id="scope">AI 활용 과학 연구 계획서 전용</div><div id="exList"><button data-ex="example-battery">배터리 예시</button></div>' : '') +
+  '<button data-mode="text">직접 입력</button><textarea id="ta" rows="8" cols="80"></textarea><button id="btnStart" disabled>실행</button>');
   $('ta').addEventListener('input', function () { $('btnStart').disabled = !$('ta').value.trim(); });
   $('btnStart').addEventListener('click', start); }
+function loadExample(id) { fetch('templates/' + id).then(function (r) { return r.json(); })
+  .then(function (j) { $('ta').value = j.text; $('btnStart').disabled = !j.text.trim(); }); }
 function start() { view('job', '<h1>분석 실행</h1>');
   fetch('premortem/view', { method: 'POST', body: JSON.stringify({ plan_text: $('ta') ? '' : '' }) }).then(function (r) { return r.json(); })
     .then(function (b) { D = b; setTimeout(report, 200); }); }
@@ -187,6 +217,7 @@ function report() { var tall = '<div style="height:700px">근거·예방 행동<
     '<div class="rc" data-card="1"><h3>카드 1</h3><button class="cite" data-ev="1">#1</button>' + tall + '</div></section>' +
     '<aside><div id="pbody"></div></aside>'); }
 document.addEventListener('click', function (e) { var t;
+  if ((t = e.target.closest('[data-ex]'))) { loadExample(t.dataset.ex); return; }
   if ((t = e.target.closest('[data-ev]'))) { $('pbody').innerHTML = '<div class="pq">인용</div><span class="lref" data-line="16">16행</span>'; return; }
   if ((t = e.target.closest('[data-line]'))) { $('pbody').innerHTML = '<div class="pq">계획서 16행</div>'; return; }
   if ((t = e.target.closest('[data-step]')) && !t.disabled && t.dataset.step === '3') { view('export', '<h1>내보내기</h1>'); } });
@@ -208,7 +239,7 @@ BADGE_WATCH_JS = """
 """
 
 
-def _fake_server(status: dict, export_on: bool, seen: list[str], badges: list[str]):
+def _fake_server(status: dict, export_on: bool, seen: list[str], badges: list[str], example_on: bool = False):
     def setup(context):
         def block(route):
             seen.append("BLOCKED " + route.request.url)
@@ -221,8 +252,11 @@ def _fake_server(status: dict, export_on: bool, seen: list[str], badges: list[st
                 route.fulfill(json={"pipeline": {"state": "unavailable"}})
             elif url.endswith("/premortem/view"):
                 route.fulfill(json={"cards": [{}], "plan": {}, "_status": {"label": "라벨", **status}})
+            elif url.endswith("/templates/example-battery"):
+                route.fulfill(json={"kind": "example", "id": "example-battery", "text": PLAN.read_text(encoding="utf-8")})
             else:
-                route.fulfill(body=FAKE_APP.replace("__EXPORT__", "true" if export_on else "false"), content_type="text/html; charset=utf-8")
+                html = FAKE_APP.replace("__EXPORT__", "true" if export_on else "false").replace("__EXAMPLE__", "true" if example_on else "false")
+                route.fulfill(body=html, content_type="text/html; charset=utf-8")
 
         context.route("**/*", block)  # 가짜 앱 밖으로는 나가지 않는다
         context.route("http://demo.test/**", handle)
@@ -259,6 +293,7 @@ def test_demo_flow_offline(tmp_path, chromium_ok, capsys, health_state, status, 
         health_fetcher=lambda _url: {"version": "t", "pipeline": {"state": health_state, "mode": "sample" if health_state != "connected" else None}},
         setup=_fake_server(status, export_on, seen, badges),
         now=dt.datetime(2026, 9, 30, 12, 0, 0),
+        example_finder=lambda _url, _name: None,  # 예시 목록 없음 → 붙여넣기
     )
     assert code == 0, meta.get("error")
     assert not [u for u in seen if u.startswith("BLOCKED")], "외부로 나간 요청이 있다"
@@ -283,6 +318,8 @@ def test_demo_flow_offline(tmp_path, chromium_ok, capsys, health_state, status, 
     assert obs["response_source"] == status["source"]
     assert obs["response_sample"] is (status.get("source") == "sample" or status.get("sample") is True)
     assert obs["export"] == ("shown" if export_on else "unavailable")
+    assert obs["plan_source"] == "paste" and obs["plan_matches_file"] is True
+    assert steps[2]["t_start"] <= obs["analysis_t_click"] <= obs["analysis_t_report"] <= steps[2]["t_end"]
 
     # 화면 배지: 샘플이면 반드시 보이고, 실제면 절대 없다
     by_step = obs["badge_by_step"]
@@ -303,6 +340,68 @@ def test_demo_flow_offline(tmp_path, chromium_ok, capsys, health_state, status, 
     out = capsys.readouterr().out
     if mode == "sample":
         assert "[sample]" in out and "_sample.webm" in out
+
+
+def test_demo_flow_loads_example_button(tmp_path, chromium_ok):
+    """(E6-L3c) 예시 목록에 계획서와 같은 파일 이름이 있으면 붙여넣기 대신 예시 버튼을 누르고, 불러온 본문이 파일과 같은지 남긴다."""
+    seen: list[str] = []
+    found: list[tuple[str, str]] = []
+
+    def finder(url, name):
+        found.append((url, name))
+        return {"id": "example-battery", "name": "배터리 예시", "filename": name}
+
+    code, meta = rd.run_demo(
+        "http://demo.test", PLAN, tmp_path, pace=0.05,
+        health_fetcher=lambda _u: {"pipeline": {"state": "connected"}},
+        setup=_fake_server({"source": "pipeline"}, False, seen, [], example_on=True),
+        now=dt.datetime(2026, 9, 30, 12, 0, 0), example_finder=finder, task="E6-L3c",
+    )
+    assert code == 0, meta.get("error")
+    assert found == [("http://demo.test", "plan.md")]
+    assert any(u.endswith("/templates/example-battery") for u in seen), "예시 버튼으로 불러오지 않았다"
+    assert not [u for u in seen if u.startswith("BLOCKED")]
+    obs = meta["observed"]
+    assert obs["plan_source"] == "example:example-battery"
+    assert obs["plan_matches_file"] is True and obs["plan_loaded_chars"] == len(PLAN.read_text(encoding="utf-8"))
+    assert obs["scope"] == "AI 활용 과학 연구 계획서 전용"
+    assert meta["task"] == "E6-L3c" and meta["mode"] == "live"
+    assert "example:example-battery" in meta["steps"][1]["note"]
+
+
+def test_demo_example_none_skips_lookup(tmp_path):
+    called: list[str] = []
+    code, _ = rd.run_demo(
+        "http://demo.test", PLAN, tmp_path, health_fetcher=lambda _u: None,
+        example="none", example_finder=lambda u, n: called.append(u),
+    )
+    assert code == 2 and called == []  # 서버가 없으면 예시 조회도 하지 않는다
+
+
+def test_find_example_matches_filename(monkeypatch):
+    body = json.dumps({"examples": [{"id": "a", "filename": "other.md"}, {"id": "example-battery", "filename": "plan.md"}]}).encode()
+
+    class Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return body
+
+    urls: list[str] = []
+    monkeypatch.setattr(rd.urllib.request, "urlopen", lambda url, timeout: (urls.append(url), Resp())[1])
+    assert rd.find_example("http://x/", "plan.md")["id"] == "example-battery"
+    assert rd.find_example("http://x", "nope.md") is None
+    assert urls == ["http://x/templates", "http://x/templates"]
+
+    def boom(url, timeout):
+        raise rd.urllib.error.URLError("down")
+
+    monkeypatch.setattr(rd.urllib.request, "urlopen", boom)
+    assert rd.find_example("http://x", "plan.md") is None
 
 
 def test_demo_aborts_when_server_down(tmp_path):
