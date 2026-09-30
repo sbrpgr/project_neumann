@@ -56,8 +56,13 @@ class IndexBackend:
         self._store = _store
         self.impl = "neumann.index.search:search"
 
-    def search(self, queries: list[str], k: int = 10, exclude_work_ids: set[str] | None = None) -> list[Hit]:
-        raw = self._search.search(queries, k=k, exclude_work_ids=exclude_work_ids)
+    def search(
+        self, queries: list[str], k: int = 10, exclude_work_ids: set[str] | None = None, *,
+        score_floor: float | None = None,
+    ) -> list[Hit]:
+        """score_floor: None이면 E2 기본 하한(모델별 보정값). 0.0이면 하한 없이 상위 k편(E3-L1s 낮은 유사도 대체)."""
+        kw: dict[str, Any] = {} if score_floor is None else {"score_floor": float(score_floor)}
+        raw = self._search.search(queries, k=k, exclude_work_ids=exclude_work_ids, **kw)
         return [
             Hit(
                 work_id=h.work_id,
@@ -146,7 +151,11 @@ class FixtureBackend:
         data = json.loads(Path(path).read_text(encoding="utf-8"))
         return cls([Work(**w) for w in data["works"]], [ReviewEvent(**r) for r in data["reviews"]])
 
-    def search(self, queries: list[str], k: int = 10, exclude_work_ids: set[str] | None = None) -> list[Hit]:
+    def search(
+        self, queries: list[str], k: int = 10, exclude_work_ids: set[str] | None = None, *,
+        score_floor: float | None = None,
+    ) -> list[Hit]:
+        """토큰 코사인. score_floor를 주면 그 점수 미만은 뺀다(기본: 겹치는 낱말이 있으면 모두)."""
         exclude = exclude_work_ids or set()
         best: dict[str, Hit] = {}
         for q in queries:
@@ -163,7 +172,8 @@ class FixtureBackend:
                 score = dot / (qn * math.sqrt(sum(v * v for v in dv.values())))
                 if wid not in best or score > best[wid].score:
                     best[wid] = Hit(work_id=wid, score=round(score, 4), lexical=round(score, 4), matched_query=q)
-        return sorted(best.values(), key=lambda h: (-h.score, h.work_id))[:k]
+        hits = [h for h in best.values() if score_floor is None or h.score >= score_floor]
+        return sorted(hits, key=lambda h: (-h.score, h.work_id))[:k]
 
     def get_excerpts(self, work_id: str) -> list[Excerpt]:
         if work_id not in self._excerpts:

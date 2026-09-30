@@ -1031,6 +1031,29 @@ def _status_block(*, sample: bool, pipeline_state: str, result_status: str | Non
     }
 
 
+# 입력 분량 단계(E3-L1s, 결과 plan_checks.input_quality) → 화면 문구. 문구는 E3가 만든 message를 그대로 쓴다.
+INPUT_LEVEL_LABEL = {"reject": "입력이 짧아 분석하지 않음", "warn": "입력이 짧아 결과 신뢰도 낮음"}
+
+
+def _input_quality(res: Mapping[str, Any]) -> dict[str, Any] | None:
+    """결과의 입력 분량 단계 → `_status.input_quality`(level·label·message·missing·followups). 없으면 None."""
+    iq = _as_dict(_as_dict(res.get("plan_checks")).get("input_quality"))
+    level = _text(iq.get("level")).lower()
+    if level not in ("reject", "warn", "ok"):
+        return None
+    return {
+        "level": level,
+        "status": _text(iq.get("status")) or None,
+        "label": INPUT_LEVEL_LABEL.get(level, ""),
+        "message": _text(iq.get("message")) or None,
+        "missing": [_text(m) for m in _list(iq.get("missing")) if _text(m)],
+        "followups": [_text(_as_dict(q).get("question")) for q in _list(iq.get("followup_questions"))
+                      if _text(_as_dict(q).get("question"))],
+        "metrics": {k: v for k, v in _as_dict(iq.get("metrics")).items()
+                    if k in ("length", "n_chars", "n_sentences", "n_elements", "n_elements_llm")},
+    }
+
+
 def _build(result: Any, *, filename: str | None, sample: bool, pipeline_state: str, error: str | None,
            input_info: Mapping[str, Any] | None, extra_notices: list[str],
            records: RecordLookup | None = None) -> dict[str, Any]:
@@ -1109,6 +1132,34 @@ def _build(result: Any, *, filename: str | None, sample: bool, pipeline_state: s
         if not reason and ctx.dropped.get("cards_without_evidence"):
             reason = f"근거가 연결되지 않은 카드 {ctx.dropped['cards_without_evidence']}장을 뺐다"
         status["empty_reason"] = display_text(reason or error or "위험카드 0장 — 결과에 사유가 없다")
+    # 입력 분량 단계(E3-L1s): 거절·경고면 안내 문구를 notices 맨 앞에, 라벨에 표시(화면 공지 상자가 라벨이 있을 때 뜬다).
+    iqv = None if sample else _input_quality(res)
+    status["input_quality"] = iqv
+    if iqv and iqv["level"] in ("reject", "warn"):
+        msg = iqv["message"]
+        if msg:
+            status["notices"] = [msg, *[n for n in status["notices"] if n != msg]]
+        if not error and result_status != "error":
+            status["label"] = iqv["label"] + (f" · {status['label']}" if status["label"] else "")
+    # 검색어 규칙 대체·낮은 유사도·적합성 보류 진행(E3-L1s): 결과 plan_checks에서 옮겨 표시한다(정직 표기).
+    pcs = _as_dict(res.get("plan_checks"))
+    srch, gate = _as_dict(pcs.get("search")), _as_dict(pcs.get("research_gate"))
+    marks = []
+    if _text(srch.get("queries_source")) == "rule":
+        marks.append("검색어 규칙 대체")
+    if srch.get("low_similarity") is True:
+        marks.append("낮은 유사도")
+    if gate.get("passed") is True:
+        marks.append(_text(gate.get("note")) or "적합성 보류였으나 유사 연구 근거로 진행")
+    status["search"] = {
+        "queries_source": _text(srch.get("queries_source")) or None,
+        "low_similarity": srch.get("low_similarity") is True,
+        "research_gate": _text(gate.get("status")) or None,
+        "marks": marks,
+    } if (srch or gate) else None
+    if marks and not sample and not error and result_status != "error":
+        extra = " · ".join(m for m in marks if m not in status["label"])
+        status["label"] = f"{status['label']} · {extra}" if status["label"] and extra else (status["label"] or extra)
     status["dropped"] = ctx.dropped
     status["section_errors"] = ctx.section_errors
     status["generated_at"] = _text(res.get("generated_at")) or None

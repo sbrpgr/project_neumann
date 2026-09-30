@@ -203,7 +203,20 @@ def test_model_rejection_of_real_plan_is_softened() -> None:
 
 
 def test_thin_idea_is_uncertain_with_followups() -> None:
-    text = "그래프 신경망으로 전해액 이온전도도를 예측해 보려는 아이디어를 구상 중이다.\n아직 세부 계획은 정하지 않았다."
+    short = "그래프 신경망으로 전해액 이온전도도를 예측해 보려는 아이디어를 구상 중이다.\n아직 세부 계획은 정하지 않았다."
+    # E3-L1s(대표 지시): 300자 미만은 호출 없이 거절한다. 300자 이상인 얇은 아이디어로 판정 보류를 시험한다.
+    fake = FakeLLM(_response("research_plan", {"research_question": [1]}))
+    rej = assess_fitness(_plan(short), fake)
+    assert rej["decided_by"] == "precheck" and rej["verdict"] == "unfit" and fake.calls == []
+    text = short + (
+        "\n배터리 전해액은 용매와 염의 조합이 많아서 하나씩 만들어 재 보는 데 시간이 오래 걸린다."
+        "\n그래서 컴퓨터로 먼저 걸러 낼 수 있으면 좋겠다는 생각을 했다."
+        "\n주변 연구실에서도 비슷한 이야기를 들었고, 관련 논문을 몇 편 읽어 보는 중이다."
+        "\n다음 달 연구실 회의에서 이 아이디어를 공유하고 여러 사람의 의견을 들어 볼 생각이다."
+        "\n의견이 모이면 무엇부터 할지 순서를 정하고, 필요한 도구와 일정도 함께 정리해 보겠다."
+        "\n지도교수님과도 한 번 상의해서 이 주제가 학위 논문 주제로 괜찮은지 여쭤볼 예정이다."
+    )
+    assert len(text.strip()) >= 300
     plan = _plan(text)
     rule = rule_fitness(plan)
     assert rule["verdict"] == "uncertain"
@@ -224,8 +237,9 @@ def test_english_abstract_fit_by_rule_and_language() -> None:
     text = (
         "We propose a transformer model that predicts protein stability from sequence.\n"
         "We train it on 50,000 variants collected from public datasets.\n"
-        "We evaluate Spearman correlation and RMSE against three published baselines with 5-fold cross-validation."
-    )
+        "We evaluate Spearman correlation and RMSE against three published baselines with 5-fold cross-validation.\n"
+        "Variants are grouped by protein so that no protein appears in both the training and the test folds."
+    )  # E3-L1s: 300자 미만은 거절 단계라 한 줄을 더해 300자를 넘겼다
     plan = _plan(text)
     assert rule_fitness(plan)["verdict"] == "fit"
     assert detect_language(plan.text)["language"] == "en"
