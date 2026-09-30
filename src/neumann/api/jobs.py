@@ -94,7 +94,8 @@ MESSAGES = {
 @dataclass(frozen=True)
 class JobsConfig:
     ttl_s: float = 900.0        # 끝난 작업 결과 보관 시간
-    max_jobs: int = 200         # 메모리에 두는 작업 수 상한
+    max_jobs: int = 500         # 메모리에 두는 작업 수 상한(결과 약 150KB × 500 ≈ 75MB)
+    shared_ttl_s: float = 60.0  # 합류·캐시 적중으로 만든 작업(분석 비용 0)의 보관 시간
     timeout_s: float = 900.0    # 작업 하나의 시간 상한(대기+실행). 넘으면 오류 문구(분석은 끝까지 돌고 캐시에 들어간다)
     poll_s: float = 1.5         # 화면에 권하는 폴링 간격
     per_ip: int = 3             # IP(/64)별 보관 작업 수 상한(0이면 끔)
@@ -106,7 +107,8 @@ class JobsConfig:
         public = serving._env_bool("NEUMANN_PUBLIC", False)
         return cls(
             ttl_s=serving._env_num("NEUMANN_JOB_TTL_S", 900.0, 1.0, 7 * 86_400),
-            max_jobs=int(serving._env_num("NEUMANN_JOB_MAX", 200, 1, 100_000)),
+            max_jobs=int(serving._env_num("NEUMANN_JOB_MAX", 500, 1, 100_000)),
+            shared_ttl_s=serving._env_num("NEUMANN_JOB_SHARED_TTL_S", 60.0, 1.0, 7 * 86_400),
             timeout_s=serving._env_num("NEUMANN_JOB_TIMEOUT_S", 900.0, 0.05, 86_400),
             poll_s=serving._env_num("NEUMANN_JOB_POLL_S", 1.5, 1.0, 2.0),
             per_ip=int(serving._env_num("NEUMANN_JOB_PER_IP", 3, 0, 10_000)),
@@ -173,6 +175,7 @@ class Job:
     filename: str | None
     lines: int
     ipk: str = ""                    # 요청한 IP(/64) 묶음 키
+    shared: bool = False             # 합류·캐시 적중(새 분석 아님): 짧은 TTL, IP별 보관 수 계산에서 뺀다
     created: float = field(default_factory=time.monotonic)
     state: str = "queued"            # queued | done | error (대기·실행 구분은 대기열에서 읽는다)
     started: bool = False            # 작업 코루틴이 실행을 시작했나
@@ -220,13 +223,22 @@ class JobStore:
         """TTL이 지난 끝난 작업을 버린다(결과·계획서 줄도 같이 사라진다)."""
         now = self.clock()
         for jid in [k for k, j in self._jobs.items()
-                    if j.finished_at is not None and now - j.finished_at > self.config.ttl_s]:
+                    if j.finished_at is not None and now - j.finished_at > self.ttl_for(j)]:
             del self._jobs[jid]
             self.counters["expired"] += 1
 
-    def _evict_own_finished(self, ipk: str) -> bool:
+    def ttl_for(self, job: Job) -> float:
+        return self.config.shared_ttl_s if job.shared else self.config.ttl_s
+
+    def has_room(self) -> bool:
+        """새 작업을 받을 자리가 있나(끝난 작업을 밀어내지 않고). /queue/status의 accepting에 쓴다."""
+        self.sweep()
+        return len(self._jobs) < self.config.max_jobs
+
+    def _evict_own_finished(self, ipk: str, *, counted_only: bool = False) -> bool:
         """그 IP의 끝난 작업 중 가장 오래된 것 하나를 버린다. 다른 IP의 결과는 건드리지 않는다."""
-        done = [(j.finished_at or 0.0, k) for k, j in self._jobs.items() if j.finished and j.ipk == ipk]
+        done = [(j.finished_at or 0.0, k) for k, j in self._jobs.items()
+                if j.finished and j.ipk == ipk and not (counted_only and j.shared)]
         if not done:
             return False
         del self._jobs[min(done)[1]]
@@ -237,8 +249,8 @@ class JobStore:
         """새 작업 자리. 없으면 거절 종류("per_ip" | "full"). 밀어내는 것은 요청한 IP의 끝난 작업뿐이다."""
         self.sweep()
         cap = self.config.per_ip
-        while cap > 0 and sum(1 for j in self._jobs.values() if j.ipk == ipk) >= cap:
-            if not self._evict_own_finished(ipk):
+        while cap > 0 and sum(1 for j in self._jobs.values() if j.ipk == ipk and not j.shared) >= cap:
+            if not self._evict_own_finished(ipk, counted_only=True):
                 return "per_ip"
         while len(self._jobs) >= self.config.max_jobs:
             if not self._evict_own_finished(ipk):
@@ -297,6 +309,7 @@ class JobStore:
         while jid in self._jobs:  # 사실상 일어나지 않는다
             jid = _new_job_id()
         job = Job(id=jid, ctx=job_ctx, fmt=req.format, filename=req.filename, ipk=ipk,
+                  shared=job_ctx.reservation is None,  # 미들웨어가 자리를 안 잡음 = 캐시 적중·합류
                   lines=sum(1 for ln in req.plan_text.splitlines() if ln.strip()), created=self.clock())
         self._jobs[jid] = job
         self.counters["created"] += 1
@@ -381,6 +394,8 @@ class JobStore:
         return data
 
     def _finish_ok(self, job: Job, data: dict[str, Any]) -> None:
+        ctx = job.ctx
+        job.shared = ctx.cache == "hit" or ctx.queue == "joined"  # 실제로 분석을 돌렸는지로 다시 정한다
         job.state, job.result, job.finished_at = "done", data, self.clock()
         job.message = MESSAGES["done"]
         self.counters["done"] += 1
@@ -400,7 +415,7 @@ class JobStore:
                                "poll_after_s": self.config.poll_s, "position": 0, "eta_s": None}
         if job.finished:
             out.update(status=job.state, stage=job.state, stage_label=STAGE_LABELS[job.state], message=job.message,
-                       expires_in_s=round(max(self.config.ttl_s - (now - (job.finished_at or now)), 0.0), 1))
+                       expires_in_s=round(max(self.ttl_for(job) - (now - (job.finished_at or now)), 0.0), 1))
             if job.state == "done":
                 out["result"] = job.result
                 out["position"], out["eta_s"] = 0, 0.0
@@ -498,6 +513,7 @@ def install(app: Any, *, load_pipeline: Callable[[], tuple[Callable[..., Any] | 
         return None
     srv.protect(JOBS_PATH, "analysis", async_=True)  # 작업 경로는 대기열 전체를 쓴다(동기 경로는 sync_queue_max)
     store = JobStore(srv, config, load_pipeline=load_pipeline, sample_result=sample_result)
+    srv.accept_checks.append(store.has_room)  # 저장소가 차면 /queue/status accepting:false
     app.state.jobs = store
     app.include_router(router)
     return store
