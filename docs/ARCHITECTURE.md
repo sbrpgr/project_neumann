@@ -2,7 +2,7 @@
 
 Neumann은 연구계획서를 받아, 비슷한 연구가 실제로 받은 심사평·저자 답변·결정·정정/철회 기록에서 위험을 찾는다. 결과는 근거 문장과 원문 링크가 달린 위험카드다.
 
-- 기준: 이 문서를 병합하기 직전의 `main`(작성 때 확인한 커밋 `588da63`, 태그 `v0` 이후).
+- 기준: 이 문서를 병합하기 직전의 `main`(작성 때 확인한 커밋 `2c37557`, 태그 `v0` 이후).
 - 표기: **있음** = main에 코드와 테스트가 있고 제품 경로에서 쓰인다. **있음(모듈만)** = 모듈과 테스트는 있지만 분석 파이프라인이 아직 부르지 않아 서버 응답에는 쓰이지 않는다. **예정** = main에 없다(과제 ID를 붙였다).
 - 실행 방법은 [RUNNING.md](RUNNING.md), 엔드포인트는 [API.md](API.md).
 
@@ -23,7 +23,7 @@ Neumann은 연구계획서를 받아, 비슷한 연구가 실제로 받은 심�
 | 예상 심사평·근거 게이트 | 있음(모듈만) | `src/neumann/analyze/review.py`, `gate.py` |
 | 예방 체크리스트·2차 의미검증 | 있음(모듈만) | `src/neumann/analyze/checklist.py`, `validate.py` |
 | 입력 적합성 판정·개인정보 마스킹 강화 | 있음(모듈만) | `src/neumann/analyze/fitness.py`, `pii.py` |
-| API 서버와 화면(템플릿 선택기·범위 안내 포함) | 있음 | `src/neumann/api/main.py`, `view.py`, `templates.py`, `webui/index.html` |
+| API 서버와 화면(템플릿 선택기·범위 안내, 입력 화면의 OpenAI 전송·본문 미저장 고지 포함) | 있음 | `src/neumann/api/main.py`, `view.py`, `templates.py`, `webui/index.html` |
 | 메타 API(`/api`·`/taxonomy`·`/config/weights`) | 있음 | `src/neumann/api/meta.py` |
 | 내보내기 패키지(ZIP 9파일) | 있음 | `src/neumann/api/export.py` |
 | 사전 계산본(오프라인 폴백) | 있음 | `src/neumann/api/precomputed.py`, `scripts/precompute_demo.py` |
