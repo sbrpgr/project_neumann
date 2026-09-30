@@ -32,6 +32,10 @@ LEAK, SEED = "card-fx-leak", "card-fx-seed"
 class FakeLLM:
     """주입용 가짜 llm_call. respond(payload) → dict | None, 또는 raise_exc를 던진다."""
 
+    # 생성 주체는 추정하지 않는다(SEC-1 S-05b): 이 가짜는 astra 응답을 흉내 낸다고 속성으로 명시한다.
+    generator = "astra"
+    model = "gpt-6-astra"
+
     def __init__(self, respond: Any = None, *, raise_exc: Exception | None = None) -> None:
         self.respond = respond
         self.raise_exc = raise_exc
@@ -263,6 +267,31 @@ def test_generator_label_follows_injection() -> None:
     llm = FakeLLM(_good)
     llm.generator, llm.model = "mock", "m1"  # llm_call 속성으로도 받는다
     assert {it["generator"] for it in build_checklist(res, plan, llm)} == {"mock"}
+
+
+def test_generator_is_never_guessed() -> None:
+    """SEC-1 S-05b: 생성 주체가 인자에도 llm_call 속성에도 없으면 astra로 추정하지 않고 ValueError."""
+    import pytest
+
+    from neumann.analyze.checklist import llm_label
+    from neumann.analyze.validate import validate_cards
+
+    res, plan = _result(), _plan()
+
+    def bare(schema, instructions, input, *, effort):  # 속성 없는 llm_call
+        return _good(json.loads(input))
+
+    with pytest.raises(ValueError):
+        build_checklist(res, plan, bare)
+    with pytest.raises(ValueError):
+        validate_cards(res, plan, bare)
+    with pytest.raises(ValueError):
+        llm_label(bare, "gpt-6-astra", None)  # 모델명은 생성 주체 값이 아니다
+    # llm_call이 없으면 LLM 결과가 없다: 추정 없이 "none", 항목은 전부 규칙
+    assert llm_label(None, None, None) == ("none", None)
+    assert {it["generator"] for it in build_checklist(res, plan, None)} == {"rule"}
+    # 명시하면 그대로(모델 기본값도 채우지 않는다)
+    assert llm_label(bare, "astra", None) == ("astra", None)
 
 
 # ── 결과·단계·결정 로그 ──────────────────────────────────────────────────
