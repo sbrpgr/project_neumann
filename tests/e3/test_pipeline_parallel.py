@@ -417,7 +417,10 @@ def test_labels_are_actual_values_per_stage_under_interleaving(no_fitness, monke
         else:
             assert it["generator"] == "astra" and it["model"] == model
     sem = r.verification["semantic"]
-    assert sem["generator"] == "astra" and sem["model"] == model
+    if failing == "semantic_validate":  # PROV-LABEL(LS-3): 판정이 전부 규칙이면 외피도 rule, 모델 없음
+        assert sem["generator"] == "rule" and sem["model"] is None
+    else:
+        assert sem["generator"] == "astra" and sem["model"] == model
     # 과제별 모델명(@과제)은 그 과제 자리에만: 다른 단계 기록·체크리스트·검증 보고서에 끼지 않는다
     for name in V1:
         detail = _st(r, name).detail or ""
