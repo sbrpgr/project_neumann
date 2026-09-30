@@ -2,6 +2,27 @@
 
 PM이 병합할 때마다 갱신한다. Claude 한도가 다 되면 이 문서를 Codex에 주고 PM 역할을 넘긴다.
 
+## ★ Codex 즉시 인수 (취소 — Claude 계속, 대표 21:3x) · 아래 표는 21:2x 상태 기록
+
+**main `5ed9b45` (push됨)**: v0 태그 뒤 E2-L1·E4-L1a·E3-L1w(v1 파이프라인)·E1-L1c(코드)·E4-L1e·E4-L1f·E6-docs·E3-L1x·E4-L2e·SEC-3(실제 호출 잠금+astra 금지)·SEC-4(ReDoS) 병합.
+
+**병합 순서(공개 전):** E4-L2d → SEC-5 → SEC-2 → 터널. 각 병합은 `codex_task.sh verify <ID>`(gpt-6-sol) PASS 뒤, verify.py(venv, `NEUMANN_LLM_PROVIDER=mock`) 통과 뒤.
+
+| 브랜치 | 머리 | 상태 | 할 일 |
+|---|---|---|---|
+| task/E4-L2d | 40e283e | 재작업 3 끝, Sonnet 재검증이 교대로 중단됐을 수 있음 | 재검증(E4-L2c 포함, diff에 templates·index.html 혼입 없는지) → 병합 + `docs/reports/E4-L2c_main.patch` → `E4-L2d_main.patch` 순서 적용 → `.env.example` 새 키(TRUST_XFF·UPLOAD_*·JOB_*) → README 75행(동시 상한·대기열) |
+| task/SEC-5 | a288b3b | 빌드 끝, Sonnet 검증 중단(`docs/reports/SEC-5.verify.md` 부분) | 재검증: 스레드 재사용 시 옛 검색 상태가 남는지(검색 시작 때 thread-local 초기화 권장) → 병합 |
+| task/E1-L1b | 65fbc66 | 재작업 2(잔존 실명 0, 두 방법), 재검증 3 중단(`E1-L1b.verify.md` 부분) | 재검증 PASS → **squash 병합**(이력에 실명). 그 뒤 E1-L1c 명령으로 색인 재빌드, 해시 대조 rc 0. 그 전에는 `index_elife*` DO_NOT_SERVE |
+| task/E3-L1y | 06d902a | 빌드 끝, 구축 세션 검증 중단 가능 | 재검증(병렬=순차 결과, manifest 실제 모델) → 병합 |
+| task/E5-L1e2e | 5d60ac2 | WIP: 1단계 끝, 8020 라이브 1회 미실행/진행 여부 보고서 확인 | 라이브 1회(대표 승인) 통과 → 병합 → **태그 v1**(Macro-F1 0.4864는 astra 측정 구분 표기) |
+| task/E4-L2f·E4-L3m·E5-L3b | 9550073·88f1b51·28a1472 | 구축 세션 WIP(보고서에 남은 일) | 보고서 보고 이어서 |
+| task/E6-pres2 | daee70e | 발표 후속 4 | 07:00 체크리스트(보고서 맨 위) |
+| task/E3-L1d | 3fa1349 | 중지(대표 지시) | 선택 |
+
+**백테스트 n=5**(대표 승인, real만, gpt-6.1-sol 양쪽): 구축 세션이 python으로 실행 중. 결과 `data/eval/riskset_neumann.sol.first5.jsonl`·`riskset_baseline_llm.sol.first5.jsonl`. 판정(블라인드 3명 다수결, `eval.judge_envelope`·`eval.judge_run`)은 Codex(§5.7 비상 판정) 또는 21:40 뒤 Claude Sonnet. 대표 블라인드 판정도 이 5편. 표기 "n=5(대표 결정, 비용 사유; 30→15→5), 통계적 결론 제한". 표본 규칙은 decisions 21:0x.
+
+**지키기:** 실제 OpenAI는 `NEUMANN_LIVE_LLM_OK=1`(프로세스 환경변수) 있을 때만, astra 금지(코드가 sol로 바꿈). 모든 명령에 `NEUMANN_LLM_PROVIDER=mock` 명시(옛 프로세스 환경 잔존). worktree에서 `git stash` 금지. 8020 실서버는 구축 세션 소유(재기동 명령은 아래 "지금 상태").
+
 ## ⚠ 최종 마감 (대표 지시): 발표자료 제출 10/01 09:00
 
 | 시각 | 할 일 |

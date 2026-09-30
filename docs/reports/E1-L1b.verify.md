@@ -175,3 +175,101 @@
 ### 환경 확인 (PM 공지에 대한 답)
 
 - 이 재검증에서 **OpenAI provider를 쓴 명령은 없다.** PM 공지 전에 실행한 Python은 전부 `json`·`re`·`xml`·`pickle`·`subprocess`(git)만 쓰는 독립 스크립트였고 `neumann` 패키지를 import하지 않았다(따라서 LLM 설정을 읽지 않음). 공지 후의 모든 Python·pytest·`verify.py` 명령에는 `NEUMANN_LLM_PROVIDER=mock`을 붙였고 `NEUMANN_LIVE_TESTS`는 해제했다. 네트워크 요청 0. worktree에는 아무 파일도 남기지 않았다(`git status` 깨끗, `.pytest_cache`는 19:01 빌더분 그대로).
+
+---
+
+## 재검증 3 (65fbc66)
+
+- 대상: 브랜치 `task/E1-L1b` 팁 `65fbc66`(worktree `agent-a24401a9648d9d327`), 산출물 `data/processed/elife_*`·`europepmc_*`(20:45 재생성분), 원본 캐시 `data/cache/elife`(500편)·`data/cache/europepmc`(400편). 검증자는 코드·데이터·worktree를 고치지 않았고 커밋하지 않았다. 테스트는 팁을 로컬 복제한 검증자 작업 폴더에서 돌렸다. 네트워크·OpenAI·LLM 호출 0(모든 Python에 `NEUMANN_LLM_PROVIDER=mock`, `NEUMANN_LIVE_TESTS` 해제, `.env` 열지 않음).
+- 이 절에도 실명을 적지 않는다. 복원한 명단은 검증자 작업 폴더(scratchpad)의 메모리·피클에만 있고, 본문 문맥을 출력할 때는 이름 모양 단어를 `Xx`로 바꿔 찍었다.
+
+### 재검증 3 판정: **PASS-조건부 (익명 리뷰어·공개 동의 리뷰어·F1000 심사자 실명 잔존 0, 그러나 이름 부분 노출 3레코드와 병합 방식 조건이 남음)**
+
+이전 재검증의 FAIL 3건(J·K·L)은 모두 해소됐다. 이번에는 빌더의 `identity_residue`·"방법 2"와 다른 방법 7가지로 산출물 본문 2,875건(심사평 2,069 + 저자 답변 806)과 works·decisions 1,775건을 다시 훑었다. 리뷰어 신원 실명은 어디서도 안 나왔다. 대신 **이름이 부분만 가려진 곳 3레코드**(eLife 구모델 서문 문장, 가림 규칙이 ASCII가 아닌 `’`·`–`를 못 접음)와 그 사각지대(`identity_residue`도 못 잡음)를 새로 찾았다. 고칠 범위는 작다(변형 정규화 + 캐시로 `--offline` 재생성, 네트워크 불필요).
+
+| 항목 | 방법 | 결과 |
+|---|---|---|
+| 이전 FAIL 3건 해소 | 캐시 원문에서 리뷰어·공개 동의·서명 이름을 복원해 3레코드(`europepmc:PMC9802673:pdig.0000085.r001`, `europepmc:PMC11421804:pbio.3002808.r002`, `europepmc:PMC10956805:pone.0301228.r002`) 본문과 같은 논문 하위 문서 전체를 대조 | **3/3 해소.** 전체 이름·성·이름 첫 단어 잔존 0 (§V1) |
+| 독립 잔존 스캔 | §V2 7가지 | 리뷰어 신원 실명 **0**. 이름 **부분 노출 3레코드**(리뷰어 역할 편집자 2, 선임 편집자 1), 편집자 이름 첫 단어만 1레코드. 저자 서명·연락처 잔존은 "경미" |
+| 과잉 가림 | 무작위 30건 + 원문 대응이 잡힌 701건 전수 | 이름·주소가 아닌 것을 가린 곳 **0** (30/30 이름·주소·연구비 수혜자 표기). `together with` 오탐 2곳 복원 확인 |
+| 무결성 | manifest sha256, 건수, 출처, 키, 정규화, 모델 검증, 이전 세대 대조 | 전부 통과 (§V4) |
+| `src/neumann/sources/` diff 실명 | 브랜치 변경 7파일 + 팁 트리 151개 파일 + 커밋 이력 | 소스·스크립트·테스트·보고서 **0**. 단, 커밋 이력에는 있다(§V4, 조건 4) |
+| `pytest tests/e1 -k "elife or europepmc"` | 팁 복제본, `PYTHONPATH="src;."`, `-p no:cacheprovider` | 73 passed, 98 deselected |
+| `python scripts/verify.py` | 같은 복제본 | 362 passed, 14 skipped, 보안 150개, 계약 2개, verify 통과 (14 skipped는 빌더 보고서와 같은 수. 이전 재검증 worktree 실행은 2 skipped였는데 실데이터 폴더 유무 차이로 보이며 실패는 없음) |
+
+### V1. 이전 FAIL 3건 (레코드별)
+
+| 레코드 | 이전 형식 | 지금 |
+|---|---|---|
+| `europepmc:PMC9802673:pdig.0000085.r001` | 맺음말 뒤 성 대문자 이름 줄(J) | `Best regards,` 다음이 `[NAME]`. 같은 논문 다른 하위 문서(`r003`)도 잔존 0. 동의 줄 이름 4명·저자 12명 대조 0 |
+| `europepmc:PMC11421804:pbio.3002808.r002` | `-A & B` 공동 서명(K) | `signed our names…` 뒤 `-[NAME]`(두 사람이 하나로 합쳐짐). 논문 명단 15명 대조: 저자 성이 4곳 나오지만 인용·저자 표기 |
+| `europepmc:PMC10956805:pone.0301228.r002` | 감사 문장 속 리뷰어 이름(L) | `our academic editor [NAME] and both reviewers ([NAME] and an anonymous reviewer)`. 동의 줄 이름 대조는 `<성> et al., 2022` 문헌 인용 1곳(성만)뿐 |
+
+### V2. 독립 잔존 스캔 (빌더의 `identity_residue`·방법 2와 다른 방법)
+
+명단은 캐시에서 다시 만들었다: 저자 7,146 · 편집자 1,113 · eLife 리뷰어 313 · Europe PMC `contrib` 전부(ORCID 연결 포함, sub-article `contrib` 1,579) · 공개 동의 줄(`Reviewer #N: Yes: 이름`) 이름. 항목 약 10,900. 이름 표기 키 36,710개(전체·이름1+성·성+이름·이니셜·성만, 발음 부호와 대소문자 접음, 참고문헌 문맥은 따로 분류).
+
+| # | 방법 | 결과 |
+|---|---|---|
+| M1 | 명단 n-gram 대조(같은 논문 + 다른 논문 교차, 전체 이름·이니셜·성만) → 인용·참고문헌 줄 분류 후 비인용 수작업. 공개 동의 파서가 "Author Response" 같은 잡음을 이름으로 뽑아 어휘로 걸러 같은 논문만 대조 | 비인용 명단 일치 284곳(44레코드)을 전부 읽음: 리뷰어·공개 동의·F1000 심사자 이름 **0**. 나머지는 참고문헌 이니셜형, 데이터셋·연구 이름(성), 다른 연구자 언급, 어휘 오탐. 같은 논문 리뷰어의 성만 남은 곳(인용·데이터셋 이름)은 빌더가 적은 "간접 노출"과 같은 범주 |
+| M2 | 서명 모양 줄: 대문자 단어만 1~6개·45자 이하·숫자 없음 3,787줄, 맺음말 331곳 뒤 250곳의 마스크 안 된 다음 줄 전수, 레코드 마지막 2줄 | 이름 모양 줄 중 리뷰어 이름 0. 남은 것은 F1000 `Reviewer Expertise` 값(주제어)과 저자 서명(경미) |
+| M3 | 명단의 이름·성 사전(4,187·5,223개, 흔한 소문자 단어 제외)으로 **명단에 없는 사람** 이름쌍 찾기 | 후보 118 중 비인용 11: 다른 연구자 언급, 저자 서명 2, 지명·기기 표기 등. 리뷰어 0 |
+| M4 | 소문자로 한 번도 안 쓰인 대문자 연속 2~3어(명단과 무관), 인용 줄 제외 | 131곳 전수: 지명·기기·방법·다른 연구자 언급·저자 서명. 리뷰어 0. 편집자 부분 노출 1건(`elife:83838:sa1`)이 여기서 처음 걸림 |
+| M5 | `[NAME]` 1,129곳 옆에 붙은 이름 모양 미지 단어(부분 가림 탐지) + `’`·`–`·`-`로 글자에 붙은 `[NAME]` | 21곳 중 대부분 `Dr.` 호칭, **부분 노출 3레코드**(아래 표) + 제3자 협력자 1곳(`elife:81878:sa2`, `Prof [NAME] 성`). 글자에 붙은 `[NAME]` 11곳 중 3곳이 아래 P1·P2, 나머지 8곳은 소유격·`[NAME]’s`류 |
+| M6 | 같은 논문 리뷰어·편집자·동의 이름의 **이름 첫 단어만** 단독 노출(성 없이) | 16곳: 인용·목록 오탐 외 `elife:59525:sa1`·`elife:60729:sa1`·`elife:83838:sa1`(M5와 같은 곳) + `elife:85223:sa1`(편집자 이름 첫 단어 2회) |
+| M7 | 이메일·ORCID·`@`핸들·전화·프로필 URL | 이메일·ORCID 0(가려짐). 전화번호 5레코드, 프로필 URL 1레코드(경미) |
+
+**이름이 부분만 가려진 곳 (가짜 이름으로 재현)**
+
+| 유형 | 형식(가짜 이름) | 레코드 | 신분 |
+|---|---|---|---|
+| P1 | `including Ada M. O’[NAME] as the Reviewing Editor and Reviewer #1` — 성에 `’`(U+2019)가 있는 이름에서 이름·중간 이니셜·`O’`가 남음 | `elife:59525:sa1`, `elife:60729:sa1` | eLife 구모델에서 심사위원 1을 겸한 Reviewing Editor(공개 인물). **리뷰어 역할 부분 노출 2건** |
+| P2 | `overseen by a Reviewing Editor and Ben C. Marsh–[NAME] as the Senior Editor` — 겹성에 `–`(U+2013)가 있어 이름과 앞 성이 남음 | `elife:83838:sa1` | Senior Editor 부분 노출 1건 |
+| P3 | 편집자 이름 첫 단어만(`when Ada was just leaving for vacation; after his return, Ada …`) | `elife:85223:sa1` | 편집자 이름 첫 단어 노출 2회. 정책상 낮음 |
+
+- 재현(코드 수정 없이 함수 호출만, 가짜 이름): `redact_identity("including Ada M. O’Byron as the Reviewing Editor and Reviewer #1", names)` → `Ada M. O’[NAME]`, `redact_identity("… Ben C. Marsh–Quill as the Senior Editor.", names)` → `Ben C. Marsh–[NAME]`. `names`는 `_people_names`가 만든 명단(ASCII `'`·`-` 표기). 같은 문장을 ASCII `'`·`-`로 쓰면 가려진다. 이 결과들에 `identity_residue()`는 `[]`를 돌려준다(사각지대).
+- 원인(원문 캐시로 확인): 세 논문 모두 명단(eLife `reviewers` 필드)은 ASCII `'`(U+0027)·`-`(U+002D)로 적혀 있는데 본문 서문 문장은 `’`(U+2019)·`–`(U+2013)로 적혀 있다(59525·60729는 `’`, 83838은 `–`). 변형이 성 뒷부분만 따로 일치해 앞부분이 남는다.
+- 이 세 문장은 eLife 구모델 결정서 서문("This manuscript has been reviewed by … including X as the Reviewing Editor and Reviewer #1", "… overseen by … as the Senior Editor")이다. 이 서문 문형 238곳을 전수 확인했더니 나머지는 모두 `[NAME]`이다.
+
+### V3. 과잉 가림
+
+- 무작위 30건(seed 20260930, `[NAME]`·`[AFFILIATION]` 1,152곳 중): 캐시 원문과 앞뒤 4단어로 맞춰 가려진 원문을 복원하고 이름 명단 대조 + 어휘 대조. **30/30이 이름·주소·연구비 수혜자 표기**(29건은 원문 복원에서 이름 단어 전부가 명단에 있음, 1건 `elife:83604` works의 `(to [NAME])`는 연구비 수혜자 문맥으로 확인). 이름 아닌 것을 가린 곳 0.
+- 원문 대응이 잡힌 701곳 전수(전체의 약 61%, 나머지 451곳은 문맥이 짧아 못 맞춤): 가려진 원문에 이름이 아닌 단어가 1/3 넘게 섞인 25곳을 읽음 → 사람 이름이거나(명단 밖 제3자 협력자·데이터 담당자 이름, 참고문헌 저자 줄), `[Note: HTML markup is below. Please do not edit.]` 안내가 정규화에서 이미 빠져 구간에 들어온 것이지 `[NAME]`이 가린 것이 아님. 문구를 가린 곳 0.
+- 빌더의 "새 마스크 51곳" 점검: 빌더의 이전 세대 복사본(20:12)과 토큰 단위 diff → 새로 가려진 영역 49(토큰 묶음 방식 차이), 전부 명단 이름·저자 편지머리 소속·번지·우편번호(`[AFFILIATION]`)·편집자 서명. 이름·주소 아닌 것 0. 가림이 풀린 것은 `together with` 2곳(`pmed.1004435.r002`의 `95% CIs and p-values`, `pcbi.1012447.r001`의 `Table 1 …`, 둘 다 원문 복원 확인)과 학위 `PhD`, 이어 붙은 서명 줄 합침. `with help from`·`co-reviewed with` 뒤는 2곳(`elife:69430:sa1`, `elife:84376:sa1`)만 `[NAME]`(이름 맞음).
+
+### V4. 무결성
+
+| 항목 | 방법 | 결과 |
+|---|---|---|
+| manifest sha256·건수 | 12개 산출물 sha256과 줄 수를 manifest `outputs`와 비교, 빌더 보고서의 최종 sha 표와도 비교 | 12/12 일치, 12/12 일치. 두 manifest `status: complete` |
+| 레코드 수·ID | 이전 세대(20:12)와 ID 배열 비교 | eLife 500/1,224/499/499, EPMC 388/845/307/388 그대로. ID 순서·집합 동일, provenance `content_sha256` 전부 동일(원문 무변경) |
+| 바뀐 파일 | 이전 세대와 sha 비교 | eLife `reviews`, EPMC `reviews`·`author_responses`·`quote_removal`만 바뀜(빌더 표와 같음). 나머지 8개는 바이트 동일 |
+| provenance | 모든 레코드 4,650건 | 출처 URL·64자 sha·접근 시각 4,650/4,650, 호스트는 `api.elifesciences.org`·`www.ebi.ac.uk`뿐 |
+| 신원 필드 | JSON 키 전수(name·email·orcid·author·affiliation·reviewer·writer·signature·contrib·participant·editor·person·phone) | 0 |
+| 정규화·모델 | `neumann.models.normalize_text`가 4,650건에서 값을 바꾸는지, pydantic 모델 검증 | 위반 0, 검증 실패 0. 제어문자는 원문의 U+200B 3필드(무해) |
+| 오프셋·발췌 | 이 산출물에는 발췌·오프셋 필드가 없다(심사평·답변·결정·작품 원문 저장) | 해당 없음. 내용 무변경은 `content_sha256` 동일로 확인 |
+| 소유 경로·계약 | `git diff main...task/E1-L1b --name-status` | 추가 7개(보고서, 수집기 2·스크립트 2·테스트 2). `contracts/`·`models.py`·`corpus.py` 무변경. `data/`·`.env`·jsonl 추가 없음 |
+| 팁 트리 실명 | 명단 이름(전체·이름1+성·성+이름) n-gram 대조, 트리 151개 파일 | 0 (정규식 조각과 겹친 오탐 2곳은 `Comments to the Author` 형태의 잡음 명단 항목) |
+| `src/neumann/sources/` 변경분 실명 | 같은 방법 | 0. 성만 겹치는 것은 패키지 이름·정규식 조각뿐 |
+| **커밋 이력 실명** | `git log -p main..task/E1-L1b`(커밋 메시지·diff) | **있다.** 초기 커밋(`542f328`, `e5d1fe5`, `2c3fda1`, `8bb8f51`, `5713868`)의 추가·삭제·문맥 줄에 실데이터 이름 표기 7개 키(사람 6~7명)가 테스트 픽스처 등으로 들어 있다. 팁에는 0. 그래서 **squash 병합이 필수**다(조건 4). 빌더 보고서도 squash를 권고했다 |
+
+### 병합 전 고칠 것 (조건)
+
+1. **이름 변형 정규화:** `name_variants`·`redact_names`(또는 `redact_identity` 진입 전)에서 본문과 명단의 `’`(U+2019)·`‘`·`–`(U+2013)·`—`·유니코드 하이픈을 ASCII `'`·`-`로 접고 대조한다(P1·P2). 가짜 이름 픽스처를 `tests/e1/`에 추가한다: `Ada M. O’Byron`, `Ben C. Marsh–Quill`, 서문 문장 형식 그대로("including … as the Reviewing Editor and Reviewer #1", "overseen by … as the Senior Editor"). 규칙을 빼면 실패하는 케이스여야 한다.
+2. **`identity_residue` 보강:** 위 세 문장을 위반으로 세도록 마스크에 글자가 붙은 형태(`[A-Za-z]['’–-]\[NAME\]`, `\[NAME\]['’–-]\w`)를 넣는다. 산출물 전체에서 이 형태의 실제 누출은 지금 세 레코드뿐이다.
+3. 캐시로 `--offline` 재생성(네트워크 불필요), manifest sha256 갱신. 재검증은 §V2 M5(붙은 `[NAME]` 조회)와 M6(이름 첫 단어)을 다시 돌려 P1·P2가 0이어야 한다.
+4. **squash 병합**으로 커밋 이력의 실명 표기를 main에 들이지 않는다(§V4).
+
+### 경미 (병합을 막지 않음, 정책상 가릴 후보)
+
+- 저자 서명·편지머리(리뷰어 아님): `europepmc:PMC11093301:pone.0302236.r002`·`r004`(`성, 이니셜,` 서명 줄), `PMC11556704:pone.0311849.r002`(4단어 이름 줄, `de` 포함), `PMC8136850:pone.0251899.r002`(`Best Regards;` 세미콜론 맺음말 뒤 이름+직함), `PMC12063828:pone.0323175.r003`(학위·직함 줄), `PMC12124586:pone.0322488.r003`(저자 목록 일부), `PMC11813088:pone.0306500.r004`(`Professor` 다음 줄). 이전 재검증 경미 목록과 겹치며 저자 서명이라 리뷰어 신원 아님. `Best Regards;`(세미콜론) 형식은 맺음말 규칙이 못 보는 것으로 보이므로 리뷰어에게 같은 형식이 오면 새는 구조다(현재 실데이터에는 리뷰어 사례 0).
+- 전화번호 5레코드: `europepmc:PMC10942055:pone.0300133.r002`, `PMC11554073:pone.0303002.r002`, `PMC11651542:pone.0315752.r002`, `PMC12373287:pone.0328736.r002`, `PMC12622801:pone.0332799.r002`(저자 편지머리·기관 연락처). 프로필 URL: `PMC8195382:pone.0253205.r001`(Google Scholar 사용자 링크).
+- 제3자·저자 이름: `elife:83970:sa0`·`elife:66358:sa1`(첫 문장이 저자 이름으로 시작하는 평가문), `elife:81878:sa2`(협력자 `Prof [NAME] 성`), `PMC13166903:pone.0348976.r002`·`PMC8568139:pone.0258760.r002`·`PMC13089748:pone.0342373.r002`(데이터 담당자·타 그룹 연구자·편집부 연락자). 리뷰어·편집자 아님.
+- 리뷰어가 자기 연구를 성·데이터셋 이름으로 드는 간접 노출(같은 논문 리뷰어 성 19곳/6레코드)과 PLOS 리뷰어 성이 참고문헌 저자 줄에 남는 곳은 빌더가 적은 범위 밖으로 유지된다(이번 M1에서도 같은 성격만 확인). 이 스캔들도 하한이다: 명단에 없고 서명·머리 형식도 아닌 문장 속 자기소개는 규칙으로 찾을 수 없다.
+
+### 실행한 것 요약
+
+- 검증자 코드(자체 작성, 빌더 코드 미사용): 캐시 명단 재구성, n-gram 명단 대조(M1), 서명 모양 줄 스캔(M2), 사전 기반 이름 인식(M3), 미지 대문자 연속(M4), `[NAME]` 인접 단어(M5), 이름 첫 단어 단독(M6), 이메일·전화 등(M7), 과잉 가림 표본·전수·이전 세대 diff, manifest·provenance·키·정규화·모델 검증, 트리·이력 이름 대조.
+- 테스트: 팁 복제본에서 `PYTHONPATH="src;."` `NEUMANN_LLM_PROVIDER=mock` `python -m pytest tests/e1 -q -k "elife or europepmc" -p no:cacheprovider`(73 passed), `python scripts/verify.py`(verify 통과, 362 passed 14 skipped). 함수 호출 재현은 가짜 이름과 `redact_identity`·`_people_names`·`identity_residue`만 썼다.
+- 정직 고지: 진단 출력 한 번에서 편집자(`elife:83838:sa1`의 Senior Editor) 성 조각이 **내 터미널에만** 찍혔다(표본 출력에서 마스크에 붙은 토큰을 그대로 출력). 파일·보고서·이 절에는 쓰지 않았다. 그 뒤 진단은 `Xx` 모양으로만 찍었다. 검증자 작업 폴더에는 이름 명단 피클이 남아 있다(저장소 밖).
+- 금지 사항(코드·데이터·worktree 수정, git 쓰기, `.env` 열기, 하위 에이전트)은 하지 않았다. 검증용 복제본(`git clone`)은 scratchpad에만 있다.
