@@ -1,4 +1,5 @@
-"""E3-L1s: 짧은 입력 두 단계(너무 짧음 → 거절, 짧음 → 경고 후 끝까지 분석), 카드 0장 금지, 범위 밖 거절 유지.
+"""E3-L1s: 짧은 입력 두 단계(300자 미만 → 거절, 600자 미만·요소 2개 이하 → 경고 후 끝까지 분석), 카드 0장 금지,
+범위 밖 거절 유지.
 
 실제 API 없음. "live_like"는 백테스트 n=5(gpt-6.1-sol) 실행 파일에 남은 판정을 그대로 흉내 낸 mock이다:
 적합성 uncertain(요소 0개) + 검색어 단계 is_research_plan=False·검색어 [] → 고치기 전에는 추출 전에 멈춰 카드 0장.
@@ -22,7 +23,8 @@ from neumann.analyze.backend import FixtureBackend, Hit
 from neumann.analyze.fitness import (
     ELEMENTS,
     assess_fitness,
-    effective_chars,
+    TOO_SHORT_MESSAGE,
+    input_length,
     input_quality,
     refine_input_quality,
     rule_fitness,
@@ -34,18 +36,26 @@ from neumann.llm import MockProvider
 from neumann.models import PlanDocument
 from neumann.pipeline import run_premortem
 from tests.e3.corpus import RECIPE, build, build_backend
-from tests.e3.short_inputs import OFFTOPIC, REJECT, WARN
+from tests.e3.short_inputs import KO_UNDER_300, LONG_SINGLE, OFFTOPIC, REJECT, UNDER_300, WARN
 from tests.fixtures.loader import DEMO_PLANS, NEGATIVE_PLAN, plan_text
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT = json.loads((ROOT / "contracts" / "premortem_response.schema.json").read_text(encoding="utf-8"))
 WARN_TEXT = "입력이 짧아 결과 신뢰도가 낮습니다 — 연구 질문·방법·데이터·평가를 더 적어 주세요"
 
-# 가짜 코퍼스(배터리·의료영상) 분야의 짧은 입력: 백테스트 0장 3편처럼 연구 배경만 두 문장(목표·방법 문장 없음)
-SHORT_BAT = ("Graph neural network surrogates are increasingly used to screen lithium battery electrolytes. "
-             "Most models are trained on literature data of electrolyte formulations to predict ionic conductivity.")
-SHORT_IMG = ("Convolutional neural networks can detect pneumonia in chest X-ray images. "
-             "Their performance on external hospital data remains poorly understood.")
+# 가짜 코퍼스(배터리·의료영상) 분야의 경고 단계 입력(300~600자): 백테스트 SFCH처럼 연구 배경만(목표·방법 문장 없음)
+SHORT_BAT = ("Graph neural network surrogates are increasingly used to screen lithium battery electrolytes for high "
+             "ionic conductivity. Most models are trained on literature data of electrolyte formulations, which mixes "
+             "measurements taken at different temperatures and salt concentrations. How reliable these surrogates are "
+             "for new electrolyte chemistries remains poorly understood.")
+SHORT_IMG = ("Convolutional neural networks can detect pneumonia in chest X-ray images and are often compared with "
+             "radiologists. Most studies train and test on images from a single hospital. Their performance on "
+             "external hospital data, other scanners, and noisy labels mined from reports remains poorly understood.")
+WARN_ALL = WARN + [(i, t) for i, exp, t in LONG_SINGLE if exp == "warn"]
+REJECT_ALL = REJECT + UNDER_300 + KO_UNDER_300 + [(i, t) for i, exp, t in LONG_SINGLE if exp == "reject"]
+OFF_ALL = [*OFFTOPIC, ("RECIPE", RECIPE), ("negative_recipe.md", plan_text(NEGATIVE_PLAN))]
+OFF_UNDER = [(i, t) for i, t in OFF_ALL if input_length(t) < 300]
+OFF_OVER = [(i, t) for i, t in OFF_ALL if input_length(t) >= 300]
 
 
 def _plan(text: str) -> PlanDocument:
@@ -131,14 +141,21 @@ def _view(result: Any) -> dict:
 # ── 1. 단계 기준표(보정 세트) ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("iid", "text"), WARN, ids=[i for i, _ in WARN])
+def test_calibration_set_sizes() -> None:
+    """보정 세트: 경고 15(한국어 6·영어 8·긴 한 문장 1), 거절 43, 범위 밖 6(300자 이상 1)."""
+    assert len(WARN_ALL) >= 15 and len(REJECT_ALL) >= 40 and OFF_OVER and OFF_UNDER
+    assert all(300 <= input_length(t) < 600 for _, t in WARN_ALL)
+    assert all(input_length(t) < 300 for _, t in UNDER_300 + KO_UNDER_300)
+
+
+@pytest.mark.parametrize(("iid", "text"), WARN_ALL, ids=[i for i, _ in WARN_ALL])
 def test_short_but_clear_inputs_are_warn(iid: str, text: str) -> None:
     iq = rule_fitness(_plan(text))["input_quality"]
     assert iq["level"] == "warn", (iid, iq["reasons"], iq["metrics"])
     assert iq["status"] == "warn_short_input" and iq["message"].startswith(WARN_TEXT)
 
 
-@pytest.mark.parametrize(("iid", "text"), REJECT, ids=[i for i, _ in REJECT])
+@pytest.mark.parametrize(("iid", "text"), REJECT_ALL, ids=[i for i, _ in REJECT_ALL])
 def test_thin_inputs_are_rejected_without_llm_call(iid: str, text: str) -> None:
     fake = FakeLLM(_reply("research_plan", {e: [1] for e in ELEMENTS}))
     r = assess_fitness(_plan(text), fake)
@@ -146,17 +163,25 @@ def test_thin_inputs_are_rejected_without_llm_call(iid: str, text: str) -> None:
     assert r["verdict"] == "unfit" and r["analyze"] is False and r["decided_by"] == "precheck"
     iq = r["input_quality"]
     assert iq["level"] == "reject" and iq["status"] == "rejected_thin_input", (iid, iq["metrics"])
-    assert "연구 질문·방법·데이터·평가를 더 적어 주세요" in r["notice"] and r["notice"] == iq["message"]
+    assert "연구 질문·방법·데이터·평가를 적어 주세요" in r["notice"] and r["notice"] == iq["message"]
     assert r["rule"]["precheck"] in ("too_short", "too_thin")
+    if input_length(text) < 300:
+        assert r["rule"]["precheck"] == "too_short" and r["notice"] == TOO_SHORT_MESSAGE
 
 
-@pytest.mark.parametrize(("iid", "text"), OFFTOPIC + [("negative_recipe.md", plan_text(NEGATIVE_PLAN)), ("RECIPE", RECIPE)])
-def test_offtopic_inputs_are_still_rejected(iid: str, text: str) -> None:
-    """범위 밖(요리·여행·광고·일기)은 지금처럼 적합성 판정이 거절한다. 무관 표지가 있으면 분량 단계는 거절하지 않고 넘긴다."""
+@pytest.mark.parametrize(("iid", "text"), OFF_UNDER, ids=[i for i, _ in OFF_UNDER])
+def test_offtopic_under_300_rejected_by_length_without_call(iid: str, text: str) -> None:
+    fake = FakeLLM(_reply("research_plan", {e: [1] for e in ELEMENTS}))
+    r = assess_fitness(_plan(text), fake)
+    assert fake.calls == [] and r["verdict"] == "unfit" and r["notice"] == TOO_SHORT_MESSAGE
+
+
+@pytest.mark.parametrize(("iid", "text"), OFF_OVER, ids=[i for i, _ in OFF_OVER])
+def test_offtopic_over_300_still_rejected_by_fitness(iid: str, text: str) -> None:
+    """300자 이상 범위 밖 글은 지금처럼 적합성 판정이 거절한다(무관 표지가 있으면 분량 단계는 거절하지 않고 넘긴다)."""
     plan = _plan(text)
     rule = rule_fitness(plan)
-    assert rule["verdict"] == "unfit" and rule["offtopic_hits"] >= 1
-    assert rule["input_quality"]["level"] != "reject" or rule["offtopic_hits"] == 0
+    assert rule["verdict"] == "unfit" and rule["offtopic_hits"] >= 1 and rule["input_quality"]["level"] != "reject"
     r = assess_fitness(plan, FakeLLM(_reply("not_research_plan")))
     assert r["verdict"] == "unfit" and r["analyze"] is False and r["decided_by"] == "llm"
     assert r["checks"]["overrides"] == []  # 짧은 입력 과잉 거절 방지가 범위 밖 글을 살리지 않는다
@@ -168,20 +193,37 @@ def test_demo_plans_are_ok_tier(name: str) -> None:
     assert iq["level"] == "ok" and iq["message"] is None and iq["reasons"] == []
 
 
-def test_min_chars_precheck_is_folded_into_reject_tier() -> None:
-    """옛 MIN_CHARS 사전검사(공백 제외 40자)는 거절 단계 too_short(환산 80자)로 합쳤다. 한국어 두 문장 계획은 거절하지 않는다."""
+def test_300_char_rule_counts_raw_stripped_length() -> None:
+    """거절 = 앞뒤 공백을 뺀 원문 300자 미만(공백 포함, 한글 가중치 없음). 옛 40자 사전검사를 합쳤다. 화면 문구는 지시 그대로."""
+    assert fit_mod.MIN_CHARS == 300 and fit_mod.WARN_CHARS == 600
+    assert TOO_SHORT_MESSAGE == "입력이 300자 미만이라 연구계획서로 분석하지 않습니다. 연구 질문·방법·데이터·평가를 적어 주세요."
+    base = dict(WARN)["V09"]  # 영어 429자, 경고
+    cut = base[:299]
+    assert input_quality(_plan("   " + cut + "\n\n  "))["reasons"][0]["code"] == "too_short"  # 앞뒤 공백은 세지 않는다
+    assert input_quality(_plan(cut))["message"] == TOO_SHORT_MESSAGE
+    assert input_quality(_plan(base[:300].rstrip() + "x" * (300 - len(base[:300].rstrip()))))["level"] == "warn"
     assert input_quality(_plan("안녕하세요"))["reasons"][0]["code"] == "too_short"
-    ko = "위성 영상으로 산불 확산을 예측하는 딥러닝 모델을 만든다. 과거 산불 기록으로 학습한다."
-    assert sum(1 for ch in ko if not ch.isspace()) < 40 and effective_chars(ko) >= fit_mod.MIN_CHARS
-    assert input_quality(_plan(ko))["level"] == "warn"
 
 
-def test_backtest_shaped_inputs() -> None:
-    """백테스트 0장 3편과 같은 모양: 지시어로 시작하는 한 문장은 거절, 배경 두세 문장은 경고."""
-    one = "This is important not only for function approximation but also for physics-informed neural networks."
-    assert input_quality(_plan(one))["reasons"][0]["code"] == "demonstrative_sentence"
-    for iid in ("W19", "W20", "W21"):
-        assert input_quality(_plan(dict(WARN)[iid]))["level"] == "warn"
+def test_korean_needs_about_seven_sentences_to_pass_300() -> None:
+    """한국어는 같은 내용이 짧다: 4~5문장 계획(K01~K08, 요소 2~4개)은 177~236자라 거절, 7문장(V01·V04~V06)은 경고."""
+    for iid, text in KO_UNDER_300:
+        iq = input_quality(_plan(text))
+        assert iq["level"] == "reject" and 4 <= iq["metrics"]["n_sentences"] <= 5, iid
+    assert input_quality(_plan(dict(KO_UNDER_300)["K08"]))["metrics"]["n_elements"] == 4
+    for iid in ("V01", "V04", "V05", "V06"):
+        iq = input_quality(_plan(dict(WARN)[iid]))
+        assert iq["level"] == "warn" and iq["metrics"]["n_sentences"] >= 7, iid
+
+
+def test_single_sentence_rules_recalibrated_above_300() -> None:
+    """300자 이상 한 문장: 지시어로 시작하거나 요소 3개 미만이면 거절, 요소 3개 이상이면 경고(한 문장 규칙만으로 거절되는 것은 S02)."""
+    got = {i: input_quality(_plan(t)) for i, _exp, t in LONG_SINGLE}
+    assert all(input_length(t) >= 300 for _i, _e, t in LONG_SINGLE)
+    assert got["S01"]["level"] == "warn" and got["S01"]["metrics"]["n_sentences"] == 1
+    assert [r["code"] for r in got["S02"]["reasons"]] == ["single_sentence"]
+    assert [r["code"] for r in got["S03"]["reasons"]] == ["demonstrative_sentence"]
+    assert got["S03"]["message"].startswith("입력을 연구계획서로 분석하지 않습니다(")
 
 
 # ── 2. 적합성 판정과 분량 단계 ──────────────────────────────────────────────
@@ -189,7 +231,7 @@ def test_backtest_shaped_inputs() -> None:
 
 def test_model_rejection_of_short_on_topic_input_is_softened() -> None:
     """짧지만 분야·방법 표지가 있고 무관 표지가 없으면 모델의 '연구 아님'을 보류로 낮춘다(분석 진행)."""
-    for iid in ("W03", "W13", "W16", "W20", "W21"):
+    for iid in ("V02", "V03", "V09", "V11", "V16"):
         r = assess_fitness(_plan(dict(WARN)[iid]), FakeLLM(_reply("not_research_plan")))
         assert r["verdict"] == "uncertain" and r["analyze"] is True, iid
         assert any("짧은 입력" in o for o in r["checks"]["overrides"])
@@ -208,7 +250,7 @@ def test_fitness_uncertain_or_few_llm_elements_adds_warning_to_long_plan() -> No
     assert "few_elements_llm" in [x["code"] for x in few["input_quality"]["reasons"]]
     assert few["input_quality"]["missing"] == ["research_question", "evaluation"]
     # 거절 단계는 판정 뒤에도 바뀌지 않는다
-    rej = input_quality(_plan("PINN 연구"))
+    rej = input_quality(_plan("PINN 연구"))  # 거절 단계
     assert refine_input_quality(rej, unc)["level"] == "reject"
 
 
@@ -261,7 +303,7 @@ def test_weak_search_still_stops_uncertain_non_plan() -> None:
     assert _st(r, "extract_issues").state == "skipped"
 
 
-@pytest.mark.parametrize(("iid", "text"), [*OFFTOPIC, ("RECIPE", RECIPE)])
+@pytest.mark.parametrize(("iid", "text"), OFF_OVER, ids=[i for i, _ in OFF_OVER])
 def test_offtopic_stopped_even_if_llm_says_uncertain(iid: str, text: str) -> None:
     """LLM이 범위 밖 글을 '판정 보류'라고 해도 멈춘다: 검색 근거가 약하면 검색에서, 검색이 모두 강하게 맞는
     최악의 경우에도 규칙 신호(무관한 글)로 진행 조건에서 멈춘다."""
@@ -278,16 +320,22 @@ def test_offtopic_stopped_even_if_llm_says_uncertain(iid: str, text: str) -> Non
             assert gate is None or gate["passed"] is False
 
 
-@pytest.mark.parametrize(("iid", "text"), [*OFFTOPIC, ("RECIPE", RECIPE), ("negative_recipe.md", plan_text(NEGATIVE_PLAN))])
+@pytest.mark.parametrize(("iid", "text"), OFF_UNDER + OFF_OVER, ids=[i for i, _ in OFF_UNDER + OFF_OVER])
 def test_offtopic_regression_default_mock(iid: str, text: str) -> None:
     llm = MockProvider(default_responders())
     r = _run(text, llm, backend=build_backend())
     assert r.risk_cards == [] and r.similar_works == []
-    assert r.risk_synthesis["no_card_reason"].startswith("입력이 연구계획서가 아니다(")
-    assert [c.task for c in llm.calls] == ["fitness"]
+    if input_length(text) < 300:  # 길이로 거절(호출 0)
+        assert llm.calls == [] and r.risk_synthesis["no_card_reason"].startswith(TOO_SHORT_MESSAGE)
+    else:  # 지금처럼 적합성 판정이 거절(호출 1)
+        assert r.risk_synthesis["no_card_reason"].startswith("입력이 연구계획서가 아니다(")
+        assert [c.task for c in llm.calls] == ["fitness"]
 
 
-@pytest.mark.parametrize(("iid", "text"), [REJECT[0], REJECT[1], REJECT[7]])
+REJECT_PIPE = [REJECT[0], UNDER_300[0], KO_UNDER_300[7], *[(i, t) for i, e, t in LONG_SINGLE if e == "reject"]]
+
+
+@pytest.mark.parametrize(("iid", "text"), REJECT_PIPE, ids=[i for i, _ in REJECT_PIPE])
 def test_reject_tier_pipeline_makes_no_llm_call(iid: str, text: str) -> None:
     llm = live_like()
     r = _run(text, llm)
@@ -295,12 +343,14 @@ def test_reject_tier_pipeline_makes_no_llm_call(iid: str, text: str) -> None:
     assert r.risk_cards == [] and r.similar_works == []
     assert r.plan_checks["input_quality"]["level"] == "reject"
     assert r.manifest["input_quality"]["status"] == "rejected_thin_input"
-    assert r.risk_synthesis["no_card_reason"].startswith("입력이 너무 짧아 분석하지 않았다(규칙 판정, LLM 호출 없음)")
-    assert any("연구 질문·방법·데이터·평가를 더 적어 주세요" in n for n in r.notices)
+    msg = r.plan_checks["input_quality"]["message"]
+    assert r.risk_synthesis["no_card_reason"] == f"{msg} (규칙 판정, LLM 호출 없음; 검색 안 함)"
+    assert "연구 질문·방법·데이터·평가를 적어 주세요" in msg and msg in r.notices
+    if input_length(text) < 300:
+        assert msg == TOO_SHORT_MESSAGE
     st = _view(r)["_status"]
-    assert st["input_quality"]["level"] == "reject" and st["label"].startswith("입력이 너무 짧아 분석하지 않음")
-    assert st["notices"][0].startswith("입력이 너무 짧아 분석하지 않았습니다")
-    assert st["empty_reason"].startswith("입력이 너무 짧아")
+    assert st["input_quality"]["level"] == "reject" and st["label"].startswith("입력이 짧아 분석하지 않음")
+    assert st["notices"][0] == msg and st["empty_reason"].startswith(msg)
 
 
 def test_low_similarity_fallback_for_short_input() -> None:
@@ -392,7 +442,7 @@ def test_new_regexes_are_fast_on_adversarial_input(text: str) -> None:
     fit_mod._UNIT_SPLIT.split(text)
     fit_mod._DEMONSTRATIVE.match(text[:40])
     fit_mod._DEMONSTRATIVE.match(text)  # 앞 40자로 자르지 않아도 앞에 고정돼 있어 빠르다
-    effective_chars(text)
+    input_length(text)
     assert time.perf_counter() - t0 < 0.2
 
 
