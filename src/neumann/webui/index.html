@@ -678,7 +678,7 @@
       var running = !!(w && w.status === 'running');
       tl = '<div class="tn ' + (running ? 'done' : 'run') + '" id="jobQueue"><div class="nm">' + (running ? 'QUEUE' : 'WAIT') + '</div><div class="msg" id="jobWait" role="status" aria-live="polite"></div><div class="tm"></div></div>' +
         (si >= 0 ? JOB_STAGES.map(function (s, i) { return '<div class="tn' + (i < si ? ' done' : (i === si ? ' run' : '')) + '"><div class="nm">' + esc(s[1]) + '</div><div class="msg">' + esc(s[2]) + '</div><div class="tm"></div></div>'; }).join('')
-          : (running ? '<div class="tn run"><div class="nm">ANALYZE</div><div class="msg">분석 중 · 진행 단계 보고 없음</div><div class="tm"></div></div>' : ''));
+          : (running ? '<div class="tn run"><div class="nm">ANALYZE</div><div class="msg">' + esc(w.label || '분석 중 · 진행 단계 보고 없음') + '</div><div class="tm"></div></div>' : ''));
     } else tl = '<div class="tn"><div class="nm">REQUEST</div><div class="msg">' + (j.state === 'failed' ? '분석하지 못함' : '응답 없음') + '</div><div class="tm"></div></div>';
     var logs = (j.view && j.view.pipeline ? j.view.pipeline : []).reduce(function (a, p) { return a.concat(p.log.map(function (x) { return '<div><span class="' + esc(x[0]) + '">' + (x[0] === 'ok' ? '✓ ' : x[0] === 'w' ? '! ' : '› ') + '</span>' + esc(x[1]) + '</div>'; })); }, []).join('');
     var stateTxt = j.state === 'failed' ? 'failed' : (j.state === 'done' ? 'complete' : (w && w.status === 'queued' ? 'queued' : 'running'));
@@ -719,7 +719,7 @@
       var txt = b.status === 'queued' ? (b.position > 0 ? '대기 ' + b.position + '번째 · 약 ' + Math.max(1, Math.round(b.eta_s || 0)) + '초' : '곧 분석을 시작합니다')
         : '분석 중' + (b.stage_label && b.stage !== 'running' ? ' · ' + b.stage_label : '') + (b.eta_s != null ? ' · 약 ' + Math.max(1, Math.round(b.eta_s)) + '초 남음' : '');
       var prev = S.job.wait, changed = !prev || prev.status !== b.status || prev.stage !== b.stage;
-      S.job = { state: 'running', run: run, wait: { status: b.status, stage: b.stage, position: b.position }, waitText: txt };
+      S.job = { state: 'running', run: run, wait: { status: b.status, stage: b.stage, position: b.position, label: b.stage && b.stage !== 'running' ? String(b.stage_label || '') : '' }, waitText: txt };
       if (S.step !== 1) return;
       if (changed) render(); else paintJob();
     }
