@@ -7,13 +7,55 @@
 
 1. `parse_plan_upload(filename: str, data: bytes) -> str` — 확장자와 매직바이트로 형식을 판별해 본문을 돌려준다.
    - txt·md: BOM(UTF-8·UTF-16) → UTF-8 → CP949(경고) → UTF-8 치환(깨진 글자 5% 이하일 때만, 경고).
-   - pdf: pypdf. 빈 쪽은 "텍스트가 없는 쪽: N (스캔 이미지일 수 있음, OCR 안 함)" 경고. 암호 PDF는 빈 암호로 열어 보고 안 되면 422. 300쪽 넘으면 앞 300쪽만 읽고 경고.
-   - docx: python-docx. 본문 순서대로 문단과 표를 읽는다(표는 행마다 한 줄, 셀은 ` | `). 가로 병합 셀은 한 번만, 세로 병합의 연속 셀은 되풀이하지 않는다. 내용 컨트롤(`w:sdt`) 안 문단도 읽는다. 압축 해제 합계 100MB 넘으면 422(zip 폭탄 방지).
+   - pdf: pypdf. 빈 쪽은 "텍스트가 없는 쪽: N (스캔 이미지일 수 있음, OCR 안 함)" 경고. 암호 PDF는 빈 암호로 열어 보고 안 되면 422. 200쪽 넘으면 413(아래 S-03).
+   - docx: python-docx. 본문 순서대로 문단과 표를 읽는다(표는 행마다 한 줄, 셀은 ` | `). 가로 병합 셀은 한 번만, 세로 병합의 연속 셀은 되풀이하지 않는다. 내용 컨트롤(`w:sdt`) 안 문단도 읽는다. zip 상한은 아래 S-03.
    - 거부: 10MB(10 × 1024 × 1024바이트) 초과 413, HWP·HWPX 415 + `"HWP는 PDF나 DOCX로 저장해 올려 주세요"`(확장자 `.hwp .hwpx .hwt .hml` 또는 매직바이트: HWP 3 서명, OLE 안 `HWP Document File`·`HwpSummaryInformation`, zip `mimetype=application/hwp+zip`·`Contents/`), 구형 .doc 등 OLE 415, 그 밖 미지원 415, 빈 파일·손상·텍스트 없음 422.
    - 정리: `models.normalize_text`(LF·NFC) → 제어문자 제거(탭·줄바꿈 제외) → 줄 끝 공백 제거 → 앞뒤 빈 줄 제거. pdf·docx만 연속 빈 줄을 하나로 줄인다(txt·md는 사용자 줄 번호 보존).
 2. `extract_plan(filename, data) -> PlanExtract` — 본문 + `kind`·`size_bytes`·`pages`·`encoding`·`warnings`·`lines`. 라우터가 쓰고, 파이프라인에서 메타가 필요하면 이것을 쓴다.
 3. FastAPI `router`: `POST /upload/plan`(multipart/form-data, 필드 `file`). **디스크에 쓰지 않는다.** Starlette `UploadFile`은 1MB가 넘으면 임시 파일로 내려 쓰므로(`MultiPartParser.spool_max_size = 1MB`, 확인함) 쓰지 않고, 요청 본문을 스트림으로 읽어 `python_multipart.MultipartParser` 콜백으로 파일 파트만 `bytearray`에 모은다. Content-Length 선검사 + 스트림 누적 검사로 10MB를 넘으면 바로 413. 추출은 `run_in_threadpool`.
-4. 테스트 43건(`tests/e4/test_upload.py`). pdf·docx 견본은 테스트 안에서 만든다(커밋한 바이너리 없음). PDF는 글자마다 2바이트 CID + ToUnicode CMap을 붙인 최소 PDF를 직접 써서 한국어가 pypdf 추출을 거쳐 글자 그대로 돌아오는지 본다.
+4. 테스트 57건(`tests/e4/test_upload.py`, S-03 상한 14건 포함). pdf·docx 견본은 테스트 안에서 만든다(커밋한 바이너리 없음). PDF는 글자마다 2바이트 CID + ToUnicode CMap을 붙인 최소 PDF를 직접 써서 한국어가 pypdf 추출을 거쳐 글자 그대로 돌아오는지 본다.
+
+## SEC-1 S-03 대응(업로드 증폭) — PM 요청으로 추가
+
+점검 재현: 127KB DOCX(압축 해제 37MB) → 응답 37초·24.8MB. 아래 상한을 넣었다. 상한 초과는 모두 413 + 사용자 문구, 붐비면 503.
+
+| 상한 | 값 | 어디서 | 문구 상수 |
+|---|---|---|---|
+| zip 압축 해제 합계 | 20MB | 형식 판별 단계(zip 목록만 보고, 풀기 전에) | `ZIP_BOMB_MESSAGE` |
+| zip 항목 수 | 1,000개 | 같음 | 같음 |
+| 항목 압축비 | 100배(1MB 넘는 항목) | 같음 | 같음 |
+| PDF 쪽수 | 200쪽(넘으면 거부, 전에는 300쪽까지 자르고 경고) | 쪽 추출 전 | `TOO_MANY_PAGES_MESSAGE` |
+| 추출 글자 수 | 50,000자(정리 뒤). 추출 중 누적 200,000자를 넘으면 끝까지 읽지 않고 중단 | pdf 쪽·docx 문단마다 | `TOO_MANY_CHARS_MESSAGE` |
+| 처리 시간 | 20초. HTTP 경로의 pdf·docx는 **별도 프로세스**에서 돌리고 넘으면 강제 종료. 루프 안 협조적 예산도 같이 | `extract_plan_isolated` | `TIMEOUT_MESSAGE` |
+| 동시 처리 | 2건, 자리 대기 5초 뒤 503 | `extract_plan_isolated` | `BUSY_MESSAGE` |
+
+- 작업자 프로세스: `python -I -B -c …`(환경변수로 코드 주입 불가, 바이트코드 안 씀). 이름에 KEY·SECRET·TOKEN·SALT·PASSWORD가 든 환경변수(API 키 포함)는 넘기지 않는다. 감사 훅(`sys.addaudithook`)으로 쓰기 모드 파일 열기를 막는다. 내부 예외 문구는 내보내지 않고 고정 문구 422(S-04 방향).
+- HWP·zip 폭탄·크기 초과는 작업자를 띄우기 전에 부모에서 거부한다. txt·md는 디코딩뿐이라 같은 프로세스.
+- 비용: pdf·docx 업로드 한 건마다 작업자 기동 약 0.7초(fastapi import가 대부분).
+
+측정:
+
+```
+$ python -m pytest tests/e4/test_upload.py -q --durations=8
+2.10s call  test_api_amplification_limits     # 37MB 폭탄 docx·201쪽 pdf·50,001자 txt/docx → 413, 응답 1KB 미만, 각 10초 안
+...
+57 passed in 13.17s
+```
+
+추가된 테스트: `test_char_limit_boundary`(50,000자 통과·50,001자 413), `test_char_limit_pdf_and_docx`, `test_docx_bomb_rejected_fast`(압축 해제 25MB·파일 500KB 미만 → 2초 안에 413, 확장자를 .txt로 바꿔도 413), `test_docx_high_ratio_entry_rejected`(합계 5MB·압축비 100배 초과), `test_zip_entry_count_rejected`, `test_pdf_page_limit_boundary`(200쪽 통과·201쪽 413), `test_cooperative_deadline`, `test_isolated_extraction_runs_in_worker`(부모의 pdf·docx 추출 함수를 망가뜨려도 격리 경로는 성공 → 실제로 작업자에서 돈다), `test_isolated_rejections_pass_through`, `test_isolated_timeout_kills_worker`, `test_concurrency_limit_503`, `test_worker_env_has_no_secrets`, `test_worker_denies_disk_writes`(작업자 안 읽기는 되고 쓰기는 PermissionError, 파일 안 생김), `test_api_amplification_limits`.
+
+변이 확인(해당 테스트 함수 직접 호출):
+
+```
+변이6 zip 상한 제거 -> 실패로 잡힘: AssertionError
+변이7 PDF 쪽수 상한 제거 -> 실패로 잡힘: Failed
+변이8 글자 상한 제거 -> 실패로 잡힘: Failed
+변이9 격리 프로세스 제거 -> 실패로 잡힘: Failed
+```
+
+실제 파일(격리 경로, 오탐 없음): 발표 PDF 19쪽 11,424자 1.86초, DOCX 3개 7,582~24,727자 1.07~1.31초, 모두 경고 없음.
+
+남은 것(PM·E4-L2c): `/upload/plan`을 `serving.py`의 속도 제한 보호 경로에 넣는 일. 작업자 메모리 상한은 걸지 않았다(Windows에 RLIMIT 없음. 입력 10MB·zip 20MB·글자 상한으로 간접 제한).
 
 ## main.py 연결용 인터페이스
 
@@ -22,7 +64,8 @@ from neumann.api.upload import router            # main.py의 선택 라우터 �
 from neumann.api.upload import parse_plan_upload, extract_plan, UploadRejected, HWP_MESSAGE, MAX_UPLOAD_BYTES
 
 parse_plan_upload(filename: str, data: bytes) -> str        # 거부 시 UploadRejected(.status_code 413|415|422, .message)
-extract_plan(filename: str, data: bytes) -> PlanExtract     # .text .kind .size_bytes .pages .encoding .warnings .lines
+extract_plan(filename, data, *, deadline_s=20.0) -> PlanExtract   # 같은 프로세스. .text .kind .size_bytes .pages .encoding .warnings .lines
+extract_plan_isolated(filename, data, *, timeout_s=20.0) -> PlanExtract  # 라우터가 쓰는 것. 동시 2건(503), pdf·docx 별도 프로세스·강제 종료
 ```
 
 `POST /upload/plan` 응답(200):
@@ -32,7 +75,7 @@ extract_plan(filename: str, data: bytes) -> PlanExtract     # .text .kind .size_
  "text": "# 연구 목표\n본문", "lines": 2, "chars": 10, "warnings": []}
 ```
 
-오류는 FastAPI 기본 형태 `{"detail": "<안내 문구>"}` — 400(multipart 오류·파일 2개), 413(10MB 초과), 415(HWP·미지원·multipart 아님), 422(빈 파일·손상·암호·텍스트 없음·file 필드 없음).
+오류는 FastAPI 기본 형태 `{"detail": "<안내 문구>"}` — 400(multipart 오류·파일 2개), 413(상한 초과: 10MB·50,000자·200쪽·압축 해제 20MB·20초), 415(HWP·미지원·multipart 아님), 422(빈 파일·손상·암호·텍스트 없음·file 필드 없음), 503(동시 처리 자리 없음).
 `lines`는 `PlanDocument.from_text`와 같은 규칙(`text.split("\n")`)이라 줄 번호가 그대로 맞는다. 목업 `plan.meta`("파싱 완료 · 15줄 · 2쪽")는 `lines`·`pages`로 채우면 된다.
 
 ## 완료 기준별 측정
@@ -107,9 +150,9 @@ POST /upload/plan 계획서.hwp → 415 {'detail': 'HWP는 PDF나 DOCX로 저장
 ### 2. `python scripts/verify.py`
 
 ```
-$ python scripts/verify.py        (_COMMON.md 환경변수, main 6067212 위로 rebase한 뒤)
-228 passed in 4.14s
-보안: 파일 124개
+$ python scripts/verify.py        (_COMMON.md 환경변수, main 6067212 위, S-03 상한 추가 뒤)
+242 passed in 13.86s
+보안: 파일 125개
 계약: 2개
 테스트: 통과
 verify 통과

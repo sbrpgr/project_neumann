@@ -3,22 +3,34 @@
 - 받는 형식: txt·md(인코딩 추정 UTF-8 → CP949), pdf(pypdf), docx(python-docx).
   확장자와 매직바이트를 함께 본다. 내용이 PDF·DOCX로 확인되면 확장자가 달라도 내용 기준으로 읽고 경고를 남긴다.
 - HWP·HWPX는 415로 거부하고 "HWP는 PDF나 DOCX로 저장해 올려 주세요"라고 안내한다.
-- 10MB(10 × 1024 × 1024바이트) 초과는 413.
+- **상한(SEC-1 S-03, 업로드 증폭 차단). 넘으면 413, 붐비면 503.**
+  파일 10MB(10 × 1024 × 1024바이트) · 추출 글자 50,000자 · PDF 200쪽 ·
+  DOCX 압축 해제 합계 20MB·항목 1,000개·압축비 100배(1MB 넘는 항목) · 처리 시간 20초 · 동시 처리 2건.
+  HTTP 경로의 pdf·docx 추출은 **별도 프로세스**에서 돌리고 시간이 넘으면 강제 종료한다(pypdf·python-docx가
+  한 쪽·한 문서 안에서 오래 걸려도 서버 CPU를 붙잡지 못하게). 그 프로세스에는 비밀값 환경변수를 넘기지 않고,
+  감사 훅으로 디스크 쓰기를 막는다. 추출 루프 안에서도 시간·글자 예산을 확인해 일찍 멈춘다.
 - **디스크에 쓰지 않는다.** Starlette의 기본 multipart 처리(`UploadFile`)는 1MB가 넘으면 임시 파일로
   내려 쓰므로 쓰지 않고, 요청 본문을 스트림으로 읽어 메모리에서만 파싱한다. 로그에도 본문·파일명을 남기지 않는다.
 
 main.py 연결(PM): `from neumann.api.upload import router as upload_router; app.include_router(upload_router)`.
 파이프라인에서 쓸 때: `parse_plan_upload(filename, data) -> str` (거부는 `UploadRejected` 예외, `.status_code`·`.message`).
+같은 프로세스에서 돌며 상한·시간 예산은 같다. 신뢰할 수 없는 입력을 강제 종료까지 보장하려면 `extract_plan_isolated`.
 """
 
 from __future__ import annotations
 
 import codecs
 import io
+import json
+import os
 import re
+import subprocess
+import sys
+import threading
+import time
 import zipfile
-from dataclasses import dataclass, field
-from pathlib import PurePosixPath, PureWindowsPath
+from dataclasses import asdict, dataclass, field
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request
@@ -35,15 +47,34 @@ MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 """업로드 파일 상한(10MB). 넘으면 413."""
 MULTIPART_OVERHEAD_BYTES = 64 * 1024
 """multipart 경계·헤더·작은 필드 몫. 요청 본문 전체 상한 = 파일 상한 + 이 값."""
-MAX_PDF_PAGES = 300
-"""이보다 긴 PDF는 앞쪽만 읽고 경고를 남긴다(연구계획서는 보통 수십 쪽)."""
-MAX_DOCX_UNCOMPRESSED = 100 * 1024 * 1024
-"""DOCX(zip) 압축 해제 합계 상한. zip 폭탄 방지."""
+MAX_PLAN_CHARS = 50_000
+"""추출 본문 글자 수 상한(정리 뒤). 넘으면 413. 분석 입력 상한(E4-L2c 50,000자)과 같게 둔다."""
+RAW_CHAR_ABORT = 4 * MAX_PLAN_CHARS
+"""추출 중 누적 글자(정리 전)가 이 값을 넘으면 끝까지 읽지 않고 413. 공백·빈 줄 몫으로 4배 여유를 둔다."""
+MAX_PDF_PAGES = 200
+"""PDF 쪽수 상한. 넘으면 413(연구계획서는 보통 수십 쪽)."""
+MAX_ZIP_UNCOMPRESSED = 20 * 1024 * 1024
+"""zip(DOCX·HWPX 판별 포함) 압축 해제 합계 상한. zip 폭탄 방지."""
+MAX_ZIP_ENTRIES = 1000
+"""zip 항목 수 상한."""
+MAX_ZIP_RATIO = 100
+"""1MB가 넘는 항목의 압축비 상한(보통 DOCX XML은 10~30배)."""
+EXTRACT_TIMEOUT_S = 20.0
+"""추출 처리 시간 상한(초). 넘으면 413. 격리 프로세스는 이 시간이 지나면 강제 종료한다."""
+MAX_CONCURRENT_EXTRACTIONS = 2
+"""HTTP 경로의 동시 추출 수. 자리가 없으면 `EXTRACT_QUEUE_WAIT_S`만큼 기다리고 503."""
+EXTRACT_QUEUE_WAIT_S = 5.0
 MAX_REPLACEMENT_RATIO = 0.05
 """UTF-8·CP949 둘 다 실패했을 때, 깨진 글자 비율이 이보다 크면 텍스트 파일로 보지 않는다."""
 
 HWP_MESSAGE = "HWP는 PDF나 DOCX로 저장해 올려 주세요"
 TOO_LARGE_MESSAGE = "파일이 10MB를 넘습니다. 10MB 이하로 줄여 올려 주세요"
+TOO_MANY_CHARS_MESSAGE = "계획서 글자 수가 상한(50,000자)을 넘습니다. 계획서 본문만 남겨 올려 주세요"
+TOO_MANY_PAGES_MESSAGE = "PDF가 200쪽을 넘습니다. 계획서 부분만 PDF로 저장해 올려 주세요"
+ZIP_BOMB_MESSAGE = "압축을 푼 크기가 상한(20MB)을 넘거나 비정상적으로 큽니다. 계획서 본문만 담아 다시 저장해 올려 주세요"
+TIMEOUT_MESSAGE = "파일 처리 시간이 상한(20초)을 넘었습니다. 쪽수를 줄이거나 다시 저장해 올려 주세요"
+BUSY_MESSAGE = "업로드 처리 중인 요청이 많습니다. 잠시 뒤 다시 올려 주세요"
+WORKER_FAILED_MESSAGE = "파일을 처리하지 못했습니다(손상된 파일일 수 있습니다)"
 UNSUPPORTED_MESSAGE = "지원하지 않는 형식입니다. txt·md·pdf·docx만 올릴 수 있습니다"
 LEGACY_OFFICE_MESSAGE = "구형 Office 문서(.doc 등)는 지원하지 않습니다. DOCX나 PDF로 저장해 올려 주세요"
 
@@ -83,6 +114,21 @@ class PlanExtract:
         return len(self.text.split("\n")) if self.text else 0
 
 
+class _Budget:
+    """추출 루프 안의 시간·글자 예산. 넘으면 바로 413으로 멈춘다(끝까지 읽지 않는다)."""
+
+    def __init__(self, deadline_s: float | None) -> None:
+        self.end = None if deadline_s is None else time.monotonic() + deadline_s
+        self.chars = 0
+
+    def spend(self, n_chars: int = 0) -> None:
+        if self.end is not None and time.monotonic() > self.end:
+            raise UploadRejected(413, TIMEOUT_MESSAGE)
+        self.chars += n_chars
+        if self.chars > RAW_CHAR_ABORT:
+            raise UploadRejected(413, TOO_MANY_CHARS_MESSAGE)
+
+
 # ── 형식 판별 ───────────────────────────────────────────────────────────────
 
 
@@ -100,10 +146,26 @@ def _looks_like_hwp(data: bytes) -> bool:
     return False
 
 
+def _check_zip_limits(infos: list[zipfile.ZipInfo]) -> None:
+    """zip 폭탄 차단. 선언된 크기로 본다(zipfile은 선언 크기보다 더 풀지 않고, 어긋나면 CRC 오류를 낸다)."""
+    if len(infos) > MAX_ZIP_ENTRIES:
+        raise UploadRejected(413, ZIP_BOMB_MESSAGE)
+    if sum(i.file_size for i in infos) > MAX_ZIP_UNCOMPRESSED:
+        raise UploadRejected(413, ZIP_BOMB_MESSAGE)
+    for i in infos:
+        if i.file_size > 1024 * 1024 and i.file_size > MAX_ZIP_RATIO * max(i.compress_size, 1):
+            raise UploadRejected(413, ZIP_BOMB_MESSAGE)
+
+
 def _sniff_zip(data: bytes) -> Literal["docx", "hwpx", "zip", "binary"]:
     try:
-        with zipfile.ZipFile(io.BytesIO(data)) as zf:
-            infos = zf.infolist()
+        zf = zipfile.ZipFile(io.BytesIO(data))
+    except Exception:  # 손상 zip
+        return "binary"
+    with zf:
+        infos = zf.infolist()
+        _check_zip_limits(infos)  # 형식을 가리기 전에 막는다(UploadRejected는 그대로 올라간다)
+        try:
             names = {i.filename for i in infos}
             mimetype = next((i for i in infos if i.filename == "mimetype"), None)
             if mimetype is not None and mimetype.file_size <= 256:
@@ -114,8 +176,8 @@ def _sniff_zip(data: bytes) -> Literal["docx", "hwpx", "zip", "binary"]:
             if "word/document.xml" in names:
                 return "docx"
             return "zip"
-    except Exception:  # 손상 zip, 암호 zip(RuntimeError), 미지원 압축(NotImplementedError) 등
-        return "binary"
+        except Exception:  # 암호 zip(RuntimeError), 미지원 압축(NotImplementedError) 등
+            return "binary"
 
 
 def _sniff(data: bytes, ext_kind: str | None) -> Literal["pdf", "docx", "hwpx", "zip", "ole", "binary", "text"]:
@@ -190,7 +252,7 @@ def _decode_text(data: bytes) -> tuple[str, str, list[str]]:
     return text, "utf-8", [f"UTF-8로 읽지 못한 글자 {bad}곳을 �로 바꿨습니다"]
 
 
-def _extract_pdf(data: bytes) -> tuple[str, int, list[str]]:
+def _extract_pdf(data: bytes, budget: _Budget) -> tuple[str, int, list[str]]:
     from pypdf import PdfReader
 
     try:
@@ -207,23 +269,25 @@ def _extract_pdf(data: bytes) -> tuple[str, int, list[str]]:
         raise
     except Exception as exc:  # pypdf는 손상 파일에서 여러 종류의 예외를 낸다
         raise UploadRejected(422, "PDF를 읽을 수 없습니다(손상된 파일일 수 있습니다)") from exc
+    if n_pages > MAX_PDF_PAGES:
+        raise UploadRejected(413, TOO_MANY_PAGES_MESSAGE)
 
     warnings: list[str] = []
     texts: list[str] = []
     empty: list[int] = []
     failed: list[int] = []
-    for i in range(min(n_pages, MAX_PDF_PAGES)):
+    for i in range(n_pages):
+        budget.spend()
         try:
             page_text = reader.pages[i].extract_text() or ""
         except Exception:
             failed.append(i + 1)
             continue
+        budget.spend(len(page_text))
         if page_text.strip():
             texts.append(page_text.strip("\r\n"))  # 쪽 경계에 빈 줄을 끼우지 않는다(문단이 쪽을 넘어가도 이어지게)
         else:
             empty.append(i + 1)
-    if n_pages > MAX_PDF_PAGES:
-        warnings.append(f"{n_pages}쪽 중 앞 {MAX_PDF_PAGES}쪽만 읽었습니다")
     if failed:
         warnings.append(f"텍스트 추출에 실패한 쪽: {_pages(failed)}")
     if empty:
@@ -276,15 +340,18 @@ def _docx_lines(el, doc):  # noqa: ANN001, ANN202
                     yield " | ".join(cells)
 
 
-def _extract_docx(data: bytes) -> tuple[str, list[str]]:
+def _extract_docx(data: bytes, budget: _Budget) -> tuple[str, list[str]]:
     from docx import Document
 
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as zf:
-            if sum(i.file_size for i in zf.infolist()) > MAX_DOCX_UNCOMPRESSED:
-                raise UploadRejected(422, "DOCX 압축을 푼 크기가 너무 큽니다")
+            _check_zip_limits(zf.infolist())  # _sniff_zip에서도 보지만, 이 함수만 불려도 막히게 한 번 더
         doc = Document(io.BytesIO(data))
-        lines = list(_docx_lines(doc.element.body, doc))
+        budget.spend()
+        lines = []
+        for line in _docx_lines(doc.element.body, doc):
+            budget.spend(len(line) + 1)
+            lines.append(line)
     except UploadRejected:
         raise
     except Exception as exc:
@@ -311,8 +378,12 @@ def _clean(text: str, *, collapse_blank: bool) -> str:
     return text.strip("\n")
 
 
-def extract_plan(filename: str, data: bytes) -> PlanExtract:
-    """업로드 바이트에서 계획서 본문과 메타(쪽수·인코딩·경고)를 뽑는다. 받지 않으면 `UploadRejected`."""
+def extract_plan(filename: str, data: bytes, *, deadline_s: float | None = EXTRACT_TIMEOUT_S) -> PlanExtract:
+    """업로드 바이트에서 계획서 본문과 메타(쪽수·인코딩·경고)를 뽑는다. 받지 않으면 `UploadRejected`.
+
+    같은 프로세스에서 돈다. `deadline_s`는 추출 루프(쪽·문단) 사이에서 확인하는 협조적 시간 예산이다.
+    """
+    budget = _Budget(deadline_s)
     name = _safe_filename(filename)
     if len(data) > MAX_UPLOAD_BYTES:
         raise UploadRejected(413, TOO_LARGE_MESSAGE)
@@ -322,16 +393,19 @@ def extract_plan(filename: str, data: bytes) -> PlanExtract:
     pages: int | None = None
     encoding: str | None = None
     if kind == "pdf":
-        raw, pages, more = _extract_pdf(data)
+        raw, pages, more = _extract_pdf(data, budget)
     elif kind == "docx":
-        raw, more = _extract_docx(data)
+        raw, more = _extract_docx(data, budget)
     else:
-        raw, encoding, more = _decode_text(data)
+        raw, encoding, more = _decode_text(data)  # 10MB 디코딩·정리는 1초 안쪽이라 글자 상한은 정리 뒤 한 번만 본다
+        budget.spend()
     warnings.extend(more)
     text = _clean(raw, collapse_blank=kind in ("pdf", "docx"))
     if not text.strip():
         hint = " 스캔한 PDF라면 텍스트가 들어 있는 PDF나 DOCX로 올려 주세요" if kind == "pdf" else ""
         raise UploadRejected(422, "파일에서 텍스트를 찾지 못했습니다." + hint)
+    if len(text) > MAX_PLAN_CHARS:
+        raise UploadRejected(413, TOO_MANY_CHARS_MESSAGE)
     return PlanExtract(
         filename=name,
         kind=kind,
@@ -346,6 +420,98 @@ def extract_plan(filename: str, data: bytes) -> PlanExtract:
 def parse_plan_upload(filename: str, data: bytes) -> str:
     """업로드 파일 → 계획서 본문(LF·NFC). 크기 초과·HWP·미지원·손상이면 `UploadRejected`."""
     return extract_plan(filename, data).text
+
+
+# ── 격리 실행(HTTP 경로): 동시 상한 + 별도 프로세스 + 강제 종료 ─────────────────
+
+_SRC_DIR = Path(__file__).resolve().parents[2]
+_SECRET_ENV = re.compile(r"(?i)(KEY|SECRET|TOKEN|SALT|PASSWORD|PASSWD|CREDENTIAL)")
+_EXTRACT_SLOTS = threading.BoundedSemaphore(MAX_CONCURRENT_EXTRACTIONS)
+
+
+def _worker_command() -> list[str]:
+    """추출 작업자 실행 명령. `-I`(환경변수·사용자 site·현재 폴더 무시), `-B`(바이트코드 파일 안 씀)."""
+    code = f"import sys; sys.path.insert(0, {str(_SRC_DIR)!r}); from neumann.api.upload import _worker_main; _worker_main()"
+    return [sys.executable, "-I", "-B", "-c", code]
+
+
+def _worker_env() -> dict[str, str]:
+    """작업자 환경변수. 이름에 KEY·SECRET·TOKEN 등이 든 값(API 키 포함)은 넘기지 않는다."""
+    return {k: v for k, v in os.environ.items() if not _SECRET_ENV.search(k)}
+
+
+def _deny_disk_writes() -> None:
+    """이 프로세스에서 쓰기 모드 파일 열기를 막는다(감사 훅은 한 번 걸면 풀 수 없다). 추출 작업자 전용."""
+    write_flags = os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_APPEND | os.O_TRUNC
+
+    def hook(event: str, args: tuple) -> None:
+        if event != "open":
+            return
+        path, mode, flags = args
+        if path is None or isinstance(path, int):  # 이미 열린 표준 입출력 등
+            return
+        if (isinstance(mode, str) and any(c in mode for c in "wax+")) or (isinstance(flags, int) and flags & write_flags):
+            raise PermissionError("업로드 추출 작업자는 디스크에 쓰지 않는다")
+
+    sys.addaudithook(hook)
+
+
+def _worker_main() -> None:
+    """작업자 진입점. 표준 입력: JSON 머리 한 줄 + 파일 바이트. 표준 출력: JSON 결과 하나."""
+    _deny_disk_writes()
+    header = json.loads(sys.stdin.buffer.readline().decode("utf-8"))
+    data = sys.stdin.buffer.read(MAX_UPLOAD_BYTES + 1)
+    try:
+        result = extract_plan(header["filename"], data, deadline_s=header.get("deadline_s"))
+        out: dict = {"ok": True, "result": asdict(result)}
+    except UploadRejected as exc:
+        out = {"ok": False, "status": exc.status_code, "message": exc.message}
+    except Exception:  # 내부 예외 문구는 내보내지 않는다(SEC-1 S-04)
+        out = {"ok": False, "status": 422, "message": WORKER_FAILED_MESSAGE}
+    sys.stdout.buffer.write(json.dumps(out, ensure_ascii=False).encode("utf-8"))
+    sys.stdout.buffer.flush()
+
+
+def _run_worker(filename: str, data: bytes, timeout_s: float) -> PlanExtract:
+    header = json.dumps({"filename": filename, "deadline_s": timeout_s}).encode("utf-8") + b"\n"
+    try:
+        proc = subprocess.run(
+            _worker_command(),
+            input=header + data,
+            capture_output=True,
+            timeout=timeout_s,
+            env=_worker_env(),
+            cwd=str(_SRC_DIR),
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except subprocess.TimeoutExpired:  # subprocess.run이 작업자를 강제 종료한 뒤다
+        raise UploadRejected(413, TIMEOUT_MESSAGE) from None
+    try:
+        out = json.loads(proc.stdout.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise UploadRejected(422, WORKER_FAILED_MESSAGE) from None
+    if not out.get("ok"):
+        raise UploadRejected(int(out.get("status", 422)), str(out.get("message", WORKER_FAILED_MESSAGE)))
+    fields = out["result"]
+    fields["warnings"] = tuple(fields.get("warnings", ()))
+    return PlanExtract(**fields)
+
+
+def extract_plan_isolated(filename: str, data: bytes, *, timeout_s: float = EXTRACT_TIMEOUT_S) -> PlanExtract:
+    """HTTP 경로용 `extract_plan`. 동시 처리 상한(자리 없으면 503), pdf·docx는 별도 프로세스에서 돌려
+    `timeout_s`가 지나면 강제 종료(413). 형식 판별·zip 상한·HWP 거부는 가벼워서 프로세스를 띄우기 전에 한다."""
+    if not _EXTRACT_SLOTS.acquire(timeout=EXTRACT_QUEUE_WAIT_S):
+        raise UploadRejected(503, BUSY_MESSAGE)
+    try:
+        name = _safe_filename(filename)
+        if not data or len(data) > MAX_UPLOAD_BYTES:
+            return extract_plan(name, data, deadline_s=timeout_s)  # 빈 파일 422·크기 413
+        kind, _ = _detect_kind(name, data)
+        if kind in ("pdf", "docx"):
+            return _run_worker(name, data, timeout_s)
+        return extract_plan(name, data, deadline_s=timeout_s)  # txt·md: 디코딩뿐이라 같은 프로세스
+    finally:
+        _EXTRACT_SLOTS.release()
 
 
 # ── HTTP ───────────────────────────────────────────────────────────────────
@@ -457,9 +623,10 @@ router = APIRouter(tags=["upload"])
 
 _ERROR_RESPONSES = {
     400: {"description": "multipart 형식 오류, 파일 여러 개"},
-    413: {"description": TOO_LARGE_MESSAGE},
+    413: {"description": "상한 초과: 파일 10MB, 글자 50,000자, PDF 200쪽, 압축 해제 20MB, 처리 시간 20초"},
     415: {"description": f"HWP·HWPX(\"{HWP_MESSAGE}\"), 그 밖의 미지원 형식"},
     422: {"description": "빈 파일, 손상·암호 PDF, 텍스트 없음"},
+    503: {"description": BUSY_MESSAGE},
 }
 
 
@@ -486,7 +653,7 @@ _ERROR_RESPONSES = {
 async def upload_plan(request: Request) -> PlanUploadResponse:
     try:
         filename, data = await _read_file_part(request)
-        result = await run_in_threadpool(extract_plan, filename, data)
+        result = await run_in_threadpool(extract_plan_isolated, filename, data)
     except UploadRejected as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from None
     return PlanUploadResponse(
@@ -503,12 +670,17 @@ async def upload_plan(request: Request) -> PlanUploadResponse:
 
 
 __all__ = [
+    "EXTRACT_TIMEOUT_S",
     "HWP_MESSAGE",
+    "MAX_PDF_PAGES",
+    "MAX_PLAN_CHARS",
     "MAX_UPLOAD_BYTES",
+    "MAX_ZIP_UNCOMPRESSED",
     "PlanExtract",
     "PlanUploadResponse",
     "UploadRejected",
     "extract_plan",
+    "extract_plan_isolated",
     "parse_plan_upload",
     "router",
 ]

@@ -9,7 +9,11 @@ from __future__ import annotations
 import builtins
 import io
 import os
+import subprocess
+import sys
 import tempfile
+import threading
+import time
 import unicodedata
 import zipfile
 from pathlib import Path
@@ -19,11 +23,16 @@ import starlette.formparsers
 from fastapi import FastAPI, File, UploadFile
 from fastapi.testclient import TestClient
 
+import neumann.api.upload as upload
 from neumann.api.upload import (
     HWP_MESSAGE,
+    MAX_PDF_PAGES,
+    MAX_PLAN_CHARS,
     MAX_UPLOAD_BYTES,
+    MAX_ZIP_UNCOMPRESSED,
     UploadRejected,
     extract_plan,
+    extract_plan_isolated,
     parse_plan_upload,
     router,
 )
@@ -123,6 +132,44 @@ def make_zip(entries: dict[str, bytes]) -> bytes:
         for name, data in entries.items():
             zf.writestr(name, data)
     return buf.getvalue()
+
+
+def inflate_docx(extra_bytes: int) -> bytes:
+    """압축 폭탄형 DOCX: 본문에 같은 문단을 되풀이해 넣어 압축 해제 크기만 키운다(파일은 작다)."""
+    para = "<w:p><w:r><w:t>반복 문단 반복 문단 반복 문단</w:t></w:r></w:p>".encode("utf-8")
+    src = zipfile.ZipFile(io.BytesIO(make_docx()))
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as out:
+        for info in src.infolist():
+            data = src.read(info)
+            if info.filename == "word/document.xml":
+                assert b"<w:body>" in data
+                data = data.replace(b"<w:body>", b"<w:body>" + para * (extra_bytes // len(para)), 1)
+            out.writestr(info.filename, data)
+    return buf.getvalue()
+
+
+def docx_with_paragraphs(paragraphs: list[str]) -> bytes:
+    from docx import Document
+
+    doc = Document()
+    for p in paragraphs:
+        doc.add_paragraph(p)
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
+def varied_lines(n_chars: int, width: int = 80) -> list[str]:
+    """글자 수가 n_chars 근처인 서로 다른 한국어 줄들(압축비가 폭탄처럼 높지 않게)."""
+    lines, total, i = [], 0, 0
+    while total < n_chars:
+        line = f"{i:05d} 연구 방법 {i * 7919 % 100003} 데이터 {i * 104729 % 99991} 평가 지표 설명 "
+        line = (line * (width // len(line) + 1))[:width]
+        lines.append(line)
+        total += len(line) + 1
+        i += 1
+    return lines
 
 
 HWP5_BYTES = (
@@ -309,14 +356,148 @@ def test_filename_path_stripped():
 # ── 거부: 크기·HWP·미지원 ─────────────────────────────────────────────────────
 
 
+def padded_10mb() -> bytes:
+    """정확히 10MB. 줄 끝 공백은 정리에서 빠지므로 글자 상한과 따로 바이트 상한만 잰다."""
+    head = "연구 목표\n".encode("utf-8")
+    return head + b" " * (MAX_UPLOAD_BYTES - len(head))
+
+
 def test_size_limit_boundary():
-    line = b"plan text line 0123456789\n"
-    exact = (line * (MAX_UPLOAD_BYTES // len(line) + 1))[:MAX_UPLOAD_BYTES]
+    exact = padded_10mb()
     assert len(exact) == MAX_UPLOAD_BYTES == 10 * 1024 * 1024
-    assert extract_plan("big.txt", exact).size_bytes == MAX_UPLOAD_BYTES
+    ok = extract_plan("big.txt", exact)
+    assert ok.size_bytes == MAX_UPLOAD_BYTES and ok.text == "연구 목표"
     err = reject("big.txt", exact + b"x")
     assert err.status_code == 413
     assert "10MB" in err.message
+
+
+# ── 상한: SEC-1 S-03 업로드 증폭 ───────────────────────────────────────────────
+
+
+def test_char_limit_boundary():
+    assert MAX_PLAN_CHARS == 50_000
+    assert len(extract_plan("plan.txt", ("가" * MAX_PLAN_CHARS).encode("utf-8")).text) == MAX_PLAN_CHARS
+    err = reject("plan.txt", ("가" * (MAX_PLAN_CHARS + 1)).encode("utf-8"))
+    assert err.status_code == 413
+    assert err.message == upload.TOO_MANY_CHARS_MESSAGE and "50,000자" in err.message
+
+
+def test_char_limit_pdf_and_docx():
+    lines = varied_lines(MAX_PLAN_CHARS + 5_000)
+    pdf = make_pdf([lines[i : i + 40] for i in range(0, len(lines), 40)])
+    assert reject("long.pdf", pdf).message == upload.TOO_MANY_CHARS_MESSAGE
+    assert reject("long.docx", docx_with_paragraphs(lines)).message == upload.TOO_MANY_CHARS_MESSAGE
+    under = varied_lines(MAX_PLAN_CHARS - 5_000)
+    assert extract_plan("ok.docx", docx_with_paragraphs(under)).lines == len(under)
+
+
+def test_docx_bomb_rejected_fast():
+    bomb = inflate_docx(MAX_ZIP_UNCOMPRESSED + 5 * 1024 * 1024)  # 압축 해제 25MB
+    assert len(bomb) < 500 * 1024  # 파일 자체는 작다
+    start = time.perf_counter()
+    err = reject("bomb.docx", bomb)
+    assert err.status_code == 413 and err.message == upload.ZIP_BOMB_MESSAGE
+    assert time.perf_counter() - start < 2.0  # 풀지 않고 목록만 보고 막는다
+    # 확장자를 바꿔도 zip 목록 단계에서 막힌다
+    assert reject("bomb.txt", bomb).message == upload.ZIP_BOMB_MESSAGE
+
+
+def test_docx_high_ratio_entry_rejected():
+    bomb = inflate_docx(5 * 1024 * 1024)  # 합계 상한(20MB) 아래지만 한 항목 압축비가 100배를 넘는다
+    info = max(zipfile.ZipFile(io.BytesIO(bomb)).infolist(), key=lambda i: i.file_size)
+    assert info.file_size < MAX_ZIP_UNCOMPRESSED and info.file_size > 100 * info.compress_size
+    assert reject("ratio.docx", bomb).message == upload.ZIP_BOMB_MESSAGE
+
+
+def test_zip_entry_count_rejected():
+    entries = {f"word/media/x{i}.xml": b"<x/>" for i in range(upload.MAX_ZIP_ENTRIES)}
+    entries["word/document.xml"] = b"<w:document/>"
+    assert reject("many.docx", make_zip(entries)).message == upload.ZIP_BOMB_MESSAGE
+
+
+def test_pdf_page_limit_boundary():
+    assert MAX_PDF_PAGES == 200
+    ok = extract_plan("200.pdf", make_pdf([[f"{i}쪽 본문"] for i in range(MAX_PDF_PAGES)]))
+    assert ok.pages == MAX_PDF_PAGES and ok.lines == MAX_PDF_PAGES
+    err = reject("201.pdf", make_pdf([[f"{i}쪽 본문"] for i in range(MAX_PDF_PAGES + 1)]))
+    assert err.status_code == 413 and err.message == upload.TOO_MANY_PAGES_MESSAGE
+
+
+def test_cooperative_deadline():
+    for name, data in (("p.pdf", make_pdf([KOREAN_LINES])), ("p.docx", make_docx()), ("p.txt", b"plan")):
+        with pytest.raises(UploadRejected) as info:
+            extract_plan(name, data, deadline_s=-1)
+        assert info.value.status_code == 413 and info.value.message == upload.TIMEOUT_MESSAGE
+
+
+def test_isolated_extraction_runs_in_worker(monkeypatch):
+    def broken(*args, **kwargs):
+        raise RuntimeError("부모 프로세스에서 추출하면 안 된다")
+
+    monkeypatch.setattr(upload, "_extract_pdf", broken)
+    monkeypatch.setattr(upload, "_extract_docx", broken)
+    pdf = extract_plan_isolated("p.pdf", make_pdf([KOREAN_LINES]))
+    assert pdf.kind == "pdf" and pdf.text.split("\n") == KOREAN_LINES
+    assert extract_plan_isolated("p.docx", make_docx()).kind == "docx"
+    with pytest.raises(RuntimeError):
+        extract_plan("p.pdf", make_pdf([KOREAN_LINES]))  # 대조: 같은 프로세스 경로는 막힌 함수를 쓴다
+
+
+def test_isolated_rejections_pass_through():
+    # 작업자 안에서 난 거부도 같은 상태·문구로 돌아온다
+    err = pytest.raises(UploadRejected, extract_plan_isolated, "201.pdf", make_pdf([["a"]] * (MAX_PDF_PAGES + 1))).value
+    assert err.status_code == 413 and err.message == upload.TOO_MANY_PAGES_MESSAGE
+    # HWP·zip 폭탄은 작업자를 띄우기 전에 거부된다
+    assert pytest.raises(UploadRejected, extract_plan_isolated, "a.hwp", HWP5_BYTES).value.status_code == 415
+    bomb = inflate_docx(MAX_ZIP_UNCOMPRESSED + 1024 * 1024)
+    assert pytest.raises(UploadRejected, extract_plan_isolated, "b.docx", bomb).value.message == upload.ZIP_BOMB_MESSAGE
+
+
+def test_isolated_timeout_kills_worker():
+    start = time.perf_counter()
+    with pytest.raises(UploadRejected) as info:
+        extract_plan_isolated("p.pdf", make_pdf([KOREAN_LINES]), timeout_s=0.05)
+    assert info.value.status_code == 413 and info.value.message == upload.TIMEOUT_MESSAGE
+    assert time.perf_counter() - start < 5.0
+
+
+def test_concurrency_limit_503(monkeypatch):
+    slots = threading.BoundedSemaphore(1)
+    monkeypatch.setattr(upload, "_EXTRACT_SLOTS", slots)
+    monkeypatch.setattr(upload, "EXTRACT_QUEUE_WAIT_S", 0.05)
+    assert slots.acquire(timeout=1)
+    try:
+        with pytest.raises(UploadRejected) as info:
+            extract_plan_isolated("p.txt", b"plan")
+        assert info.value.status_code == 503 and info.value.message == upload.BUSY_MESSAGE
+    finally:
+        slots.release()
+    assert extract_plan_isolated("p.txt", b"plan").text == "plan"  # 자리가 나면 다시 받는다
+
+
+def test_worker_env_has_no_secrets(monkeypatch):
+    monkeypatch.setenv("NEUMANN_FAKE_API_KEY", "x")
+    monkeypatch.setenv("FAKE_SERVICE_TOKEN", "x")
+    monkeypatch.setenv("NEUMANN_PSEUDONYM_SALT", "x")
+    env = upload._worker_env()
+    assert not {"NEUMANN_FAKE_API_KEY", "FAKE_SERVICE_TOKEN", "NEUMANN_PSEUDONYM_SALT"} & set(env)
+    assert "OPENAI_API_KEY" not in env
+    assert env.get("PATH") == os.environ.get("PATH")
+
+
+def test_worker_denies_disk_writes(tmp_path):
+    target = tmp_path / "leak.txt"
+    src = str(Path(upload.__file__).resolve().parents[2])
+    code = (
+        f"import sys; sys.path.insert(0, {src!r}); from neumann.api.upload import _deny_disk_writes; "
+        f"_deny_disk_writes(); open(sys.executable, 'rb').close(); print('read-ok', flush=True); open({str(target)!r}, 'w')"
+    )
+    proc = subprocess.run([sys.executable, "-I", "-B", "-c", code], capture_output=True, timeout=60)
+    assert proc.returncode != 0
+    assert b"read-ok" in proc.stdout  # 읽기는 된다
+    assert b"PermissionError" in proc.stderr
+    assert not target.exists()
 
 
 @pytest.mark.parametrize(
@@ -435,8 +616,7 @@ def test_api_hwp_415(client):
 
 
 def test_api_size_limits(client):
-    line = b"plan text line 0123456789\n"
-    exact = (line * (MAX_UPLOAD_BYTES // len(line) + 1))[:MAX_UPLOAD_BYTES]
+    exact = padded_10mb()
     ok = post(client, "big.txt", exact, "text/plain")
     assert ok.status_code == 200
     assert ok.json()["size_bytes"] == MAX_UPLOAD_BYTES
@@ -447,6 +627,23 @@ def test_api_size_limits(client):
     way_over = post(client, "big.txt", exact + b"x" * 200_000, "text/plain")
     assert way_over.status_code == 413
     assert "10MB" in way_over.json()["detail"]
+
+
+def test_api_amplification_limits(client):
+    """SEC-1 S-03 재현형: 작은 DOCX 폭탄·과다 쪽수·과다 글자는 빨리 413으로 끝나고 응답이 작다."""
+    cases = [
+        ("bomb.docx", inflate_docx(MAX_ZIP_UNCOMPRESSED + 17 * 1024 * 1024), upload.ZIP_BOMB_MESSAGE),  # 압축 해제 37MB
+        ("201.pdf", make_pdf([["본문"]] * (MAX_PDF_PAGES + 1)), upload.TOO_MANY_PAGES_MESSAGE),
+        ("long.docx", docx_with_paragraphs(varied_lines(MAX_PLAN_CHARS + 1_000)), upload.TOO_MANY_CHARS_MESSAGE),
+        ("long.txt", ("가" * (MAX_PLAN_CHARS + 1)).encode("utf-8"), upload.TOO_MANY_CHARS_MESSAGE),
+    ]
+    for name, data, message in cases:
+        start = time.perf_counter()
+        res = post(client, name, data)
+        assert res.status_code == 413, (name, res.text)
+        assert res.json()["detail"] == message
+        assert len(res.content) < 1024
+        assert time.perf_counter() - start < 10.0, name
 
 
 def test_api_request_shape_errors(client):
@@ -531,7 +728,8 @@ def test_api_never_touches_disk(disk_writes):
     app = FastAPI()
     app.include_router(router)
     client = TestClient(app)
-    big = ("가나다라마바사 계획서 본문 줄\n" * 60_000).encode("utf-8")  # 약 2.6MB: Starlette 스풀 한도(1MB) 초과
+    # 약 2.6MB(Starlette 스풀 한도 1MB 초과). 줄 끝 공백은 정리에서 빠져 글자 상한 안에 든다
+    big = ("가나다라 계획서 본문 줄" + " " * 2000 + "\n").encode("utf-8") * 1300
     assert len(big) > 2 * 1024 * 1024
     for name, data in (("big.txt", big), ("plan.pdf", make_pdf([KOREAN_LINES])), ("plan.docx", make_docx())):
         res = client.post("/upload/plan", files={"file": (name, data, "application/octet-stream")})
