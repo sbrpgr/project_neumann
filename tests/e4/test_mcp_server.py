@@ -181,6 +181,15 @@ def _text(res: Any) -> str:
     return "\n".join(getattr(b, "text", "") for b in res.content)
 
 
+def _has_module(name: str) -> bool:
+    import importlib.util
+
+    try:
+        return importlib.util.find_spec(name) is not None
+    except ImportError:
+        return False
+
+
 def test_mcp_lists_three_read_only_tools(stdio: dict[str, Any]) -> None:
     tools = {t.name: t for t in stdio["tools"]}
     assert sorted(tools) == sorted(ms.TOOL_NAMES), stdio["stderr"][-2000:]
@@ -212,8 +221,9 @@ def test_mcp_search_result_shape(stdio: dict[str, Any]) -> None:
         for key in ("score", "dense", "lexical"):
             assert 0.0 <= h[key] <= 1.0
         assert h["matched_query"] == "liver tumor segmentation CT"
-    # 임시 색인에는 임베딩이 없다 → 강등을 숨기지 않고 표시해야 한다
-    assert sc["backend"] in {"lexical_only", "adapter_token_overlap"}
+    # 임시 색인에는 임베딩이 없다 → 강등을 숨기지 않고 표시해야 한다.
+    # E2 색인 모듈이 있으면 그 검색(어휘만), 없으면 서버의 파일 어댑터가 돈다.
+    assert sc["backend"] == ("lexical_only" if _has_module("neumann.index.search") else "adapter_token_overlap")
     assert sc["degraded"] is True and sc["reason"]
     # 텍스트 콘텐츠도 같은 JSON이다(구조화 출력을 못 읽는 클라이언트용)
     assert json.loads(_text(res))["hits"][0]["work_id"] == "fixture:seg-001"
@@ -277,6 +287,9 @@ def test_mcp_post_status_shape_and_missing(stdio: dict[str, Any]) -> None:
         assert r["notice_url"] == f"https://doi.org/{r['notice_doi']}"
         assert r["source_url"].startswith("https://") and r["reason_codes"]
     assert sc["citation"] == "FAKE citation for tests" and sc["dataset_url"] == "https://example.org/fake-rw"
+    assert sc["backend"] == (
+        "neumann.sources.retraction" if _has_module("neumann.sources.retraction") else "adapter:processed/retraction.jsonl"
+    )
     none = stdio["post_none"]
     assert not none.is_error
     assert none.structured_content["status"] == "no_record" and none.structured_content["records"] == []
