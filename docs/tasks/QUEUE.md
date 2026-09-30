@@ -51,6 +51,34 @@
 
 **발표 마감 10/01 09:00**(HANDOFF 맨 위 일정표)
 
+
+## PM 세션 과제 20개 (00:3x 가동, 브랜치는 `git log --all --oneline --grep '^\[<ID>\]'`로 찾는다)
+
+| ID | 내용 | 산출 | 상태 |
+|---|---|---|---|
+| SEC-8 | 공개 직전 보안 재감사(Fable, 읽기 전용) | docs/reports/SEC-8.md | ⏳ |
+| DOC-1 | 심사위원용 README·ARCHITECTURE·API·RUNNING | 문서 4개 | ⏳ |
+| LIC-1 | 라이선스·출처 점검, 고지 문구 | docs/LICENSES.md | ⏳ |
+| A11Y-1 | 화면 접근성 감사(보고서만) | docs/reports/A11Y-1.md | ⏳ |
+| E2E-2 | jobs 경로 다중 사용자 E2E(mock) | tests/e2e/test_jobs_multiuser* | ⏳ |
+| MCP-demo | 외부 에이전트 MCP 연결 시연 | scripts/mcp_demo.py, docs/MCP_DEMO.md | ⏳ |
+| E5-L1c | P1 Macro-F1 sol 재측정 준비(실행 안 함) | docs/reports/E5-L1c_plan.md | ⏳ |
+| PERF-2 | 분석 지연 단축 연구(모의) | scripts/perf_sim_pipeline.py | ⏳ |
+| QA-1 | 시연 흐름 QA(보고서만) | docs/reports/QA-1.md | ⏳ |
+| REL-1 | 07:00 동결 시트·태그 절차 | scripts/release_check.py, docs/RELEASE.md | ⏳ |
+| E5-L3c | 지표 generator 분리(rule ≠ LLM 적중) | eval/, tests/e5 | ⏳ |
+| JUDGE-H | 대표 블라인드 판정 HTML 양식 | eval/human_form.py | ⏳ |
+| CFG-1 | .env 읽기 일관화(SEC-3 플래그 제외) | config.py | ⏳ |
+| OBS-1 | 운영 사용량·비용 보고 | scripts/ops_report.py | ⏳ |
+| PRIV-1 | 개인정보·보존 감사(보고서만) | docs/reports/PRIV-1.md | ⏳ |
+| DATA-CARD | 코퍼스·색인 데이터 카드 | docs/DATA_CARD.md | ⏳ |
+| SYSTEM-CARD | 시스템 카드(모델·한계) | docs/SYSTEM_CARD.md | ⏳ |
+| PROMPT-AUDIT | 제품 프롬프트 감사(보고서만) | docs/reports/PROMPT-AUDIT.md | ⏳ |
+| FUZZ-1 | 공개 API 퍼징 테스트 | tests/e4/test_fuzz_api.py | ⏳ |
+| UXC-1 | 화면 문구 정직성·용어(보고서만) | docs/reports/UXC-1.md | ⏳ |
+
+모든 과제는 빌드 뒤 다른 모델(Sonnet) 검증이 병합 조건. 보고서만 쓰는 과제는 내용 검토 뒤 docs 병합.
+
 ## v0 크리티컬 패스
 
 | 과제 | 상태 | 브랜치 | 다음 할 일 |

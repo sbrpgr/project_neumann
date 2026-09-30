@@ -2,6 +2,21 @@
 
 PM이 병합할 때마다 갱신한다. Claude 한도가 다 되면 이 문서를 Codex에 주고 PM 역할을 넘긴다.
 
+## ★ Codex 인수 시 첫 30분 (00:4x 준비, 사용량 92%에 구축 세션이 인수 신호)
+
+실행 방법·첫 메시지·체크리스트: `out/dashboard/codex_kickoff.md`(gitignore). 진행 중 작업 표: `out/dashboard/handoff_agents.md`. 대시보드 http://127.0.0.1:8099 메시지함을 먼저 읽는다. Codex는 개발용(gpt-6-astra 빌드 → gpt-6-sol 검증, 구독)이고 **제품 API는 gpt-6.1-sol만**(astra 금지, 코드가 막음).
+
+1. **상태 파악(5분):** `git log --oneline -15 main`, `docs/tasks/QUEUE.md` 맨 위 "우선 병합" 줄과 "PM 세션 과제 20개" 표, `docs/decisions.md` 끝 20줄.
+2. **병합 대기열(순서 고정):**
+   - v2 관문: **E3-L1s(47acaba 재검증) → E3-L1e(b64abeb 조건 반영분)**. 둘이 병합되면 구축 세션(또는 대표)에 알리고 8020 재기동 → 라이브 묶음.
+   - UI: E4-L2f → E4-L3m → E4-L1g → E3-L2r·E4-L4r(재탄생). 뒤에 병합하는 쪽이 main을 먼저 병합해 index.html 충돌을 푼다.
+   - 공개 전 필수: PERF-pk(models 패치는 PM이 적용+decisions) → E4-L2g(캐시 키) → OPS-tun 재작업 → SEC-7 → SEC-8 보고서 반영 → 터널.
+   - 그 밖: E4-L2h, E3-L1z2, TEST-1, E2-L5, E5-L3b 후속(5c84c88·bb3c129), PM 과제들.
+   - 병합 조건: 다른 모델의 검증 PASS(또는 PASS-조건부의 조건 반영 확인) + `NEUMANN_LLM_PROVIDER=mock` verify.py 통과. 병합 뒤 push, HANDOFF·QUEUE 한 줄.
+3. **라이브 묶음 실행 조건:** E3-L1s·E3-L1e 병합 뒤에만. v1 확인 1회, 원문 복원 7편, E2-L5 분야 6편(결합·도킹 override 포함). 모두 대표 승인 범위. 실행은 8020 경유 또는 `NEUMANN_LIVE_LLM_OK=1`이 명시된 명령만. 재실행은 대표 승인.
+4. **금지:** `.env` 열기·출력, 환경변수 전체 출력, `git add -A`, `--no-verify`, `git stash`(worktree 공유), force push, astra 제품 호출(`NEUMANN_ALLOW_ASTRA`), 터널을 SEC-2r·SEC-7·PERF-pk 병합 전 공개, 키트 원문 반입, 리뷰어 실명, 사전 등록(백테스트 표본·판정) 변경, 07:00 동결 뒤 숫자 변경(REL-1 동결 시트 기준).
+5. **되받기:** 02:39 초기화 뒤 Claude가 되받는다. Codex는 대시보드 메시지함에 **"인수 종료" 요약**(병합한 것, 진행 중, 막힌 것, 대표 대기)을 남긴다.
+
 ## ★ Codex 즉시 인수 (취소 — Claude 계속, 대표 21:3x) · 아래 표는 21:2x 상태 기록
 
 **main `5ed9b45` (push됨)**: v0 태그 뒤 E2-L1·E4-L1a·E3-L1w(v1 파이프라인)·E1-L1c(코드)·E4-L1e·E4-L1f·E6-docs·E3-L1x·E4-L2e·SEC-3(실제 호출 잠금+astra 금지)·SEC-4(ReDoS) 병합.
