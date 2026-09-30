@@ -1,5 +1,7 @@
 # 과제 대기열 (PM이 병합·배정할 때마다 갱신)
 
+**Codex 인수 진행(09/30 23:5x):** 개발 6.1-sol, 독립 검증 6-sol. E3-L2r F1~F4 커밋 후 후속 보강, E3-L1e 최종 view/export 게이트 보강, E3-L1s는 전체 verify 시간 단언 실패로 보류. CLI 병렬 실행 배정 중이며 전체 verify는 직렬이다. 최신 상태는 HANDOFF 맨 위 Codex PM 절과 대시보드 codex_progress/attention을 따른다. 종료 10/01 02:40.
+
 인계 받는 쪽(Codex PM)은 이 표 위에서부터 진행한다. 실행은 `bash scripts/codex_task.sh build <과제ID>`, 검증은 `bash scripts/codex_task.sh verify <과제ID>`, 병합은 PM 규칙(`AGENTS.md`)대로. 상태: ✅ main 병합 · 🔍 검증 대기/중 · ⏳ 빌더 작업 중 · ⬜ 대기(착수 전) · ⛔ 막힘
 
 마지막 갱신: 2026-10-01 00:5x (PM "로컬 세팅") — PM 인수 완료. HANDOFF 맨 위 "PM 인수 완료" 절이 최신
