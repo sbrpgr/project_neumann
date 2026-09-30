@@ -39,12 +39,13 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from fastapi import APIRouter, Body, HTTPException, Response
+from fastapi import APIRouter, Body, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from neumann.analyze.checklist import gate_checklist_items
 from neumann.analyze.gate import EvidenceIndex, MALFORMED, NO_EVIDENCE_FAMILY, SECTIONS, review_evidence_problem
 from neumann.api.view import display_generator, display_text
+from neumann.api.plan_limits import check_embedded_plan, check_payload_plan
 from neumann.api import export_revision  # E3-L2r: ZIP에 덧붙이는 수정 권고·통합본 파일(선택)
 from neumann.models import (
     SCHEMA_VERSION,
@@ -62,6 +63,9 @@ logger = logging.getLogger(__name__)
 
 PACKAGE_FORMAT = "neumann-package/1"
 MAX_PLAN_CHARS = 1_000_000
+MAX_PACKAGE_CARDS = 100
+MAX_PACKAGE_CARD_LINES = 200
+MAX_PACKAGE_DECISIONS = 1_000
 
 FILE_NAMES: tuple[str, ...] = (
     "README.md",
@@ -195,7 +199,10 @@ def _review_for_report(er: Mapping[str, Any]) -> dict[str, Any]:
     """리포트에 싣는 예상 심사평(E3-L1e): 게이트가 뺀 문장 원문(audit.dropped·dropped_detail)은 빼고 사유 코드·개수만 남긴다.
     뺀 문장은 분석 결과가 아니므로 라벨 없이 문서에 나가지 않게 한다. 결과 JSON 원본은 바꾸지 않는다."""
     out = dict(er)
-    audit = dict(out.get("audit") or {})
+    raw_audit = out.get("audit")
+    if raw_audit is not None and not isinstance(raw_audit, Mapping):
+        raise ValueError("expected_review.audit는 JSON 객체여야 합니다.")
+    audit = dict(raw_audit or {})
     drops = [d for d in (audit.pop("dropped", None) or []) if isinstance(d, (list, tuple)) and d]
     audit.pop("dropped_detail", None)
     if drops or "drop" in audit:
@@ -403,8 +410,22 @@ def _make_ctx(
 # ── 서식 헬퍼 ─────────────────────────────────────────────────────────────
 
 
+def _utc_date(dt: datetime) -> datetime:
+    try:
+        return dt.astimezone(UTC)
+    except (OverflowError, ValueError):
+        raise ValueError("날짜를 UTC로 표현할 수 없어 내보낼 수 없습니다.") from None
+
+
+def _zip_date(dt: datetime) -> tuple[int, int, int, int, int, int]:
+    ts = _utc_date(dt)
+    if not 1980 <= ts.year <= 2107:
+        raise ValueError("ZIP 날짜는 UTC 기준 1980년부터 2107년까지 지원합니다.")
+    return ts.year, ts.month, ts.day, ts.hour, ts.minute, ts.second
+
+
 def _iso(dt: datetime) -> str:
-    return dt.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    return _utc_date(dt).isoformat().replace("+00:00", "Z")
 
 
 def _md_escape(text: str) -> str:
@@ -753,10 +774,9 @@ def _card_legend(c: _Ctx) -> list[str]:
 def _plan_annotated(c: _Ctx) -> bytes:
     by_line: dict[int, list[str]] = {}
     for ref, card in c.refs:
-        for no in card.why_applies.plan_lines:
-            refs = by_line.setdefault(no, [])
-            if ref not in refs:
-                refs.append(ref)
+        # 한 카드 안의 중복 줄만 제거한다. ref는 카드마다 고유하므로 누적 목록을 검색할 필요가 없다.
+        for no in dict.fromkeys(card.why_applies.plan_lines):
+            by_line.setdefault(no, []).append(ref)
 
     if c.plan is None:
         L = [
@@ -1054,6 +1074,12 @@ def _sha256(data: bytes) -> str:
 # ── 공개 함수 ─────────────────────────────────────────────────────────────
 
 
+def _guard_export_plan(result: Any, plan_text: str | None) -> None:
+    check_payload_plan({"result": result, "plan_text": plan_text})
+    if isinstance(result, PremortemResult) and result.plan is not None:
+        check_embedded_plan(result.plan.lines)
+
+
 def build_package_files(
     result: PremortemResult | Mapping[str, Any],
     *,
@@ -1071,12 +1097,14 @@ def build_package_files(
 
     E3-L2r: `revision`(수정 권고)·`revised_plan`(통합본)이 오면 `revision.json`·`revised_plan.md`를 뒤에 덧붙인다(10·11번째).
     """
+    _guard_export_plan(result, plan_text)
     if not isinstance(result, PremortemResult):
         result = PremortemResult.model_validate(result)
     c = _make_ctx(result, plan_text, decisions, result_origin)
     extras = export_revision.extra_files(result, revision, revision_decisions, revised_plan, revision_sig, result_sig)
     c.extra_files = list(extras)
-    c.extra_summary = export_revision.summary_lines(revision, revision_decisions, revised_plan)
+    c.extra_summary = export_revision.summary_lines(revision, revision_decisions, revised_plan,
+                                                  result=result, revision_sig=revision_sig, result_sig=result_sig)
     files: dict[str, bytes] = {
         "README.md": _readme(c),
         "risk_cards.json": _risk_cards_json(c),
@@ -1114,12 +1142,12 @@ def build_package(
     - created_at: 패키지 생성 시각(manifest). 없으면 지금. 넘기면 출력 전체가 결정적이다.
     - result_origin: 결과 출처(manifest·README). API는 서버 서명을 확인해 정한다. 직접 부르면 "in_process".
     """
+    _guard_export_plan(result, plan_text)
     if not isinstance(result, PremortemResult):
         result = PremortemResult.model_validate(result)
+    date_time = _zip_date(result.generated_at)  # reject unsupported dates before rendering; never substitute a date
     files = build_package_files(result, plan_text=plan_text, decisions=decisions, created_at=created_at,
                                 result_origin=result_origin, **extras)
-    ts = result.generated_at.astimezone(UTC)
-    date_time = max((ts.year, ts.month, ts.day, ts.hour, ts.minute, ts.second), (1980, 1, 1, 0, 0, 0))
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for name in files:  # FILE_NAMES 순서 + 덧붙인 파일
@@ -1136,6 +1164,59 @@ router = APIRouter()
 
 
 RESULT_REQUIRED_MESSAGE = "내보내기에는 분석 결과가 필요합니다. 먼저 분석을 실행한 뒤 결과 화면에서 내보내 주세요."
+
+
+def package_limit_refusal(
+    payload: dict[str, Any], *, max_plan_lines: int = 5_000, max_plan_chars: int = 50_000,
+) -> tuple[int, str, str] | None:
+    """중첩 모델 검증·정규화·ZIP 조립 전에 원자료 개수만 검사한다(SEC-7).
+
+    감싼 결과와 bare result 모두 검사한다. 잘못된 자료형은 기존 스키마 검증에 맡기고 입력은 되돌려 주지 않는다.
+    """
+    from neumann.api.serving import count_lines, user_message
+
+    def plan_refusal(chars: int, lines: int) -> tuple[int, str, str] | None:
+        if chars > max_plan_chars:
+            return 413, "too_large", user_message("too_large", limit=max_plan_chars, chars=chars)
+        if lines > max_plan_lines:
+            return 422, "too_many_lines", user_message("too_many_lines", limit=max_plan_lines)
+        return None
+
+    text = payload.get("plan_text")
+    if isinstance(text, str):
+        refused = plan_refusal(len(text), count_lines(text))
+        if refused:
+            return refused
+    decisions = payload.get("decisions")
+    if isinstance(decisions, list) and len(decisions) > MAX_PACKAGE_DECISIONS:
+        return 422, "package_limits", f"결정 기록이 너무 많습니다(최대 {MAX_PACKAGE_DECISIONS:,}건)."
+    result = payload.get("result", payload)
+    if not isinstance(result, dict):
+        return None
+    cards = result.get("risk_cards")
+    if isinstance(cards, list):
+        if len(cards) > MAX_PACKAGE_CARDS:
+            return 422, "package_limits", f"위험카드가 너무 많습니다(최대 {MAX_PACKAGE_CARDS:,}장)."
+        for card in cards:
+            why = card.get("why_applies") if isinstance(card, dict) else None
+            refs = why.get("plan_lines") if isinstance(why, dict) else None
+            if isinstance(refs, list) and len(refs) > MAX_PACKAGE_CARD_LINES:
+                return 422, "package_limits", f"카드별 연결 줄이 너무 많습니다(최대 {MAX_PACKAGE_CARD_LINES:,}줄)."
+    plan = result.get("plan")
+    lines = plan.get("lines") if isinstance(plan, dict) else None
+    if isinstance(lines, list):
+        if len(lines) > max_plan_lines:
+            return plan_refusal(0, len(lines))
+        chars, physical_lines = max(len(lines) - 1, 0), 0
+        for line in lines:
+            text = line.get("text") if isinstance(line, dict) else None
+            if isinstance(text, str):
+                chars += len(text)
+                physical_lines += count_lines(text)
+                refused = plan_refusal(chars, physical_lines)
+                if refused:
+                    return refused
+    return None
 
 
 class PackageRequest(BaseModel):
@@ -1171,7 +1252,7 @@ def _safe_filename_part(plan_id: str) -> str:
     response_class=Response,
     responses={200: {"content": {"application/zip": {}}, "description": "ZIP 9파일"}},
 )
-def premortem_package(payload: dict[str, Any] = Body(...)) -> Response:
+def premortem_package(request: Request, payload: dict[str, Any] = Body(...)) -> Response:
     """분석 결과 JSON → 내보내기 ZIP.
 
     본문 형식: `{"result": {...}, "plan_text": "...", "decisions": [...]}`. result는 반드시 있어야 한다.
@@ -1179,6 +1260,14 @@ def premortem_package(payload: dict[str, Any] = Body(...)) -> Response:
     plan_text만 오면 파이프라인을 돌리지 않고 422 + 사용자 문구로 거절한다(SEC-1 S-02, PM 결정 2026-09-30:
     내보내기는 결과만 받는다. 분석은 /premortem의 관문·속도 제한·예산을 거쳐야 한다).
     """
+    srv = getattr(request.app.state, "serving", None)
+    limits = {} if srv is None else {"max_plan_lines": srv.config.max_plan_lines,
+                                    "max_plan_chars": srv.config.max_plan_chars}
+    check_payload_plan(payload, max_lines=limits.get("max_plan_lines", 5_000))
+    refusal = package_limit_refusal(payload, **limits)
+    if refusal:
+        status, code, message = refusal
+        raise HTTPException(status_code=status, detail={"error_code": code, "message": message})
     if "result" not in payload and "plan_text" not in payload and {"session_id", "plan_id"} <= payload.keys():
         payload = {"result": payload}
     try:

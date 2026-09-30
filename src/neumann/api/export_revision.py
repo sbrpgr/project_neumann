@@ -94,6 +94,16 @@ def _origin(revision: Mapping[str, Any], sig: Any, result: Any = None, result_si
     return "server_signed" if verify_result(result, result_sig) and revision_verified(revision, sig) else "client_submitted_unverified"
 
 
+def _assembly_trusted(result: Any, revision: Mapping[str, Any] | None, revision_sig: Any,
+                      revised_plan: Mapping[str, Any], result_sig: Any) -> bool:
+    from neumann.api.revise import verify_payload
+
+    sig = revision_sig if revision_sig is not None else (revision or {}).get("revision_sig")
+    body = {k: v for k, v in revised_plan.items() if k != "revised_plan_sig"}
+    return (revision is not None and _origin(revision, sig, result, result_sig) == "server_signed"
+            and verify_payload("revised-plan", body, revised_plan.get("revised_plan_sig")))
+
+
 def _json_bytes(obj: Any) -> bytes:
     return (json.dumps(obj, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
 
@@ -138,12 +148,7 @@ def extra_files(
             raise ValueError("통합본이 계약(revised_plan.schema.json)과 맞지 않는다: " + "; ".join(errs[:3]))
         if revised_plan.get("plan_id") != result.plan_id:
             raise ValueError("통합본의 plan_id가 결과의 plan_id와 다르다")
-        from neumann.api.revise import verify_payload
-
-        plan_body = {k: v for k, v in revised_plan.items() if k != "revised_plan_sig"}
-        trusted = (revision is not None and _origin(revision, revision_sig if revision_sig is not None else revision.get("revision_sig"),
-                                                   result, result_sig) == "server_signed"
-                   and verify_payload("revised-plan", plan_body, revised_plan.get("revised_plan_sig")))
+        trusted = _assembly_trusted(result, revision, revision_sig, revised_plan, result_sig)
         rendered = asm.render_markdown(revised_plan, asm.evidence_lookup(result, revision),
                                       model=(revision or {}).get("model") if trusted else None,
                                       generator=(revision or {}).get("generator") if trusted else "client_submitted_unverified")
@@ -153,22 +158,31 @@ def extra_files(
 
 
 def summary_lines(revision: Mapping[str, Any] | None, decisions: Sequence[Any] | None,
-                  revised_plan: Mapping[str, Any] | None) -> list[str]:
-    """README·리포트용 한 줄들(없으면 빈 목록)."""
+                  revised_plan: Mapping[str, Any] | None, *, result: Any = None,
+                  revision_sig: Any = None, result_sig: Any = None) -> list[str]:
+    """Local revision/assembly origin, independent of the surrounding result HMAC."""
     out: list[str] = []
     if revision is not None:
         revs = revision.get("revisions", []) or []
         n_edits = sum(len(r.get("edits", []) or []) for r in revs if isinstance(r, Mapping))
         n_prec = sum(1 for r in revs if isinstance(r, Mapping) and (r.get("precedents") or {}).get("status") == "found")
         audit = revision.get("audit", {}) or {}
+        sig = revision_sig if revision_sig is not None else revision.get("revision_sig")
+        origin = _origin(revision, sig, result, result_sig)
+        if origin == "server_signed":
+            generation = f"생성 {revision.get('generator')}" + (f"({revision.get('model')})" if revision.get("model") else "")
+        else:
+            generation = "생성 표기 미확인(서버가 생성 방식·모델을 확인하지 않음)"
         out.append(f"- 수정 권고(`{REVISION_FILE}`): 카드 {len(revs)}장 · 수정안 {n_edits}건 · 채택 연구 대응 {n_prec}장 · "
-                   f"근거 게이트 폐기 {audit.get('dropped', 0)}건 · 생성 {revision.get('generator')}"
-                   + (f"({revision.get('model')})" if revision.get("model") else "") + f" · 결정 {len(decisions or ())}건")
+                   f"근거 게이트 폐기 {audit.get('dropped', 0)}건 · {generation} · 결정 {len(decisions or ())}건"
+                   f" · 수정 권고 출처: {origin}")
     if revised_plan is not None:
         st = revised_plan.get("stats", {}) or {}
         pol = revised_plan.get("polish", {}) or {}
+        origin = "server_signed" if _assembly_trusted(result, revision, revision_sig, revised_plan, result_sig) else "client_submitted_unverified"
         out.append(f"- 통합본(`{REVISED_PLAN_FILE}`): 적용 {st.get('applied', 0)}건 · 충돌 {st.get('conflicts', 0)}건 · "
-                   f"자리표시 {st.get('placeholders', 0)}곳 · 다듬기 {'적용' if pol.get('applied') else '미적용'}")
+                   f"자리표시 {st.get('placeholders', 0)}곳 · 다듬기 {'적용' if pol.get('applied') else '미적용'}"
+                   f" · 통합본 출처: {origin}")
     return out
 
 

@@ -1,3 +1,12 @@
+## 최신 핵심 판정 — 2026-10-01 02:20 KST (이 절이 현재 상태)
+
+- main은 아직 17c8058이며 기능 병합·push는 보류다. root 제품 디스크는 그대로 유지한다. 고정 core cfec213은 C:/Users/User/Desktop/project_neumann/out/codex/core-final에 있고, 후속 callguard 포함 후보709494a는 out/codex/integration에 분리돼 있다.
+- 전체3 cfec213: **2169 통과·48 건너뜀·1 실패,135.65초**, 보안534·계약4. 실패는 total200007자 긴 토큰 요청이 새 pre-NFC200000 상한으로413인데 기존 검사에서422/long_token을 기대한 정책 경계 충돌이다. CPU/temp 실패가 아니다. 원SEC7 owner가 <=200000 payload의 기존422 의미와 >200000의413/NFC·pipeline0를 각각 실측하는 test-only 회귀를 수정한다.
+- 날짜/README fixed1a64 독립19 PASS, fonts/raw fixed243 독립74 및 fonts404×4·adjacent4 PASS, fixedcfec 최종 결합20focused PASS를 확인했다. 이 좁은 PASS는 다음 신규 출처 결합 반례를 포함하지 않는다.
+- **별도 핵심 F4 출처 결합 FAIL:** 정상 서명된 서로 다른 result/revision/assembled를 혼합하면 누락 카드·다른 수정안·거절 결정/채택 통합본 모순·같은 발췌ID의 다른 인용이 trusted로 남는4반례. 보고서 out/codex/results/ASTRA-provenance-coupling-audit-evidence.md. 원export 단일owner가 contracts 변경 없이 export-local validator를 추가하고6-sol이 반례/양성을 검증해야한다. 전체 검사 PASS를 이 결함 해결로 간주하지 않는다.
+- 두 수정이02:25까지 stable+독립PASS면같은finalcandidate 전체4 한 번→02:28결과→02:30main운영분리/docs를목표로한다. 미충족이면 main보류/WIP와원인 그대로 인계한다. 02:25 새 기능 동결·작업자 체크포인트,02:30최종Git/문서,02:35docs/inbox/커밋 인수 종료.
+- 8020/8099 프로세스와 root 제품 파일은 변경하지 않았다. 서버 기동 코드 HEAD는 미확인이다. 실제 OpenAI 호출0. Fast는 CLI 요청값이며 actual served tier 관측은null,주간사용량은root실측52%사용·48%잔여로모두소진이아니다.
+
 # 인계 문서
 
 ## 후속 기능 인수 안내 — 2026-10-01
@@ -14,16 +23,17 @@
 
 PM이 병합할 때마다 갱신한다. Claude 한도가 다 되면 이 문서를 Codex에 주고 PM 역할을 넘긴다.
 
-## ★ Codex 통합 후보 — 2026-10-01, 두 번째 전체 검증 대기
+## ★ Codex 핵심 후보 — 2026-10-01, 전체 PASS·최종 독립 결함 수정 중
 
-- 이 절은 통합 브랜치 `codex/integration-20261001`의 준비 상태다. 기준 main `17c8058`; main 병합은 아직 하지 않았다. Git PM 실행은 통합 담당, 최종 병합 결정과 사용자 소통은 root PM이 맡는다.
-- 후보 코드 `f44fa06`: E3-L1s `47acaba`, E3-L1e `4c47892`, E4-L2f `5ac22b5`, E3-L2r `f8932e0`, TEST-1 `dc87885`와 그 선행 커밋을 전부 포함한다. 정책 회귀 수정 `8642d64`와 계획서 출처 수정 `1ec7645`도 포함했다.
-- 충돌은 view.py 1곳과 export.py 10곳이다. main 표시 문자열 정리, 입력 단계·검색 상태, 마지막 근거 게이트, 출처·서명, 선택 수정안 파일을 모두 보존했다. L2r 보고서 후행 공백 1줄만 정리했다. 최종 결합 mock 검사 364 통과·1 건너뜀, TEST-1 E3/CPU 285 통과, E4 156 통과. 전체 verify와 최종 독립 후보 판정은 아직 대기다.
-- E3-L1e 독립 `gpt-6-sol/high`의 고정 `4c47892` 대상 186 통과·1 건너뜀, 브라우저 1 통과, 입력 형식 19 통과. E3-L2r 독립 `gpt-6-sol`의 고정 `f8932e0` 대상 119 통과, 실제 signing 모듈 주입 119 통과, 보안 454개 통과. 상세 보고서의 대상 HEAD와 조건부 범위를 그대로 따른다.
-- 첫 전체 verify(`da5aba7`): **1980 통과·48 건너뜀·1 실패**, 125.35초. 300자 정책을 이전 기준과 비교하던 유일한 실패를 원 E3 빌더가 고쳤다. 기존 분야 기준과 모든 결정적 반환값 비교를 유지하고 명시 길이 경계·9종 변이를 검사한다. 후보 대상 200 통과. 별도 E4 독립 반례의 불일치 보조 계획서는 이제 422로 거절하며 결과 HMAC과 계획서 연결 상태를 구분한다. 서명·수정 권고·근거 게이트 결합 대상 160 통과·1 건너뜀. 두 번째 전체 verify와 최종 독립 후보 판정은 아직 미완이다.
-- 개발 주력 `gpt-6.1-sol`, 독립 검증 `gpt-6-sol`; 노력 수준은 과제별 실제 실행 설정을 따른다. 32개 편성의 실행·대기는 대시보드가 별도로 관리하므로 모두 실행 중이라고 해석하지 않는다. 이 후보의 통합 담당은 `codex-gpt-6.1-sol`이다.
-- 전체 verify·부하는 통합 담당 단일 큐다. 개발·검증은 mock/offline, 실제 API 0. main 병합은 전체 verify와 최종 독립 판정 후 root 지시가 필요하다. 태그·공개·실서비스 재시작은 이번 준비에 포함하지 않는다.
-- **Git 성과와 8020 운영은 별도다.** 읽기 전용 확인에서 8020 GET `/`는 200·no-store였고 현재 main index.html과 본문 SHA가 같았다. FileResponse는 요청마다 디스크 화면을 전송하고 Python 라우터는 import 시 등록한다. 운영 OpenAPI에는 revise/samples 경로가 없다. main 병합으로 새 디스크 UI와 이전 Python backend가 섞일 수 있으며, 자동 reload 여부는 CIM 권한 제한으로 확인하지 못했다. 서비스 재시작·종료·핫패치는 하지 않았다. Git 병합을 8020 배포 완료로 표시하지 않는다. 운영 owner에게 무중단 안전 방안 제안만 요청했다.
+- 최신 제품 검증 대상은 `894e15cefdbc308a286de631f332041c556d63ef`이다. 문서 전용 후속33f1ca8은 CFG-1 allowlist 소유권 예외만 기록했다. main은 아직17c8058이며 병합하지 않았다.
+- 포함: E3-L1s47acaba, E3-L1e4c47892, E4-L2f5ac22b5, E3-L2rf8932e0, TEST-1dc87885 및 선행 커밋 전체. 정책 비교 회귀8642d64와 계획서 해시 출처1ec7645도 포함한다. view1/export10 충돌에서 표시 정리·입력 품질·검색 상태·근거 게이트·서명·선택 수정본을 함께 보존했다.
+- 첫 전체 verify da5aba7은1980 통과·48 건너뜀·1 실패(125.35초)였다. 원 E3 빌더가 기존 분야 비교와 모든 결정적 반환값 비교를 유지하며 정책 기대값·길이 경계·9종 변이 검사를 보강했다(후보 대상200 통과). 이후 authority/근거 결합160 통과·1 건너뜀.
+- **두 번째 전체 verify894e15c:2014 통과·48 건너뜀(135.38초), 보안523·계약4·tests/verify 모두 PASS.** mock/offline이며 OpenAI 실제 호출0. 다른 whole/load 실행은 통합 담당 단일 큐가 통제한다.
+- 고정1ec7645 authority 독립6-sol 보고37bd88b는116 통과와 원 반례422, hash_verified/missing/unverified 분리, 정상 revise→assemble→11 ZIP을 확인했다. L1e 고정4c47892 독립186 통과·1 건너뜀/browser1/형식19, L2r 고정f8932e0 독립119/실제 signing119/보안454 범위를 유지한다.
+- **최종894 독립 판정은 CONDITIONAL이다.** 요청11충돌 중 README의 미서명 수정권고 generator/model이 인접 출처 경고 없이 보이는 제한 FAIL을 발견했다. policy23·authority13·display54는 독립 PASS. result HMAC 위조는 아니며 revision.json은unverified다. 원 L2f 단일 export owner가 README와 실제 남은 날짜500 3건을 수정 중이고 SEC7/raw owner가 fonts500 4건을 처리한다. 가짜 현재시각으로 바꾸지 않고 명시 거절한다. 안정HEAD·독립 반례/양성 PASS 뒤 새 변경용 세 번째 전체 verify1회를 실행한다.
+- root는 위 최종 관문 PASS를 조건으로 main Git 반영을 승인했다. 현재 기존 root 제품 디스크를 보존하고 승인 뒤만 root를동일17c8058 내용으로detach, `out/codex/main-approved`에서main을작업한다. 실제 서비스 기동 코드 HEAD는 미확인이다. Git 성과는8020 배포가 아니다. 8010/8020/8099 재시작·종료·핫패치·tag·push·공개는 수행하지 않았다.
+- UI 후보ff7e474는 실제 mock HTTP UI 빌더d230073과 core894 결합이다. 병합 충돌0, 빌더의87 통과·3 건너뜀·1 deselect/반응형1은병합전범위이며 독립 UI/A11Y/QA/UXC 확인 대기다. E5 metrics 후보는최신core→P6c0 의미충돌을원owner가해결후 L3c41을다음합친다. public 후보는core기준준비만했고 SEC7/PERF/L2g/OPS 최종독립판정과원owner변경을기다린다.
+- 개발6.1-sol/독립6-sol, 실제 effort·실행·대기와확대편성은 대시보드 현재registry를 따른다. 과제 편성이 모두 실행 중이라는 뜻은 아니다. 최종 마감은 02:35 KST다. 대표 최신 지시로 개발은 02:25까지 계속하고, 02:25 새 기능 동결·작업자 체크포인트, 02:30 최종 Git·문서 점검, 02:35 docs/inbox/커밋 인수 종료를 완료한다. 안정된 핵심 수정과 좁은 독립 PASS가 확인되면 전체 세 번째 검사를 시작하며 뒤늦은 변경은 별도 후보로 분리한다.
 
 ## ★ Codex PM 작업 중 (2026-09-30 23:5x KST, 대표 즉시 착수 지시)
 
