@@ -268,7 +268,7 @@ def _make_ctx(
         for ref, card in refs:
             bad = [n for n in card.why_applies.plan_lines if n > n_lines]
             if bad:
-                warnings.append(f"{ref} `{card.card_id}`가 계획서에 없는 줄 {bad}을 가리킨다(계획서 {n_lines}줄).")
+                warnings.append(f"{ref} `{_code(card.card_id)}`가 계획서에 없는 줄 {bad}을 가리킨다(계획서 {n_lines}줄).")
 
     gen_counts = {g.value: 0 for g in Generator}
     for card in result.risk_cards:
@@ -307,8 +307,15 @@ def _iso(dt: datetime) -> str:
 
 
 def _md_escape(text: str) -> str:
-    """마크다운 파일에 옮기는 결과 문자열의 HTML을 무력화한다(& < > → 엔티티). 렌더하면 같은 글자로 보인다."""
-    return html.escape(text, quote=False)
+    """마크다운 파일에 옮기는 결과 문자열을 무력화한다(E4-L2f F4·R4). 렌더하면 같은 글자로 보인다.
+
+    - HTML: ``& < >`` → 엔티티(태그·자동 링크 ``<http…>`` 불가).
+    - 링크·이미지 문법: 백슬래시를 먼저 두 배로 하고, 대괄호 앞에 백슬래시를 붙인다(이미지·링크·참조 정의 문법 불가 →
+      원격 이미지를 불러올 수 없다).
+    """
+    t = text.replace("\\", "\\\\")
+    t = html.escape(t, quote=False)
+    return t.replace("[", "\\[").replace("]", "\\]")
 
 
 def _one_line(text: Any) -> str:
@@ -410,7 +417,7 @@ def _gen_summary(c: _Ctx) -> str:
 
 
 def _stage_line(s: StageStatus) -> str:
-    text = f"{s.stage}: {s.state}"
+    text = f"{_one_line(s.stage)}: {s.state}"
     if s.detail:
         text += f" — {_one_line(display_text(s.detail))}"
     return text
