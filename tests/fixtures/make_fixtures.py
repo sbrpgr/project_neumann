@@ -253,13 +253,14 @@ def build() -> dict[str, list]:
 
 
 def write(data: dict[str, list]) -> None:
+    lf = "\n"  # Windows에서도 LF로 쓴다(.gitattributes eol=lf)
     for name, items in data.items():
         if name == "premortem_result":
-            (HERE / "premortem_result.json").write_text(
-                json.dumps(items[0].model_dump(mode="json"), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            body = json.dumps(items[0].model_dump(mode="json"), ensure_ascii=False, indent=2) + lf
+            (HERE / "premortem_result.json").write_text(body, encoding="utf-8", newline=lf)
             continue
         lines = [json.dumps(x.model_dump(mode="json"), ensure_ascii=False) for x in items]
-        (HERE / f"{name}.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        (HERE / f"{name}.jsonl").write_text(lf.join(lines) + lf, encoding="utf-8", newline=lf)
 
 
 if __name__ == "__main__":
