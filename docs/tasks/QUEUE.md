@@ -16,8 +16,8 @@
 
 | 과제 | 상태 | 다음 |
 |---|---|---|
-| E3-L1w v1 파이프라인 연결 | ✅ 병합(f204d0c, Sonnet PASS·mock), 단계별 설정 키 .env.example(cd0a3ca) | 8020을 main 최신으로 재기동(sol 명시) → 대표 점검 → 승인 확인 실행 1회 → 태그 `v1` |
-| **SEC-3 실제 호출 잠금** | 🔍 PASS-조건부 5건 → 9a20726 반영, 좁은 재검증 중 | 플래그는 **프로세스 환경변수만**(.env 무시). 병합 뒤 실서버는 `NEUMANN_LIVE_LLM_OK=1 NEUMANN_LLM_PROVIDER=openai NEUMANN_LLM_MODEL=gpt-6.1-sol`로 기동, `/health.llm.effective=openai` 확인 |
+| E3-L1w v1 파이프라인 연결 | ✅ 병합(f204d0c) | **v1 태그 조건**: v1 기능 main(E3-L1w·E4-L1c·E4-L1e·E4-L1f·E2-L1·E5-L1b) + E5-L1e2e(구축 세션, --plans ai4s) 검증·병합 + 8020 sol 라이브 1회 통과 → PM이 `v1` 태그. Macro-F1 0.4864는 gpt-6-astra 측정이라 구분 표기 |
+| **SEC-3 실제 호출 잠금 + astra 금지** | ✅ 병합(548d928) | 실서버 기동: `NEUMANN_LIVE_LLM_OK=1 NEUMANN_LLM_PROVIDER=openai NEUMANN_LLM_MODEL=gpt-6.1-sol` → `/health.llm` 확인 |
 | E2-L1 검색 보정 | ✅ 병합(33dd641), .env.example 키 추가됨 | 병합 시 `.env.example`에 새 키 5개(SCORE_FLOOR는 비움), similar_works 유사도 정렬·무관 사유 노출은 E3 후속 |
 | E4-L1e 입력 예시·템플릿 AI4S 정렬(대표 지시) | ✅ 병합(0504255, Sonnet PASS) | 새 예시 사전 계산본·정적 판 DEMO_PLANS 교체는 API 사용 → 대표 승인 대기 |
 | E1-L1c eLife(+EPMC) 색인 | ✅ 코드만 병합(43d116f). 색인 `index_elife*`는 DO_NOT_SERVE 유지 | E1-L1b PASS 뒤 재빌드(입력 해시 rc 0). 권고: 색인 로더가 DO_NOT_SERVE를 거부(E2, 선택) |
@@ -27,6 +27,8 @@
 | SEC-4 이메일 정규식 ReDoS | 🔍 task/SEC-4 386621a(PM), Sonnet 검증 중 | `models.contains_pii`·`redact_pii` 선형화(`email_spans`), 결과 동일. 공개 전 필수 |
 | E3-L1x rule_fitness "neural" 오분류 | ✅ 병합(Sonnet PASS) | 남은 한계: `~인지 과제` 오탐, neuromorphic(후속 소과제, 선택) |
 | E4-L1f 화면 업로드 | ✅ 병합(cf43101, Sonnet PASS) | 8020 재기동 시 반영. 발표 9쪽 "PDF·DOCX 포함" |
+| E5-L1e2e 라이브 E2E AI4S 세트 | ⏳ 구축 세션(개발 mock, 8020 sol 라이브 정확히 1회, 재실행은 PM 승인) | v1 확인 실행 |
+| E3-L1y 카드 뒤 단계 병렬·진행 보고 | ⏳ 구축 세션(pipeline.py만) | 검증에 manifest 실제 모델·단계 impl 확인 포함 |
 | SEC-2 재점검 | 대기 | E4-L2c·L2d 병합 뒤 → 통과하면 cloudflared 터널 공개(주소는 발표자료로) |
 | E4-L1a 업로드 | ✅ 병합(2e38839, 긴 경계 400 수정 80e024c 포함) | 공개 전 `/upload/plan` 속도 제한(E4-L2c 보호 경로), 화면 문구 "정리 뒤 50,000자 상한" |
 | E6-docs 문서·README | ✅ 병합(7049da9), 루트 README 교체(38b01e4) | 07:00 동결 때 숫자·상태 한 번 더 맞춤. SEC-3 병합 뒤 RUNNING에 LIVE_LLM_OK 두 줄 |
