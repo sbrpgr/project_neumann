@@ -1,7 +1,7 @@
 # API
 
-- 기준: 이 문서를 병합하기 직전의 `main`(작성 때 확인한 커밋 `47e45e5`).
-- 아래 응답 예시는 `304e91e`의 서버를 `NEUMANN_LLM_PROVIDER=mock`, 임베딩 모델 없이(어휘 검색만) 포트 8125에서 띄워 실제로 요청해 받은 값을 줄인 것이다. **mock 응답이라 카드 내용은 분석 결과가 아니다.** 실제 서비스(provider를 `openai`로 켠 경우)에서는 `generator`가 `astra`이고 검색 강등이 없다(임베딩 모델이 있을 때). 예시 수치(근거 22건·카드 5장·점수)는 검색 보정(E2-L1, main `9a2471e`) 이전 값이라 지금 main에서는 조금 다르다.
+- 기준: 이 문서를 병합하기 직전의 `main`(작성 때 확인한 커밋 `b01df0a`, 파이프라인 v1 연결 뒤).
+- 아래 `/premortem`·`/premortem/view` 응답 예시는 main `b01df0a`에서 `NEUMANN_LLM_PROVIDER=mock`, 임베딩 모델 없이(어휘 검색만) FastAPI TestClient로 요청해 받은 값을 줄인 것이다(그 밖의 엔드포인트 예시는 `304e91e`·`d1dc0aa`에서 8125번 서버·TestClient로 받은 값). **mock 응답이라 카드·예상 심사평·체크리스트 내용은 분석 결과가 아니다.** 실제 서비스(provider를 `openai`로 켠 경우)에서는 `generator`가 `astra`이고, 임베딩 모델이 있으면 검색 강등이 없다.
 - **있음** = main의 서버에 라우트가 있다. **예정** = main에 없다(지금 요청하면 404).
 - 서버 실행은 [RUNNING.md §5](RUNNING.md#5-분석-실행). 기본 주소 `http://127.0.0.1:8000`.
 - 전체 스키마: `GET /openapi.json`. `GET /docs`도 FastAPI 기본값으로 열리지만 Swagger UI 파일을 외부 CDN(jsdelivr)에서 받는다. 오프라인 확인에는 `/openapi.json`을 쓴다.
@@ -57,7 +57,7 @@ curl http://127.0.0.1:8000/health
 ```
 
 - `pipeline.state`: `connected`(파이프라인 있음) · `unavailable`(모듈 없음 → 샘플) · `error`(import 실패)
-- `stages`는 모듈을 import할 수 있는지만 본다. `REVIEW`·`ACTION`의 모듈은 있지만 파이프라인이 아직 부르지 않는다([ARCHITECTURE.md §1](ARCHITECTURE.md#1-지금-상태-한눈에)).
+- `stages`는 모듈을 import할 수 있는지만 본다(실제 실행 결과는 분석 응답의 `stages`).
 
 ## POST /premortem
 
@@ -76,38 +76,52 @@ curl -X POST http://127.0.0.1:8000/premortem \
 
 Windows Git Bash에서는 한글을 `-d '…'`로 직접 넘기면 인코딩이 깨져 400이 날 수 있다. UTF-8 파일을 `--data-binary @파일`로 보낸다.
 
-실측 응답(mock provider, 임베딩 없음, 200, 1.8초, 줄임):
+실측 응답(mock provider, 임베딩 없음, 200, 1.7초, 줄임):
 
 ```json
 {
   "status": "degraded",
-  "pipeline_version": "neumann-e3-l0",
+  "pipeline_version": "neumann-e3-l1w",
   "plan_id": "3d35460def76efc4a786dce769e614f0d54d110ee2837da6b8fc1dbcf88ef33c",
   "stages": [
-    {"name": "plan_normalize",   "phase": "INPUT",    "status": "ok",       "impl": "neumann.models:PlanDocument.from_text"},
-    {"name": "query_axes",       "phase": "INPUT",    "status": "ok",       "impl": "mock:mock-deterministic-v1"},
-    {"name": "search",           "phase": "EVIDENCE", "status": "degraded", "impl": "neumann.index.search:search",
+    {"name": "plan_normalize",    "phase": "INPUT",    "status": "ok",       "impl": "neumann.models:PlanDocument.from_text"},
+    {"name": "fitness",           "phase": "INPUT",    "status": "ok",       "impl": "neumann.analyze.fitness:assess_fitness", "reason": "fit by mock"},
+    {"name": "query_axes",        "phase": "INPUT",    "status": "ok",       "impl": "mock:mock-deterministic-v1"},
+    {"name": "search",            "phase": "EVIDENCE", "status": "degraded", "impl": "neumann.index.search:search",
      "reason": "상위 점수 0.245; 검색 강등(백엔드 lexical_only, 임베딩 없이 어휘 검색)"},
-    {"name": "extract_issues",   "phase": "EVIDENCE", "status": "ok",       "impl": "mock:mock-deterministic-v1", "reason": "폐기율 0.0%"},
-    {"name": "synthesize_cards", "phase": "RISK",     "status": "ok",       "impl": "mock:mock-deterministic-v1"},
-    {"name": "verify_evidence",  "phase": "REVIEW",   "status": "ok",       "impl": "neumann.models:Excerpt.verify_against",
-     "reason": "근거 22/22 원문 일치"}
+    {"name": "extract_issues",    "phase": "EVIDENCE", "status": "ok",       "impl": "mock:mock-deterministic-v1", "reason": "폐기율 0.0%"},
+    {"name": "synthesize_cards",  "phase": "RISK",     "status": "ok",       "impl": "mock:mock-deterministic-v1"},
+    {"name": "verify_evidence",   "phase": "REVIEW",   "status": "ok",       "impl": "neumann.models:Excerpt.verify_against",
+     "reason": "근거 28/28 원문 일치"},
+    {"name": "expected_review",   "phase": "REVIEW",   "status": "ok",       "impl": "neumann.analyze.review:generate_expected_review",
+     "reason": "mock:mock-deterministic-v1 통과 8/8"},
+    {"name": "checklist",         "phase": "ACTION",   "status": "ok",       "impl": "neumann.analyze.checklist:build_checklist"},
+    {"name": "semantic_validate", "phase": "ACTION",   "status": "ok",       "impl": "neumann.analyze.validate:validate_cards"}
   ],
   "notices": ["[search] degraded: 상위 점수 0.245; 검색 강등(백엔드 lexical_only, 임베딩 없이 어휘 검색)",
               "mock provider(테스트용) 결과 — 실제 astra 분석이 아니다"],
   "similar_works": ["… 10편 …"],
   "evidence": [{"excerpt_id": "ex_afb2cbc9e56b30d1", "source_kind": "review", "start": 889, "end": 1236,
                 "source_url": "https://openreview.net/forum?id=ZkpDdCQUC4&noteId=PIYoBctiz2", "...": "text, text_sha256 …"},
-               "… 모두 22건 …"],
-  "risk_cards": [{"card_id": "card_9a76808af95c", "risk_code": "R2", "title": "mock: 실험 설계·평가 프로토콜",
-                  "generator": "mock", "model": "mock-deterministic-v1",
-                  "evidence": ["ex_afb2cbc9e56b30d1", "..."],
-                  "score": {"similarity": 0.2291, "frequency": 1.0, "severity": 0.8, "confidence": 0.52, "total": 0.0953}},
-                 "… 모두 5장 …"],
-  "manifest": {"pipeline_version": "neumann-e3-l0", "llm_provider": "mock", "llm_model": "mock-deterministic-v1",
+               "… 모두 28건 …"],
+  "risk_cards": [{"card_id": "card_f72258efe6ac", "risk_code": "R2", "title": "mock: 실험 설계·평가 프로토콜",
+                  "generator": "mock", "model": "mock-deterministic-v1", "evidence": ["ex_afb2cbc9e56b30d1", "..."],
+                  "score": {"similarity": 0.2108, "frequency": 0.9, "severity": 0.8, "confidence": 0.52, "total": 0.0789}},
+                 "… 모두 6장 …"],
+  "expected_review": {"version": "…", "generator": "mock", "model": "mock-deterministic-v1", "status": "ok",
+                      "strength": [], "weakness": ["… 4문장 …"], "request": ["… 4문장 …"], "audit": {"...": "…"}},
+  "checklist": [{"item_id": "C1", "card_id": "card_f72258efe6ac", "risk_code": "R2",
+                 "action": "mock 응답: 실험 설계·평가 프로토콜 (Evaluation Protocol) 위험을 줄이는 절차를 착수 전에 계획서에 적는다.",
+                 "verify": "mock 응답: 계획서 해당 줄에 절차가 적혀 있다.", "plan_lines": [11, 21, 22], "...": "…"},
+                "… 모두 6건 …"],
+  "verification": {"findings_total": "…", "findings_dropped": "…", "linkage_rate": "…", "semantic": {"...": "…"}},
+  "manifest": {"pipeline_version": "neumann-e3-l1w", "llm_provider": "mock", "llm_model": "mock-deterministic-v1",
                "backend": "neumann.index.search:search",
-               "prompt_versions": ["query_axes.v1", "extract_issues.v1", "synthesize_cards.v3"], "total_s": 1.741},
-  "...": "plan, expected_review, checklist, risk_synthesis 등 contracts/premortem_response.schema.json의 키"
+               "prompt_versions": ["query_axes.v1", "extract_issues.v1", "synthesize_cards.v3", "expected_review@v1"],
+               "total_s": 1.679, "query_cache": {"enabled": false, "hit": false, "stored": false},
+               "stage_limits_s": {"fitness": 30.0, "query_axes": 45.0, "expected_review": 90.0, "checklist": 90.0, "semantic_validate": 90.0},
+               "timings_s": {"...": "단계별 초"}},
+  "...": "plan, risk_synthesis, plan_checks 등 contracts/premortem_response.schema.json의 키"
 }
 ```
 
@@ -115,7 +129,7 @@ Windows Git Bash에서는 한글을 `-d '…'`로 직접 넘기면 인코딩이 
 - 카드의 `evidence`는 발췌 id 목록이고, 인용문은 `evidence[]`의 `text`(원문 `[start:end]`)다. 모든 근거는 `verify_evidence` 단계에서 원문과 다시 대조된다.
 - `score.total` = 유사도 × 빈도 × 심각도 × 신뢰도(곱, 가중치 없음).
 - `generator`: `astra`(제품 LLM, OpenAI. 값 이름은 계약이고 실제 모델은 카드 `model`·`manifest.llm_model`, 기본 `gpt-6.1-sol`) · `rule`(비상 규칙) · `mock`(테스트용 가짜).
-- 카드가 0장이면 사유가 `risk_synthesis.no_card_reason`과 `notices`에 들어간다. 실측(무관한 글 `tests/fixtures/plans/negative_recipe.md`, mock): 카드 0장, 사유 "입력이 연구계획서가 아니다(mock 판단: …); 유사 연구 검색 상위 점수 0.031".
+- 카드가 0장이면 사유가 `risk_synthesis.no_card_reason`과 `notices`에 들어간다. 실측(무관한 글 `tests/fixtures/plans/negative_recipe.md`, mock): 적합성 단계에서 멈춰 카드 0장, 사유 "입력이 연구계획서가 아니다(mock 판단: mock: 연구 어휘 개수로 판정); 검색 안 함", `query_axes`부터 `semantic_validate`까지 8단계는 `skipped`.
 
 오류:
 
@@ -135,7 +149,7 @@ Windows Git Bash에서는 한글을 `-d '…'`로 직접 넘기면 인코딩이 
 `_status` 실측(mock provider, 임베딩 없음, 줄임):
 
 ```json
-{"source": "pipeline", "label": "일부 단계 강등", "degraded": true, "generators": {"mock": 5},
+{"source": "pipeline", "label": "일부 단계 강등", "degraded": true, "generators": {"mock": 6},
  "contract_ok": true, "dropped": {}, "pipeline": "connected", "result_status": "degraded",
  "stages_not_ok": [{"name": "search", "phase": "EVIDENCE", "status": "degraded",
                     "reason": "상위 점수 0.245; 검색 강등(백엔드 lexical_only, 임베딩 없이 어휘 검색)"}]}
@@ -166,7 +180,7 @@ curl -X POST http://127.0.0.1:8000/premortem/package \
 #                "decisions": [{"card_id": "<카드 id>", "decision": "채택", "note": "분할을 저자 단위로 바꾼다"}]}
 ```
 
-실측: `/premortem` 응답(mock)을 그대로 보내면 `200 application/zip`. `plan_text`만 보내면(mock) 파이프라인이 돌아 `200`, ZIP 9파일, `manifest.result.status: degraded`, `cards_by_generator: {"astra": 0, "rule": 0, "mock": 5}`. 응답 헤더 `Content-Disposition: attachment; filename="neumann_package_<plan_id 앞 12자>.zip"`.
+실측: `/premortem` 응답(mock)을 그대로 보내면 `200 application/zip`. `plan_text`만 보내면(mock) 파이프라인이 돌아 `200`, ZIP 9파일, `manifest.result.status: degraded`, `cards_by_generator: {"astra": 0, "rule": 0, "mock": 6}`, `pipeline_version: neumann-e3-l1w`. 응답 헤더 `Content-Disposition: attachment; filename="neumann_package_<plan_id 앞 12자>.zip"`.
 
 ZIP의 `README.md` 첫 줄들은 결과 상태, 카드·근거·유사 연구 수, 생성 방식별 카드 수(astra·rule·mock)를 적는다.
 
