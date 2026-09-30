@@ -58,7 +58,7 @@ def reset_key() -> None:
     _KEY = _load_key()
 
 
-def _norm(v: Any) -> Any:
+def _norm(v: Any, *, string_keys: bool = False) -> Any:
     if isinstance(v, bool) or v is None or isinstance(v, (int, str)):
         return v
     if isinstance(v, float):
@@ -66,9 +66,11 @@ def _norm(v: Any) -> Any:
             raise ValueError("NaN·무한대는 서명하지 않는다")
         return int(v) if v.is_integer() and abs(v) < 2**53 else v
     if isinstance(v, Mapping):
-        return {str(k): _norm(x) for k, x in v.items()}
+        if string_keys and any(not isinstance(k, str) for k in v):
+            raise TypeError("signed payload keys must be strings")
+        return {str(k): _norm(x, string_keys=string_keys) for k, x in v.items()}
     if isinstance(v, (list, tuple)):
-        return [_norm(x) for x in v]
+        return [_norm(x, string_keys=string_keys) for x in v]
     raise TypeError(f"서명할 수 없는 값: {type(v).__name__}")
 
 
@@ -101,4 +103,36 @@ def verify_result(result: Any, sig: Any) -> bool:
     return hmac.compare_digest(expected.encode("ascii"), sig[len(SIG_VERSION) + 1:].encode("ascii"))
 
 
-__all__ = ["KEY_ENV", "canonical_bytes", "reset_key", "sign_result", "verify_result"]
+def _payload_bytes(kind: str, data: Mapping[str, Any]) -> bytes:
+    """Separate revision signatures from the validated result signature domain."""
+    if not isinstance(kind, str) or not re.fullmatch(r"[a-z][a-z0-9-]{0,31}", kind, re.ASCII) or kind == "result":
+        raise ValueError("invalid payload signature kind")
+    if not isinstance(data, Mapping):
+        raise TypeError("signed payload must be a mapping")
+    body = json.dumps(_norm(data, string_keys=True), ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    return f"neumann-{kind}-v1\n".encode("ascii") + body.encode("utf-8")
+
+
+def sign_payload(kind: str, data: Mapping[str, Any]) -> str:
+    """Sign validated server output with JSON string keys (including nested objects).
+
+    ``kind`` is a lowercase ASCII domain, up to 32 characters, excluding ``result``.
+    Shares the result key and v1 format, but signatures cannot cross domains.
+    Callers must validate their schema and enforce provenance before signing.
+    """
+    digest = hmac.new(_KEY, _payload_bytes(kind, data), hashlib.sha256).hexdigest()
+    return f"{SIG_VERSION}.{digest}"
+
+
+def verify_payload(kind: str, data: Any, sig: Any) -> bool:
+    """Malformed input, domain substitution and altered payloads fail closed."""
+    if not isinstance(sig, str) or len(sig) != 67 or not sig.isascii() or not _SIG_RE.fullmatch(sig):
+        return False
+    try:
+        expected = sign_payload(kind, data)
+    except (TypeError, ValueError, OverflowError, RecursionError):
+        return False
+    return hmac.compare_digest(expected.encode("ascii"), sig.encode("ascii"))
+
+
+__all__ = ["KEY_ENV", "canonical_bytes", "reset_key", "sign_result", "verify_result", "sign_payload", "verify_payload"]

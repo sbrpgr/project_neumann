@@ -45,7 +45,7 @@ OUT = ROOT / "docs" / "reports"
 PLAN = ROOT / "tests" / "fixtures" / "plans" / "plan.md"
 SHOT = "E4-L2f_export.png"
 DEFAULT_PORT = 8149
-FORBIDDEN_PORTS = {8010, 8020}
+FORBIDDEN_PORTS = {8010, 8020, 8099}
 VW, VH = 1440, 900
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]"}
 MEMO = "표본 크기 근거 보강 · 담당 a.kim@example.org"
@@ -191,12 +191,12 @@ def start_server(port: int) -> subprocess.Popen:
     import httpx
 
     if port in FORBIDDEN_PORTS:
-        raise SystemExit(f"{port}은 쓰지 않는다(8010·8020 금지)")
+        raise SystemExit(f"{port}은 쓰지 않는다(8010·8020·8099 금지)")
     if not _port_free(port):
         raise SystemExit(f"포트 {port}가 이미 쓰이고 있다")
     env = {k: v for k, v in os.environ.items()
            if k not in {"OPENAI_API_KEY", "NEUMANN_LIVE_LLM_OK", "NEUMANN_LIVE_TESTS", "NEUMANN_ALLOW_ASTRA"}}
-    env.update(PYTHONIOENCODING="utf-8", NEUMANN_LLM_PROVIDER="mock",
+    env.update(PYTHONIOENCODING="utf-8", NEUMANN_LLM_PROVIDER="mock", NEUMANN_LIVE_TESTS="0",
                PYTHONPATH=os.pathsep.join([str(ROOT / "src"), str(ROOT)]))
     proc = subprocess.Popen([sys.executable, "-m", "uvicorn", "neumann.api.main:app", "--host", "127.0.0.1",
                              "--port", str(port), "--log-level", "warning"], cwd=ROOT, env=env)
@@ -353,7 +353,8 @@ def run_ui(base: str, out: Path, tmp: Path) -> dict:
             page.wait_for_timeout(200)
             out.mkdir(parents=True, exist_ok=True)
             page.screenshot(path=str(out / SHOT))
-            info["screenshot"] = str((out / SHOT).relative_to(ROOT)).replace("\\", "/")
+            shot_path = (out / SHOT).resolve()
+            info["screenshot"] = str(shot_path.relative_to(ROOT) if shot_path.is_relative_to(ROOT) else shot_path).replace("\\", "/")
 
             with zipfile.ZipFile(zpath) as zf:
                 names = zf.namelist()
@@ -381,6 +382,27 @@ def run_ui(base: str, out: Path, tmp: Path) -> dict:
             assert "## 결정 로그" in report and "행동 `C2`: 기각" in report and "행동 `C3`: 채택" in report
             assert "a.kim@example.org" not in "".join(f.decode("utf-8", "replace") for f in files.values())
             assert not w.errors, w.errors
+
+            # 비ASCII 서명도 실제 서버에서 ZIP을 받고, 화면과 파일에 미확인 출처를 표시한다.
+            def invalid_signature(route, request):
+                body = request.post_data_json
+                body["result_sig"] = "v1." + "é" * 64
+                route.continue_(post_data=json.dumps(body, ensure_ascii=False))
+
+            page.route("**/premortem/package", invalid_signature)
+            with page.expect_download(timeout=120_000) as unverified_dl:
+                page.click("#btnExport")
+            unverified_path = tmp / "unverified.zip"
+            unverified_dl.value.save_as(unverified_path)
+            page.wait_for_function("document.getElementById('expMsg').textContent.indexOf('서버 서명 확인 안 됨') >= 0")
+            info["unverified_msg"] = page.locator("#expMsg").inner_text()
+            with zipfile.ZipFile(unverified_path) as zf:
+                assert json.loads(zf.read("manifest.json"))["result_origin"] == "client_submitted_unverified"
+                assert zf.read("README.md").decode("utf-8").startswith("**주의: 서버가 분석·서명한 결과가 아님.")
+            assert w.posts == ["/premortem/jobs", "/premortem/package", "/premortem/package"], w.posts
+            info["posts_with_unverified"] = list(w.posts)
+            assert not w.errors, w.errors
+            page.unroute("**/premortem/package")
 
             # 서버 오류 문구: textContent로(태그를 만들지 않는다)
             w.allow_4xx = True
