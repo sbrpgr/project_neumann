@@ -1,6 +1,6 @@
 # API
 
-- 기준: `main` 커밋 `82146f9`. 아래 응답 예시는 그 커밋의 서버(`127.0.0.1:8125`)에 실제로 요청해 받은 값을 줄인 것이다.
+- 기준: `main` 커밋 `5e14b1c`. 아래 응답 예시는 main 사본의 서버(`127.0.0.1:8125`, `82146f9`·`5e14b1c`)에 실제로 요청해 받은 값을 줄인 것이다.
 - **있음** = main의 서버에 라우트가 있다. **예정** = 과제 브랜치에서 진행 중이다. 지금 요청하면 404다.
 - 서버 실행은 [RUNNING.md §6](RUNNING.md#6-서버-실행-있음). 기본 주소 `http://127.0.0.1:8000`.
 - 전체 스키마: `GET /openapi.json`(서버가 만든 OpenAPI). `GET /docs`도 FastAPI 기본값으로 열리지만 Swagger UI 파일을 외부 CDN(jsdelivr)에서 받는다. 오프라인 확인에는 `/openapi.json`을 쓴다.
@@ -16,12 +16,12 @@
 | `POST /premortem/view` | 같은 입력 → 화면 데이터 JSON(`ui_view` 계약) + `_status` | 있음 (파이프라인 미연결: 샘플) |
 | `POST /premortem/package` | 분석 결과(또는 계획서) → ZIP 9파일 | 있음 |
 | `POST /upload/plan` | 파일(txt·md·pdf·docx, 10MB) → 텍스트. HWP 거부 | 예정 (E4-L1a) |
-| `GET /templates`, `GET /templates/{id}` | AI for Science 계획서 템플릿 목록·골격 | 예정 (E4-L1b) |
-| `GET /api`, `GET /taxonomy`, `GET /config/weights` | 코퍼스 실측 메타, 위험 유형 R0~R9, 위험점수 가중치 | 예정 (E4-L1d) |
+| `GET /templates`, `GET /templates/{item_id}` | AI for Science 계획서 템플릿 목록·골격 | 있음 |
+| `GET /api`, `GET /taxonomy`, `GET /config/weights` | 코퍼스·색인 실측 메타, 위험 유형 R0~R9, 위험점수 가중치 | 있음 |
 | `GET /premortem/precomputed`, `GET /premortem/precomputed/{plan_id}` | 데모 사전 계산본(오프라인 폴백, 변조 시 404) | 예정 (E6-L2a) |
-| MCP 서버(stdio) `python -m neumann.api.mcp_server` | 읽기 전용 도구 3종: `search_similar_works`, `get_review_records`, `get_post_status` | 예정 (E4-L2b) |
+| MCP 서버(stdio) `python -m neumann.api.mcp_server` | 읽기 전용 도구 3종: `search_similar_works`, `get_review_records`, `get_post_status` | 있음 |
 
-예정 라우터 중 `upload`·`templates`·`meta`·`precomputed`는 모듈이 main에 들어오면 `api/main.py`가 자동으로 붙인다. 붙었는지는 `/health`의 `routers`에서 `ok`로 확인한다.
+예정 라우터 `upload`·`precomputed`는 모듈이 main에 들어오면 `api/main.py`가 자동으로 붙인다. 붙었는지는 `/health`의 `routers`에서 `ok`로 확인한다.
 
 ## 지금 main에서 분석이 어떻게 도는가
 
@@ -49,16 +49,17 @@ curl http://127.0.0.1:8000/health
     "pipeline": {"available": false, "modules": {"neumann.pipeline": "missing: 모듈 없음"}},
     "INPUT":    {"available": false, "modules": {"neumann.analyze.plan": "missing: 모듈 없음"}},
     "RISK":     {"available": false, "modules": {"neumann.analyze.cards": "missing: 모듈 없음"}},
+    "REVIEW":   {"available": true,  "modules": {"neumann.analyze.review": "ok"}},
     "ACTION":   {"available": true,  "modules": {"neumann.analyze.checklist": "ok"}},
     "models":   {"available": true,  "modules": {"neumann.models": "ok"}},
-    "...": "EVIDENCE, REVIEW, TRACE, llm은 false, config는 true"
+    "...": "EVIDENCE, TRACE, llm은 false, config는 true"
   },
   "routers": {"neumann.api.export": "ok", "neumann.api.upload": "missing", "neumann.api.precomputed": "missing",
-              "neumann.api.templates": "missing", "neumann.api.meta": "missing"}
+              "neumann.api.templates": "ok", "neumann.api.meta": "ok"}
 }
 ```
 
-- `ACTION`이 `true`인 것은 체크리스트 모듈이 main에 있어서다. 파이프라인이 없으므로 서버 응답에는 아직 쓰이지 않는다.
+- `REVIEW`·`ACTION`이 `true`인 것은 예상 심사평·체크리스트 모듈이 main에 있어서다. 파이프라인이 없으므로 서버 응답에는 아직 쓰이지 않는다. `EVIDENCE`는 `neumann.index.hybrid`·`neumann.analyze.retrieve`를 보는데, 색인은 `neumann.index.search`로 들어와 있어 `false`로 나온다.
 - `pipeline.state`: `connected`(모듈 있음) · `unavailable`(모듈 없음 → 샘플) · `error`(import 실패)
 - 모듈 상태: `ok` · `missing: …` · `error: …`
 
@@ -136,7 +137,7 @@ Windows Git Bash에서는 한글을 `-d '…'`로 직접 넘기면 인코딩이 
 | 키 | 뜻 |
 |---|---|
 | `result` | 분석 결과 JSON. `PremortemResult`로 검증한다(모르는 키는 거부) |
-| `plan_text` | 계획서 원문(최대 1,000,000자). `result` 없이 오면 파이프라인을 돌린다. 지금 main은 파이프라인이 없어서 카드 0장·`status: "error"` 패키지를 만든다(가짜 카드를 만들지 않는다) |
+| `plan_text` | 계획서 원문(최대 1,000,000자). `result` 없이 오면 파이프라인을 돌린다. 지금 main은 파이프라인이 없어서 카드 0장·`status: "error"` 패키지를 만든다(가짜 카드를 만들지 않는다). **결정 기록 2026-09-30 19:20에 따라 이 경로(`plan_text`만 받기)는 없앨 예정이다**(비용 폭주 방지, SEC-1). `5e14b1c`에서는 아직 200을 돌려준다 |
 | `decisions` | 결정 로그. 항목 `{"card_id"` 또는 `"item_id", "decision": "adopt"·"hold"·"reject"(채택·보류·기각도 받음), "note"?, "decided_at"?}` |
 
 `result`로 감싸지 않고 결과 JSON을 그대로 보내도 된다(`session_id`·`plan_id`가 있으면 결과로 본다).
@@ -163,7 +164,57 @@ curl -X POST http://127.0.0.1:8000/premortem/package \
 |---|---|
 | 422 | `result`와 `plan_text`가 모두 없다, `result`가 계약에 맞지 않는다, 결정 로그의 `card_id`·`item_id`가 결과에 없다 |
 
-알려진 제약(main `82146f9`): 지금 `/premortem`의 **샘플 응답**을 그대로 `/premortem/package`에 보내면 422다. 샘플에 붙는 표시 키(`sample`, `stages[0]`의 `status: "unavailable"`·`degraded`·`details`)가 `PremortemResult` 계약에 없기 때문이다. 실제 파이프라인 결과나 `tests/fixtures/premortem_result.json`은 통과한다.
+알려진 제약(main `5e14b1c`): 지금 `/premortem`의 **샘플 응답**을 그대로 `/premortem/package`에 보내면 422다. 샘플에 붙는 표시 키(`sample`, `stages[0]`의 `status: "unavailable"`·`degraded`·`details`)가 `PremortemResult` 계약에 없기 때문이다. 실제 파이프라인 결과나 `tests/fixtures/premortem_result.json`은 통과한다.
+
+## GET /templates, GET /templates/{item_id}
+
+입력 화면의 템플릿 선택기와 "예시 불러오기"가 쓴다.
+
+```bash
+curl http://127.0.0.1:8000/templates
+curl http://127.0.0.1:8000/templates/materials-gnn
+```
+
+- 목록 응답 키: `version`, `scope`(`label`: "AI 활용 과학 연구 계획서 전용", `domains` 5개), `required_sections`(연구 목표·방법·데이터·평가·일정), `templates`, `examples`.
+- 실측 id: 템플릿 `materials-gnn`, `protein-molecule`, `physics-pde-climate`, `neuro-fmri`, `medical-imaging` · 예시 `example-battery`, `example-fmri`, `example-medimaging`.
+- 단건 응답 키: `id`, `kind`(template·example), `name`, `domain`, `summary`, `sections`, `text`(계획서 골격 본문), `filename`, `source`, `chars`, `sha256`. 없는 id는 404.
+
+## GET /api, GET /taxonomy, GET /config/weights
+
+```bash
+curl http://127.0.0.1:8000/api
+curl http://127.0.0.1:8000/taxonomy
+curl http://127.0.0.1:8000/config/weights
+```
+
+- `/api`: 데이터 폴더의 매니페스트(`processed/corpus_manifest.json`, `index/manifest.json`)에서 읽은 실측값만 돌려준다. 키: `service`, `version`, `schema_version`, `status`, `reasons`, `summary_ko`, `corpus`, `index`, `endpoints`. 매니페스트가 없으면 빈 값과 사유(`reasons`). 실측 `summary_ko`: "ICLR 2024 · ICLR 2025 · 논문 1,128편 · 심사평 5,366건 · 거절 60.3% · 색인 문장 133,769개"(심사평 5,366건은 공식 심사평 4,298 + 메타리뷰 1,068).
+- `/taxonomy`: 택소노미 v1.0. 키: `version`, `source`, `tier1_count`(10), `tier2_count`(59), `severity_scale`(S1~S5), `classes`, `detect_paths`, `note`.
+- `/config/weights`: 위험점수 가중치. 설정이 없으면 기본값을 돌려주고 그렇다고 표시한다(`is_default: true`, `label: "기본값"`, `reason`). 실측 응답(줄임):
+
+```json
+{"weights": {"similarity": 0.3, "frequency": 0.3, "severity": 0.3, "confidence": 0.1}, "display": "0.3 / 0.3 / 0.3 / 0.1",
+ "source": "default", "is_default": true, "label": "기본값",
+ "formula_ko": "위험점수 = 유사도 × 빈도 × 심각도 × 신뢰도",
+ "pipeline": {"module": "neumann.analyze.cards", "state": "missing", "note": "파이프라인 점수 모듈이 없거나 가중치를 내놓지 않아 대조하지 못함."}}
+```
+
+  주의: 결정 기록(2026-09-30 19:15)은 위험점수를 가중치 없는 곱으로 정하고 `/config/weights`가 "곱, 가중치 없음"을 보이게 한다고 적었다. `5e14b1c`의 응답은 아직 목업 기본 가중치(0.3/0.3/0.3/0.1)를 함께 보인다.
+
+## MCP 서버 (stdio)
+
+HTTP 서버와 별개 프로세스다. 외부 에이전트가 근거 데이터를 조회하는 창구이고, 쓰기·삭제·외부 네트워크 호출이 없다.
+
+```bash
+python -m neumann.api.mcp_server
+```
+
+| 도구 | 입력 | 출력 |
+|---|---|---|
+| `search_similar_works` | `query`(검색어, 300자 이하. 계획서 본문은 받지 않는다), `k`(기본 10) | 논문 id·제목·원문 URL·점수(0~1) |
+| `get_review_records` | `work_id` | 심사평·저자 답변·결정 요약과 원문 URL(신원 정보 없음) |
+| `get_post_status` | `doi` | 철회·정정·우려표명 등 사후 상태와 공지 링크 |
+
+확인: `python -m pytest tests/e4 -q -k mcp` → `11 passed`(SDK 클라이언트로 서버를 띄워 도구 3개 목록·호출 형식·없는 id 처리를 검사).
 
 ## 예정 엔드포인트 (main에 없음)
 
@@ -172,9 +223,4 @@ curl -X POST http://127.0.0.1:8000/premortem/package \
 | 경로 | 과제 | 지시문 요약 |
 |---|---|---|
 | `POST /upload/plan` | E4-L1a | txt·md·pdf·docx에서 텍스트 추출, 10MB 초과 거부, HWP·HWPX는 415와 "PDF나 DOCX로 저장" 안내, 디스크에 저장하지 않음. 텍스트·줄 수·추출 경고 반환 |
-| `GET /templates`, `GET /templates/{id}` | E4-L1b | 분야별 계획서 골격(한국어)과 설명, 데모 계획서 3건 연결 |
-| `GET /api` | E4-L1d | 코퍼스 편수·분야별 수·심사평 수·거절 비율·색인 문장 수·빌드 시각(매니페스트 실측값만, 없으면 빈 값과 사유) |
-| `GET /taxonomy` | E4-L1d | R0~R9 이름·설명·심각도 |
-| `GET /config/weights` | E4-L1d | 위험점수 가중치(설정 값, 없으면 기본값과 "기본값" 표시) |
 | `GET /premortem/precomputed`, `GET /premortem/precomputed/{plan_id}` | E6-L2a | 데모 3건 사전 계산본 목록·단건, 매니페스트 sha256과 다르면 404, 응답에 "사전 계산본(생성 시각)" 표시 |
-| MCP stdio 서버 | E4-L2b | 읽기 전용, 계획서 본문은 받지 않음(검색어만), 결과마다 출처 URL, 신원 정보 없음 |

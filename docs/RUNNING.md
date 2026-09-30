@@ -1,6 +1,6 @@
 # 실행 방법
 
-- 기준: `main` 커밋 `82146f9`. 이 문서의 명령은 그 커밋의 사본에서 Windows 11 + Git Bash + Python 3.12.10으로 실행해 확인했다(결과는 `docs/reports/E6-docs.md`).
+- 기준: `main` 커밋 `5e14b1c`. 이 문서의 명령은 main 사본(`82146f9`·`5e14b1c`)에서 Windows 11 + Git Bash + Python 3.12.10으로 실행해 확인했다(결과는 `docs/reports/E6-docs.md`).
 - **예정**이라고 적은 명령은 main에 아직 없는 스크립트다. 과제가 병합되면 그 과제 보고서(`docs/reports/<과제ID>.md`)를 본다.
 - 구조와 상태는 [ARCHITECTURE.md](ARCHITECTURE.md), 엔드포인트는 [API.md](API.md).
 
@@ -18,7 +18,7 @@ git config core.hooksPath .githooks        # 비밀값 검사 훅 켜기(클론�
 
 - 이후 `python`은 이 venv의 파이썬이다(Windows: `.venv/Scripts/python.exe`, 그 밖: `.venv/bin/python`).
 - 새 venv에 설치할 때는 네트워크가 필요하다. `torch`는 크고, GPU용 빌드가 필요하면 PyTorch 안내대로 인덱스를 따로 지정한다. 이 문서를 쓸 때는 이미 갖춰진 개발 venv에 같은 명령을 `--dry-run --offline`으로 돌려 의존성 80개가 모두 충족됨(`Would make no changes`)만 확인했다.
-- `torch`·`sentence-transformers`는 색인 빌드(예정)에만 쓴다. 지금 main의 서버·테스트·평가 코드는 이것을 import하지 않는다.
+- `torch`·`sentence-transformers`는 색인 빌드와 임베딩 검색(bge-m3)에 쓴다. 기본 테스트는 실제 모델을 불러오지 않는다(`NEUMANN_E2_MODEL_TESTS=1`일 때만).
 - 화면 스크린샷 스크립트(§7)를 쓸 때만 Playwright 브라우저가 필요하다: `python -m playwright install chromium`.
 
 ## 2. 환경변수
@@ -39,7 +39,8 @@ cp .env.example .env      # .env는 .gitignore로 막혀 있다. 절대 커밋�
 | `NEUMANN_LIVE_TESTS` | `1`이면 실제 API를 부르는 테스트도 돈다 | 꺼짐 |
 | `NEUMANN_RAW_DIR` | 공개자료 원본 폴더(§3) | 없음 |
 | `NEUMANN_DATA_DIR` | 가공 데이터 폴더(코퍼스·색인·평가 산출) | `<저장소>/data` |
-| `NEUMANN_EMBED_MODEL` | bge-m3 로컬 폴더(색인 빌드용, 예정) | 없음 |
+| `NEUMANN_EMBED_MODEL` | bge-m3 로컬 폴더(색인 빌드·검색용) | 없음 |
+| `NEUMANN_INDEX_DIR`, `NEUMANN_EMBED_DEVICE`, `NEUMANN_EMBED_BATCH` | 색인 폴더·임베딩 장치·배치(선택, `src/neumann/index/settings.py`) | `<데이터 폴더>/index` 등 |
 | `NEUMANN_API_HOST`, `NEUMANN_API_PORT` | 서버 주소 설정 칸. 지금 서버는 uvicorn 명령줄의 `--host`·`--port`로 정한다 | `127.0.0.1`, `8000` |
 
 키가 들어 있는지는 참·거짓으로만 확인한다. 값을 출력하지 않는다.
@@ -66,7 +67,7 @@ export NEUMANN_DATA_DIR="<데이터 폴더>"
 ├─ data/researcharcade/reviews/train-00000-of-00006.parquet, train-00001-of-00006.parquet
 ├─ data/disapere/DISAPERE.zip
 ├─ data/retraction_watch/retraction_watch.csv
-└─ models/bge-m3/                                      (예정 E2-L0에서 사용)
+└─ models/bge-m3/
 ```
 
 받은 곳과 라이선스는 [ARCHITECTURE.md §7](ARCHITECTURE.md#7-데이터-출처와-라이선스).
@@ -97,9 +98,27 @@ python -m neumann.sources.retraction prior <키워드>…   # 분야 키워드�
 
 확인한 출력(요약): `rows_read 72684`, `records_written 66737`(원논문 DOI 없는 5,947행 제외), 고유 원논문 DOI 63,690.
 
-## 5. 색인 빌드 (예정, E2-L0)
+## 5. 색인 빌드 (있음)
 
-main에는 아직 색인 코드가 없다. E2-L0 브랜치의 스크립트 이름은 `scripts/build_index.py`이고 입력은 §4의 코퍼스, 출력은 `<NEUMANN_DATA_DIR>/index/`다. bge-m3를 불러오므로 `NEUMANN_EMBED_MODEL`이 필요하다. 병합 뒤 `docs/reports/E2-L0.md`의 명령을 따른다. 이 문서에서는 실행하지 않았다.
+§4의 코퍼스를 문장 Excerpt·규칙 태그·BM25·bge-m3 임베딩으로 만들어 `<NEUMANN_DATA_DIR>/index/`에 쓴다. 색인 파일은 커밋하지 않는다.
+
+```bash
+python scripts/build_index.py                                            # 공유 코퍼스 → 색인(bge-m3 로드, NEUMANN_EMBED_MODEL 필요)
+python scripts/build_index.py --source fixtures --out <다른 폴더> --no-embed   # 공용 fixture로, 임베딩 없이(강등 표시)
+python scripts/build_index_check.py                                      # 색인 점검: 전량 오프셋 대조, 기본 질의 3건 상위 10편
+```
+
+- 확인한 것: `--source fixtures --no-embed`는 이 문서를 쓸 때 실행했다(`오프셋 대조(메모리) 44/44, (디스크) 44/44`, `강등: --no-embed`). 실데이터 전체 빌드와 `build_index_check.py`는 bge-m3를 불러오므로 이 문서에서 실행하지 않았다. E2-L0 보고서의 실측: 문장 133,769개 전량 오프셋 대조 100%, 빌드 76.6초(CUDA).
+- 임베딩 모델을 못 읽으면 검색은 어휘(BM25)만 쓰고 강등을 기록한다.
+
+## 5-1. MCP 서버 (있음)
+
+```bash
+python -m neumann.api.mcp_server        # stdio. 읽기 전용 도구 3종: search_similar_works, get_review_records, get_post_status
+python -m pytest tests/e4 -q -k mcp     # SDK 클라이언트로 서버를 띄워 도구 목록·호출 형식을 검사
+```
+
+`mcp` 패키지(`pyproject.toml`의 `mcp>=2.2,<3`)가 필요하다. 확인한 것: `11 passed`. 서버 단독 실행은 MCP 클라이언트가 붙어야 의미가 있어 테스트로만 확인했다.
 
 ## 6. 서버 실행 (있음)
 
@@ -120,7 +139,7 @@ python -m pytest tests/e4 -q               # 에픽별
 NEUMANN_LIVE_TESTS=1 python -m pytest -q   # 실제 API 테스트까지(키 필요, 돈이 든다)
 ```
 
-- 확인한 결과: `301 passed, 2 skipped`(main `82146f9`, 건너뛴 2건은 `NEUMANN_LIVE_TESTS=1`일 때만 도는 실제 API 테스트).
+- 확인한 결과: `456 passed, 6 skipped`(main `5e14b1c`). 건너뛴 것: 실제 API 테스트 3건(`NEUMANN_LIVE_TESTS=1`), 실제 bge-m3 1건(`NEUMANN_E2_MODEL_TESTS=1`), 브라우저 화면 1건(`NEUMANN_UI_TESTS=1`), `neumann.llm`이 아직 없어 건너뛴 1건.
 - 공유 데이터 폴더가 없으면 실데이터 테스트(`tests/e1/test_e1_corpus_real.py` 등)는 건너뛴다.
 
 화면 스크린샷(Playwright, 1440×900). 스크립트가 uvicorn을 하위 프로세스로 띄우고 끝나면 끈다:
