@@ -30,7 +30,7 @@ def _openai_llm_call() -> Any:
     from openai import OpenAI
 
     client = OpenAI(max_retries=0, timeout=180.0)
-    model = os.getenv("NEUMANN_LLM_MODEL") or "gpt-6-astra"
+    model = os.getenv("NEUMANN_LLM_MODEL") or "gpt-6.1-sol"
     log: list[dict[str, Any]] = []
 
     def llm_call(schema: dict, instructions: str, input: str, *, effort: str) -> dict | None:
