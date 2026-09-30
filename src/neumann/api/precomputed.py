@@ -214,6 +214,7 @@ def mark_result(hit: PrecomputedHit) -> dict[str, Any]:
             "source": entry.get("source"),
             "impl": entry.get("impl"),
             "demo": entry.get("demo"),
+            "models": entry.get("models", []),
             "file": entry.get("file"),
             "sha256": entry.get("sha256"),
             "integrity": "ok",
@@ -244,6 +245,7 @@ def list_items(directory: Path) -> dict[str, Any]:
                 "status": entry.get("status"),
                 "cards_total": entry.get("cards_total"),
                 "cards_by_generator": entry.get("cards_by_generator", {}),
+                "models": entry.get("models", []),
                 "elapsed_s": entry.get("elapsed_s"),
                 "sha256": entry.get("sha256"),
                 "integrity": state,
@@ -258,6 +260,7 @@ def list_items(directory: Path) -> dict[str, Any]:
         "generated_at": manifest.get("generated_at"),
         "source": manifest.get("source"),
         "pipeline": manifest.get("pipeline"),
+        "llm": manifest.get("llm"),
         "items": items,
     }
 

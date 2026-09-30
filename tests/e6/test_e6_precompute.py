@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 
+from neumann.config import get_settings
 from neumann.models import PlanDocument, PremortemResult
 from tests.e6.e6_support import ROOT, SCRIPT, block_external_network, fake_pipeline_result, load_script
 from tests.fixtures.loader import DEMO_PLANS, plan_text
@@ -88,6 +89,7 @@ def test_fixture_mode_writes_results_and_manifest_offline(tmp_path):
     # plan.md는 fixture 카드 2장(mock) — mock을 astra라고 세지 않는다
     assert entries["plan"]["cards_total"] == 2
     assert entries["plan"]["cards_by_generator"] == {"astra": 0, "rule": 0, "mock": 2}
+    assert manifest["llm"] is None and all(e["models"] == [] for e in entries.values())  # 대체본에 모델을 지어 붙이지 않는다
     # fixture가 없는 계획서는 카드를 지어내지 않고 사유를 남긴다
     for demo in ("plan_elife_neuro", "plan_medimaging"):
         _, raw = _read(out, entries[demo])
@@ -126,7 +128,10 @@ def test_pipeline_mode_calls_run_premortem_and_counts_by_generator(tmp_path):
     entries = {e["demo"]: e for e in manifest["entries"]}
     assert entries["plan"]["impl"] == "neumann.pipeline:run_premortem"
     assert entries["plan"]["cards_by_generator"] == {"astra": 1, "rule": 1, "mock": 0}
-    assert entries["plan_medimaging"]["cards_total"] == 0
+    assert entries["plan"]["models"] == ["gpt-6-astra"]  # astra 카드의 model
+    assert entries["plan_medimaging"]["cards_total"] == 0 and entries["plan_medimaging"]["models"] == []
+    s = get_settings()
+    assert manifest["llm"] == {"provider": s.llm_provider, "model": s.llm_model}  # 이름만(비밀값 없음)
     raw = _read(tmp_path, entries["plan"])[1]
     assert not any(n.startswith("[대체]") for n in raw["notices"])  # 실제 경로엔 대체 표시가 없다
     assert raw["session_id"] == "precomputed-plan"

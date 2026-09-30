@@ -166,6 +166,28 @@ def cards_by_generator(result: PremortemResult) -> dict[str, int]:
     return counts
 
 
+def result_models(result: PremortemResult) -> list[str]:
+    """결과를 만든 LLM 모델 id(카드의 model, 단계 impl의 "provider:model"). 규칙·fixture는 넣지 않는다."""
+    models = {c.model for c in result.risk_cards if c.model}
+    for stage in result.stages:
+        impl = stage.impl or ""
+        provider, _, model = impl.partition(":")
+        if provider in ("openai", "mock") and model:
+            models.add(impl)
+    return sorted(models)
+
+
+def llm_settings() -> dict[str, str] | None:
+    """파이프라인이 쓸 provider·모델 이름(비밀값 아님). 설정을 못 읽으면 None."""
+    try:
+        from neumann.config import get_settings
+
+        s = get_settings()
+        return {"provider": s.llm_provider, "model": s.llm_model}
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def plan_title(plan_text: str) -> str | None:
     for line in plan_text.splitlines():
         line = line.strip().lstrip("#").strip()
@@ -255,6 +277,7 @@ def build(
             "status": result.status,
             "cards_total": len(result.risk_cards),
             "cards_by_generator": by_gen,
+            "models": result_models(result),
             "degraded_stages": [s.stage for s in result.stages if s.state in ("degraded", "error")],
             "plan_text_included": with_plan,
         }
@@ -270,6 +293,7 @@ def build(
         "generator": "scripts/precompute_demo.py",
         "source": sources[0] if len(sources) == 1 else ("mixed" if sources else "none"),
         "pipeline": {"available": runner is not None, "impl": PIPELINE_IMPL if runner else FIXTURE_IMPL, "note": pipeline_note},
+        "llm": llm_settings() if runner is not None else None,
         "total_elapsed_s": round(time.perf_counter() - t_all, 3),
         "entries": entries,
         "failures": failures,

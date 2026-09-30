@@ -230,6 +230,17 @@ def test_lookup_by_text_for_main_fallback(store):
     assert pc.lookup_by_text(plan_text("plan.md"), directory / "nope") is None
 
 
+def test_marked_result_renders_through_e4_view_with_label(store):
+    """main.py가 폴백으로 붙일 때: mark_result → build_ui_view(E4) 화면 데이터에도 표시가 남는다."""
+    view_mod = pytest.importorskip("neumann.api.view", reason="E4 view.py가 이 브랜치에 없다")
+    directory, manifest = store
+    hit = pc.load_precomputed("plan", directory)
+    view = view_mod.build_ui_view(pc.mark_result(hit), pipeline_state="connected")
+    notices = view["_status"]["notices"]
+    assert notices[0].startswith(hit.label), notices
+    assert len(view["cards"]) == 2  # 카드도 그대로 그려진다
+
+
 def test_default_folder_follows_data_dir_setting(monkeypatch, tmp_path):
     from neumann.config import get_settings
 
