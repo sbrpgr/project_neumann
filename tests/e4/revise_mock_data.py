@@ -26,6 +26,53 @@ END = "</script>"
 BLOCK_RE = re.compile(re.escape(BEGIN) + r".*?" + re.escape(END), re.S)
 
 
+"""FIN-UI: 목업 계획서에 6~8절(일정·예산·참고문헌)을 덧붙인다. 최종 점검(⑤) 시연용 **의도적 오류**가 들어 있다(전부 가짜):
+- 구조: 2단계가 3단계 결과를, 3단계가 2단계 결과를 요구 → 선행관계 순환
+- 논리: 예산 항목 합 1억 1,000만원 ≠ 기재 1억 2,000만원 / 250 mL × 40회 = 10 L ≠ 기재 8 L
+- 물리: 상온 25 K(온도 단위) / 이온전도도(mS/cm)+점도(mPa·s) 합산(차원 불일치)
+- 근거: 참고문헌 [3]은 fixture에서 철회 기록(인용·철회 조회)
+원래 1~5절 줄 번호(16·17·22행)는 그대로라 위험카드·수정 권고 fixture가 그대로 맞는다."""
+EXTRA_PLAN = """
+## 6. 일정과 절차
+
+1단계(1~6개월)에 데이터 수집과 정제를 마친다.
+2단계(7~12개월)의 GNN 학습은 3단계 검증 실험의 측정값이 확보된 후 시작한다.
+3단계(13~18개월)의 검증 실험은 2단계 학습 모델이 고른 후보 조성을 대상으로 수행한다.
+총 연구 기간은 18개월이다.
+
+## 7. 예산과 실험 규모
+
+인건비 5,000만원, 장비비 4,000만원, 재료비 2,000만원을 합산해 총 예산은 1억 2,000만원이다.
+전해액 시료는 1회당 250 mL 씩 총 40회 합성하여 합계 8 L를 사용한다.
+목표 이온전도도는 상온(25 K)에서 12 mS/cm 이상이다.
+모델 선별 지표는 예측 이온전도도(mS/cm)와 점도(mPa·s)를 더한 값으로 정의한다.
+
+## 8. 참고문헌
+
+[1] [FAKE] EquiMol: equivariant message passing for molecular property prediction. FakeConf 2099.
+[2] [FAKE] Scaffold-aware contrastive pretraining for small-molecule GNNs. FakeConf 2099.
+[3] [FAKE] Uncertainty-calibrated GNN ensembles for aqueous solubility prediction. FakeConf 2099.
+"""
+
+
+def extend_plan(view: dict, text: str) -> str:
+    """계획서 본문 끝에 EXTRA_PLAN을 붙이고 view.plan.lines(n=원문 줄 번호, 빈 줄 제외)를 이어 쓴다."""
+    base = text if text.endswith("\n") else text + "\n"
+    full = base + EXTRA_PLAN.lstrip("\n")
+    lines = view["plan"]["lines"]
+    start = len(base.split("\n"))  # 다음 줄의 1-based 번호(base 끝의 개행 뒤)
+    for i, raw in enumerate(EXTRA_PLAN.lstrip("\n").split("\n")):
+        if not raw.strip():
+            continue
+        row = {"n": start + i, "t": raw}
+        if raw.startswith("#"):
+            row["h"] = "h"
+        lines.append(row)
+    view["plan"]["meta"] = f"정규화 {len(lines)}줄"
+    view["plan"]["size"] = f"{len(full.encode('utf-8')) / 1024:.1f} KB"
+    return full
+
+
 def build_mock_final() -> dict:
     from tests.e4.test_revise_ui import build_revision
     from tests.e4.test_view_shots import rich_view
@@ -33,6 +80,7 @@ def build_mock_final() -> dict:
 
     view = rich_view()
     view.pop("result", None)  # 목업은 서버를 부르지 않는다(원결과 불필요)
+    full_text = extend_plan(view, plan_text())
     for g in view.get("pipeline", []):  # 단계 소요 시간은 실행마다 달라 블록이 흔들린다 → 0으로(목업 표시용)
         g["ms"] = 0
     view.setdefault("kpi", {})["elapsed_s"] = 0
@@ -47,7 +95,7 @@ def build_mock_final() -> dict:
         {"rank": 2, "edit_id": f"{c2['id']}/e2", "d": "adopt"},
         {"rank": 2, "edit_id": f"{c2['id']}/e4", "d": "adopt"},
     ]
-    return {"note": "디자인 점검용 목업 · 공용 fixture(가짜 데이터) · 서버 호출 없음", "view": view, "plan_text": plan_text(),
+    return {"note": "디자인 점검용 목업 · 공용 fixture(가짜 데이터) · 서버 호출 없음", "view": view, "plan_text": full_text,
             "revisions": revisions, "preset": preset}
 
 
