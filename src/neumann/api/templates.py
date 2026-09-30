@@ -1,4 +1,4 @@
-"""AI for Science 템플릿 카탈로그 API (E4-L1b).
+"""AI for Science 템플릿 카탈로그 API (E4-L1b, 예시·템플릿 AI for Science 재정렬 E4-L1e).
 
 붙이는 법(PM, ``main.py``)::
 
@@ -7,7 +7,8 @@
 
 라우트
 - ``GET /templates``       카탈로그: 범위 안내(``scope``), 템플릿 목록, 예시 계획서 목록
-- ``GET /templates/{id}``  템플릿이면 계획서 골격 본문, 예시면 데모 계획서 원문(``tests/fixtures/plans/``)
+- ``GET /templates/{id}``  템플릿이면 계획서 골격 본문, 예시면 예시 계획서 원문
+  (``api/templates/examples/`` 또는 데모 계획서 ``tests/fixtures/plans/``)
 
 데이터는 ``api/templates/``(이 모듈과 같은 이름의 폴더, ``__init__.py`` 없음)에 있다.
 ``catalog.json``이 목록이고 ``catalog.schema.json``(JSON Schema Draft-07)이 그 모양이다.
@@ -33,7 +34,8 @@ DATA_DIR = Path(__file__).resolve().parent / "templates"
 CATALOG_PATH = DATA_DIR / "catalog.json"
 SCHEMA_PATH = DATA_DIR / "catalog.schema.json"
 REPO_ROOT = Path(__file__).resolve().parents[3]
-EXAMPLES_DIR = REPO_ROOT / "tests" / "fixtures" / "plans"
+# 예시 계획서가 있어도 되는 폴더(경로는 카탈로그의 저장소 기준 상대 경로, 스키마 패턴과 같은 두 곳)
+EXAMPLE_DIRS = (DATA_DIR / "examples", REPO_ROOT / "tests" / "fixtures" / "plans")
 ID_PATTERN = r"^[a-z0-9]+(-[a-z0-9]+)*$"
 HEADING = re.compile(r"^##\s+(?:\d+\.\s*)?(.+?)\s*$", re.M)
 
@@ -90,7 +92,7 @@ def catalog_errors(catalog: dict[str, Any]) -> list[str]:
         if e["template_id"] not in tpl_ids:
             errs.append(f"{e['id']}: 없는 템플릿 {e['template_id']}")
         path = (REPO_ROOT / e["path"]).resolve()
-        if path.parent != EXAMPLES_DIR.resolve() or not path.is_file():
+        if path.parent not in {d.resolve() for d in EXAMPLE_DIRS} or not path.is_file():
             errs.append(f"{e['id']}: 예시 파일 없음 {e['path']}")
         if e["domain"] not in domains:
             errs.append(f"{e['id']}: 범위 밖 분야 {e['domain']}")

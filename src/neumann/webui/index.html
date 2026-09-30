@@ -126,6 +126,7 @@
   .file .fm { font-size: 12.5px; color: var(--muted); margin-top: 2px; display: flex; gap: 8px; align-items: center; }
   .file .x { margin-left: auto; width: 30px; height: 30px; border: none; background: transparent; color: var(--faint); border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; }
   .file .x:hover { background: var(--soft); color: var(--ink); }
+  .drop.busy { cursor: progress; border-style: solid; border-color: var(--ink); } .filewarn { list-style: none; margin: 6px 0 0 0; padding: 0 2px; font-size: 12px; color: var(--amber); } .filewarn li::before { content: '! '; }
   .prev { margin-top: 12px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
   .prev .hd { display: flex; justify-content: space-between; padding: 9px 14px; background: var(--soft); font-size: 12.5px; color: var(--muted); border-bottom: 1px solid var(--line); }
   .prev .bd { display: grid; grid-template-columns: 32px minmax(0, 1fr); padding: 8px 14px 10px 6px; font-size: 14px; max-height: 260px; overflow: auto; }
@@ -488,8 +489,9 @@
     var f = S.mode === 'file', lines = planLines(S.text);
     var area;
     if (f) {
-      area = '<div class="drop" id="drop" role="button" tabindex="0"><span class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M6 10l6-6 6 6"/><path d="M4 20h16"/></svg></span><div><b>계획서 파일을 끌어다 놓거나 클릭해서 선택</b><span class="sm">MD · TXT · 최대 10 MB · PDF · DOCX 준비 중</span></div></div><input class="hidden-file" type="file" id="fileIn" accept=".md,.txt,.markdown,text/plain,text/markdown">' +
+      area = dropHtml() +
         (S.filename ? '<div class="file"><span class="fic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg></span><div><div class="fn">' + esc(S.filename) + '</div><div class="fm"><span class="mono">' + esc(S.fileMeta) + '</span><span class="tag acc">텍스트 ' + lines.length + '줄</span></div></div><button class="x" type="button" id="fileX" title="파일 제거"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>' +
+          fileWarnHtml() +
           '<div class="prev"><div class="hd"><span>추출된 텍스트</span><span class="mono">' + lines.length + ' lines</span></div><div class="bd">' + lines.slice(0, 400).map(function (l, i) { return '<div class="ln">' + (i + 1) + '</div><div class="l">' + esc(l) + '</div>'; }).join('') + '</div></div>' : '');
     } else {
       area = '<textarea class="ta" id="ta" spellcheck="false" placeholder="연구계획서 본문">' + esc(S.text) + '</textarea><div class="sm muted" style="display:flex; justify-content:space-between; margin-top:6px;"><span class="mono" id="cnt">' + S.text.length + ' chars</span></div>';
@@ -505,7 +507,7 @@
   }
 
   /* ---------- 1 입력 · 템플릿 선택기 · 예시 · 범위 안내 (GET /templates, E4-L1b) ---------- */
-  var SCOPE = { label: 'AI 활용 과학 연구 계획서 전용', domains: ['소재·화학·분자', '단백질·생물·신약', '물리·PDE·기후', '신경과학', '의료영상'] };
+  var SCOPE = { label: 'AI 활용 과학 연구 계획서 전용', domains: ['소재·화학·분자', '단백질·생물·신약', '물리·PDE·기후'] };  /* 코퍼스 3분야(E4-L1e) */
   var T = { cat: null, err: '', tpl: null, ex: null, loaded: null, undo: null };
   var FIT = null;  /* 적합성 판정(E3-L1c assess_fitness) 결과. 연결은 PM: window.NeumannInput.showFitness(result) */
   var ROMAN = ['i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix', 'x'];
@@ -593,16 +595,74 @@
     box.open = SEND_NOTE.open;
     box.addEventListener('toggle', function () { SEND_NOTE.open = box.open; mo.textContent = SEND_NOTE.more[box.open ? 1 : 0]; });
   }
-  function readFile(file) {
-    S.inErr = '';
-    if (!file) return;
-    var name = file.name || '', low = name.toLowerCase();
-    if (!/\.(md|txt|markdown)$/.test(low)) { S.inErr = (low.match(/\.[a-z0-9]+$/) || ['이 형식'])[0].toUpperCase().replace('.', '') + ' 업로드는 준비 중 — 본문을 직접 입력에 붙여넣기'; render(); return; }
-    if (file.size > 10 * 1024 * 1024) { S.inErr = '10 MB 초과'; render(); return; }
+  /* ---------- 1 입력 · 파일 업로드 (E4-L1f → POST /upload/plan, E4-L1a) ----------
+     서버 판: 모든 형식을 FormData(file)로 보내고 추출 텍스트를 받는다. 거부(400·413·415·422·503)는 서버 detail 문구 그대로.
+     정적 판(업로드 API 없음 = 404·405·501, 또는 fetch 실패): md·txt만 브라우저에서 읽고, 그렇게 읽었다고 파일 카드에 적는다.
+     파일명·경고·서버 문구는 esc()로만 HTML에 넣는다. */
+  var UP = { busy: '', api: window.NEUMANN_STATIC ? 'none' : '', warn: null };
+  var UP_MAX = 10 * 1024 * 1024;
+  var UP_ACCEPT = '.txt,.md,.markdown,.pdf,.docx,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  var UP_HINT = 'TXT · MD · PDF · DOCX · 최대 10 MB · 정리 뒤 50,000자 · HWP는 PDF·DOCX로 저장';
+  var UP_LIVE_ONLY = 'PDF·DOCX는 라이브 서버에서만 읽습니다 — 본문을 직접 입력에 붙여넣기';
+  var UP_OFFLINE = '서버에 연결하지 못함';
+  function upSize(n) { n = +n || 0; return n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : (n >= 1024 ? (n / 1024).toFixed(1) + ' KB' : n + ' B'); }
+  function upExt(name) { return (String(name).toLowerCase().match(/\.([a-z0-9]+)$/) || ['', ''])[1]; }
+  function dropHtml() {
+    var b = UP.busy;
+    return '<div class="drop' + (b ? ' busy' : '') + '" id="drop" role="button" tabindex="0" aria-busy="' + (b ? 'true' : 'false') + '"' + (b ? ' aria-disabled="true"' : '') + '><span class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M6 10l6-6 6 6"/><path d="M4 20h16"/></svg></span>' +
+      '<div><b>' + (b ? '읽는 중…' : '계획서 파일을 끌어다 놓거나 클릭해서 선택') + '</b><span class="sm">' + (b ? esc(b) + ' · 서버에서 텍스트 추출' : UP_HINT) + '</span></div></div>' +
+      '<input class="hidden-file" type="file" id="fileIn" accept="' + UP_ACCEPT + '"' + (b ? ' disabled' : '') + '>';
+  }
+  function fileWarnHtml() {
+    var w = UP.warn;
+    if (!w || w.text !== S.text || !w.list.length) return '';
+    return '<ul class="filewarn" id="fileWarn">' + w.list.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>';
+  }
+  function upDetail(j, status) {
+    var d = j && j.detail;
+    if (typeof d === 'string' && d) return d;
+    if (Array.isArray(d) && d.length) return d.map(function (x) { return x && x.msg ? String(x.msg) : String(x); }).join(' · ');
+    return (status >= 200 && status < 300 ? '업로드 응답을 해석하지 못함' : '업로드 실패') + ' · HTTP ' + status;
+  }
+  function upDone(text, filename, meta, warns) {
+    S.text = text; S.filename = filename; S.fileMeta = meta; S.inErr = '';
+    UP.warn = warns.length ? { text: text, list: warns } : null;
+    render();
+  }
+  /* 정적 판·서버 연결 실패: md·txt만 브라우저에서 UTF-8로 읽는다. why = 왜 서버를 못 썼는지(화면에 그대로 남긴다) */
+  function readLocal(file, name, why) {
+    var ext = upExt(name);
+    if (ext === 'pdf' || ext === 'docx') { S.inErr = why + ' — ' + UP_LIVE_ONLY; render(); return; }
+    if (!/^(md|txt|markdown)$/.test(ext)) { S.inErr = why + ' — ' + (ext ? ext.toUpperCase() : '이 형식') + ' 형식은 읽지 못함 · 브라우저에서는 TXT·MD만 읽습니다'; render(); return; }
     var rd = new FileReader();
-    rd.onload = function () { S.text = String(rd.result || ''); S.filename = name; S.fileMeta = (file.size >= 1024 ? (file.size / 1024).toFixed(1) + ' KB' : file.size + ' B'); render(); };
-    rd.onerror = function () { S.inErr = '파일을 읽지 못함'; render(); };
+    rd.onload = function () { upDone(String(rd.result || ''), name, ext.toUpperCase() + ' · ' + upSize(file.size) + ' · 브라우저 읽기', [why + ' · 브라우저에서 UTF-8로 읽음(서버 정리·인코딩 추정 없음)']); };
+    rd.onerror = function () { S.inErr = why + ' — 파일을 읽지 못함'; render(); };
     rd.readAsText(file, 'utf-8');
+  }
+  function readFile(file) {
+    if (!file || UP.busy) return;  /* 올리는 중에는 새 파일을 받지 않는다(중복 제출 차단) */
+    var name = file.name || '';
+    S.inErr = '';
+    if (file.size > UP_MAX) { S.inErr = '파일이 10 MB를 넘습니다(' + upSize(file.size) + ') — 올리지 않았습니다'; render(); return; }
+    if (UP.api === 'none') { readLocal(file, name, '정적 판 · 업로드 API 없음'); return; }
+    UP.busy = name || '파일'; render();
+    var fd = new FormData(); fd.append('file', file, name);
+    fetch('upload/plan', { method: 'POST', body: fd })
+      .then(function (r) {
+        if (r.status === 404 || r.status === 405 || r.status === 501) { UP.api = 'none'; return null; }
+        return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, status: r.status, j: j || {} }; });
+      })
+      .then(function (x) {
+        UP.busy = '';
+        if (!x) { readLocal(file, name, '정적 판 · 업로드 API 없음'); return; }
+        var j = x.j;
+        if (!x.ok || typeof j.text !== 'string') { S.inErr = upDetail(j, x.status); render(); return; }
+        UP.api = 'server';
+        var meta = [String(j.kind || upExt(name)).toUpperCase(), upSize(j.size_bytes || file.size)];
+        if (j.pages != null) meta.push(j.pages + '쪽');
+        if (j.encoding) meta.push(String(j.encoding).toUpperCase());
+        upDone(j.text, j.filename || name, meta.join(' · '), Array.isArray(j.warnings) ? j.warnings.map(String) : []);
+      }, function () { UP.busy = ''; readLocal(file, name, UP_OFFLINE); });
   }
 
   /* ---------- 2 실행 (E4-L2d: POST /premortem/jobs → 1~2초마다 GET /premortem/jobs/{id}. 작업 API가 없으면(404) POST /premortem/view) ---------- */

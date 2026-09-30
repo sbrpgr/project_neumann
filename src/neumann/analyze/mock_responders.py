@@ -85,5 +85,105 @@ def synthesize_cards(call: LLMCall) -> dict[str, Any]:
     return {"cards": cards[:8], "no_card_reason": None if cards else "mock: 해당 카드 없음"}
 
 
+# ── v1 단계(E3-L1w): 적합성 · 예상 심사평 · 체크리스트 · 2차 검증 ────────────────────────
+# 입력은 각 모듈이 만든 JSON payload(provider 어댑터가 풀어 준다). 문장에 숫자·따옴표를 넣지 않는다(게이트 통과용).
+
+
+def _plan_from_numbered(text: str, n_lines: int) -> PlanDocument:
+    """'번호: 본문' 줄(빈 줄 생략)을 원래 줄 번호 그대로 PlanDocument로 되돌린다."""
+    by_no: dict[int, str] = {}
+    for raw in text.split("\n"):
+        m = _LINE.match(raw)
+        if m:
+            by_no[int(m.group(1))] = m.group(2)
+    n = max([n_lines, *by_no]) if by_no else max(n_lines, 1)
+    lines = [PlanLine(no=i, text=by_no.get(i, "")) for i in range(1, n + 1)]
+    body = "\n".join(ln.text for ln in lines)
+    return PlanDocument(plan_id=sha256_text(body), session_id="mock", lines=lines)
+
+
+def fitness(call: LLMCall) -> dict[str, Any]:
+    """적합성: 판정은 query_axes mock과 같은 규칙(연구 어휘 수), 요소별 줄은 적합성 규칙 신호."""
+    from neumann.analyze.fitness import ELEMENTS, rule_fitness  # E3-L1c. 없으면 파이프라인이 이 단계를 부르지 않는다
+
+    payload = call.payload
+    plan = _plan_from_numbered(str(payload.get("plan", "")), int(payload.get("n_lines") or 0))
+    signal = rule_fitness(plan)
+    is_research = rules.looks_like_research(plan)
+    return {
+        "verdict": "research_plan" if is_research else "not_research_plan",
+        "elements": {e: {"present": bool(signal["elements"][e]["plan_lines"]),
+                         "plan_lines": list(signal["elements"][e]["plan_lines"])} for e in ELEMENTS},
+        "field": "",
+        "reason": "mock: 연구 어휘 개수로 판정",
+    }
+
+
+def expected_review(call: LLMCall) -> dict[str, Any]:
+    """예상 심사평: 카드마다 약점·요청 한 문장씩(그 카드의 첫 근거와 카드 인용 줄에 연결)."""
+    weakness: list[dict[str, Any]] = []
+    request: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for card in call.payload.get("cards", []):
+        if card.get("risk_code") in seen or not card.get("evidence"):
+            continue
+        seen.add(card["risk_code"])
+        ids = {"card_ids": [card["id"]], "excerpt_ids": [card["evidence"][0]["id"]],
+               "plan_lines": list(card.get("plan_lines", []))[:6]}
+        kind = card.get("risk_type", "")
+        weakness.append({"text": f"mock 응답: {kind} 유형의 지적이 유사 연구 심사에서 나왔다.", **ids})
+        request.append({"text": f"mock 응답: {kind} 위험을 막는 절차를 착수 전에 계획서에 적을 것.", **ids})
+    return {"strength": [], "weakness": weakness[:4], "request": request[:4]}
+
+
+def checklist(call: LLMCall) -> dict[str, Any]:
+    """체크리스트: 카드마다 행동 하나(카드가 인용한 줄, 카드 근거 앞 두 건)."""
+    first_line = next((ln["no"] for ln in call.payload.get("plan_lines", [])), None)
+    cards = []
+    for card in call.payload.get("cards", []):
+        lines = list(card.get("why_plan_lines") or ([first_line] if first_line else []))
+        cards.append(
+            {
+                "card_id": card["card_id"],
+                "actions": [
+                    {
+                        "action": f"mock 응답: {card.get('risk_name', '')} 위험을 줄이는 절차를 착수 전에 계획서에 적는다.",
+                        "verify": "mock 응답: 계획서 해당 줄에 절차가 적혀 있다.",
+                        "plan_lines": lines,
+                        "evidence_ids": [e["excerpt_id"] for e in card.get("evidence", [])][:2],
+                    }
+                ],
+            }
+        )
+    return {"cards": cards}
+
+
+def semantic_validate(call: LLMCall) -> dict[str, Any]:
+    """2차 검증: 인용 줄이 있으면 맞음, 없으면 약함(행동도 연결 줄 유무로)."""
+    cards = []
+    for card in call.payload.get("cards", []):
+        cards.append(
+            {
+                "card_id": card["card_id"],
+                "verdict": "match" if card.get("cited_lines") else "weak",
+                "reason": "mock 판정: 인용한 계획서 줄 유무로 정함",
+                "actions": [
+                    {"item_id": a["item_id"], "verdict": "match" if a.get("plan_lines") else "weak",
+                     "reason": "mock 판정: 연결된 계획서 줄 유무로 정함"}
+                    for a in card.get("actions", [])
+                ],
+            }
+        )
+    return {"cards": cards}
+
+
 def default_responders() -> dict[str, Any]:
-    return {"query_axes": query_axes, "extract_issues": extract_issues, "synthesize_cards": synthesize_cards}
+    return {
+        "fitness": fitness,
+        "query_axes": query_axes,
+        "extract_issues": extract_issues,
+        "synthesize_cards": synthesize_cards,
+        "expected_review": expected_review,
+        "checklist": checklist,
+        "semantic_validate": semantic_validate,
+    }

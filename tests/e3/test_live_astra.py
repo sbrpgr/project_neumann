@@ -13,7 +13,7 @@ import os
 import pytest
 
 from neumann.analyze.backend import FixtureBackend, IndexBackend
-from neumann.pipeline import run_premortem, summarize
+from neumann.pipeline import FITNESS_MISSING, run_premortem, summarize
 from tests.e3.corpus import build_backend
 from tests.fixtures.loader import NEGATIVE_PLAN, plan_text
 
@@ -56,7 +56,10 @@ def test_demo_plan_astra_path(backend):
     _show("plan.md / astra", r, backend)
     assert len(r.risk_cards) >= 1
     assert all(c.generator.value == "astra" for c in r.risk_cards)
-    assert all(s.state == "ok" for s in r.stages), [(s.stage, s.state, s.detail) for s in r.stages]
+    # 적합성 모듈(E3-L1c)이 아직 없으면 fitness만 skipped로 남는다(E3-L1w)
+    assert all(s.state == "ok" or s.detail == FITNESS_MISSING for s in r.stages), [
+        (s.stage, s.state, s.detail) for s in r.stages
+    ]
     src = _reviews(backend, r)
     ev = {e.excerpt_id: e for e in r.evidence}
     for c in r.risk_cards:

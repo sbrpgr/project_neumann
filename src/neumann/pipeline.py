@@ -1,15 +1,24 @@
-"""분석 파이프라인: 계획서 → 유사 연구 → astra 지적 추출 → astra 카드 합성 → 원문 대조.
+"""분석 파이프라인: 계획서 → 적합성 → 유사 연구 → astra 지적 추출 → astra 카드 합성 → 원문 대조
+→ 예상 심사평 → 예방 체크리스트 → 2차 의미검증.
 
     run_premortem(plan_text, *, session_id=None) -> PremortemResult
 
 단계(StageStatus.stage / phase):
-  plan_normalize (INPUT) → query_axes (INPUT, astra ①) → search (EVIDENCE) → extract_issues (EVIDENCE, astra ②)
-  → synthesize_cards (RISK, astra ③) → verify_evidence (REVIEW)
+  plan_normalize (INPUT) → fitness (INPUT, astra, E3-L1c) → query_axes (INPUT, astra ①) → search (EVIDENCE)
+  → extract_issues (EVIDENCE, astra ②) → synthesize_cards (RISK, astra ③) → verify_evidence (REVIEW)
+  → expected_review (REVIEW, astra, E3-L1a) → checklist (ACTION, astra, E3-L1b) → semantic_validate (ACTION, astra, E3-L1b)
 
 - 예외로 죽지 않는다. 단계가 실패하면 그 단계만 규칙으로 대신하거나(비상 경로) 건너뛰고 StageStatus에 남긴다.
 - 강등(degraded/error)이 하나라도 있으면 결과 status가 "degraded"다(models.PremortemResult가 강제).
 - 카드가 0장이면 사유를 `risk_synthesis.no_card_reason`과 `notices`에 담는다.
 - 카드 근거는 모두 원문 대조(Excerpt.verify_against)를 통과한 것만 남는다.
+- 적합성 판정이 "분석하지 않음"(unfit)이면 검색 전에 끝낸다(카드 0장·사유). 적합성 모듈(E3-L1c)이 없으면 그 단계는
+  skipped로 남기고 astra ①의 연구계획서 판정으로 대신한다(E3-L0 동작).
+- LLM 단계(적합성·예상 심사평·체크리스트·2차 검증)는 provider 어댑터(`review.provider_llm_call`)로 부른다. 생성 주체는
+  provider의 `generator` 속성(openai→astra, mock→mock, off→rule)에서만 읽는다. 호출마다 시간 상한은 `llm.task_options`.
+- 같은 계획서(plan_id)는 astra 검색어를 캐시(`data/cache/queries/`)해 같은 유사 연구가 나온다. 적중 여부는
+  `plan_checks.queries.cache`와 `manifest.query_cache`에 싣는다.
+- `manifest.timings_s`(단계별 소요), `total_s`(전체), `stage_limits_s`(LLM 단계 호출 상한).
 
 명령줄: python -m neumann.pipeline PLAN.md [--provider openai|mock|off] [--backend index|fixture --corpus X.json]
 """
@@ -31,11 +40,14 @@ from typing import Any
 
 from neumann.analyze import backend as backend_mod
 from neumann.analyze import cards as cards_mod
+from neumann.analyze import checklist as checklist_mod
 from neumann.analyze import extract as extract_mod
 from neumann.analyze import queries as queries_mod
+from neumann.analyze import review as review_mod
 from neumann.analyze import rules
+from neumann.analyze import validate as validate_mod
 from neumann.analyze.backend import EvidenceBackend, Hit
-from neumann.llm import LLMProvider, make_llm
+from neumann.llm import LLMProvider, make_llm, provider_generator, task_options
 from neumann.models import (
     Excerpt,
     PlanDocument,
@@ -45,8 +57,15 @@ from neumann.models import (
     StageStatus,
 )
 
-PIPELINE_VERSION = "neumann-e3-l0"
+PIPELINE_VERSION = "neumann-e3-l1w"
 DEFAULT_K = 10
+FITNESS_MISSING = "적합성 모듈 없음(E3-L1c 미병합) — astra ①의 연구계획서 판정으로 대신"
+# v1 단계: (단계 이름 = LLM task 이름, 화면 단계 묶음). 이 순서로 붙인다(체크리스트 뒤에 검증해야 행동도 판정한다).
+V1_STAGES: tuple[tuple[str, str], ...] = (
+    ("expected_review", "REVIEW"),
+    ("checklist", "ACTION"),
+    ("semantic_validate", "ACTION"),
+)
 
 log = logging.getLogger(__name__)
 
@@ -129,6 +148,10 @@ class _Run:
             if rec["state"] in ("degraded", "error"):
                 self.notice(f"[{name}] {rec['state']}: {detail}")
 
+    def fill(self, rec: dict[str, Any], stage: StageStatus) -> None:
+        """모듈이 만든 단계 기록(StageStatus)을 이 단계의 기록으로 옮긴다(소요 시간은 여기서 잰다)."""
+        rec.update(state=stage.state, detail=stage.detail, impl=stage.impl, counts=dict(stage.counts))
+
     def skip(self, name: str, phase: str, why: str) -> None:
         self.stages.append(StageStatus(stage=name, state="skipped", detail=safe_text(why), phase=phase))
         self.timings[name] = 0.0
@@ -147,8 +170,32 @@ def _load_settings() -> tuple[Any, str | None]:
 
 
 def _default_cache_dir(settings: Any) -> Path | None:
+    """캐시 뿌리(`data/cache`). 지적 추출은 `extract/`, 검색어는 `queries/` 아래에 둔다."""
     data_dir = getattr(settings, "data_dir", None)
-    return Path(data_dir) / "cache" / "extract" if data_dir else None
+    return Path(data_dir) / "cache" if data_dir else None
+
+
+def _load_fitness() -> Any | None:
+    """적합성 모듈(E3-L1c). 아직 병합 전이면 None(그 단계는 skipped로 남긴다)."""
+    try:
+        from neumann.analyze import fitness  # type: ignore[attr-defined]
+    except ImportError:
+        return None
+    return fitness
+
+
+def _llm_call_for(llm: LLMProvider, task: str, settings: Any) -> tuple[Any | None, dict[str, Any], str | None]:
+    """provider → 주입용 llm_call(`review.provider_llm_call`). (llm_call 또는 None, 호출 옵션, 못 만든 사유).
+
+    생성 주체는 provider의 `generator` 속성(또는 이름 대응)에서만 정한다. 모르면 LLM을 부르지 않는다(규칙 경로).
+    """
+    opts = task_options(task, settings)
+    try:
+        gen = provider_generator(llm)
+        call = review_mod.provider_llm_call(llm, task=task, timeout_s=opts["timeout_s"], generator=gen)
+    except ValueError:
+        return None, opts, f"provider {getattr(llm, 'name', '?')}의 생성 주체를 알 수 없어 LLM을 부르지 않았다"
+    return call, opts, None
 
 
 def run_premortem(
@@ -169,6 +216,7 @@ def run_premortem(
     llm/provider: 주입한 provider가 우선, 없으면 provider 이름("openai"|"mock"|"off"), 없으면 설정.
     backend: 근거 저장소. 없으면 E2 실색인(`IndexBackend`). fixture는 명시할 때만.
     exclude_work_ids: 백테스트 누출 제거용(검색에서 뺀다).
+    cache_dir: 캐시 뿌리(기본 `data/cache`, None이면 캐시 끔). 추출은 `extract/`, 검색어는 `queries/`.
     """
     t_start = time.perf_counter()
     run = _Run()
@@ -182,6 +230,8 @@ def run_premortem(
         llm = make_llm(settings, provider)
     if cache_dir == "default":
         cache_dir = _default_cache_dir(settings)
+    cache_root = Path(cache_dir) if isinstance(cache_dir, str | Path) else None
+    stage_limits: dict[str, float] = {}
 
     extras: dict[str, Any] = {
         "plan_checks": {},
@@ -212,15 +262,57 @@ def run_premortem(
         plan = PlanDocument.from_text("", session_id)
         no_card_reason = no_card_reason or "계획서 정규화 실패"
 
-    # 2. astra ① 검색어·축 ──────────────────────────────────────────────────
+    # 2. 입력 적합성(E3-L1c) — 검색 전에. 분석하지 않음(unfit)이면 카드 0장·사유로 끝 ─────────────
+    fit: dict[str, Any] | None = None
+    fitness_mod = _load_fitness()
+    if no_card_reason is not None:
+        run.skip("fitness", "INPUT", no_card_reason)
+    elif fitness_mod is None:
+        run.skip("fitness", "INPUT", FITNESS_MISSING)
+    else:
+        with run.stage("fitness", "INPUT") as st:
+            call, opts, why = _llm_call_for(llm, "fitness", settings)
+            stage_limits["fitness"] = opts["timeout_s"]
+            fit = fitness_mod.assess_fitness(plan, call, effort=opts["effort"])
+            run.fill(st, fitness_mod.fitness_stage(fit))
+            if why:
+                st["detail"] = f"{st['detail']}; {why}"
+        if fit is not None:
+            extras["plan_checks"]["fitness"] = fit
+            if fit.get("notice"):
+                run.notice(fit["notice"])
+            if not fit.get("analyze", True):
+                no_card_reason = f"입력이 연구계획서가 아니다({fit.get('generator')} 판단: {fit.get('reason')}); 검색 안 함"
+                extras["plan_checks"]["suitability"] = {
+                    "is_research_plan": False,
+                    "reason": fit.get("reason"),
+                    "reason_lines": [],
+                    "generator": fit.get("generator"),
+                    "source": "fitness",
+                    "verdict": fit.get("verdict"),
+                }
+
+    # 3. astra ① 검색어·축 ──────────────────────────────────────────────────
     qp: queries_mod.QueryPlan | None = None
     if no_card_reason is None:
         with run.stage("query_axes", "INPUT") as st:
-            qp = queries_mod.make_queries(plan, llm, settings)
-            st["impl"] = f"{llm.name}:{llm.model}" if qp.generator != "rule" else "fallback:rules.fallback_queries"
-            st["counts"] = {"queries": len(qp.queries), "axes": len(qp.axes)}
+            stage_limits["query_axes"] = task_options(queries_mod.TASK, settings)["timeout_s"]
+            qp = queries_mod.make_queries(
+                plan, llm, settings, cache_dir=cache_root / "queries" if cache_root is not None else None
+            )
+            hit = bool(qp.cache.get("hit"))
+            if qp.generator == "rule":
+                st["impl"] = "fallback:rules.fallback_queries"
+            else:
+                st["impl"] = f"cache:{llm.name}:{qp.model}" if hit else f"{llm.name}:{llm.model}"
+            st["counts"] = {"queries": len(qp.queries), "axes": len(qp.axes), "cache_hit": int(hit)}
             if qp.fallback_reason:
                 st["state"], st["detail"] = "degraded", f"비상 규칙 경로: {qp.fallback_reason}"
+            elif hit:
+                st["detail"] = (
+                    f"검색어 캐시 적중({qp.generator}:{qp.model}, {qp.cache.get('created_at')} 생성); "
+                    f"연구계획서={qp.is_research}"
+                )
             else:
                 st["detail"] = f"{qp.llm.reason() if qp.llm else ''}; 연구계획서={qp.is_research}"
             extras["axes"] = qp.axes
@@ -232,13 +324,15 @@ def run_premortem(
                 "generator": qp.generator,
                 "research_word_hits": rules.research_signal(plan),
             }
-            extras["plan_checks"]["queries"] = {"queries": qp.queries, "generator": qp.generator, "notes": qp.notes}
+            extras["plan_checks"]["queries"] = {
+                "queries": qp.queries, "generator": qp.generator, "notes": qp.notes, "cache": dict(qp.cache),
+            }
         if qp is None:
             no_card_reason = "검색어·축 단계 오류로 분석하지 못했다"
     else:
         run.skip("query_axes", "INPUT", no_card_reason)
 
-    # 3. 검색 ──────────────────────────────────────────────────────────────
+    # 4. 검색 ──────────────────────────────────────────────────────────────
     if backend is None and no_card_reason is None:
         try:
             backend = backend_mod.make_backend()
@@ -281,7 +375,10 @@ def run_premortem(
         run.skip("search", "EVIDENCE", no_card_reason or "앞 단계 실패")
 
     # 연구계획서가 아니면 추출·합성을 하지 않는다. 사유에 판정 근거와 검색 점수를 함께 남긴다.
-    if qp is not None and not qp.is_research:
+    # 적합성 판정이 있으면 그것이 기준이다: fit이면 astra ①의 판정과 무관하게 진행, uncertain이면 astra ①도
+    # 연구계획서가 아니라고 볼 때만 멈춘다. 적합성 판정이 없으면(모듈 없음·오류) astra ①의 판정만 본다(E3-L0).
+    fit_verdict = fit.get("verdict") if fit is not None else None
+    if qp is not None and not qp.is_research and fit_verdict in (None, "uncertain"):
         search_info = extras["plan_checks"].get("search", {})
         top = search_info.get("top_score")
         score_s = (
@@ -289,8 +386,10 @@ def run_premortem(
             else ("유사 연구 검색 결과 0건" if "search" in extras["plan_checks"] else "검색 안 함")
         )
         no_card_reason = f"입력이 연구계획서가 아니다({qp.generator} 판단: {qp.reason}); {score_s}"
+        if fit_verdict == "uncertain":
+            no_card_reason += f"; 적합성 판정 보류({fit.get('generator') if fit else '-'})"
 
-    # 4. astra ② 지적 추출 ─────────────────────────────────────────────────
+    # 5. astra ② 지적 추출 ─────────────────────────────────────────────────
     extraction: extract_mod.ExtractionResult | None = None
     if no_card_reason is None and backend is not None:
         with run.stage("extract_issues", "EVIDENCE") as st:
@@ -301,7 +400,7 @@ def run_premortem(
                 inputs.append((h.work_id, getattr(w, "title", None), backend.get_excerpts(h.work_id)))
             extraction = extract_mod.extract_issues(
                 inputs, llm, tagger=tagger, settings=settings,
-                cache_dir=Path(cache_dir) if isinstance(cache_dir, str | Path) else None,
+                cache_dir=cache_root / "extract" if cache_root is not None else None,
             )
             st["counts"] = extraction.counts()
             n_fb = len(extraction.fallback_batches)
@@ -333,7 +432,7 @@ def run_premortem(
     elif "extract_issues" not in run.timings:
         run.skip("extract_issues", "EVIDENCE", no_card_reason or "앞 단계 실패")
 
-    # 5. astra ③ 카드 합성 ─────────────────────────────────────────────────
+    # 6. astra ③ 카드 합성 ─────────────────────────────────────────────────
     synthesis: cards_mod.SynthesisResult | None = None
     if no_card_reason is None and extraction is not None:
         with run.stage("synthesize_cards", "RISK") as st:
@@ -359,7 +458,7 @@ def run_premortem(
     elif "synthesize_cards" not in run.timings:
         run.skip("synthesize_cards", "RISK", no_card_reason or "앞 단계 실패")
 
-    # 6. 원문 대조 ────────────────────────────────────────────────────────
+    # 7. 원문 대조 ────────────────────────────────────────────────────────
     if cards and backend is not None:
         verified = False
         with run.stage("verify_evidence", "REVIEW") as st:
@@ -403,7 +502,6 @@ def run_premortem(
                 "tags": [synthesis.tags[x].tag().model_dump(mode="json") for c in cards for x in c.evidence if x in synthesis.tags],
             }
         )
-    total = time.perf_counter() - t_start
     similar = [
         SimilarWork(
             work_id=h.work_id,
@@ -420,12 +518,14 @@ def run_premortem(
         "llm_provider": llm.name,
         "llm_model": llm.model,
         "backend": getattr(backend, "impl", getattr(backend, "name", None)) if backend is not None else None,
-        "prompt_versions": [queries_mod.PROMPT_VERSION, extract_mod.PROMPT_VERSION, cards_mod.PROMPT_VERSION],
+        "prompt_versions": [queries_mod.PROMPT_VERSION, extract_mod.PROMPT_VERSION, cards_mod.PROMPT_VERSION,
+                            review_mod.REVIEW_VERSION],
         "timings_s": run.timings,
-        "total_s": round(total, 3),
+        "total_s": round(time.perf_counter() - t_start, 3),
+        "query_cache": dict(qp.cache) if qp is not None else {"enabled": False, "hit": False, "stored": False},
     }
     try:
-        return PremortemResult(
+        result = PremortemResult(
             session_id=session_id,
             plan_id=plan.plan_id,
             status="degraded" if is_mock else "ok",  # 단계 강등이 있으면 모델이 degraded로 올린다
@@ -452,6 +552,66 @@ def run_premortem(
             notices=[*run.notices, "결과 조립 실패"], manifest=manifest,
             risk_synthesis={"no_card_reason": "결과 조립 실패"},
         )
+
+    # 8~10. 예상 심사평 → 체크리스트 → 2차 검증(카드가 없으면 각 모듈이 호출 없이 skipped로 남긴다) ────────
+    result = _attach_v1(result, plan, llm, settings, stage_limits)
+    manifest = {
+        **result.manifest,
+        "timings_s": {s.stage: s.elapsed_s for s in result.stages},
+        "total_s": round(time.perf_counter() - t_start, 3),
+        "stage_limits_s": stage_limits,
+    }
+    return result.model_copy(update={"manifest": manifest})
+
+
+def _v1_stage(result: PremortemResult, task: str, plan: PlanDocument, call: Any, effort: str) -> PremortemResult:
+    if task == "expected_review":
+        return review_mod.attach_expected_review(result, call, effort=effort)
+    if task == "checklist":
+        return checklist_mod.attach_checklist(result, plan, call, effort=effort)
+    if task == "semantic_validate":
+        return validate_mod.attach_validation(result, plan, call, effort=effort)
+    raise ValueError(f"모르는 v1 단계: {task}")
+
+
+def _attach_v1(
+    result: PremortemResult, plan: PlanDocument, llm: LLMProvider, settings: Any, stage_limits: dict[str, float]
+) -> PremortemResult:
+    """예상 심사평(E3-L1a) → 체크리스트 → 2차 검증(E3-L1b)을 차례로 붙인다.
+
+    단계마다 따로 막는다: 한 단계가 예외로 죽으면 그 단계만 error로 남기고 앞 결과를 그대로 넘긴다.
+    모듈이 LLM 실패로 규칙 경로·미검증으로 물러나면 그 단계만 degraded(모듈의 단계 기록)다.
+    화면 단계 묶음(phase)은 파이프라인 기준(REVIEW·ACTION)으로 맞추고, 강등이면 notices에 한 줄 남긴다.
+    """
+    for task, phase in V1_STAGES:
+        t0 = time.perf_counter()
+        call, opts, why = _llm_call_for(llm, task, settings)
+        stage_limits[task] = opts["timeout_s"]
+        before = len(result.notices)
+        try:
+            new = _v1_stage(result, task, plan, call, opts["effort"])
+        except Exception as exc:  # noqa: BLE001 — 이 단계만 error로 남기고 계속한다
+            _log_exception(f"단계 {task}", exc)
+            stage = StageStatus(
+                stage=task, state="error", detail=f"내부 오류({type(exc).__name__}) — 이 단계를 건너뜀", phase=phase,
+                elapsed_s=round(time.perf_counter() - t0, 3),
+            )
+            notices = [*result.notices, safe_text(f"[{task}] error: {stage.detail}") or ""]
+            result = checklist_mod.with_stage(result, stage, notices=notices)
+            continue
+        # 모듈이 'llm_failed'처럼 분류만 남기면 어댑터가 받은 실패 사유(시간 초과 등, 비밀값 없음)를 덧붙인다
+        last_error = getattr(call, "last_error", None)
+        stages: list[StageStatus] = []
+        for s in new.stages:
+            if s.stage == task:
+                extra = last_error if s.state == "degraded" and last_error and last_error not in (s.detail or "") else None
+                detail = safe_text("; ".join(x for x in (s.detail, extra and f"마지막 호출: {extra}", why) if x)) or None
+                s = s.model_copy(update={"phase": phase, "detail": detail})
+                if s.state in ("degraded", "error") and len(new.notices) == before:
+                    new = new.model_copy(update={"notices": [*new.notices, safe_text(f"[{task}] {s.state}: {detail}") or ""]})
+            stages.append(s)
+        result = new.model_copy(update={"stages": stages})
+    return result
 
 
 def _verify(
@@ -514,7 +674,23 @@ def summarize(result: PremortemResult) -> dict[str, Any]:
         "similar_works": [(w.work_id, round(w.similarity, 3), (w.title or "")[:80]) for w in result.similar_works],
         "stages": [(s.stage, s.state, s.elapsed_s, s.detail) for s in result.stages],
         "no_card_reason": result.risk_synthesis.get("no_card_reason"),
-        "verification": result.verification,
+        "verification": {k: v for k, v in result.verification.items() if k != "semantic"},
+        "fitness": {k: fit.get(k) for k in ("verdict", "analyze", "generator", "status", "decided_by", "reason")}
+        if (fit := result.plan_checks.get("fitness")) else None,
+        "query_cache": result.manifest.get("query_cache"),
+        "expected_review": {
+            "generator": er.get("generator"), "model": er.get("model"), "status": er.get("status"),
+            "reason": er.get("reason"), "audit": {k: er.get("audit", {}).get(k) for k in ("gen", "pass", "drop")},
+            "sentences": {s: [x.get("t") for x in er.get(s, [])] for s in ("strength", "weakness", "request")},
+        } if (er := result.expected_review) else None,
+        "checklist": [
+            {"item_id": it.get("item_id"), "card_id": it.get("card_id"), "generator": it.get("generator"),
+             "plan_lines": it.get("plan_lines"), "action": it.get("action"),
+             "verdict": (it.get("validation") or {}).get("verdict"), "card_verdict": it.get("card_verdict")}
+            for it in result.checklist
+        ],
+        "semantic": {k: sem.get(k) for k in ("generator", "model", "status", "reason", "counts", "demoted_cards")}
+        if (sem := result.verification.get("semantic")) else None,
         "timings_s": result.manifest.get("timings_s"),
         "total_s": result.manifest.get("total_s"),
     }
@@ -543,5 +719,14 @@ if __name__ == "__main__":
     sys.exit(main())
 
 
-__all__ = ["MOCK_NOTICE", "PIPELINE_VERSION", "mask_extra_pii", "run_premortem", "safe_text", "summarize"]
+__all__ = [
+    "FITNESS_MISSING",
+    "MOCK_NOTICE",
+    "PIPELINE_VERSION",
+    "V1_STAGES",
+    "mask_extra_pii",
+    "run_premortem",
+    "safe_text",
+    "summarize",
+]
 

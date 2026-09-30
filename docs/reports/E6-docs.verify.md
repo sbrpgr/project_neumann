@@ -187,3 +187,174 @@
 - 실서버·실제 OpenAI 경로, bge-m3 임베딩 검색(문서의 "임베딩이 있을 때 검색 강등 없음")은 금지·제외로 실행하지 않았다. 실서버 응답 예시는 mock·어휘 검색 값만 확인했다.
 - 화면 렌더(`ui_shots.py`)·`record_demo.py` 실행, `git clone`·새 venv 설치는 하지 않았다.
 - `497d3f8` 위에 브랜치를 실제로 병합해 verify를 돌리지는 않았다(git 쓰기 금지). 파일 겹침 0으로 충돌 없음만 확인했다.
+
+## 재검증 3 (608373b)
+
+**PASS-조건부** — 재검증 (02f30a5)의 조건 5개는 전부 해소됐다. 남은 것은 두 가지다. (1) 검증 중 main에 **E3-L1w(파이프라인 v1 연결, `f204d0c`)가 병합**돼 문서의 "있음(모듈만)"·6단계 서술이 지금 main과 어긋난다(문서만 고치면 된다). (2) ARCHITECTURE.md:145가 "백테스트는 gpt-6-astra로 쟀다"고 써서 아직 재지 않은 것을 잰 것처럼 읽힌다.
+
+- 대상: `task/E6-docs` `608373b`(재작업 2: `43d060d`·`608373b`). 코드는 main `9d2cf54`와 같다(`git diff 608373b main -- src scripts eval tests contracts` 비어 있음). 비교한 main은 검증 중 `9dc4e8f` → `9d2cf54` → `47e45e5` → **`f204d0c`**(E3-L1w 병합)로 움직였다. 서버 실측(아래 §2)은 `9d2cf54`와 `f204d0c` 두 시점에서 했다.
+- 브랜치는 검증 중 `e600932`까지 더 나아갔다(`814c93e` 업로드 서술 정정, `e600932` 보고서). 이 절은 지시한 `608373b` 기준이고, `814c93e`가 아래 F1을 이미 고쳤다는 것만 확인했다(§3).
+- **실제 OpenAI 호출 없음.** PM 긴급 지시(사용자 환경변수에 `NEUMANN_LLM_PROVIDER=openai`·`NEUMANN_LLM_MODEL=gpt-6-astra`가 남아 있음)에 대한 답: 이미 실행한 파이썬·pytest·verify 명령은 모두 `NEUMANN_LLM_PROVIDER=mock`을 명령줄에 붙였고(명령줄 값이 상속 환경변수를 이긴다), `OPENAI_API_KEY`는 `env -u`로 해제했다(설정 로더가 `has_key: False`를 출력해 확인). `NEUMANN_LIVE_TESTS`도 해제해 `tests/conftest.py:9-10`이 mock으로 고정했고, 서버 확인은 `NEUMANN_EMBED_MODEL`도 해제해 bge-m3를 로드하지 않았다. 결과의 `manifest.llm_provider`가 `mock`이고 `notices`에 "mock provider(테스트용) 결과"가 붙은 것으로 확인했다. **openai를 쓸 수 있었던 명령은 없다.** 정직하게 적어 둘 예외 둘: (a) 코드 기본값을 읽으려고 provider·모델 환경변수를 해제하고 `Settings()`만 만든 한 번(LLM 객체·파이프라인 없음, 키도 해제, 출력 `mock`·`gpt-6.1-sol`), (b) 정규식·파일 존재만 보는 스크립트 한 번은 `neumann`을 import하지 않는다. 상속된 `NEUMANN_LLM_MODEL=gpt-6-astra`는 provider가 mock이라 쓰이지 않았다(설정 로더 출력에서 처음 알았다). 서버는 띄우지 않았다(FastAPI TestClient로 프로세스 안에서만 요청, 포트 0개, 8020·8010 미접촉). 공유 데이터 폴더는 읽기만 했다(검색어 캐시는 astra 결과만 쓴다, mock은 쓰지 않는다: `analyze/queries.py`). 끝난 뒤 임시 worktree 2개와 스크래치 파일을 지웠고, 메인 체크아웃에서 바꾼 것은 이 파일뿐이다.
+
+### 1. 재검증 (02f30a5) 조건 1~5 해소 여부 (608373b 기준 줄 번호)
+
+| # | 조건 | 증거 | 판정 |
+|---|---|---|---|
+| 1 | 기본 provider `mock`(`a736efc`) 반영. 이전 위치 ARCH 66·143·144, RUNNING 6·37·62·126, API 9·157, README 59 | ARCH:67("기본 mock, 실제 호출은 openai로 켤 때만, 모델 기본값 gpt-6.1-sol")·:145-146. RUNNING:6(비용 주의: 기본 mock, openai로 켜면 호출·비용, 실서비스·승인 확인만)·:37(표 기본값 `mock`)·:68(셸 예시 주석 "기본값과 같다")·:131-132(기본 mock 명령과 openai 명령 분리)·:151(precompute "기본 mock"). API:9·:157. README 초안:59. `기본 openai`·`openai(기본)`·`기본값 openai` 검색 0건, `=openai`는 전부 "켜면" 조건문(ARCH:146, RUNNING:6·132, API:9, README:59). 코드: 환경변수를 모두 해제하고 `Settings()` → provider `mock`, model `gpt-6.1-sol`(`config.py:39-40`) | 해소 |
+| 2 | README "공개 서버 방어선"을 결정 19:46대로 | README 초안:84·표:126. 결정 19:46(`decisions.md:35`: 일일 예산 상한 없음, 동시 상한·대기열·속도 제한 유지)·19:20(:19: 터널은 SEC-1 수정·재점검 뒤). `main.py:53` `MAX_CONCURRENT = 2`, `main.py`에 대기열·속도 제한 없음(`429\|rate\|queue` 0건), E4-L2c는 FAIL·재작업(QUEUE) → "동시 상한 있음, 대기열·속도 제한 예정, 터널은 수정 뒤"와 일치. 공개 주소를 켜진 것처럼 쓴 곳 0건(`trycloudflare\|cloudflare\|터널\|8010\|8020` 검색은 README:84·126 두 줄뿐이고 둘 다 계획·조건) | 해소 |
+| 3 | RUNNING 검색 설정 기본값·새 키 | RUNNING:46-53이 `index/settings.py:44-56` Field 기본값과 일치: ALPHA 0.6, SCORE_FLOOR 비움(bge-m3 0.45·어휘만 0), FUSION rrf, RRF_K 60, PER_QUERY_MIN 1, AXIS_WEIGHTS `topic=1,method=1,data=1,evaluation=0.5`, ADAPTIVE_ALPHA true, EMBED_BATCH 16, MAX_SEQ 512. `NEUMANN_EXTRACT_STAGE_TIMEOUT_S` 호출 상한+60초(`extract.py:394` 주석)·LLM_TIMEOUT 60(`config.py:41`)·API 127.0.0.1:8000(`config.py:49-50`)도 일치. `index/queries.py`가 ARCH:19·:107에 있음 | 해소 |
+| 4 | README "사람 1명" | README 초안:89 "사람(대표)과 AI 코딩 에이전트(빌더·검증자 분리)". `사람 1명` 검색 0건. `decisions.md`·HANDOFF의 "대표·PM"과 같은 사실 | 해소 |
+| 5 | "평가 수치는 모두 gpt-6-astra" 범위 | README 초안:23 "LLM으로 잰 것(Macro-F1 0.4864, 라이브 E2E)은 `gpt-6-astra`… 빈도 기준선·사람 상한·코퍼스·색인 수치는 LLM 측정이 아니다"(결정 19:38 범위와 일치), :29·:37도 astra는 v0·라이브 E2E에만 붙음. ARCH:145도 좁혔으나 "백테스트"를 끼워 새 결함이 생겼다(아래 F2) | 해소(README) · 새 결함 F2 |
+
+권고 R1~R5(02f30a5 §6)도 반영됨: R1 전화·주민번호 최소판(ARCH:47·:170, README:107), R2 "검사 5개·연결률은 API 재호출 실행"(README:118), R3 API:4 "예시 수치는 검색 보정 이전 값", R4 API:169 `manifest.result.status`, R5 README:91 "19:22 측정". R6(빌더 보고서 앞부분에 낡은 서술이 남음)은 그대로이고 맨 위 안내(E6-docs.md:7)가 있다.
+
+### 2. "있음 / 있음(모듈만) / 예정"과 기본 provider·모델·업로드 서술의 사실 여부 (실측)
+
+| 서술(608373b) | 실측·증거 | 결과 |
+|---|---|---|
+| 기본 provider `mock` | 위 §1 #1. 이 노트북은 사용자 환경변수가 `openai`로 덮으므로(PM 지시) 코드 기본값과 실행 결과가 다를 수 있다 → 권고 R1 | 맞음 |
+| 제품 기본 모델 `gpt-6.1-sol`, 평가 수치는 `gpt-6-astra`로 측정 | `config.py:40` 기본값. 결정 19:38. LLM으로 잰 수치(Macro-F1 0.4864·라이브 E2E·v0)는 astra가 맞다. **다만 ARCH:145의 "백테스트는 astra로 쟀다"는 사실이 아니다**(F2) | 조건부 맞음 |
+| `POST /upload/plan` 있음, 상한·오류 코드(API:244-272) | TestClient: `/openapi.json` 경로 12개에 포함. md 200 `{filename plan.md, kind md, size_bytes 1089, pages null, encoding utf-8, lines 27, chars 644, warnings []}`(문서 예시와 같음), HWP 매직바이트 415 "HWP는 PDF나 DOCX로 저장해 올려 주세요", 빈 파일 422 "빈 파일입니다", `.exe` 415, 10MB+1 413. 상한은 `upload.py:46-64` 그대로(10MB·50,000자·PDF 200쪽·압축 해제 20MB·항목 1,000·압축비 100·20초·동시 2), 오류 코드 표는 `upload.py:625-630`과 같음. `/health.routers` 5개 모두 `ok` | 맞음 |
+| **입력 화면의 파일 올리기가 `/upload/plan`을 쓴다(API.md:246)** | `webui/index.html:491` "MD · TXT · 최대 10 MB · PDF · DOCX 준비 중", `accept`는 md·txt만, `readFile`(:596-600)은 md·txt만 브라우저에서 읽는다. `/upload` 참조 0건. E4-L1f(연결)는 QUEUE ⏳, main 미병합 | **거짓(F1)** — `814c93e`가 고침 |
+| 공개 터널 주소를 켜진 것처럼 씀 | 4개 문서 어디에도 없음(§1 #2). QUEUE·HANDOFF: E4-L2c FAIL, 터널 공개 금지 | 문제 없음 |
+| ARCH §1 표 "있음" 행의 경로 | 문서의 백틱 경로 98개를 저장소에 대조: 없는 것 0. "예정" 1행(eLife·Europe PMC)은 `sources/`에 `elife*` 파일이 없음 | 맞음 |
+| API 라우트와 MCP | `/openapi.json` 경로 12개 = `/api`, `/config/weights`, `/health`, `/premortem`, `/premortem/package`, `/premortem/precomputed`, `/premortem/precomputed/{plan_id}`, `/premortem/view`, `/taxonomy`, `/templates`, `/templates/{item_id}`, `/upload/plan`(+ `GET /` 화면·폰트는 문서에 있음) | 맞음 |
+| `/health`·`/config/weights`·`/api`·`/taxonomy`·`/templates`·`/premortem/precomputed` 응답 모양 | 실측 키·값이 API.md 예시와 같음(`pipeline.state connected`, 단계 10개 모듈 이름, `routers` 5개 ok, `formula product·weighted false·weights null·used_in_product false`, `summary_ko` "1,128편·5,366건·60.3%·133,769개", 택소노미 v1.0 10/59, 템플릿 5+예시 3, 사전 계산본 3건 `label 사전 계산본`·`source fixture`, 없는 id 404 `not_found`) | 맞음 |
+| 422 조건(공백·200,001자), `/premortem/package` `{}` 422, `plan_text`만 200 ZIP 9파일 | 실측 그대로. `manifest.result.status degraded`, `cards_by_generator {astra 0, rule 0, mock 6}`(문서 예시 5는 API:4가 "검색 보정 이전 값"이라 밝힘) | 맞음 |
+| **"있음(모듈만)": 예상 심사평·근거 게이트·체크리스트·2차 의미검증·입력 적합성·PII 강화** | `608373b`·main `9d2cf54` 시점에서는 `pipeline.py`가 이 모듈을 부르지 않아 맞았다. **`f204d0c`(E3-L1w 병합)에서는 거짓**: `pipeline.py:41-48` import, `PIPELINE_VERSION = "neumann-e3-l1w"`(:60), mock `POST /premortem` → 단계 10개(`plan_normalize, fitness, query_axes, search, extract_issues, synthesize_cards, verify_evidence, expected_review, checklist, semantic_validate`), `expected_review`·`checklist`(6건) 채워짐, `manifest.prompt_versions`에 `expected_review@v1`, `manifest`에 `timings_s`·`stage_limits_s`·`query_cache`. `fitness.py:26`이 `pii.mask_pii`를 부른다. 부적합 입력(조리법, mock)은 카드 0장, 사유 "입력이 연구계획서가 아니다(mock 판단: …); 검색 안 함", 나머지 8단계 `skipped` | **낡음(F3, 병합 조건 1)** |
+| 예정: 업로드 화면 연결(E4-L1f), 대기열·속도 제한(E4-L2c), eLife·EPMC(E1-L1b) | main에 없음 | 맞음 |
+
+### 3. 틀렸거나 낡은 문장 (전수)
+
+| # | 위치(608373b) | 문장 | 사실 | 상태 |
+|---|---|---|---|---|
+| F1 | API.md:246 | "입력 화면의 파일 올리기가 쓴다" | 화면은 md·txt만 브라우저에서 읽고 PDF·DOCX는 "준비 중"이다(E4-L1f 미병합) | `814c93e`에서 해소(API:246 "화면 연결은 예정(E4-L1f)", ARCH:38 "있음(API만…)"). 병합은 이 커밋 이상으로 |
+| F2 | ARCHITECTURE.md:145 | "이미 잰 평가 수치(DISAPERE Macro-F1, 라이브 E2E, v0)와 **백테스트**는 `gpt-6-astra`로 쟀다" | 백테스트는 측정한 적 없다. 기준선 30편 생성만 astra로 했고 Neumann 15편 생성·판정은 보류(결정 19:42, QUEUE E5-L2b, 대표 승인 뒤 `gpt-6.1-sol`). 결정 19:38의 문구를 그대로 옮겼으나 19:42가 바꿨다 | **미해소**(`e600932`에도 그대로) |
+| F2b | RUNNING.md:38 | "제품 모델(평가 수치는 `gpt-6-astra`로 잰 것)" | 빈도 기준선·사람 상한은 LLM 측정이 아니다(README:23에서는 이미 좁힘) | 표현만(F2와 같이 고침) |
+| F3 | ARCHITECTURE.md:6·15·24·25·26·43·47·50·51·66·114·115·116·147·151·162·164·170 | "있음(모듈만)"·"6단계 중 …검증까지"·"단계 기록 이름은 …verify_evidence(REVIEW)다"·"LLM 호출은 세 곳"·"파이프라인 연결 전" | main `f204d0c`에서 연결돼 있음. 단계 10개, LLM 호출 7곳(fitness·query_axes·extract_issues·synthesize_cards·expected_review·checklist·semantic_validate) | **미해소**(병합 조건 1) |
+| F3b | API.md:60 | "`REVIEW`·`ACTION`의 모듈은 있지만 파이프라인이 아직 부르지 않는다" | 지금은 부른다 | 미해소 |
+| F3c | API.md:81-110 | `/premortem` 예시가 `pipeline_version neumann-e3-l0`, 단계 6개, `prompt_versions` 3개, `manifest`에 `timings_s` 없음 | `neumann-e3-l1w`, 단계 10개, `prompt_versions`에 `expected_review@v1`(값은 mock으로 받은 것) | 미해소. API:4 머리말은 "수치가 조금 다르다"고만 했고 구조가 바뀐 것은 안 밝힘 |
+| F3d | API.md:118 | 부적합 입력 예시 "카드 0장, 사유 '…; 유사 연구 검색 상위 점수 0.031'" | 지금은 검색 전에 멈춘다: "…; 검색 안 함", 이후 단계 `skipped` | 미해소 |
+| F3e | README 초안:132 | "L1~L3 행의 '진행 중'은 … 파이프라인 연결 전이라는 뜻이다" | 예상 심사평·체크리스트는 연결됨(태그 `v1`은 대표 점검 뒤라 "진행 중" 자체는 맞음) | 메모만 갱신 |
+| — | RUNNING.md:185 | "재측정(main `588da63`…): `908 passed, 22 skipped`" | 시점을 밝혀 거짓은 아니나 낡았다. `608373b` verify는 `994 passed, 42 skipped`(데이터 폴더 없음). 07:00 동결 때 다시 잰다 | 권고 R2 |
+
+### 4. 비밀·경로·폐기 문서·소유 경로
+
+- 5개 파일(`docs/API.md`·`ARCHITECTURE.md`·`RUNNING.md`·`reports/E6-docs.md`·`reports/E6-docs_README_draft.md`)에서 `sk-`·`sk_proj`·`ghp_`·`AKIA`·`BEGIN … PRIVATE`·`@gmail`·`sprbxr`·`C:\Users`·`C:/Users`·`Desktop`·`노이만_본선자료`·`.claude/worktrees`·드라이브 문자 경로·`Bearer`·`Authorization`·`cloudflared`·`.venvs` 검색 0건. `OPENAI_API_KEY`·`NEUMANN_PSEUDONYM_SALT`는 이름만, 값 대입 0건. `git clone` URL(`github.com/sbrpgr/project_neumann`)은 `origin`과 같다.
+- 폐기된 기획 문서 이름(`구조_뼈대`·`교훈_함정`·`01_구조`·`06_교훈`·`ID-9`) 0건.
+- `git diff main...task/E6-docs --stat`(608373b): 5파일, +1,262(위 5개). `src/`·`contracts/`·`models.py`·데이터·비밀 파일 변경 없음. main 쪽 변경(`docs/tasks/E4-L1f.md`, `QUEUE.md`, E3-L1w의 `src/`·`tests/`·`docs/reports/E3-L1w.md`)과 겹치는 파일 없음 → 병합 충돌 없음.
+
+### 5. verify
+
+`608373b` detached worktree에서 `env -u OPENAI_API_KEY -u NEUMANN_LIVE_TESTS PYTHONPATH="src;." NEUMANN_LLM_PROVIDER=mock PYTHONIOENCODING=utf-8 C:/Users/User/.venvs/neumann/Scripts/python.exe scripts/verify.py` → `994 passed, 42 skipped in 72.02s`, 보안 356파일, 계약 2개, `verify 통과`, exit 0(공개자료·공유 데이터 폴더 환경변수 없이라 실데이터 테스트는 건너뜀). 실행 뒤 worktree 변경 0. 빌더 보고서 "최종 verify"(`897 passed, 41 skipped`, 파일 327개)는 `c4679f9` 시점 값이라 이 커밋과 다르다(권고 R2). `f204d0c`·`e600932`에서는 돌리지 않았다(병합·checkout은 git 쓰기라 하지 않음).
+
+### 6. 병합 전 고칠 것 (문서만, 코드·계약·소유 경로 무관)
+
+1. **E3-L1w 병합(`f204d0c`, `neumann-e3-l1w`)을 반영한다**(F3~F3e). ARCHITECTURE.md의 "있음(모듈만)"을 "있음"으로(:24·25·26·47·50·51·114·115·116·162·164·170), :15·:43·:66의 단계 목록을 10단계(`plan_normalize → fitness → query_axes → search → extract_issues → synthesize_cards → verify_evidence → expected_review → checklist → semantic_validate`, 적합성은 검색 전, 부적합이면 카드 0장·"검색 안 함")로, :147 "LLM 호출은 세 곳"을 7곳으로, :151 "모듈만 있는 LLM 호출(파이프라인 연결 전)"을 "연결됨(실패 시 규칙·`unverified`로 물러나는 동작은 그대로)"으로, :6의 "있음(모듈만)" 정의는 쓰는 곳이 없어지니 지우거나 "지금은 해당 없음". API.md:60 문장 삭제, :81-110 `/premortem` 예시와 :118 부적합 예시를 `NEUMANN_LLM_PROVIDER=mock`으로 다시 받은 응답으로 교체하고 머리말(:4)에 "단계·`pipeline_version`도 E3-L1w 이전과 다르다" 반영, README 초안:132 메모 갱신. 기준 커밋을 `f204d0c` 이상으로. 다시 받을 응답: `NEUMANN_LLM_PROVIDER=mock`으로 `POST /premortem`(단계 10개·`neumann-e3-l1w`)과 무관 입력(`tests/fixtures/plans/negative_recipe.md`).
+2. **ARCHITECTURE.md:145의 "백테스트는 gpt-6-astra로 쟀다"를 고친다**(F2): "백테스트 기준선 30편 생성은 `gpt-6-astra`로 했고, 백테스트 측정은 보류(결정 19:42, 재개하면 `gpt-6.1-sol`)"로. RUNNING.md:38은 "LLM으로 잰 평가 수치(Macro-F1 0.4864, 라이브 E2E)는 `gpt-6-astra`"로(F2b).
+3. (확인만) 병합 대상은 `608373b`가 아니라 F1을 고친 `814c93e` 이상(`e600932`)이어야 한다. 1·2를 그 위에 얹는다.
+
+1~2가 해소되면 재검증 없이 PM이 diff에서 `모듈만`·`neumann-e3-l0`·`세 곳`·"백테스트는 `gpt-6-astra`로 쟀다"·"화면의 파일 올리기가 쓴다" 검색 0건과 `python scripts/verify.py`만 확인하고 병합해도 된다.
+
+### 7. 권고 (병합 조건 아님)
+
+- R1. RUNNING.md §2(또는 README 실행 절)에 "OS 사용자 환경변수도 환경변수라 코드 기본값 `mock`을 덮는다. 사용자 환경변수에 `NEUMANN_LLM_PROVIDER=openai`가 남아 있으면 개발·시험 명령도 실제 호출로 돈다. 명령줄에 `NEUMANN_LLM_PROVIDER=mock`을 붙이고, 확인은 참·거짓으로만(`bool(os.getenv(...))`)" 한 줄. 이번 검증에서 실제로 걸린 함정이다.
+- R2. 테스트 수(RUNNING:185)와 빌더 보고서 "최종 verify"는 시점 값이다. 07:00 동결 때 main 실측 하나로 통일한다.
+- R3. README 초안:84는 사실이지만 "SEC-1 지적 수정·재점검"만 적었다. 현재 공개 전제는 E4-L2c(FAIL, 재작업)·E4-L2d·SEC-2 통과다(HANDOFF). "E4-L2c는 검증 FAIL로 재작업 중이라 터널은 닫혀 있다"를 한 줄 덧붙이면 정확하다.
+- R4. API.md 업로드 오류 표에 "multipart가 아닌 요청 → 415(`multipart/form-data 형식으로 file 필드에…`)"가 없다. 400·422 행은 코드와 맞다.
+- R5. 결정 19:20("`plan_text`만 받아 파이프라인을 돌리는 경로는 없앤다")은 아직 코드에 반영되지 않았다(실측 `plan_text`만 → 200 ZIP). PM이 병합 전에 그 경로를 없애면 API.md:157·:169, RUNNING:6, API:9를 같이 고친다.
+
+### 8. 못 한 것
+
+- 실서버·실제 OpenAI 경로, bge-m3 임베딩 검색, 화면 렌더(`ui_shots.py`)·`record_demo.py`는 지시·규칙상 실행하지 않았다. 서버 응답은 mock·어휘 검색·TestClient 값이다.
+- `e600932`(브랜치 끝)와 `f204d0c`(main 끝)에서 `verify`를 돌리지 못했다. `f204d0c` 위에 브랜치를 얹은 결과는 파일 겹침 0이라 충돌 없음만 확인했다.
+
+## 재검증 4 (cb86551)
+
+**PASS** — 재검증 3의 고칠 것 ①(E3-L1w 반영)·②(백테스트·평가 모델 범위)가 모두 해소됐고, 새로 들어온 서술(E4-L1e 템플릿 id, E1-L1c "있음(코드만)")도 최신 main과 맞는다. 병합 조건 없음. 권고 3건(아래 §6)은 병합 조건이 아니다.
+
+- 대상: `task/E6-docs` `cb86551`(기준 main `848bd50`, `git merge-base`가 `848bd50`). main 끝도 `848bd50`이다(main 체크아웃의 미커밋 변경은 다른 과제의 보고서·QUEUE뿐이고, 이 검증에서 건드린 것은 이 파일 하나다). `git diff 848bd50 cb86551 --name-status`는 문서 5개 추가(A)뿐이고 `git diff cb86551 main -- src scripts eval tests contracts`는 비어 있다(코드는 main과 같다).
+- **실제 OpenAI 호출 0회.** 이 세션 환경변수에는 `NEUMANN_LLM_PROVIDER=openai`와 `OPENAI_API_KEY`가 있다(참·거짓으로만 확인, 값 출력 없음). 모든 python·pytest 명령에 `NEUMANN_LLM_PROVIDER=mock`을 명령줄로 붙이고 `env -u OPENAI_API_KEY -u NEUMANN_LIVE_TESTS -u NEUMANN_EMBED_MODEL`로 해제했으며, 스크립트 첫 줄이 `provider == mock`·키 없음을 assert했다. 서버는 띄우지 않고 FastAPI TestClient로만 요청했다(포트 0개). `git stash`·git 쓰기·`.env` 열람·하위 에이전트 없음. 정직하게 적어 둘 것 하나: 처음 TestClient 실행은 main 체크아웃에서 했는데 설정 로더가 임베딩 모델을 찾아 **로컬 bge-m3 가중치를 로드**했다(검색 강등 없음, 근거 27건·상위 점수 0.584). OpenAI와 무관한 로컬 모델 로드이고 provider는 mock, 키는 해제 상태였다. 표본 대조는 설정 파일이 없는 worktree(`cb86551`)에서 임베딩 없이(어휘 검색, 문서 예시와 같은 조건) 공유 데이터 폴더를 읽기만 하는 방식으로 다시 했고, 그 결과를 아래에 썼다.
+
+### 1. ① E3-L1w 반영
+
+**코드 대조(main 코드 = 브랜치 코드)**
+
+| 서술 | 코드 증거 | 결과 |
+|---|---|---|
+| `pipeline_version neumann-e3-l1w` | `pipeline.py:60` `PIPELINE_VERSION = "neumann-e3-l1w"`, 결과·manifest에 쓰임(:517·:532) | 맞음 |
+| 단계 기록 10개, 순서 `plan_normalize → fitness → query_axes → search → extract_issues → synthesize_cards → verify_evidence → expected_review → checklist → semantic_validate` | `pipeline.py` 단계 이름 순서(:251 `plan_normalize`, :273 `fitness`, :298 `query_axes`, :346 `search`, :395 `extract_issues`, :438 `synthesize_cards`, :464 `verify_evidence`), `V1_STAGES`(:62-67)가 `expected_review`·`checklist`·`semantic_validate` 순으로 `_attach_v1`(:577)에서 실행. TestClient 실측도 같은 순서·10개 | 맞음 |
+| 적합성이 검색 전, 부적합이면 카드 0장·나머지 `skipped` | `pipeline.py:263-296`(fitness → `no_card_reason`), 뒤 단계가 `run.skip(...)`(:333·:375·:433·:459·:484). 실측(negative_recipe, mock): `plan_normalize ok`, `fitness ok("unfit by mock")`, 나머지 8단계 `skipped`, 카드 0장 | 맞음 |
+| **예상 심사평·체크리스트·2차 의미검증이 실제 호출됨** | `pipeline.py:43·46·48` import(`checklist_mod`·`review_mod`·`validate_mod`), `_v1_stage`(:567-574)가 `review_mod.attach_expected_review`·`checklist_mod.attach_checklist`·`validate_mod.attach_validation` 호출 | 맞음("있음") |
+| **근거 게이트가 실제 호출됨** | `review.py:24-31` `gate` import, `:422`·`:436` `gate_sentences(...)`(LLM 문장과 규칙 문장 모두) | 맞음("있음") |
+| **입력 적합성·PII 강화가 실제 호출됨** | `pipeline.py`가 `_load_fitness()`(:178)로 `fitness`를 import해 `assess_fitness`(:276)·`fitness_stage`(:277) 호출, `fitness.py:26` `from neumann.analyze.pii import mask_pii, mask_pii_counts`, `:254`·`:299`에서 사용 | 맞음("있음") |
+| LLM 호출 7곳(ARCH:151 "일곱 단계") | `llm.py:39-45` `TASK_DEFAULTS`가 `fitness, query_axes, extract_issues, synthesize_cards, expected_review, checklist, semantic_validate` 7개, 각 단계가 `task_options`/`_llm_call_for`로 호출(`queries.py:174`·`extract.py:365`·`cards.py:300`·`pipeline.py:274`·`:588`). `.env.example:24-37`이 7개 task의 `EFFORT`·`TIMEOUT` 키를 모두 가짐 | 맞음 |
+| 뒤쪽 단계 실패 동작(ARCH:155) | 예상 심사평 규칙 합성 `review.py:246 rule_review_drafts`·`:436`(`generator="rule"`), 적합성 규칙 판정 `fitness.py:188 rule_fitness`·`:369`, 체크리스트 규칙 문구 `checklist.py:327 rule_actions`, 2차 검증 `unverified`(`validate.py:14·40`) | 맞음 |
+| 검색어 캐시는 LLM 결과만(ARCH:48) | `docs/reports/E3-L1w.md:13`(astra 결과만 저장, 규칙·mock은 저장 안 함). 실측 mock `query_cache {enabled false, hit false, stored false}` | 맞음 |
+| "있음(모듈만)"·`neumann-e3-l0`·"세 곳"·"파이프라인 연결 전"·"화면의 파일 올리기가 쓴다" | 세 문서·README 초안 검색 0건(`미연결`은 ARCH:74·API:141에서 "모듈이 아예 없을 때만, 지금 main에서는 일어나지 않는다"로 쓴 정당한 폴백 설명 2곳뿐). 빌더 보고서 `E6-docs.md`의 옛 문구는 첫 제출·재작업 표의 기록이며 맨 위 안내(:7)가 있다 | 해소 |
+| ARCH §1 표(:15·:24-26)·§2(:44·:48·:51·:52)·§3 흐름(:67-68)·§4 지도(:96·:111-118)·§5(:151-155)·§6(:162·:166·:168·:174) | 위 코드와 모두 일치, 상태 표기는 전부 "있음" | 맞음 |
+
+**API.md 예시 대 mock TestClient 응답(수치 표본 대조)** — `POST /premortem`(`tests/fixtures/plans/plan.md`, mock, 어휘 검색, 200, 1.4초):
+
+| 항목 | API.md | 실측 | 결과 |
+|---|---|---|---|
+| `status`·`pipeline_version` | degraded · neumann-e3-l1w | 같음 | 일치 |
+| `plan_id` | `3d35460def76…88ef33c` | 같음(전체 64자) | 일치 |
+| 단계 10개의 `name·phase·status·impl` | 표(:87-96) | 같음(`search`만 degraded, 나머지 ok) | 일치 |
+| `fitness`·`search`·`verify_evidence`·`expected_review`의 reason | "fit by mock" · "상위 점수 0.245; 검색 강등(백엔드 lexical_only…)" · "근거 28/28 원문 일치" · "통과 8/8" | 같음 | 일치 |
+| `notices` | search degraded 1줄 + mock 1줄 | 같음 | 일치 |
+| 유사 연구·근거·카드 수 | 10편·28건·6장 | 10·28·6 | 일치 |
+| 첫 카드 | `card_f72258efe6ac`, R2, "mock: 실험 설계·평가 프로토콜", 점수 0.2108·0.9·0.8·0.52 → 0.0789 | 같음 | 일치 |
+| 첫 근거 | `ex_afb2cbc9e56b30d1`, 889~1236, `…ZkpDdCQUC4&noteId=PIYoBctiz2` | 같음 | 일치 |
+| `expected_review` | strength 0·weakness 4·request 4, mock, `expected_review@v1` | 같음 | 일치 |
+| `checklist` | 6건, `C1`·R2·plan_lines [11, 21, 22], action·verify 문구 | 같음 | 일치 |
+| `manifest` | `prompt_versions` 4개(`query_axes.v1, extract_issues.v1, synthesize_cards.v3, expected_review@v1`), `stage_limits_s {fitness 30, query_axes 45, expected_review 90, checklist 90, semantic_validate 90}`, `query_cache` disabled | 같음(`total_s`는 실측 1.363, 문서 1.679: 시간값이라 다르고 문서가 "줄임"·"1.7초"로 적음) | 일치 |
+| `stages` 항목 키 | `name·phase·status·impl·reason` | 실측 키 `counts·elapsed_s·impl·name·phase·reason·status` | 일치(줄임) |
+| 부적합 예시(negative_recipe) | 카드 0장, "입력이 연구계획서가 아니다(mock 판단: mock: 연구 어휘 개수로 판정); 검색 안 함", `query_axes`~`semantic_validate` 8단계 `skipped` | 문구·8단계 모두 같음(`notices`에도 같은 사유) | 일치 |
+| `/premortem/view` `_status` | source pipeline·label "일부 단계 강등"·degraded·generators `{mock: 6}`·contract_ok·dropped `{}`·pipeline connected·result_status degraded·stages_not_ok `[search]` | 같음. 최상위 키 14개도 API.md:147과 같음 | 일치 |
+| `/premortem/package`(`plan_text`만) | 200 ZIP 9파일, `cards_by_generator {astra 0, rule 0, mock 6}`, `pipeline_version neumann-e3-l1w`, 파일명 `neumann_package_<앞 12자>.zip` | 같음(9파일 이름 일치, ZIP manifest의 `result.status degraded`·`result.pipeline_version`·`cards_by_generator`, `neumann_package_3d35460def76.zip`) | 일치 |
+| `/health` | `pipeline.state connected`, 단계별 모듈 표, `routers` 5개 ok | 같음(REVIEW에 `review`·`gate`, ACTION에 `checklist`·`validate`) | 일치 |
+| `/openapi.json` 경로 | 12개 라우트 | 12개 | 일치 |
+| `/api` `summary_ko` | "ICLR 2024 · ICLR 2025 · 논문 1,128편 · 심사평 5,366건 · 거절 60.3% · 색인 문장 133,769개" | 같음 | 일치 |
+
+**README 초안 :132**: "예상 심사평·체크리스트·2차 의미검증은 main의 파이프라인 v1(`neumann-e3-l1w`)에 연결돼 있지만 실제 LLM으로 잰 적은 없다(OpenAI 호출 동결)." 코드와 맞고, `docs/reports/E3-L1w.md:5·77-79`("실제 OpenAI 호출 0회, 라이브 실행은 PM 승인 뒤")와 결정 19:42(호출 전면 동결)로도 맞다. **해소.**
+
+### 2. ② 백테스트·평가 모델 범위
+
+| 서술 | 사실(근거) | 결과 |
+|---|---|---|
+| ARCH:149 "LLM으로 잰 평가 수치(DISAPERE Macro-F1 0.4864, 라이브 E2E, v0)는 `gpt-6-astra`로 쟀다. 백테스트는 일반 LLM 기준선 30편 생성만 `gpt-6-astra`로 했고(참고용), 측정(Neumann 생성·판정)은 보류다(결정 기록 19:42: 재개하면 대표 승인 뒤 Neumann·기준선 모두 `gpt-6.1-sol`로 15편)" | `decisions.md:34`(19:42): 19:38의 "Neumann 15편을 astra로 생성"은 보류, 재생성은 대표 승인 뒤 `gpt-6.1-sol`로 Neumann·기준선 둘 다 15편, "기존 astra 기준선 30편은 참고용". `QUEUE.md:36` E5-L2b ⏸ 보류(대표 승인 뒤 `gpt-6.1-sol`, `--limit 15`). "백테스트는 astra로 쟀다" 검색 0건 | **해소**(F2) |
+| RUNNING:38 "제품 모델. LLM으로 잰 평가 수치(Macro-F1 0.4864, 라이브 E2E)는 `gpt-6-astra`로 잰 것" | 빈도 기준선·사람 상한을 빼고 LLM 수치만 astra로 한정. README 초안:23과 같은 범위. `NEUMANN_LLM_MODEL` 기본 `gpt-6.1-sol`은 `.env.example:20`·`config.py`와 같음 | **해소**(F2b) |
+| 그 밖의 "백테스트" 서술 | ARCH:35(백테스트 코드 "있음")는 `eval/backtest_*.py` 코드 존재라 맞음. RUNNING:208·:216은 "표본 30편 출력"과 "나머지 단계는 실행하지 않았다"로 측정을 주장하지 않음. README 초안:45·:72는 아래 권고 R1 | 맞음 |
+
+### 3. 새로 들어온 서술 표본(E4-L1e, E1-L1c)
+
+| 서술 | 실측·증거 | 결과 |
+|---|---|---|
+| API:216-217 템플릿 5종·예시 3건 id | TestClient `GET /templates`: `version 2`, 템플릿 `materials-gnn, molecule-reaction, protein-binding, pde-operator, climate-emulator`, 예시 `example-battery, example-binding, example-operator`. `api/templates/catalog.json`도 같은 id. `scope.label` "AI 활용 과학 연구 계획서 전용", `domains` 3개(소재·화학·분자 / 단백질·생물·신약 / 물리·PDE·기후), `required_sections`(연구 목표·방법·데이터·평가·일정) 일치 | 맞음 |
+| API:218 단건 응답 키 | `GET /templates/materials-gnn` 키 `chars, domain, filename, id, kind, name, sections, sha256, source, summary, text`(11개) = 문서 목록 | 맞음 |
+| ARCH:27 "템플릿 선택기·범위 안내, 입력 화면의 OpenAI 전송·본문 미저장 고지" | `webui/index.html:507-508`(범위 안내 `SCOPE`, 템플릿 선택기 `GET /templates`), `:574-579`(`SEND_NOTE`: "OpenAI API로 전송…", "본문을 파일로 저장하지 않습니다") | 맞음 |
+| ARCH:124 "`templates.py · templates/` 골격 5종 + 예시 3건" | `api/templates/`에 골격 `.md` 5개, `examples/` 파일 2개, 카탈로그에 예시 3건(예시는 `template_id`로 템플릿을 참조). 응답 3건 | 맞음 |
+| ARCH:39 "eLife 합친 코퍼스 읽기(`load_corpus(include=)`)·eLife 포함 색인 빌드 — 있음(코드만, 수집 결과는 E1-L1b)" | `sources/corpus.py:174` `load_corpus(data_dir, *, include=None)`(include를 안 주면 기존 동작), `scripts/build_index_elife.py`·`build_index_elife_compare.py` 존재, 실패 빌드에 `DO_NOT_SERVE.txt`(`build_index_elife.py:149-169`). `sources/`에 `elife*` 수집기 파일 없음, E1-L1b는 QUEUE에서 FAIL·재작업 | 맞음 |
+| ARCH:40·:102·:187 "eLife·Europe PMC 수집기 예정(E1-L1b)" | main에 수집기 없음 | 맞음 |
+| ARCH:134 새 스크립트 | `build_index_elife.py`·`build_index_elife_compare.py`·`build_index_calibrate.py`·`record_demo_edit.py` 모두 존재 | 맞음 |
+
+### 4. 비밀·폐기 문서·소유 경로
+
+- 5개 파일에서 `sk-…`·`sk_proj`·`ghp_`·`AKIA`·`BEGIN … PRIVATE`·`@gmail`·`sprbxr`·`C:\Users`·`C:/Users`·`Desktop`·`노이만_본선자료`·`.claude/worktrees`·`Bearer`·`Authorization`·`cloudflared`·`.venvs` 검색 **0건**.
+- 폐기된 기획 문서 이름(`구조_뼈대`·`교훈_함정`·`01_구조`·`06_교훈`·`ID-9`) **0건**.
+- 소유 밖 변경 **0건**: 브랜치가 `848bd50` 대비 바꾼 것은 `docs/API.md`·`ARCHITECTURE.md`·`RUNNING.md`(과제 소유) + `docs/reports/E6-docs.md`·`E6-docs_README_draft.md`(빌더 보고서·PM 배정 초안)뿐이고 `src/`·`contracts/`·`README.md`·데이터·비밀 파일 변경 없음. 병합 충돌 없음.
+
+### 5. verify
+
+`cb86551` worktree에서 `env -u OPENAI_API_KEY -u NEUMANN_LIVE_TESTS -u NEUMANN_EMBED_MODEL -u NEUMANN_DATA_DIR -u NEUMANN_RAW_DIR NEUMANN_LLM_PROVIDER=mock PYTHONIOENCODING=utf-8 PYTHONPATH="src;." <neumann venv python> scripts/verify.py` → `1066 passed, 45 skipped in 74.54s`, 보안 376파일, 계약 2개, `verify 통과`, exit 0(공개자료·공유 데이터 폴더 환경변수 없이라 실데이터 테스트는 건너뜀). 빌더 보고서 "최종 verify (재작업 3 후)"의 값(`1066 passed, 45 skipped`, 376파일)과 같다. 실행 뒤 worktree 변경 0.
+
+### 6. 권고 (병합 조건 아님)
+
+- R1. README 초안:45 표의 L2 행 "체크리스트·결정 로그, **백테스트**, 내보내기 | 진행 중"은 태그 기준 "진행 중"이지만 백테스트는 실제로는 **보류**(E5-L2b ⏸, 19:42 동결)다. :132 메모는 예상 심사평 등만 설명한다. PM이 README에 옮길 때 "백테스트(보류, 대표 승인 뒤 재개)"로 한 줄 덧붙이면 가장 정확하다.
+- R2. ARCH:15 표 행은 "단계 기록 10개"라면서 이름 9개만 적는다(`plan_normalize` 생략, :44에는 10개 모두 있음). 표에서는 "정규화 → 적합성 → …"으로 시작하거나 "정규화 포함"을 붙이면 된다. 표기 문제일 뿐이다.
+- R3. E1-L1c의 안전장치(실패한 색인 빌드에 `DO_NOT_SERVE.txt`, `NEUMANN_INDEX_DIR`를 그 폴더로 바꾸지 않는다)는 문서에 없다. RUNNING §4-3 끝에 한 줄이면 충분하다. 또한 `load_corpus(include=)`는 `europepmc`도 읽는다(ARCH:39는 eLife만 언급). 빌더 보고서 "다음" 항목의 "입력 화면 고지에 `OpenAI API(gpt-6-astra)`가 남아 있다"는 현재 main `webui/index.html`에 `gpt-6` 문자열이 0건이라 낡았다(보고서 안의 메모일 뿐 제품 문서엔 없다).
+
+### 7. 못 한 것
+
+- 실서버·실제 OpenAI 경로, 화면 렌더(`ui_shots.py`)·`record_demo.py`는 지시·규칙상 실행하지 않았다. 서버 응답은 mock·어휘 검색·TestClient 값이다. `/upload/plan`·`/premortem/precomputed`는 재검증 3에서 확인했고 코드 변경이 없어 이번 좁은 범위에서 다시 재지 않았다(`/openapi.json` 라우트 12개·`/health.routers` 5개 ok만 확인).
