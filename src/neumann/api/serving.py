@@ -37,6 +37,7 @@ import contextvars
 import copy
 import hashlib
 import heapq
+import hmac
 import importlib
 import inspect
 import ipaddress
@@ -189,6 +190,7 @@ class ServingConfig:
     disk_allow: frozenset[str] = frozenset()
     trust_proxy: str = "loopback"       # loopback | always | never
     xff_pick: str = "first"             # first | last
+    trust_xff: bool = True              # 공개 프로필 기본 False: X-Forwarded-For는 위조할 수 있다
     hide_docs: bool = False
     protected: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_PROTECTED))
     warmup: bool = False
@@ -220,19 +222,19 @@ class ServingConfig:
         budget_file = _env("NEUMANN_BUDGET_FILE")
         return cls(
             max_concurrent=int(_env_num("NEUMANN_MAX_CONCURRENT", 2, 1, 64)),
-            queue_max=int(_env_num("NEUMANN_QUEUE_MAX", 20, 0, 10_000)),
+            queue_max=int(_env_num("NEUMANN_QUEUE_MAX", 4 if public else 20, 0, 10_000)),
             rate_per_min=int(_env_num("NEUMANN_RATE_PER_MIN", 6 if public else 0, 0, 100_000)),
             max_plan_chars=int(_env_num("NEUMANN_MAX_PLAN_CHARS", 50_000, 1, 10_000_000)),
             max_body_bytes=int(_env_num("NEUMANN_MAX_BODY_BYTES", 0, 0, 1 << 31)),
             max_export_bytes=int(_env_num("NEUMANN_MAX_EXPORT_BYTES", 4 * 1024 * 1024, 1024, 1 << 31)),
             max_upload_bytes=int(_env_num("NEUMANN_MAX_UPLOAD_BYTES", 10 * 1024 * 1024 + 65_536, 1024, 1 << 31)),
-            request_timeout_s=_env_num("NEUMANN_REQUEST_TIMEOUT_S", 300.0, 0.05, 86_400),
+            request_timeout_s=_env_num("NEUMANN_REQUEST_TIMEOUT_S", 90.0 if public else 300.0, 0.05, 86_400),
             avg_run_s=_env_num("NEUMANN_AVG_RUN_S", 60.0, 0.1, 86_400),
             aux_concurrent=int(_env_num("NEUMANN_AUX_CONCURRENT", 2, 1, 64)),
             aux_queue_max=int(_env_num("NEUMANN_AUX_QUEUE_MAX", 10, 0, 10_000)),
             aux_timeout_s=_env_num("NEUMANN_AUX_TIMEOUT_S", 60.0, 0.05, 86_400),
             aux_rate_per_min=int(_env_num("NEUMANN_AUX_RATE_PER_MIN", 30 if public else 0, 0, 100_000)),
-            daily_budget=int(_env_num("NEUMANN_DAILY_BUDGET", 200 if public else 0, 0, 10_000_000)),
+            daily_budget=int(_env_num("NEUMANN_DAILY_BUDGET", 0, 0, 10_000_000)),  # 대표 결정: 기본 끔
             budget_file=Path(budget_file) if budget_file else data_dir / "cache" / "serving_budget.json",
             block_new=_env_bool("NEUMANN_BLOCK_NEW", False),
             block_file=Path(block_file) if block_file else data_dir / "serving_block.flag",
@@ -244,6 +246,7 @@ class ServingConfig:
             disk_allow=frozenset(allow),
             trust_proxy=trust if trust in {"loopback", "always", "never"} else "loopback",
             xff_pick="last" if (_env("NEUMANN_XFF_PICK") or "").lower() == "last" else "first",
+            trust_xff=_env_bool("NEUMANN_TRUST_XFF", not public),  # 공개: CF-Connecting-IP만 믿는다
             hide_docs=_env_bool("NEUMANN_HIDE_DOCS", public),
             protected=_parse_protected(_env("NEUMANN_PROTECTED_PATHS")),
             warmup=_env_bool("NEUMANN_WARMUP", public),
@@ -255,7 +258,7 @@ class ServingConfig:
         return {
             "max_concurrent": self.max_concurrent, "queue_max": self.queue_max, "rate_per_min": self.rate_per_min,
             "max_plan_chars": self.max_plan_chars, "request_timeout_s": self.request_timeout_s,
-            "daily_budget": self.daily_budget, "cache": self.cache_enabled, "public": self.public,
+            "cache": self.cache_enabled, "public": self.public,
         }
 
 
@@ -414,9 +417,34 @@ def ensure_log_handler() -> None:
         lg.setLevel(logging.INFO)
 
 
+def ip_key(ip: str) -> str:
+    """속도 제한·로그용 IP 묶음. IPv6는 /64(한 가입자가 보통 /64를 통째로 가진다), IPv4-매핑은 IPv4로."""
+    try:
+        addr = ipaddress.ip_address(ip.strip().strip("[]").split("%")[0])
+    except ValueError:
+        return ip
+    if addr.version == 6:
+        if addr.ipv4_mapped is not None:
+            return str(addr.ipv4_mapped)
+        return str(ipaddress.ip_network(f"{addr}/64", strict=False))
+    return str(addr)
+
+
+_IP_SALT: bytes | None = None
+
+
+def _ip_salt() -> bytes:
+    """로그 IP 해시용 솔트: NEUMANN_PSEUDONYM_SALT(있으면, 값은 어디에도 쓰지 않는다) 또는 프로세스마다 무작위."""
+    global _IP_SALT
+    if _IP_SALT is None:
+        env = os.getenv("NEUMANN_PSEUDONYM_SALT")
+        _IP_SALT = env.encode("utf-8") if env and env.strip() else os.urandom(16)
+    return _IP_SALT
+
+
 def _ip_tag(ip: str) -> str:
-    """로그용 IP 표시: 원래 값 대신 해시 앞 10자(같은 IP끼리 묶어 볼 수만 있다)."""
-    return "ip_" + hashlib.sha256(("neumann-ip:" + ip).encode("utf-8")).hexdigest()[:10]
+    """로그용 IP 표시: 솔트를 섞은 HMAC 앞 10자(같은 IP끼리 묶어 볼 수만 있고, 전수 대입으로 되돌릴 수 없다)."""
+    return "ip_" + hmac.new(_ip_salt(), ip_key(ip).encode("utf-8"), hashlib.sha256).hexdigest()[:10]
 
 
 # ───────────────────────── plan_id ─────────────────────────
@@ -430,7 +458,7 @@ def plan_key(plan_text: str) -> str:
         body = redact_pii(normalize_text(plan_text))
     except Exception:  # noqa: BLE001 - models가 없거나 실패하면 줄바꿈만 맞춘다
         body = plan_text.replace("\r\n", "\n").replace("\r", "\n")
-    return hashlib.sha256(body.encode("utf-8")).hexdigest()
+    return hashlib.sha256(body.encode("utf-8", "surrogatepass")).hexdigest()
 
 
 def public_plan_ids(paths: Any) -> list[str]:
@@ -453,7 +481,7 @@ class RequestCtx:
     ip: str = "internal"
     path: str = ""
     kind: str = "analysis"
-    mode: str = "analysis"        # analysis | analysis_mw | aux
+    mode: str = "analysis"        # analysis | aux
     started: float = field(default_factory=time.monotonic)
     plan_id: str = ""
     chars: int = 0
@@ -464,7 +492,9 @@ class RequestCtx:
     position_at_arrival: int = 0
     waited_s: float = 0.0
     run_s: float = 0.0
-    error_kind: str | None = None  # timeout | internal | None
+    error_kind: str | None = None  # timeout | internal | refused | None
+    internal: bool = False         # 예열 등 서버 내부 실행(입장 검사 대신 force 예약)
+    refusal: tuple[int, str, str, int] | None = None  # run()이 거절했을 때 (HTTP 코드, error_code, 문구, retry 초)
 
 
 _CTX: contextvars.ContextVar[RequestCtx | None] = contextvars.ContextVar("neumann_serving_ctx", default=None)
@@ -829,6 +859,10 @@ class AnalysisTimeout(Exception):
     """요청 시간 상한 초과(분석 자체는 계속 돈다)."""
 
 
+class AdmissionRefused(Exception):
+    """새 분석 입장 거절(차단·속도 제한·예산·대기열). 미들웨어가 ctx.refusal로 사용자 문구 응답을 만든다."""
+
+
 def _to_jsonable(result: Any) -> dict[str, Any]:
     dump = getattr(result, "model_dump", None)
     if callable(dump):
@@ -869,6 +903,35 @@ class Serving:
                                              "failed": 0}
         self._warm_task: asyncio.Task[Any] | None = None
 
+    def admit_new(self, ctx: RequestCtx) -> tuple[int, str, str, int] | None:
+        """새 분석 입장 검사: 차단 스위치 → IP(/64) 속도 제한 → 일일 예산 → 대기열.
+
+        입장이면 None(대기열 자리를 잡고 예산 1건을 뗀다. 쓰지 않으면 _drop_reservation이 돌려준다).
+        거절이면 (HTTP 코드, error_code, 사용자 문구, retry 초).
+        """
+        cfg = self.config
+        if self.blocked():
+            self.counters["blocked_503"] += 1
+            return 503, "blocked", user_message("blocked"), 600
+        ok, retry = self.limiter.hit(ip_key(ctx.ip))
+        if not ok:
+            self.counters["rate_429"] += 1
+            r = max(int(math.ceil(retry)), 1)
+            return 429, "rate_limited", user_message("rate", retry=r, limit=cfg.rate_per_min), r
+        if self.budget.exhausted():
+            self.counters["budget_503"] += 1
+            return 503, "budget_exhausted", user_message("budget", limit=cfg.daily_budget), 3600
+        try:
+            ctx.reservation = self.gate.reserve(ctx.ticket, ctx.plan_id)
+        except QueueFull as exc:
+            self.counters["busy_503"] += 1
+            r = max(int(math.ceil(min(exc.retry_after_s, 600))), 5)
+            return 503, "busy", user_message("busy", retry=r), r
+        ctx.position_at_arrival = self.gate.position(ctx.reservation.id)
+        self.budget.spend()
+        ctx.budget_spent = True
+        return None
+
     def blocked(self) -> bool:
         """차단 스위치: 환경변수(NEUMANN_BLOCK_NEW) 또는 파일 플래그가 있으면 새 분석을 받지 않는다."""
         c = self.config
@@ -904,9 +967,18 @@ class Serving:
         self.cache.misses += 1
         job = self.inflight.get(pid)
         if job is None:
-            t = ctx.reservation or self.gate.reserve(ctx.ticket, pid, force=True)
             if ctx.reservation is None:
-                self.budget.spend()  # 미들웨어를 거치지 않은 실행(예열 등)도 센다
+                # 미들웨어가 자리를 잡지 않은 실행: 두 번째 방어선. 예열(internal)만 검사 없이 force로 들어간다.
+                if ctx.internal:
+                    ctx.reservation = self.gate.reserve(ctx.ticket, pid, force=True)
+                    self.budget.spend()
+                else:
+                    refusal = self.admit_new(ctx)
+                    if refusal is not None:
+                        ctx.refusal, ctx.error_kind = refusal, "refused"
+                        raise AdmissionRefused(refusal[1])
+            t = ctx.reservation
+            assert t is not None
             ctx.reservation, ctx.budget_spent = None, False
             t.plan_id = pid
             ctx.position_at_arrival = ctx.position_at_arrival or self.gate.position(t.id)
@@ -970,14 +1042,16 @@ class Serving:
             "accepting": g.active + g.waiting < g.max_active + g.max_waiting and not self.blocked()
             and not self.budget.exhausted(),
             "blocked": self.blocked(),
-            "budget": self.budget.status(),
             "aux": self.aux_gate.summary(),
             "limits": self.config.public_view(),
-            "counters": dict(self.counters, completed=g.completed),
-            "cache": {"enabled": self.cache.enabled, "memory_items": self.cache.memory_items, "hits": self.cache.hits,
-                      "stores": self.cache.stores},
-            "warmup": dict(self.warmup_state),
         }
+        if not self.config.public:  # 공개 프로필은 운영 수치(카운터·캐시·예열)를 내보내지 않는다. 예산 수치는 항상 뺀다
+            out.update({
+                "counters": dict(self.counters, completed=g.completed),
+                "cache": {"enabled": self.cache.enabled, "memory_items": self.cache.memory_items,
+                          "hits": self.cache.hits, "stores": self.cache.stores},
+                "warmup": dict(self.warmup_state),
+            })
         if ticket:
             if not _TICKET_RE.match(ticket):
                 out["ticket"] = {"id": "", "state": "unknown"}
@@ -1024,7 +1098,7 @@ class Serving:
                 log.info("예열: 차단 스위치·예산 때문에 plan_id=%s 건너뜀", pid[:12])
                 continue
             t0 = time.monotonic()
-            token = _CTX.set(RequestCtx(ticket="warm_" + pid[:12], path="warmup"))
+            token = _CTX.set(RequestCtx(ticket="warm_" + pid[:12], path="warmup", internal=True))
             try:
                 await self.run(fn, text)
                 ws["cached"] += int(self.cache.has(pid))
@@ -1062,10 +1136,11 @@ def wrap_pipeline(fn: Callable[..., Any]) -> Callable[..., Awaitable[dict[str, A
 # ───────────────────────── 미들웨어 ─────────────────────────
 
 
-def client_ip(scope: dict[str, Any], trust: str, pick: str = "first") -> str:
+def client_ip(scope: dict[str, Any], trust: str, pick: str = "first", use_xff: bool = True) -> str:
     """실제 클라이언트 IP. 터널(cloudflared)은 로컬(127.0.0.1)에서 들어오므로 그때만 프록시 헤더를 믿는다(trust=loopback).
 
-    CF-Connecting-IP → 없으면 X-Forwarded-For(기본 첫 값, NEUMANN_XFF_PICK=last면 마지막 값) → 없으면 client.host.
+    CF-Connecting-IP → 없으면 X-Forwarded-For(use_xff일 때만. 기본 첫 값, NEUMANN_XFF_PICK=last면 마지막 값)
+    → 없으면 client.host. 공개 프로필은 use_xff=False(XFF는 클라이언트가 위조할 수 있다).
     trust=never면 헤더를 보지 않고, always면 peer와 무관하게 헤더를 믿는다.
     """
     peer = (scope.get("client") or ("unknown", 0))[0] or "unknown"
@@ -1081,7 +1156,7 @@ def client_ip(scope: dict[str, Any], trust: str, pick: str = "first") -> str:
     cf = (_header(scope, "cf-connecting-ip") or "").strip()
     if cf:
         return cf[:64]
-    xff = [p.strip() for p in (_header(scope, "x-forwarded-for") or "").split(",") if p.strip()]
+    xff = [p.strip() for p in (_header(scope, "x-forwarded-for") or "").split(",") if p.strip()] if use_xff else []
     if xff:
         return (xff[-1] if pick == "last" else xff[0])[:64]
     return peer
@@ -1143,8 +1218,8 @@ class ServingMiddleware:
         srv, cfg = self.serving, self.serving.config
         raw_ticket = _header(scope, TICKET_HEADER) or ""
         ticket = raw_ticket if _TICKET_RE.match(raw_ticket) else uuid.uuid4().hex[:16]
-        ctx = RequestCtx(ticket=ticket, ip=client_ip(scope, cfg.trust_proxy, cfg.xff_pick), path=scope.get("path", ""),
-                         kind=kind)
+        ctx = RequestCtx(ticket=ticket, ip=client_ip(scope, cfg.trust_proxy, cfg.xff_pick, cfg.trust_xff),
+                         path=scope.get("path", ""), kind=kind)
         srv.counters["requests"] += 1
         limit = cfg.body_limit(kind)
 
@@ -1178,33 +1253,32 @@ class ServingMiddleware:
         body = b"".join(chunks)
 
         # 2) 종류 결정, 글자 수 상한, plan_id
-        payload: Any = None
-        if kind != "upload":
+        #    앱(FastAPI·Starlette)과 같은 파서로 읽는다: json.loads(bytes)는 BOM·UTF-16·UTF-32를 스스로 판별한다.
+        #    분석 경로는 plan_text를 문자열로 못 읽으면 앱에 넘기지 않고 거절한다(fail-closed: 파서 차이로 관문 우회 금지).
+        ctx.mode = "analysis" if kind == "analysis" else "aux"
+        if ctx.mode == "analysis":
+            plan_text: str | None = None
             try:
-                payload = json.loads(body.decode("utf-8")) if body else None
-            except (ValueError, UnicodeDecodeError):
-                payload = None
-        plan_text = payload.get("plan_text") if isinstance(payload, dict) else None
-        plan_text = plan_text if isinstance(plan_text, str) else None
-        if kind == "analysis":
-            ctx.mode = "analysis"
-        elif kind == "export" and plan_text is not None and plan_text.strip() and payload.get("result") is None:
-            ctx.mode = "analysis_mw"  # 옛 내보내기 경로(plan_text → 파이프라인): 분석과 같은 관문
-        else:
-            ctx.mode = "aux"
-        if plan_text is not None and ctx.mode != "aux":
-            ctx.chars = len(plan_text)
-            if ctx.chars > cfg.max_plan_chars:
+                payload = json.loads(body) if body else None
+                if isinstance(payload, dict) and isinstance(payload.get("plan_text"), str):
+                    plan_text = payload["plan_text"]
+                    ctx.chars = len(plan_text)
+                    if ctx.chars <= cfg.max_plan_chars and plan_text.strip():
+                        ctx.plan_id = plan_key(plan_text)
+            except (ValueError, UnicodeError, RecursionError, TypeError):
+                plan_text = None
+            if plan_text is not None and ctx.chars > cfg.max_plan_chars:
                 srv.counters["too_large_413"] += 1
                 await reply(413, _err("too_large", user_message("too_large", limit=cfg.max_plan_chars, chars=ctx.chars),
                                       ticket))
                 return
-            if plan_text.strip():
-                ctx.plan_id = plan_key(plan_text)
+            if not ctx.plan_id:
+                await reply(422, _err("invalid_request", user_message("invalid"), ticket))
+                return
 
         # 3) 입장 관문
         if ctx.mode == "aux":
-            ok, retry = srv.aux_limiter.hit(ctx.ip)
+            ok, retry = srv.aux_limiter.hit(ip_key(ctx.ip))
             if not ok:
                 await reply(*self._rate_reply(ctx, retry, cfg.aux_rate_per_min))
                 return
@@ -1217,13 +1291,13 @@ class ServingMiddleware:
                 await reply(503, _err("busy", user_message("busy_aux", retry=retry_s), ticket, retry_after_s=retry_s),
                             {"retry-after": str(retry_s)})
                 return
-        elif ctx.plan_id:
-            cached = ctx.mode == "analysis" and srv.cache.has(ctx.plan_id)
-            joining = ctx.mode == "analysis" and (ctx.plan_id in srv.inflight or srv.gate.has_plan(ctx.plan_id))
+        else:
+            cached = srv.cache.has(ctx.plan_id)
+            joining = ctx.plan_id in srv.inflight or srv.gate.has_plan(ctx.plan_id)
             if not cached and not joining:
-                refusal = self._admit_new_analysis(ctx)
+                refusal = srv.admit_new(ctx)
                 if refusal is not None:
-                    await reply(*refusal)
+                    await reply(*self._refusal_reply(ctx, refusal))
                     return
 
         # 4) 본문을 다시 흘려보내고 응답을 모은다
@@ -1251,9 +1325,7 @@ class ServingMiddleware:
             if ctx.mode == "analysis":
                 await self.app(scope, replay, capture)
             else:
-                gate = srv.aux_gate if ctx.mode == "aux" else srv.gate
-                timeout = cfg.aux_timeout_s if ctx.mode == "aux" else cfg.request_timeout_s
-                await self._gated_call(scope, replay, capture, ctx, gate, timeout)
+                await self._gated_call(scope, replay, capture, ctx, srv.aux_gate, cfg.aux_timeout_s)
         except Exception as exc:  # noqa: BLE001 - 어떤 예외도 사용자 문구로
             ctx.error_kind = ctx.error_kind or "internal"
             log.warning("처리 중 예외 ticket=%s kind=%s", ticket, type(exc).__name__)
@@ -1262,6 +1334,9 @@ class ServingMiddleware:
             _CTX.reset(token)
             srv._drop_reservation(ctx)
 
+        if ctx.refusal is not None:  # run()의 두 번째 입장 검사가 거절
+            await reply(*self._refusal_reply(ctx, ctx.refusal))
+            return
         if not start or ctx.error_kind == "timeout" and ctx.mode != "analysis":
             code = 504 if ctx.error_kind == "timeout" else 500
             srv.counters["timeout_504" if code == 504 else "error_5xx"] += 1
@@ -1275,32 +1350,13 @@ class ServingMiddleware:
         return (429, _err("rate_limited", user_message("rate", retry=retry_s, limit=limit), ctx.ticket,
                           retry_after_s=retry_s), {"retry-after": str(retry_s)})
 
-    def _admit_new_analysis(self, ctx: RequestCtx) -> tuple[int, dict[str, Any], dict[str, str]] | None:
-        """새 분석 입장: 차단 스위치 → IP 속도 제한 → 일일 예산 → 대기열. 거절이면 (코드, 본문, 헤더)."""
-        srv, cfg = self.serving, self.serving.config
-        if srv.blocked():
-            srv.counters["blocked_503"] += 1
-            return 503, _err("blocked", user_message("blocked"), ctx.ticket), {"retry-after": "600"}
-        ok, retry = srv.limiter.hit(ctx.ip)
-        if not ok:
-            return self._rate_reply(ctx, retry, cfg.rate_per_min)
-        if srv.budget.exhausted():
-            srv.counters["budget_503"] += 1
-            return (503, _err("budget_exhausted", user_message("budget", limit=cfg.daily_budget), ctx.ticket),
-                    {"retry-after": "3600"})
-        try:
-            ctx.reservation = srv.gate.reserve(ctx.ticket, ctx.plan_id)
-        except QueueFull as exc:
-            srv.counters["busy_503"] += 1
-            retry_s = max(int(math.ceil(min(exc.retry_after_s, 600))), 5)
-            err = _err("busy", user_message("busy", retry=retry_s), ctx.ticket, retry_after_s=retry_s)
-            err["queue"] = {k: v for k, v in srv.queue_status().items() if k in
-                            {"active", "waiting", "max_active", "max_waiting", "eta_new_s"}}
-            return 503, err, {"retry-after": str(retry_s)}
-        ctx.position_at_arrival = srv.gate.position(ctx.reservation.id)
-        srv.budget.spend()
-        ctx.budget_spent = True
-        return None
+    def _refusal_reply(self, ctx: RequestCtx, refusal: tuple[int, str, str, int]
+                       ) -> tuple[int, dict[str, Any], dict[str, str]]:
+        code, error_code, message, retry_s = refusal
+        err = _err(error_code, message, ctx.ticket, retry_after_s=retry_s)
+        if error_code == "busy":
+            err["queue"] = self.serving.gate.summary()
+        return code, err, {"retry-after": str(retry_s)}
 
     async def _gated_call(self, scope: dict[str, Any], replay: Any, capture: Any, ctx: RequestCtx, gate: Gate,
                           timeout: float) -> None:
@@ -1481,8 +1537,8 @@ def install(app: Any, serving: Serving | None = None, *, pipeline: Callable[...,
 
 
 __all__ = [
-    "MESSAGES", "AnalysisTimeout", "DailyBudget", "Gate", "QueueFull", "RateLimiter", "RedactingFilter", "RequestCtx",
+    "MESSAGES", "AdmissionRefused", "AnalysisTimeout", "DailyBudget", "Gate", "QueueFull", "RateLimiter", "RedactingFilter", "RequestCtx",
     "ResultCache", "Serving", "ServingConfig", "ServingMiddleware", "client_ip", "current_request",
-    "ensure_log_handler", "get_serving", "install", "install_exception_handlers", "install_log_filter", "plan_key",
+    "ensure_log_handler", "get_serving", "install", "ip_key", "install_exception_handlers", "install_log_filter", "plan_key",
     "public_plan_ids", "router", "scrub_public", "scrub_secrets", "user_message", "wrap_pipeline",
 ]

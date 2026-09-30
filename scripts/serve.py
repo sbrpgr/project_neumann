@@ -176,7 +176,12 @@ def preflight_public(settings: object | None = None) -> tuple[bool, str]:
     provider = getattr(settings, "llm_provider", None)
     if provider != "openai":
         return False, f"공개 모드는 provider=openai만 허용한다(지금 NEUMANN_LLM_PROVIDER={provider})"
-    if not getattr(settings, "has_openai_key", False):
+    secret = getattr(settings, "openai_api_key", None)
+    try:  # 값은 출력·기록하지 않고, 공백을 뺀 길이가 있는지만 본다(공백뿐인 키 거부)
+        has_key = bool(secret is not None and secret.get_secret_value().strip())
+    except AttributeError:
+        has_key = bool(getattr(settings, "has_openai_key", False))
+    if not has_key:
         return False, "공개 모드인데 OPENAI_API_KEY가 없다(값은 보지 않고 있음/없음만 확인)"
     return True, f"provider=openai model={getattr(settings, 'llm_model', '?')} key=있음"
 

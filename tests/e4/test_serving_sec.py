@@ -179,28 +179,25 @@ def test_body_byte_cap_by_content_length_and_streaming_before_parse(tmp_path):
     asyncio.run(go())
 
 
-def test_legacy_package_plan_text_uses_analysis_gate_budget_and_block(tmp_path):
-    """옛 내보내기(plan_text만 → 파이프라인)는 분석과 같은 관문·예산·차단 스위치로 묶인다. result 내보내기는 영향 없음."""
-    slow = Slow()
-    block = tmp_path / "block.flag"
-    srv, app = side_app(tmp_path, slow, max_concurrent=1, queue_max=0, daily_budget=5,
-                        budget_file=tmp_path / "budget.json", block_file=block)
+def test_package_plan_text_only_is_422_without_touching_analysis_gate_or_budget(tmp_path):
+    """FAIL 대응 3: 실제 내보내기 라우터에 plan_text만 보내면 422. 분석 슬롯·예산·분석 속도 제한을 쓰지 않는다."""
+    from neumann.api.export import router as export_router
+
+    srv = serving.Serving(serving.ServingConfig(max_concurrent=1, queue_max=0, rate_per_min=1, daily_budget=1,
+                                                budget_file=tmp_path / "b.json", cache_enabled=False))
+    app = FastAPI()
+    app.include_router(export_router)
+    serving.install(app, srv)
 
     async def go() -> None:
         async with raw_client(app) as c:
-            t1 = asyncio.create_task(c.post("/premortem/package", json={"plan_text": plan("pkg1")}))
-            await wait_until(lambda: srv.gate.active == 1)  # 분석 관문 슬롯을 잡았다
-            r2 = await c.post("/premortem/package", json={"plan_text": plan("pkg2")})
-            assert r2.status_code == 503 and r2.json()["error_code"] == "busy"
-            ok = await c.post("/premortem/package", json={"result": {"plan_id": "x"}})  # 결과 내보내기는 보조 관문
-            assert ok.status_code == 200 and ok.json() == {"ran": "zip"}
-            slow.release.set()
-            assert (await t1).status_code == 200
-            assert srv.budget.used == 1  # 거절된 요청은 예산을 쓰지 않는다
-            block.write_text("stop", encoding="utf-8")
-            r = await c.post("/premortem/package", json={"plan_text": plan("pkg3")})
-            assert r.status_code == 503 and r.json()["error_code"] == "blocked"
-            assert (await c.post("/premortem/package", json={"result": {"a": 1}})).status_code == 200
+            for i in range(3):
+                r = await c.post("/premortem/package", json={"plan_text": plan(f"pkg{i}")})
+                assert r.status_code == 422 and "분석 결과가 필요합니다" in r.text
+                assert BODY_MARK not in r.text
+            assert srv.budget.used == 0 and srv.gate.completed == 0 and srv.gate.active == 0
+            assert srv.aux_gate.completed == 3  # 보조 관문만 지났다
+            assert srv.counters["rate_429"] == 0  # 분석 속도 제한(분당 1)도 쓰지 않았다
 
     asyncio.run(go())
 
@@ -240,7 +237,8 @@ def test_daily_budget_503_cache_still_served_and_persists(tmp_path, monkeypatch)
     (r5,) = asyncio.run(go(app2, plan(4)))
     assert r5.status_code == 503 and len(calls) == 2
     st = asyncio.run(_status(app2))
-    assert st["budget"]["remaining"] == 0 and st["accepting"] is False
+    assert st["accepting"] is False
+    assert "budget" not in st and "daily_budget" not in st["limits"]  # 예산 수치는 공개하지 않는다
 
 
 async def _status(app: Any) -> dict[str, Any]:
@@ -402,3 +400,205 @@ def test_serve_public_dry_run_exit_code(monkeypatch, tmp_path, capsys):
     assert rc == 2
     assert "공개 모드 사전 점검: 거부" in (tmp_path / "serve.log").read_text(encoding="utf-8")
     assert serve_script.main(["--dry-run", "--log-file", str(tmp_path / "serve2.log")]) == 0  # 공개 아님: 점검 없음
+
+
+# ───────────────────────── FAIL 대응 1: 본문 인코딩으로 관문 우회 ─────────────────────────
+
+def _encodings(obj: dict[str, Any]) -> dict[str, bytes]:
+    text = json.dumps(obj, ensure_ascii=False)
+    return {
+        "utf8-bom": ("\ufeff" + text).encode("utf-8"),
+        "utf16": text.encode("utf-16"),
+        "utf16-le": text.encode("utf-16-le"),
+        "utf32": text.encode("utf-32"),
+    }
+
+
+JSON_H = {"content-type": "application/json"}
+
+
+def test_encoded_bodies_are_parsed_like_the_app_and_cannot_bypass_admission(tmp_path, monkeypatch):
+    """BOM·UTF-16·UTF-32 본문도 미들웨어가 앱과 같이 읽어 차단·예산·속도 제한·대기열·글자 상한을 그대로 건다."""
+    calls = []
+
+    def quick(plan_text: str) -> dict[str, Any]:
+        calls.append(1)
+        return fake_result(plan_text)
+
+    flag = tmp_path / "block.flag"
+    srv, app = make(tmp_path, monkeypatch, quick, block_file=flag, max_plan_chars=2000)
+
+    async def go() -> None:
+        async with client(app) as c:
+            # 인코딩만 바꾼 정상 요청은 정상 처리(파서가 앱과 같다)
+            for name, raw in _encodings({"plan_text": plan("enc-ok")}).items():
+                r = await c.post("/premortem/view", content=raw, headers=JSON_H)
+                assert r.status_code == 200, name
+            n = len(calls)
+            # 차단 스위치
+            flag.write_text("", encoding="utf-8")
+            for name, raw in _encodings({"plan_text": plan("enc-block")}).items():
+                r = await c.post("/premortem/view", content=raw, headers=JSON_H)
+                assert r.status_code == 503 and r.json()["error_code"] == "blocked", name
+            flag.unlink()
+            # 글자 상한
+            for name, raw in _encodings({"plan_text": plan("enc-long", "가" * 3000)}).items():
+                r = await c.post("/premortem", content=raw, headers=JSON_H)
+                assert r.status_code == 413 and r.json()["error_code"] == "too_large", name
+            assert len(calls) == n  # 거절된 요청은 파이프라인을 한 번도 부르지 않았다
+
+    asyncio.run(go())
+
+
+def test_encoded_bodies_hit_budget_rate_and_queue_limits(tmp_path, monkeypatch):
+    fake = Blocking()
+    srv, app = make(tmp_path, monkeypatch, fake, max_concurrent=1, queue_max=1, rate_per_min=3, daily_budget=3,
+                    budget_file=tmp_path / "b.json")
+
+    async def go() -> None:
+        async with client(app) as c:
+            enc = lambda i, name: _encodings({"plan_text": plan(f"q{i}")})[name]  # noqa: E731
+            h1 = {**JSON_H, "CF-Connecting-IP": "198.51.100.1"}
+            t1 = asyncio.create_task(c.post("/premortem", content=enc(1, "utf8-bom"), headers=h1))
+            await wait_until(lambda: srv.gate.active == 1)
+            t2 = asyncio.create_task(c.post("/premortem", content=enc(2, "utf16"),
+                                            headers={**JSON_H, "CF-Connecting-IP": "198.51.100.2"}))
+            await wait_until(lambda: srv.gate.waiting == 1)
+            r = await c.post("/premortem", content=enc(3, "utf32"), headers={**JSON_H, "CF-Connecting-IP": "198.51.100.3"})
+            assert r.status_code == 503 and r.json()["error_code"] == "busy"  # 대기열 상한
+            fake.release.set()
+            assert [x.status_code for x in await asyncio.gather(t1, t2)] == [200, 200]
+            # 속도 제한: 같은 IP에서 BOM으로 계속(분당 3, 이미 1건 사용)
+            codes = []
+            for i in range(4, 7):
+                codes.append((await c.post("/premortem", content=enc(i, "utf8-bom"), headers=h1)).status_code)
+            assert codes[-1] == 429
+            # 예산 3건(2건 + 속도 제한 전 1건)을 다 쓰면 인코딩과 무관하게 503
+            assert srv.budget.used == 3
+            r = await c.post("/premortem", content=enc(9, "utf16-le"), headers={**JSON_H, "CF-Connecting-IP": "203.0.113.9"})
+            assert r.status_code == 503 and r.json()["error_code"] == "budget_exhausted"
+            assert srv.budget.used == 3
+
+    asyncio.run(go())
+
+
+def test_unreadable_or_invalid_analysis_body_is_rejected_before_the_app(tmp_path, monkeypatch):
+    """분석 경로는 plan_text를 문자열로 못 읽으면 앱에 넘기지 않고 422(fail-closed). 깊은 중첩도 500이 아니다."""
+    calls = []
+    srv, app = make(tmp_path, monkeypatch, lambda t: calls.append(1) or fake_result(t))
+    bad = [
+        b"\xff\xfe\x00garbage",                      # 깨진 UTF-16
+        b"{not json",                                  # 잘못된 JSON
+        b"[" * 100_000 + b"]" * 100_000,               # 깊은 중첩(RecursionError)
+        json.dumps({"plan_text": 123}).encode(),       # 문자열 아님
+        json.dumps({"text": plan("x")}).encode(),      # 키 없음
+        json.dumps([plan("x")]).encode(),              # dict 아님
+        json.dumps({"plan_text": "   "}).encode(),     # 빈 본문
+        b"",
+    ]
+
+    async def go() -> None:
+        async with client(app) as c:
+            for raw in bad:
+                r = await c.post("/premortem/view", content=raw, headers=JSON_H)
+                assert r.status_code == 422 and r.json()["error_code"] == "invalid_request", raw[:20]
+                assert_clean(r.text)
+            assert calls == [] and srv.gate.completed == 0 and srv.budget.used == 0
+            # 짝 없는 서로게이트(\ud800)도 500 없이 처리한다
+            r = await c.post("/premortem", content=b'{"plan_text": "abc \\ud800 def"}', headers=JSON_H)
+            assert r.status_code in (200, 422)
+
+    asyncio.run(go())
+
+
+def test_run_rechecks_admission_when_middleware_did_not_reserve(tmp_path):
+    """두 번째 방어선: 미들웨어 예약 없이 Serving.run()에 들어온 실행도 차단·예산·대기열을 검사한다. force는 예열만."""
+    flag = tmp_path / "block.flag"
+    srv = serving.Serving(serving.ServingConfig(max_concurrent=1, queue_max=0, daily_budget=1,
+                                                budget_file=tmp_path / "b.json", block_file=flag))
+    calls = []
+
+    def quick(plan_text: str) -> dict[str, Any]:
+        calls.append(1)
+        return fake_result(plan_text)
+
+    async def go() -> None:
+        flag.write_text("", encoding="utf-8")
+        with pytest.raises(serving.AdmissionRefused):
+            await srv.run(quick, plan("r1"))  # 문맥 없음 = 외부 실행 → 검사
+        flag.unlink()
+        await srv.run(quick, plan("r2"))
+        with pytest.raises(serving.AdmissionRefused):
+            await srv.run(quick, plan("r3"))  # 예산 1건 소진
+        assert len(calls) == 1 and srv.budget.used == 1
+        token = serving._CTX.set(serving.RequestCtx(ticket="warm_test01", path="warmup", internal=True))
+        try:
+            await srv.run(quick, plan("r4"))  # 예열은 force로 들어간다(운영자가 켠 내부 작업)
+        finally:
+            serving._CTX.reset(token)
+        assert len(calls) == 2
+
+    asyncio.run(go())
+
+
+# ───────────────────────── FAIL 대응 2: IPv6 /64, 공개 프로필 XFF 무시 ─────────────────────────
+
+
+def test_ipv6_addresses_in_same_64_share_one_rate_limit(tmp_path, monkeypatch):
+    assert serving.ip_key("2001:db8:1:2:aaaa::1") == serving.ip_key("2001:db8:1:2:ffff:1:2:3") == "2001:db8:1:2::/64"
+    assert serving.ip_key("2001:db8:1:3::1") != serving.ip_key("2001:db8:1:2::1")
+    assert serving.ip_key("::ffff:198.51.100.7") == "198.51.100.7" and serving.ip_key("198.51.100.7") == "198.51.100.7"
+    srv, app = make(tmp_path, monkeypatch, lambda t: fake_result(t), rate_per_min=3)
+
+    async def go() -> list[int]:
+        async with client(app) as c:
+            return [(await c.post("/premortem", json={"plan_text": plan(f"v6-{i}")},
+                                  headers={"CF-Connecting-IP": f"2001:db8:1:2::{i + 1:x}"})).status_code
+                    for i in range(5)]
+
+    assert asyncio.run(go()) == [200, 200, 200, 429, 429]
+
+
+def test_public_profile_ignores_x_forwarded_for(tmp_path, monkeypatch):
+    srv, app = make(tmp_path, monkeypatch, lambda t: fake_result(t), rate_per_min=2, trust_xff=False)
+
+    async def go() -> list[int]:
+        async with client(app) as c:
+            return [(await c.post("/premortem", json={"plan_text": plan(f"xff-{i}")},
+                                  headers={"X-Forwarded-For": f"203.0.113.{i + 1}"})).status_code for i in range(4)]
+
+    assert asyncio.run(go()) == [200, 200, 429, 429]  # XFF를 바꿔도 한 통(루프백)으로 센다
+    scope = {"client": ("127.0.0.1", 1), "headers": [(b"x-forwarded-for", b"1.2.3.4"), (b"cf-connecting-ip", b"9.9.9.9")]}
+    assert serving.client_ip(scope, "loopback", use_xff=False) == "9.9.9.9"
+    scope["headers"] = [(b"x-forwarded-for", b"1.2.3.4")]
+    assert serving.client_ip(scope, "loopback", use_xff=False) == "127.0.0.1"
+
+
+def test_queue_status_public_hides_budget_and_counters(tmp_path):
+    srv = serving.Serving(serving.ServingConfig(public=True, daily_budget=5, budget_file=tmp_path / "b.json"))
+    st = srv.queue_status("tk_pub_status")
+    assert "budget" not in st and "counters" not in st and "cache" not in st and "daily_budget" not in st["limits"]
+    assert {"active", "waiting", "accepting", "ticket"} <= set(st)
+
+
+def test_ip_tag_is_salted_hmac_and_hides_env_salt(monkeypatch):
+    monkeypatch.setattr(serving, "_IP_SALT", None)
+    monkeypatch.setenv("NEUMANN_PSEUDONYM_SALT", "salt-value-for-tests-only")
+    a = serving._ip_tag("198.51.100.7")
+    import hashlib
+
+    unsalted = "ip_" + hashlib.sha256(("neumann-ip:" + "198.51.100.7").encode()).hexdigest()[:10]
+    assert a != unsalted and a == serving._ip_tag("198.51.100.7") and len(a) == 13
+    assert serving._ip_tag("2001:db8::1") == serving._ip_tag("2001:db8::2")  # /64 묶음
+    monkeypatch.setattr(serving, "_IP_SALT", None)
+    monkeypatch.delenv("NEUMANN_PSEUDONYM_SALT")
+    assert serving._ip_tag("198.51.100.7") != a  # 솔트가 없으면 프로세스마다 무작위
+
+
+def test_serve_public_preflight_refuses_whitespace_key(monkeypatch):
+    from neumann.config import Settings
+
+    monkeypatch.setenv("NEUMANN_LLM_PROVIDER", "openai")
+    monkeypatch.setenv("OPENAI_API_KEY", "      ")
+    ok, why = serve_script.preflight_public(Settings(_env_file=None))
+    assert not ok and "OPENAI_API_KEY" in why
