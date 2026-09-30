@@ -1,6 +1,6 @@
 # 과제 대기열 (PM이 병합·배정할 때마다 갱신)
 
-**최신 통합(10/01):** core894e15c 두 번째 whole2014 통과·48 건너뜀/보안523·계약4 PASS, authority1ec 독립116 PASS. 최종894 독립은README 미서명 수정권고 출처 표시의 제한 FAIL로CONDITIONAL이며 policy23/authority13/display54는PASS다. 원L2f가README+날짜500 3건, SEC7/raw가fonts500 4건을 단일파일소유권으로 좁게수정중이다. 안정HEAD+독립반례/양성PASS뒤 통합담당이 세 번째whole1회를실행한다. 최종PASS조건부 main-approved 분리 반영을 root가승인했으나 아직main17c8058/서비스제품디스크불변이다. UIff7e474는독립UI/A11Y/QA/UXC 대기, metrics는core→P6→L3c 원E5owner 의미충돌해결, public은SEC7→PERF→L2g→OPS 고정판정별 후속후보다. 편성모델/effort/실행·대기는현재대시보드registry를따르며 02:20배정동결·02:25커밋·02:30worker정리·02:35인계·02:40종료를 따른다.
+**최신 통합(10/01):** core894e15c 두 번째 whole2014 통과·48 건너뜀/보안523·계약4 PASS, authority1ec 독립116 PASS. 최종894 독립은README 미서명 수정권고 출처 표시의 제한 FAIL로CONDITIONAL이며 policy23/authority13/display54는PASS다. 원L2f가README+날짜500 3건, SEC7/raw가fonts500 4건을 단일파일소유권으로 좁게수정중이다. 안정HEAD+독립반례/양성PASS뒤 통합담당이 세 번째whole1회를실행한다. 최종PASS조건부 main-approved 분리 반영을 root가승인했으나 아직main17c8058/서비스제품디스크불변이다. UIff7e474는독립UI/A11Y/QA/UXC 대기, metrics는core→P6→L3c 원E5owner 의미충돌해결, public은SEC7→PERF→L2g→OPS 고정판정별 후속후보다. 편성모델/effort/실행·대기는현재대시보드registry를따르며 개발은 02:25까지 계속하고 02:25 새 기능 동결·체크포인트, 02:30 최종 Git·문서, 02:35 docs/inbox/커밋 인수 종료를 완료한다. 안정된 핵심 수정·좁은 독립 PASS 뒤 전체 세 번째 검사를 시작하며 이후 변경은 별도 후보로 분리한다.
 
 **Codex 인수 진행(09/30 23:5x):** 개발 6.1-sol, 독립 검증 6-sol. E3-L2r F1~F4 커밋 후 후속 보강, E3-L1e 최종 view/export 게이트 보강, E3-L1s는 전체 verify 시간 단언 실패로 보류. CLI 병렬 실행 배정 중이며 전체 verify는 직렬이다. 최신 상태는 HANDOFF 맨 위 Codex PM 절과 대시보드 codex_progress/attention을 따른다. 종료 10/01 02:40.
 

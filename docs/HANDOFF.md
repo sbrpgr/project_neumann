@@ -12,7 +12,7 @@ PM이 병합할 때마다 갱신한다. Claude 한도가 다 되면 이 문서�
 - **최종894 독립 판정은 CONDITIONAL이다.** 요청11충돌 중 README의 미서명 수정권고 generator/model이 인접 출처 경고 없이 보이는 제한 FAIL을 발견했다. policy23·authority13·display54는 독립 PASS. result HMAC 위조는 아니며 revision.json은unverified다. 원 L2f 단일 export owner가 README와 실제 남은 날짜500 3건을 수정 중이고 SEC7/raw owner가 fonts500 4건을 처리한다. 가짜 현재시각으로 바꾸지 않고 명시 거절한다. 안정HEAD·독립 반례/양성 PASS 뒤 새 변경용 세 번째 전체 verify1회를 실행한다.
 - root는 위 최종 관문 PASS를 조건으로 main Git 반영을 승인했다. 현재 기존 root 제품 디스크를 보존하고 승인 뒤만 root를동일17c8058 내용으로detach, `out/codex/main-approved`에서main을작업한다. 실제 서비스 기동 코드 HEAD는 미확인이다. Git 성과는8020 배포가 아니다. 8010/8020/8099 재시작·종료·핫패치·tag·push·공개는 수행하지 않았다.
 - UI 후보ff7e474는 실제 mock HTTP UI 빌더d230073과 core894 결합이다. 병합 충돌0, 빌더의87 통과·3 건너뜀·1 deselect/반응형1은병합전범위이며 독립 UI/A11Y/QA/UXC 확인 대기다. E5 metrics 후보는최신core→P6c0 의미충돌을원owner가해결후 L3c41을다음합친다. public 후보는core기준준비만했고 SEC7/PERF/L2g/OPS 최종독립판정과원owner변경을기다린다.
-- 개발6.1-sol/독립6-sol, 실제 effort·실행·대기와확대편성은 대시보드 현재registry를 따른다. 과제 편성이 모두 실행 중이라는 뜻은 아니다. 마감02:40,02:20새기능배정중지/02:25작업커밋/02:30worker정리/02:35인계점검을 따른다.
+- 개발6.1-sol/독립6-sol, 실제 effort·실행·대기와확대편성은 대시보드 현재registry를 따른다. 과제 편성이 모두 실행 중이라는 뜻은 아니다. 최종 마감은 02:35 KST다. 대표 최신 지시로 개발은 02:25까지 계속하고, 02:25 새 기능 동결·작업자 체크포인트, 02:30 최종 Git·문서 점검, 02:35 docs/inbox/커밋 인수 종료를 완료한다. 안정된 핵심 수정과 좁은 독립 PASS가 확인되면 전체 세 번째 검사를 시작하며 뒤늦은 변경은 별도 후보로 분리한다.
 
 ## ★ Codex PM 작업 중 (2026-09-30 23:5x KST, 대표 즉시 착수 지시)
 
