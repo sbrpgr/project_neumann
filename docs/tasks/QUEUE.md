@@ -2,7 +2,7 @@
 
 인계 받는 쪽(Codex PM)은 이 표 위에서부터 진행한다. 실행은 `bash scripts/codex_task.sh build <과제ID>`, 검증은 `bash scripts/codex_task.sh verify <과제ID>`, 병합은 PM 규칙(`AGENTS.md`)대로. 상태: ✅ main 병합 · 🔍 검증 대기/중 · ⏳ 빌더 작업 중 · ⬜ 대기(착수 전) · ⛔ 막힘
 
-마지막 갱신: 2026-09-30 20:5x (PM "로컬 세팅")
+마지막 갱신: 2026-09-30 21:2x (PM "로컬 세팅") — Codex 인계 취소(Claude 계속). 열린 브랜치 머리는 HANDOFF 맨 위 표 참고
 
 ## ⚠ 최종 마감: 발표자료 제출 10/01 09:00 (HANDOFF 표). 발표 작업(E6)을 모든 L3 확장보다 앞에 둔다
 
@@ -21,23 +21,30 @@
 | E2-L1 검색 보정 | ✅ 병합(33dd641), .env.example 키 추가됨 | 병합 시 `.env.example`에 새 키 5개(SCORE_FLOOR는 비움), similar_works 유사도 정렬·무관 사유 노출은 E3 후속 |
 | E4-L1e 입력 예시·템플릿 AI4S 정렬(대표 지시) | ✅ 병합(0504255, Sonnet PASS) | 새 예시 사전 계산본·정적 판 DEMO_PLANS 교체는 API 사용 → 대표 승인 대기 |
 | E1-L1c eLife(+EPMC) 색인 | ✅ 코드만 병합(43d116f). 색인 `index_elife*`는 DO_NOT_SERVE 유지 | E1-L1b PASS 뒤 재빌드(입력 해시 rc 0). 권고: 색인 로더가 DO_NOT_SERVE를 거부(E2, 선택) |
-| E1-L1b eLife·EPMC 수집 | ❌ 재검증 FAIL(이전 25건 해소, 새 형식 3건: 대문자 성 서명·`&amp;` 공동 서명·답변 감사문) → PM 세션 빌더 재작업 2(오프라인) | 잔존 0(두 방법) 증명 후 재검증 → **squash 병합**. 그 전에는 eLife/EPMC 색인을 서비스에 쓰지 않는다 |
+| E1-L1b eLife·EPMC 수집 | 🔍 재검증 3 PASS-조건부(실명 잔존 0, 부분 가림 3건 `’`·`–`) → 재작업 3 중(PM 세션) | 재검증 → **squash 병합** → 색인 재빌드(해시 rc 0) |
 | E4-L2c 서빙 안정성 | 🔍 재검증 PASS-조건부(83754ff): 인코딩 우회 fail-closed, 혼입 0. 남은 것(E4-L1f 테스트 request_id, serve.py UTF-8)은 E4-L2d에서 고침. **공개 금지** | **E4-L2d 하나로 병합**(L2d가 L2c 포함), 패치 L2c → L2d 순서. SEC-4 먼저 |
-| E4-L2d 비동기 작업 API(L2c 포함) | 🔍 재검증 PASS-조건부(58cd372): 필수 1은 SEC-4가 덮음(plan_key → models.redact_pii), 권장 2·3 빌더 수정 중 | **SEC-4 → E4-L2d** 순서로 병합, 패치 L2c → L2d. 병합 뒤 README 75행(동시 상한·대기열) 갱신, .env.example 새 키. 터널 공개 전제 |
+| E4-L2d 비동기 작업 API(L2c 포함) | ❌ 재검증 FAIL 1건(접근 로그에 퍼센트 인코딩 job_id 노출) → 재작업 4(구축 세션). 나머지 통과(main 임시 병합 1270 passed, 저장소 상한·BOM fail-closed) | 재작업 4 PASS → 병합 + 패치 L2c→L2d, .env.example 새 키, README 75행. 다음 SEC-5 |
 | SEC-4 이메일 정규식 ReDoS | 🔍 task/SEC-4 386621a(PM), Sonnet 검증 중 | `models.contains_pii`·`redact_pii` 선형화(`email_spans`), 결과 동일. 공개 전 필수 |
 | E3-L1x rule_fitness "neural" 오분류 | ✅ 병합(Sonnet PASS) | 남은 한계: `~인지 과제` 오탐, neuromorphic(후속 소과제, 선택) |
 | E4-L1f 화면 업로드 | ✅ 병합(cf43101, Sonnet PASS) | 8020 재기동 시 반영. 발표 9쪽 "PDF·DOCX 포함" |
-| E5-L1e2e 라이브 E2E AI4S 세트 | ⏳ 구축 세션(개발 mock, 8020 sol 라이브 정확히 1회, 재실행은 PM 승인) | v1 확인 실행 |
+| E5-L1e2e 라이브 E2E AI4S 세트 | ❌ 라이브 1회(8020 sol): plan.md·범위 밖 PASS, 단백질·신경 연산자 FAIL(체크리스트 1항목씩 근거 번호 없음). 결과 JSON 미저장 | E3-L1e(체크리스트 근거 게이트)·E3-L1s(분량 두 단계) 병합 → 라이브 1회(v1 확인+결과 JSON, 약 $2)+백테스트 사후 재실행(약 $2)을 한 번에 대표 승인 → v1 태그 |
 | E3-L1y 카드 뒤 단계 병렬·진행 보고 | 🔍 795ec31 검증 중(구축 세션): 54.1→42.0초(mock), 결과 순차와 동일 | PM 결정: 순서 단언은 체크리스트→2차 검증만+병렬=순차 결과 동일 고정, EXTRACT_PARALLEL 24 유지, 캐시 임시 파일명 고유화. jobs.py 단계 표시는 E4-L2d 쪽 |
 | SEC-5 다중 사용자 동시성 | ⏳ PM 세션 빌더(mock) | E4-L2e 부하 시험 지적: 검색 상태 스레드별(index/search.py), OpenAI 동시 요청 프로세스 상한 `NEUMANN_LLM_MAX_INFLIGHT`(llm.py). 공개 전 필수 |
 | E4-L2e 부하 시험 | ✅ 병합(Sonnet PASS), 보고서 문구 정정 | 공개 기동 `NEUMANN_MAX_CONCURRENT=6` |
+| SEC-4 이메일 ReDoS | ✅ 병합(5ed9b45) | — |
+| E5-L2c 판정 경로 n=5 real만 | ⏳ PM 세션 빌더(mock 예행) | 결과 파일 오면 PM이 build → briefs → Sonnet 3명 → validate → aggregate |
+| E6-L3d v1 라이브 결과로 사전 계산본·정적 판 | ⬜ 구축 세션이 띄움 | 추가 API 없음. E5-L1e2e 결과 JSON 필요 |
+| E3-L1z 규칙 판정 조사·인지 오탐 | ⬜ 구축 세션이 띄움 | 선택 |
+| 참고: 세부 설정 키(`NEUMANN_LLM_MAX_INFLIGHT`, `NEUMANN_EXTRACT_PARALLEL` 등) | — | `.env`에서 안 읽힘(config 필드 없음). 기동 명령 환경변수로 준다 |
+| E2-L5 세부 분야 사다리·분야별 3건 실분석(추가 실험) | ⏳ 구축 세션 | 선정 규칙·충분 기준 사전 커밋, 모든 단계 보고. 실분석은 E3-L1s·E3-L1e 병합 뒤 v1 라이브·백테스트 사후 재실행과 묶음 |
+| **우선 병합** | — | E4-L2d(r4) → SEC-5 → **E3-L1s·E3-L1e(v1 차단 해제)** → E3-L1z·E5-L2c·E1-L1b(squash) |
 | SEC-2 재점검 | 대기 | E4-L2c·L2d 병합 뒤 → 통과하면 cloudflared 터널 공개(주소는 발표자료로) |
 | E4-L1a 업로드 | ✅ 병합(2e38839, 긴 경계 400 수정 80e024c 포함) | 공개 전 `/upload/plan` 속도 제한(E4-L2c 보호 경로), 화면 문구 "정리 뒤 50,000자 상한" |
 | E6-docs 문서·README | ✅ 병합(7049da9), 루트 README 교체(38b01e4) | 07:00 동결 때 숫자·상태 한 번 더 맞춤. SEC-3 병합 뒤 RUNNING에 LIVE_LLM_OK 두 줄 |
 | E4-L1f 화면 업로드 → `/upload/plan` | ✅ 병합(cf43101) | 선택 개선: 업로드 AbortController 40초 |
 | E6-pres2 발표자료 숫자 | 🔍 PASS-조건부(숫자 불일치 0) → 12·11쪽 문구, GPU "약 77초" 수정 중(구축 세션) | 설계 쪽 "설계"+"예정", 결과 쪽 실측만. 07:00 체크리스트: 테스트 수 동결 main 실측 1개, 백테스트 못 돌리면 "미측정"(15편 삭제), 터널 없으면 주소 칸 "로컬 시연·영상", 작업 메모·형광 제거 |
 | E3-L1d 사전 추출 스크립트 | 중지·선택 병합 | 재개는 대표 승인 뒤, 데모 상위 논문만 `--work-ids` |
-| **E5-L2b 백테스트** | ⏸ 보류(19:36 중지) | **대표 승인 뒤** `gpt-6.1-sol`로 Neumann·기준선 둘 다 15편(`--limit 15`), 새 검색(E2-L1) 병합 뒤 조건으로. 이어서 판정 Claude Sonnet 3명(§5.7) → 지표 → 태그 `v2` |
+| **E5-L2b 백테스트 n=5** | 🟡 대표 승인(n=5, sol 양쪽). 표본 규칙 기록(a59a4ec, 앞 5편 거절 3·채택 2), mock 예행 통과 | 실제 실행은 구축 세션(승인 받은 세션): real만 약 $2.5 / real+shuffle 약 $5 대표 선택. 파일 `riskset_*.sol.first5.jsonl` → PM이 Sonnet 판정 3명·대표 블라인드 5편 → 지표 → 발표 12쪽 |
 
 **발표 마감 10/01 09:00**(HANDOFF 맨 위 일정표)
 

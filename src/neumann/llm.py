@@ -12,6 +12,14 @@ provider
 
 로그·예외 메시지에 요청 헤더, 키, 설정 객체 전체를 남기지 않는다. 실패 사유는 짧은 분류 문자열(`error`)과
 비밀값 없는 한 줄 설명(`detail`)뿐이다.
+
+동시 호출 상한(SEC-5)
+- 실제 OpenAI 네트워크 호출은 프로세스 전체에서 `NEUMANN_LLM_MAX_INFLIGHT`개(기본 32)까지만 동시에 나간다
+  (`InflightLimiter`, 모든 요청·스레드가 하나를 같이 쓴다). 요청마다 추출 묶음을 병렬로 부르므로 동시 요청 N개면
+  N×병렬 수가 한꺼번에 나가 속도 제한(TPM·RPM)에 걸리던 것을 막는다.
+- 자리를 기다리는 시간은 그 호출의 시간 상한에 들어간다. 상한 안에 자리가 안 나면 `timeout` 실패(대기 초과라고
+  detail에 적는다)로 돌아가고 호출부가 그 단계만 비상 경로로 돌린다. 재시도 전 쉬는 동안은 자리를 비운다.
+- mock·off provider에는 걸지 않는다(네트워크 호출이 없다).
 """
 
 from __future__ import annotations
@@ -20,6 +28,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -31,6 +40,11 @@ log = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "gpt-6.1-sol"
 MOCK_MODEL = "mock-deterministic-v1"
+# 프로세스 전체 동시 OpenAI 요청 상한 기본값(SEC-5). 설정 NEUMANN_LLM_MAX_INFLIGHT.
+# 32인 까닭: 요청 하나의 추출 병렬 수(NEUMANN_EXTRACT_PARALLEL)가 지금 24(나중에 32일 수 있음)라서 16이면
+# 사용자 한 명도 느려진다. 32면 한 명은 영향이 없고, 동시 사용자 6명일 때 전체 동시 요청이 약 144개(6×24) 대신
+# 32개로 묶인다.
+DEFAULT_MAX_INFLIGHT = 32
 EFFORTS = frozenset({"none", "minimal", "low", "medium", "high", "xhigh"})
 
 # 호출(task)별 기본값. 설정 키로 덮어쓴다(`llm_effort_<task>` 속성 또는 NEUMANN_LLM_EFFORT_<TASK> 환경변수).
@@ -187,6 +201,107 @@ def check_strict_schema(schema: dict[str, Any], path: str = "$") -> list[str]:
     return problems
 
 
+# ── 동시 호출 상한 (SEC-5) ───────────────────────────────────────────────
+
+
+class InflightLimiter:
+    """동시 네트워크 호출 상한. 한 프로세스에 하나를 모든 OpenAIProvider가 같이 쓴다(`inflight_limiter()`).
+
+    `threading.BoundedSemaphore`라서 얻지 않은 자리를 돌려주면 ValueError다(자리 누수·중복 반환을 숨기지 않는다).
+    자리는 얻은 그 객체에 돌려준다: 호출부는 호출 시작 때 잡은 limiter 참조로 release한다.
+    """
+
+    def __init__(self, limit: int) -> None:
+        limit = int(limit)
+        if limit < 1:
+            raise ValueError(f"동시 호출 상한은 1 이상이어야 한다: {limit}")
+        self.limit = limit
+        self._sem = threading.BoundedSemaphore(limit)
+        self._lock = threading.Lock()  # 아래 관측용 숫자만 지킨다
+        self._in_flight = 0
+        self._peak = 0
+        self._acquired = 0
+        self._waited = 0
+        self._wait_timeouts = 0
+
+    def acquire(self, timeout: float) -> bool:
+        """자리 하나를 얻는다. 곧바로 없으면 최대 timeout초 기다린다. 못 얻으면 False(예외 없음)."""
+        got = self._sem.acquire(blocking=False)
+        waited = not got
+        if not got:
+            got = self._sem.acquire(timeout=max(0.0, float(timeout)))
+        with self._lock:
+            self._waited += int(waited)
+            if not got:
+                self._wait_timeouts += 1
+                return False
+            self._in_flight += 1
+            self._acquired += 1
+            self._peak = max(self._peak, self._in_flight)
+        return True
+
+    def release(self) -> None:
+        with self._lock:
+            self._in_flight -= 1  # 세마포어를 풀기 전에 줄인다(다른 스레드가 얻어 peak가 부풀지 않게)
+        try:
+            self._sem.release()
+        except ValueError:
+            with self._lock:
+                self._in_flight += 1
+            raise
+
+    def snapshot(self) -> dict[str, int]:
+        """상한·진행 중·최고 동시 수·얻은 횟수·기다린 횟수·대기 초과 횟수(/health·부하 측정용, 비밀값 없음)."""
+        with self._lock:
+            return {
+                "limit": self.limit,
+                "in_flight": self._in_flight,
+                "peak": self._peak,
+                "acquired": self._acquired,
+                "waited": self._waited,
+                "wait_timeouts": self._wait_timeouts,
+            }
+
+
+_INFLIGHT: InflightLimiter | None = None
+_INFLIGHT_INIT = threading.Lock()
+
+
+def max_inflight(settings: Any = None) -> int:
+    """설정 `llm_max_inflight` / 환경변수 NEUMANN_LLM_MAX_INFLIGHT. 1 이상 정수가 아니면 기본값(경고 로그)."""
+    raw = setting(settings, "llm_max_inflight", "NEUMANN_LLM_MAX_INFLIGHT", DEFAULT_MAX_INFLIGHT)
+    try:
+        n = int(str(raw).strip())
+    except ValueError:
+        n = 0
+    if n < 1:
+        log.warning("NEUMANN_LLM_MAX_INFLIGHT가 1 이상 정수가 아니다 → 기본 %d", DEFAULT_MAX_INFLIGHT)
+        return DEFAULT_MAX_INFLIGHT
+    return n
+
+
+def inflight_limiter(settings: Any = None) -> InflightLimiter:
+    """프로세스 공용 동시 호출 상한. 처음 부를 때 한 번 설정을 읽어 만든다(스레드 안전)."""
+    global _INFLIGHT
+    lim = _INFLIGHT
+    if lim is None:
+        with _INFLIGHT_INIT:
+            if _INFLIGHT is None:
+                _INFLIGHT = InflightLimiter(max_inflight(settings))
+            lim = _INFLIGHT
+    return lim
+
+
+def reset_inflight_limiter(limit: int | None = None) -> InflightLimiter | None:
+    """공용 상한을 바꾼다(테스트·기동용). limit=None이면 비워 두고 다음 호출 때 설정을 다시 읽는다.
+
+    진행 중인 호출은 자기가 얻은 옛 객체에 자리를 돌려주므로 바꿔도 반환이 꼬이지 않는다."""
+    global _INFLIGHT
+    with _INFLIGHT_INIT:
+        _INFLIGHT = InflightLimiter(limit) if limit is not None else None
+        return _INFLIGHT
+
+
 # ── OpenAI ───────────────────────────────────────────────────────────────
 
 
@@ -208,10 +323,13 @@ class OpenAIProvider:
         default_timeout_s: float = 60.0,
         client: Any | None = None,
         max_attempts: int = 2,
+        limiter: InflightLimiter | None = None,
     ) -> None:
         self.model = model
         self.default_timeout_s = default_timeout_s
         self.max_attempts = max(1, max_attempts)
+        # 동시 호출 상한(SEC-5). None이면 호출마다 프로세스 공용 상한(inflight_limiter())을 쓴다. 주입은 테스트용
+        self._limiter = limiter
         self._config_error: str | None = None
         if not model:
             self._config_error = "NEUMANN_LLM_MODEL이 비어 있다"
@@ -253,26 +371,35 @@ class OpenAIProvider:
         if call.max_output_tokens:
             kwargs["max_output_tokens"] = call.max_output_tokens
 
+        # 호출 시작 때 잡은 상한 객체에 자리를 돌려준다(도중에 공용 상한이 바뀌어도 반환이 꼬이지 않게)
+        limiter = self._limiter or inflight_limiter()
         t0 = time.perf_counter()
         attempts = 0
         while True:
             attempts += 1
-            remaining = timeout - (time.perf_counter() - t0)
+            # 자리 대기도 이 호출의 시간 상한 안이다. 못 얻으면 네트워크에 나가지 않고 시간 초과 실패
+            if not limiter.acquire(timeout - (time.perf_counter() - t0)):
+                detail = f"동시 호출 상한 {limiter.limit}개 자리 대기 초과({timeout:g}s 상한)"
+                return self._fail(base, t0, attempts, FAIL_TIMEOUT, detail)
+            backoff = 0.0
             try:
+                remaining = timeout - (time.perf_counter() - t0)
                 resp = self._client.with_options(timeout=max(1.0, remaining)).responses.create(**kwargs)
                 break
             except openai.APITimeoutError:
                 return self._fail(base, t0, attempts, FAIL_TIMEOUT, f"{timeout:.0f}s 상한")
             except (openai.RateLimitError, openai.InternalServerError, openai.APIConnectionError) as exc:
                 elapsed = time.perf_counter() - t0
-                if attempts < self.max_attempts and elapsed < timeout / 2:
-                    time.sleep(min(2.0 * attempts, 5.0))
-                    continue
-                return self._fail(base, t0, attempts, FAIL_API, _api_error_facts(exc), exc)
+                if not (attempts < self.max_attempts and elapsed < timeout / 2):
+                    return self._fail(base, t0, attempts, FAIL_API, _api_error_facts(exc), exc)
+                backoff = min(2.0 * attempts, 5.0)
             except openai.APIStatusError as exc:
                 return self._fail(base, t0, attempts, FAIL_API, _api_error_facts(exc), exc)
             except Exception as exc:  # noqa: BLE001 — 어떤 실패든 비상 경로로 넘긴다
                 return self._fail(base, t0, attempts, FAIL_API, type(exc).__name__, exc)
+            finally:
+                limiter.release()  # 네트워크 호출만 감싼다: 성공·실패·재시도 모두 여기서 자리를 비운다
+            time.sleep(backoff)  # 여기 오는 건 재시도뿐: 쉬는 동안은 자리를 비워 둔다
 
         latency = time.perf_counter() - t0
         usage = _usage(resp)
@@ -479,6 +606,7 @@ def make_llm(settings: Any = None, provider: str | None = None) -> LLMProvider:
         if key is None or not _secret_value(key):
             key = os.environ.get("OPENAI_API_KEY")
         timeout = float(setting(settings, "llm_timeout_s", "NEUMANN_LLM_TIMEOUT_S", 60.0))
+        inflight_limiter(settings)  # 프로세스 공용 동시 호출 상한을 (처음이면) 이 설정으로 만든다(SEC-5)
         return OpenAIProvider(api_key=key, model=model, default_timeout_s=timeout)
     if name in ("mock", "rules"):
         from neumann.analyze.mock_responders import default_responders
@@ -490,8 +618,10 @@ def make_llm(settings: Any = None, provider: str | None = None) -> LLMProvider:
 
 
 __all__ = [
+    "DEFAULT_MAX_INFLIGHT",
     "DEFAULT_MODEL",
     "DisabledProvider",
+    "InflightLimiter",
     "LLMCall",
     "LLMProvider",
     "LLMResult",
@@ -502,8 +632,11 @@ __all__ = [
     "check_strict_schema",
     "setting",
     "generator_for",
+    "inflight_limiter",
     "make_llm",
+    "max_inflight",
     "provider_generator",
+    "reset_inflight_limiter",
     "task_options",
     "validate_output",
 ]
