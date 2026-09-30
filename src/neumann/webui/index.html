@@ -433,6 +433,18 @@
   /* 입력칸 끝에서 치거나 붙여넣을 때 캐럿이 sticky 고지 밑으로 가지 않게: 접힘 37px → 56px, 펼침 82px → 100px */
   html { scroll-padding-bottom: 56px; }
   html:has(#sendNote[open]) { scroll-padding-bottom: 100px; }
+  /* ===== E4-L2f 내보내기 단계·버튼(ZIP 9파일, 결정 로그 포함) ===== */
+  .stp.exp { color: var(--text2); cursor: pointer; }
+  .stp.exp:hover { color: var(--ink); }
+  .expbox { padding: 18px 24px 20px 24px; }
+  .expfiles { display: flex; flex-wrap: wrap; gap: 2px 16px; margin-bottom: 12px; font-family: var(--mono); font-size: 12px; color: var(--text2); }
+  .expdec { font-size: 14px; color: var(--ink); margin-bottom: 4px; }
+  .expsrc { font-size: 12.5px; color: var(--muted); margin-bottom: 14px; max-width: 760px; }
+  .exprow { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .expmsg { font-size: 13px; color: var(--text2); }
+  .expmsg.err { color: var(--red); }
+  .expwhy { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--red-l); color: var(--red-d); font-size: 13.5px; }
+  @media print { #s-export { display: none !important; } }
 </style>
 </head>
 <body data-view="boot">
@@ -469,7 +481,7 @@
   function fam(i) { return (D.fams && D.fams[i]) || { k: '?', n: '분류 없음', col: '?' }; }
   function genLabel(g) { return '<span class="gen ' + esc(GEN[g] ? g : 'unknown') + '">' + esc(GEN[g] || ('생성 방식 ' + g)) + '</span>'; }
   function toast(m) { var t = $('toast'); t.textContent = m; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(function () { t.classList.remove('on'); }, 2200); }
-  function renderSteps() { $('steps').innerHTML = STEPS.map(function (s, i) { if (i === 3) return '<button class="stp" type="button" disabled title="내보내기 · 준비 중"><span class="n">IV</span>' + s + '<span class="soon">준비 중</span></button>'; var c = i === S.step ? 'cur' : (i < S.maxStep ? 'done' : ''); return '<button class="stp ' + c + '" type="button" data-step="' + i + '"' + (c ? '' : ' disabled') + '><span class="n">' + (c === 'done' ? CHECK : ['I', 'II', 'III', 'IV'][i]) + '</span>' + s + '</button>'; }).join(''); }
+  function renderSteps() { $('steps').innerHTML = STEPS.map(function (s, i) { if (i === 3) return expStepHtml(s); var c = i === S.step ? 'cur' : (i < S.maxStep ? 'done' : ''); return '<button class="stp ' + c + '" type="button" data-step="' + i + '"' + (c ? '' : ' disabled') + '><span class="n">' + (c === 'done' ? CHECK : ['I', 'II', 'III', 'IV'][i]) + '</span>' + s + '</button>'; }).join(''); }
   function go(step) { S.step = step; S.maxStep = Math.max(S.maxStep, step); renderSteps(); window.scrollTo(0, 0); render(); }
   function docLines(hl, sel) { return '<div class="doclines">' + D.plan.lines.map(function (l) { var cls = 'l' + (l.h ? ' h' : '') + (l.f ? ' flag' : '') + (hl === l.n ? ' hl' : '') + (sel && sel.indexOf(l.n) >= 0 ? ' sel' : ''); return '<div class="ln' + (l.f ? ' f' : '') + '">' + l.n + '</div><div class="' + cls + '"' + (l.h === 'title' ? ' style="font-size:14px;"' : '') + '>' + esc(l.t) + '</div>'; }).join('') + '</div>'; }
 
@@ -777,7 +789,7 @@
       '<div class="sm muted" style="margin-top:14px; padding-top:12px; border-top:1px solid var(--line);">모든 출력은 \'문서화된 위험 신호\'이며 특정 저자·리뷰어에 대한 판단이 아닙니다. 리뷰어는 익명 번호로만 표기됩니다. 최종 판단은 연구자에게 있습니다.</div></div></section>';
     var panel = '<aside class="panel card" style="padding:12px;"><div class="ptabs"><button class="' + (S.ptab === 'ev' ? 'on' : '') + '" data-ptab="ev" type="button">근거</button><button class="' + (S.ptab === 'plan' ? 'on' : '') + '" data-ptab="plan" type="button">계획서</button></div><div class="pbody" id="pbody"></div></aside>';
     var planApp = '<section id="s-plan" class="print-only"><div class="sec"><span class="num">§</span><h2>부록 · 계획서 원문</h2><span class="d">' + esc(D.plan.file) + ' · 붉은 밑줄 = 위험카드가 대응하는 문장</span></div><div class="card" style="padding:16px 18px;">' + docLines(null) + '</div></section>';
-    return '<div class="rep"><article class="doc">' + summary + map + cardsSec + review + check + trace + planApp + '</article>' + panel + '</div>';
+    return '<div class="rep"><article class="doc">' + summary + map + cardsSec + review + check + trace + expHtml() + planApp + '</article>' + panel + '</div>';
   }
   var KINDQ = { review: '심사평 원문 · 축자', author_response: '저자 답변 원문 · 축자', decision: '결정문 원문 · 축자', post_status: '사후 기록 원문 · 축자' };
   function panelWarn() {
@@ -824,6 +836,131 @@
     secs.forEach(function (s) { io.observe(s); });
   }
   var order = ['채택', '보류', '기각'];
+
+  /* ---------- E4-L2f 내보내기: POST /premortem/package → ZIP 9파일(결정은 decision_log.json) ----------
+     화면 데이터(ui_view)에는 분석 결과 원본(PremortemResult)이 없다. 뷰에 원본(result)이 실려 오면 그것을 쓰고,
+     없으면 같은 계획서로 POST /premortem을 한 번 더 불러 원본을 받은 뒤 화면과 같은지(계획서 id·카드 id·체크리스트 id·문구)
+     확인하고 묶는다. 다르면 내보내지 않는다. 결정은 연구자가 고른 항목만(결정 전 기본값 보류는 싣지 않음). */
+  var EXP_FILES = ['README.md', 'manifest.json', 'risk_cards.json', 'evidence_pack.json', 'similar_works.csv', 'plan_annotated.md', 'neumann_report.md', 'ai_context.md', 'decision_log.json'];
+  var EXP_DEC = { '채택': 'adopt', '보류': 'hold', '기각': 'reject' };
+  var EXP = { d: null, raw: null, via: '', busy: false, msg: '', err: false };
+  function expState() { if (EXP.d !== D) EXP = { d: D, raw: null, via: '', busy: false, msg: '', err: false }; return EXP; }
+  function expBlock() {  /* 내보낼 수 없는 사유(없으면 '') */
+    if (!D) return '분석 결과 없음';
+    var st = D._status || {};
+    if (st.source === 'sample') return '샘플 데이터(분석 결과 아님)';
+    if (st.result_status === 'error' || st.contract_ok === false) return '분석 오류 결과';
+    if (!expInline(D) && !String(S.text || '').trim()) return '원본 계획서 텍스트 없음';
+    return '';
+  }
+  function expShort(why) { return why.indexOf('샘플') === 0 ? '샘플' : (why.indexOf('오류') >= 0 ? '오류' : '결과 없음'); }
+  function expStepHtml(s) {
+    var why = expBlock();
+    if (why) return '<button class="stp" type="button" id="stpExport" disabled title="' + esc('내보내기 · ' + why) + '"><span class="n">IV</span>' + s + '<span class="soon">' + esc(expShort(why)) + '</span></button>';
+    return '<button class="stp exp" type="button" id="stpExport" title="내보내기 · ZIP 9파일"><span class="n">IV</span>' + s + '</button>';
+  }
+  function expInline(d) { var r = d && (d.result || d._result); return r && typeof r === 'object' && r.plan_id && r.session_id ? r : null; }
+  function expDecided(d) { return (d.checklist || []).filter(function (it) { return it.set !== false; }); }
+  function expDecisions(d) {
+    return expDecided(d).map(function (it) {
+      var e = { item_id: it.id, decision: EXP_DEC[it.s] || it.s };
+      if (it.m) e.note = it.m;
+      if (it.at) e.decided_at = it.at;
+      return e;
+    });
+  }
+  function expDecText() {
+    if (!D) return '';
+    var dd = expDecided(D), c = { '채택': 0, '보류': 0, '기각': 0 }, rest = (D.checklist || []).length - dd.length;
+    dd.forEach(function (it) { c[it.s] = (c[it.s] || 0) + 1; });
+    return '결정 로그에 싣는 결정 ' + dd.length + '건 · 채택 ' + c['채택'] + ' · 보류 ' + c['보류'] + ' · 기각 ' + c['기각'] + (rest > 0 ? ' · 결정 전 ' + rest + '건은 싣지 않음(화면 기본값 보류)' : '');
+  }
+  function expSrcText() {
+    var e = expState();
+    if (expInline(D) || e.via === 'view') return '원본 결과: 화면 응답에 실린 분석 결과 JSON을 그대로 씁니다.';
+    if (e.via === 'refetch') return '원본 결과: 같은 계획서로 POST /premortem을 다시 불러 받았고, 계획서 id·위험카드·체크리스트가 화면과 같음을 확인했습니다(세션 id는 새로 받은 값).';
+    var live = H && H.llm && H.llm.effective && H.llm.effective !== 'mock';
+    return '원본 결과: 화면 데이터에는 분석 결과 원본이 없어, 내려받을 때 같은 계획서로 POST /premortem을 한 번 더 불러 받고 화면과 같은지(계획서 id·위험카드·체크리스트) 확인합니다. 다르면 내보내지 않습니다.' + (live ? ' 실제 LLM 서버라 재분석 시간·비용이 듭니다.' : '');
+  }
+  function expHtml() {
+    var e = expState(), why = expBlock();
+    return '<section id="s-export"><div class="sec"><span class="num">VI</span><h2>내보내기</h2><span class="d">ZIP 9파일 · 체크리스트 결정은 decision_log.json</span></div><div class="card expbox">' +
+      '<div class="expfiles">' + EXP_FILES.map(function (f) { return '<span>' + esc(f) + '</span>'; }).join('') + '</div>' +
+      '<div class="expdec" id="expDec">' + esc(expDecText()) + '</div>' +
+      '<div class="expsrc" id="expSrc">' + esc(expSrcText()) + '</div>' +
+      '<div class="exprow"><button class="btn dark" id="btnExport" type="button"' + (why || e.busy ? ' disabled' : '') + '>ZIP 내려받기</button><span class="expmsg' + (e.err ? ' err' : '') + '" id="expMsg" role="status" aria-live="polite">' + esc(e.msg) + '</span></div>' +
+      (why ? '<div class="expwhy" id="expWhy">' + esc('내보낼 수 없음 · ' + why) + '</div>' : '') + '</div></section>';
+  }
+  function expPaint() {  /* 서버 문구·사유는 textContent로만 넣는다 */
+    var e = expState(), m = $('expMsg'), w = $('expWhy'), b = $('btnExport'), d = $('expDec'), s = $('expSrc'), why = expBlock();
+    if (m) { m.textContent = e.msg; m.classList.toggle('err', !!e.err); }
+    if (w) w.textContent = why ? '내보낼 수 없음 · ' + why : '';
+    if (b) b.disabled = !!(why || e.busy);
+    if (d) d.textContent = expDecText();
+    if (s) s.textContent = expSrcText();
+  }
+  function expMsg(m, err) { var e = expState(); e.msg = m; e.err = !!err; expPaint(); }
+  function expServerMsg(j, code) {
+    j = j || {};
+    if (typeof j.message === 'string' && j.message) return j.message;
+    if (typeof j.detail === 'string' && j.detail) return j.detail;
+    if (Array.isArray(j.detail) && j.detail.length) return j.detail.map(function (x) { return x && x.msg ? String(x.msg) : String(x); }).join(' · ');
+    if (typeof j.reason === 'string' && j.reason) return j.reason;
+    return 'HTTP ' + code;
+  }
+  function expJson(r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error(expServerMsg(j, r.status)); return j; }); }
+  function expMismatch(d, raw) {
+    if (!raw || typeof raw !== 'object' || !raw.plan_id) return '분석 결과 JSON이 아님';
+    if (raw.sample) return '서버가 샘플 데이터를 돌려줌';
+    if (raw.plan_id !== d.plan_id) return '계획서 id가 화면과 다름';
+    var ids = {}; (raw.risk_cards || []).forEach(function (c) { ids[c.card_id] = 1; });
+    var badCard = (d.cards || []).filter(function (c) { return c.id && !ids[c.id]; })[0];
+    if (badCard) return '위험카드가 화면과 다름(' + badCard.id + ')';
+    var ck = {}; (raw.checklist || []).forEach(function (it) { var id = it.item_id || it.id; if (id) ck[id] = it.action || it.t || it.text || it.title || ''; });
+    var badIt = (d.checklist || []).filter(function (it) { return ck[it.id] !== it.t; })[0];
+    if (badIt) return '체크리스트가 화면과 다름(' + badIt.id + ')';
+    return '';
+  }
+  function expRaw(d) {
+    var e = expState(), inline = expInline(d);
+    if (e.raw) return Promise.resolve(e.raw);
+    if (inline) { e.raw = inline; e.via = 'view'; return Promise.resolve(inline); }
+    expMsg('원본 결과 받는 중 · POST /premortem(같은 계획서)');
+    return fetch('premortem', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ plan_text: S.text, filename: S.filename || null }) })
+      .then(expJson)
+      .then(function (raw) { var bad = expMismatch(d, raw); if (bad) throw new Error('다시 받은 결과가 화면과 달라 내보내지 않음 · ' + bad); if (EXP.d === d) { EXP.raw = raw; EXP.via = 'refetch'; } return raw; });
+  }
+  function expFileName(cd) { var m = /filename="?([^";]+)"?/.exec(cd || ''); var n = m ? m[1].replace(/[^0-9A-Za-z_.-]/g, '') : ''; return /\.zip$/i.test(n) ? n : 'neumann_package.zip'; }
+  function expSave(blob, name) {
+    var u = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = u; a.download = name; a.style.display = 'none'; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(u); }, 5000);
+  }
+  function doExport() {
+    var e = expState(), d = D, why = expBlock();
+    if (e.busy) return;
+    if (why) { expMsg('내보낼 수 없음 · ' + why, true); return; }
+    e.busy = true; expPaint();
+    var n = 0;
+    expRaw(d).then(function (raw) {
+      var decisions = expDecisions(d); n = decisions.length;
+      expMsg('ZIP 만드는 중 · POST /premortem/package · 결정 ' + n + '건');
+      return fetch('premortem/package', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ result: raw, decisions: decisions }) });
+    }).then(function (r) {
+      if (!r.ok) return expJson(r);
+      var name = expFileName(r.headers.get('Content-Disposition'));
+      return r.blob().then(function (b) { if (EXP.d !== d) return; expSave(b, name); e.busy = false; expMsg('내려받음 · ' + name + ' · ' + upSize(b.size) + ' · 결정 ' + n + '건'); });
+    }).catch(function (err) {
+      if (EXP.d !== d) return;
+      e.busy = false; expMsg('내보내기 실패 · ' + (err && err.message ? err.message : '서버 응답 없음'), true);
+    });
+  }
+  document.addEventListener('click', function (ev) {
+    var t;
+    if ((t = ev.target.closest('.dec')) && D) { var it = (D.checklist || [])[+t.dataset.i]; if (it) { it.set = true; it.at = new Date().toISOString(); } setTimeout(expPaint, 0); return; }
+    if ((t = ev.target.closest('#stpExport')) && !t.disabled) { closeAll(); if (S.step !== 2) go(2); var sec = $('s-export'); if (sec) { sec.scrollIntoView({ block: 'start' }); var b = $('btnExport'); if (b && !b.disabled) b.focus({ preventScroll: true }); } return; }
+    if ((t = ev.target.closest('#btnExport')) && !t.disabled) { doExport(); }
+  });
 
   /* ---------- 라우터 ---------- */
   function render() {
