@@ -133,9 +133,42 @@ def test_tampered_result_is_unverified(client: TestClient, tamper: str) -> None:
     # 인용 문구·plan_id를 바꾸면 계약 검증(text_sha256·plan.plan_id 대조)이 먼저 422로 막는다(아래 테스트)
     resp, files = _package(client, res, view["result_sig"])
     _assert_unverified(resp, files)
-    if tamper == "generator_astra":
+    if tamper == "generator_astra":  # DISP-1 병합 뒤: 표기만 옮기고(모델명 없음) 사람용 문서에 astra 글자 없음
         readme = files["README.md"].decode("utf-8")
-        assert "결과에 generator=astra로 적힌 카드" in readme and "astra(LLM)" not in readme
+        assert "LLM(결과에 적힌 표기, 미확인)" in readme
+        assert "gpt-6.1-sol" not in readme and "제품 LLM" not in readme
+        _assert_no_astra(files)
+
+
+def _human_lines(doc: str) -> str:
+    """사람이 보는 문장만: 코드 블록(```json … ```, 결과 값 그대로)과 DISP-1 JSON 설명 줄은 뺀다."""
+    from neumann.api.export import JSON_GENERATOR_NOTE
+
+    out, fence = [], False
+    for ln in doc.splitlines():
+        if ln.startswith("```"):
+            fence = not fence
+            continue
+        if not fence and JSON_GENERATOR_NOTE not in ln:
+            out.append(ln)
+    return chr(10).join(out)
+
+
+def _assert_no_astra(files: dict[str, bytes]) -> None:
+    for name in ("README.md", "neumann_report.md", "plan_annotated.md", "ai_context.md"):
+        assert "astra" not in _human_lines(files[name].decode("utf-8")).lower(), name
+
+
+def test_signed_llm_cards_show_model_and_no_astra(client: TestClient) -> None:
+    res = _fixture()
+    for card in res["risk_cards"]:
+        card["generator"], card["model"] = "astra", "gpt-6.1-sol"
+    view = _signed_view(res)
+    resp, files = _package(client, view["result"], view["result_sig"])
+    assert resp.headers["x-neumann-result-origin"] == "server_signed"
+    readme = files["README.md"].decode("utf-8")
+    assert "LLM (gpt-6.1-sol)" in readme and "제품 LLM" in readme  # 서명 확인된 결과는 DISP-1 이름 + 서버 설명
+    _assert_no_astra(files)
 
 
 def test_contract_rejects_quote_or_plan_id_tamper(client: TestClient) -> None:
