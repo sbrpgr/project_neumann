@@ -1,6 +1,6 @@
 # Project Neumann — 검증 리포트 카드
 
-- 생성: 2026-09-30T21:09:11+09:00 · 코드 커밋: `ef60c99` · 생성 명령: `python -m eval.report_card --inputs C:/Users/User/Desktop/project_neumann/data/eval/score_baseline_freq.json C:/Users/User/Desktop/project_neumann/data/eval/score_astra.json C:/Users/User/Desktop/project_neumann/data/eval/score_rule.json docs/reports/E5-L3b_metrics_e2e.json --out docs/reports/report_card.md`
+- 생성: 2026-09-30T21:09:46+09:00 · 코드 커밋: `5cb77ce` · 생성 명령: `python -m eval.report_card --inputs C:/Users/User/Desktop/project_neumann/data/eval/score_baseline_freq.json C:/Users/User/Desktop/project_neumann/data/eval/score_astra.json C:/Users/User/Desktop/project_neumann/data/eval/score_rule.json docs/reports/E5-L3b_metrics_e2e.json --out docs/reports/report_card.md`
 - 규칙(04_평가_명세 §7): 참조선 먼저 · 미달 먼저 · 모든 숫자에 n과 95% 구간 · 없는 지표는 "측정 전"(추정 금지)
 - 값은 입력 JSON의 숫자를 그대로 옮겼다. 합쳐서 계산한 값은 '계산'으로 표시했다.
 
@@ -95,7 +95,7 @@
 | `C:\Users\User\Desktop\project_neumann\data\eval\score_baseline_freq.json` | macro_f1 | `e9b7e44c5ca4d8a704606b92a0333d277f4c3066267049012dbdec35ce066404` |
 | `C:\Users\User\Desktop\project_neumann\data\eval\score_astra.json` | macro_f1 | `c409bed9f294bd14ee666b21514389fb721517da9db402bf61663a8cf4e89595` |
 | `C:\Users\User\Desktop\project_neumann\data\eval\score_rule.json` | macro_f1 | `b6d90596d39ad08f4dfd2c54f1013abe0379500c6b36bda68a930deed82ebc1a` |
-| `docs\reports\E5-L3b_metrics_e2e.json` | metrics | `8e6175e037a32c0226ee8a1d536fd445bc66f1d79cf6597a116d15672615d444` |
+| `docs\reports\E5-L3b_metrics_e2e.json` | metrics | `76f22f7cc35fcbf6606b3afacb90ec0ec9c5124f117734a080296220f5e2e2fb` |
 
 ```
 python -m eval.macro_f1 --pred C:\Users\User\Desktop\project_neumann\data\eval\pred_baseline_freq.jsonl --gold C:\Users\User\Desktop\project_neumann\data\eval\disapere_gold.jsonl --out <score_baseline_freq.json>
