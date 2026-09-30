@@ -14,6 +14,7 @@ import csv
 import io
 import json
 import logging
+import os
 import sys
 import zipfile
 from pathlib import Path
@@ -320,3 +321,158 @@ def test_export_413_message_is_specific() -> None:
     resp = TestClient(app).post("/premortem/package", content=too_big, headers={"Content-Type": "application/json"})
     assert resp.status_code == 413
     assert resp.json()["message"] == "내보낼 결과가 너무 큽니다(최대 4MB)."
+
+
+# ── 서명 재검증 R1~R4·M10 ─────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("sig", [
+    "v1." + "é" * 64,                     # 비ASCII(예전에는 compare_digest TypeError → 500)
+    "v1." + "０" * 64,                     # 전각 숫자
+    "v1." + "A" * 64,                      # 대문자 hex
+    "v1." + "0" * 63 + " ",                # 공백
+    "v1." + "0" * 64 + "\n",               # 줄바꿈 꼬리
+    "ｖ1." + "0" * 64,                     # 전각 접두
+    "v1." + "0" * 65,                      # 길이
+])
+def test_r1_malformed_signature_is_unverified_not_500(client: TestClient, sig: str) -> None:
+    view = _signed_view()
+    assert signing.verify_result(view["result"], sig) is False
+    resp, files = _package(client, view["result"], sig)  # 200 + unverified(500 아님)
+    _assert_unverified(resp, files)
+
+
+def test_r2_short_key_falls_back_to_random_with_warning(monkeypatch, caplog) -> None:
+    short = "short-key-15byt"
+    assert len(short.encode()) == 15
+    monkeypatch.setenv(signing.KEY_ENV, short)
+    caplog.set_level(logging.WARNING, logger="neumann.api.signing")
+    signing.reset_key()
+    assert any("무작위 키" in r.getMessage() for r in caplog.records)
+    assert short not in caplog.text
+    view = _signed_view()
+    signing.reset_key()  # 같은 짧은 키로 재기동해도 무작위 키라 옛 서명 무효(짧은 키는 쓰지 않았다는 증거)
+    assert not signing.verify_result(view["result"], view["result_sig"])
+    monkeypatch.setenv(signing.KEY_ENV, "x" * 16)  # 16바이트면 쓴다
+    caplog.clear()
+    signing.reset_key()
+    assert not caplog.records
+    view = _signed_view()
+    signing.reset_key()
+    assert signing.verify_result(view["result"], view["result_sig"])
+
+
+def test_r3_other_free_form_fields_are_whitelisted() -> None:
+    res = _fixture()
+    res["expected_review"] = {"generator": "rule", "strength": [], "weakness": [], "request": [],
+                              "debug_prompt": "system: …", "raw_response": {"x": 1}}
+    res["verification"] = {"quotes_total": 3, "quotes_verified": 3, "internal_path": "C:/x"}
+    res["risk_synthesis"] = {"pool_size": 4, "trace": "..."}
+    res["plan_checks"] = {"fitness": {"verdict": "fit"}, "llm_raw": "..."}
+    res["research_questions"] = {"q1": "…"}
+    res["post_status"] = [{"post_status_id": "ps1", "kind": "retraction", "work_id": "w1", "secret": 1}]
+    view = build_ui_view(res, records=None)
+    raw = view["result"]
+    assert set(raw["expected_review"]) == {"generator", "strength", "weakness", "request"}
+    assert raw["verification"] == {"quotes_total": 3, "quotes_verified": 3}
+    assert raw["risk_synthesis"] == {"pool_size": 4}
+    assert raw["plan_checks"] == {"fitness": {"verdict": "fit"}}
+    assert raw["research_questions"] == {}
+    assert raw["post_status"] == [{"post_status_id": "ps1", "kind": "retraction", "work_id": "w1"}]
+    assert view["_status"]["export"]["dropped_keys"] == [
+        "expected_review.debug_prompt", "expected_review.raw_response", "plan_checks.llm_raw",
+        "post_status[].secret", "research_questions.q1", "risk_synthesis.trace", "verification.internal_path"]
+    assert signing.verify_result(raw, view["result_sig"])
+
+
+def _real_results() -> list[Path]:
+    data = Path(os.environ.get("NEUMANN_DATA_DIR") or ROOT.parents[2] / "data")
+    return sorted(p for p in [*(data / "precomputed").glob("*.json"), *(data / "eval" / "neumann_runs").glob("*.json")]
+                  if p.name != "manifest.json")
+
+
+def test_r3_real_results_lose_no_keys_and_package_unchanged() -> None:
+    """실제 결과(사전 계산본·백테스트 실행)는 화이트리스트로 빠지는 키가 없고, 패키지 출력(생성 시각 고정)이 같다."""
+    from datetime import UTC, datetime
+
+    from neumann.api.export import build_package_files
+    from neumann.api.view import export_result
+    from neumann.models import PremortemResult
+
+    paths = _real_results()
+    if not paths:
+        pytest.skip("공유 데이터 폴더에 실제 결과가 없다")
+    when = datetime(2026, 9, 30, 12, 0, tzinfo=UTC)
+    checked = 0
+    for path in paths:
+        try:
+            orig = PremortemResult.model_validate(json.loads(path.read_text(encoding="utf-8"))).model_dump(mode="json")
+        except Exception:  # noqa: BLE001 - 결과 모양이 아닌 파일은 건너뛴다
+            continue
+        raw, reason, dropped = export_result(orig)
+        assert raw is not None, (path.name, reason)
+        assert dropped == [], (path.name, dropped)
+        assert build_package_files(raw, created_at=when) == build_package_files(orig, created_at=when), path.name
+        checked += 1
+    assert checked >= 3, checked
+
+
+def test_r4_markdown_link_image_and_stage_names_are_neutralised(client: TestClient) -> None:
+    res = _fixture()
+    img = "![x](https://evil.example/pixel.png)"
+    res["risk_cards"][0]["title"] = "제목 " + img + " [링크](https://evil.example) " + BS + "[이미 이스케이프]"
+    res["notices"] = [f"알림 {img}"]
+    res["stages"] = [{"stage": f"search{img}<b>", "state": "degraded", "detail": f"사유 {img}", "phase": "EVIDENCE",
+                      "impl": "x"}]
+    res["status"] = "degraded"
+    view = _signed_view(res)
+    resp, files = _package(client, view["result"], view["result_sig"])
+    for name in ("README.md", "neumann_report.md", "ai_context.md", "plan_annotated.md"):
+        doc = files[name].decode("utf-8")
+        assert not _live_link_syntax(doc), (name, _live_link_syntax(doc))  # 이미지·링크 문법이 살아 있지 않다
+        assert "<b>" not in doc, name
+    ctx = files["ai_context.md"].decode("utf-8")
+    escaped_img = "!" + BS + "[x" + BS + "](https://evil.example/pixel.png)"
+    assert f"정상이 아닌 단계: search{escaped_img}&lt;b&gt;: degraded" in ctx
+    report = files["neumann_report.md"].decode("utf-8")
+    assert BS * 3 + "[이미 이스케이프" + BS + "]" in report  # 원래 백슬래시도 글자로 남는다(두 배 + 괄호 앞 하나)
+
+
+BS = chr(92)  # 백슬래시(소스에 이스케이프를 섞지 않으려고)
+
+
+def _escaped(doc: str, i: int) -> bool:
+    """doc[i] 앞에 백슬래시가 홀수 개면 이스케이프된 글자다."""
+    n = 0
+    while i - 1 - n >= 0 and doc[i - 1 - n] == BS:
+        n += 1
+    return n % 2 == 1
+
+
+def _live_link_syntax(doc: str) -> list[str]:
+    """이스케이프되지 않은 이미지 시작(![)이나 링크 닫기(](): 렌더러가 링크·이미지로 읽을 자리."""
+    bad = []
+    for i, ch in enumerate(doc):
+        if ch == "[" and not _escaped(doc, i) and i > 0 and doc[i - 1] == "!":
+            bad.append(doc[max(0, i - 10):i + 20])
+        if ch == "]" and doc[i + 1:i + 2] == "(" and not _escaped(doc, i):
+            bad.append(doc[max(0, i - 10):i + 20])
+    return bad
+
+
+def test_m10_int_float_normalisation_in_free_form_fields() -> None:
+    """정수로 떨어지는 실수 정규화(M10): 자유형 칸은 모델이 형을 바꾸지 않으므로 여기서 잡힌다."""
+    res = _fixture()
+    res["manifest"] = {"total_s": 12.0, "timings_s": {"search": 3.0, "extract_issues": 1.25}}
+    view = _signed_view(res)
+    assert view["result"]["manifest"]["total_s"] == 12.0 and isinstance(view["result"]["manifest"]["total_s"], float)
+    back = _browser_roundtrip(view["result"])
+    assert isinstance(back["manifest"]["total_s"], int)  # 브라우저 왕복 뒤 12
+    assert signing.canonical_bytes(back) == signing.canonical_bytes(view["result"])
+    assert signing.verify_result(back, view["result_sig"])
+    changed = json.loads(json.dumps(back))
+    changed["manifest"]["timings_s"]["extract_issues"] = 1.26  # 정수가 아닌 값은 그대로 구별
+    assert not signing.verify_result(changed, view["result_sig"])
+    big = json.loads(json.dumps(view["result"]))
+    big["manifest"]["total_s"] = float(2**53)  # 2^53 이상은 정수로 바꾸지 않는다(브라우저 정밀도 밖)
+    assert b"9007199254740992.0" in signing.canonical_bytes(big)
