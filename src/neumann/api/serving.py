@@ -84,6 +84,7 @@ MESSAGES = {
     "blocked": "지금은 새 분석을 잠시 멈췄습니다. 이미 분석된 계획서와 예시 결과는 계속 볼 수 있습니다.",
     "too_large": "계획서가 너무 깁니다. {limit:,}자 이하로 줄여서 다시 올려 주세요(현재 {chars:,}자).",
     "too_large_bytes": "요청이 너무 큽니다({limit_mb}MB 이하만 받습니다). 계획서는 {chars:,}자 이하로 올려 주세요.",
+    "too_large_export": "내보낼 결과가 너무 큽니다(최대 {limit_mb:g}MB).",  # E4-L2f F6: /premortem/package 413
     "timeout": ("분석이 {limit}초 안에 끝나지 않았습니다. 분석은 계속 진행 중이니 잠시 뒤 같은 계획서로 다시 요청하면 "
                 "끝난 결과를 바로 받을 수 있습니다(요청 번호 {ticket})."),
     "timeout_aux": "처리가 {limit}초 안에 끝나지 않았습니다. 잠시 뒤 다시 시도해 주세요(요청 번호 {ticket}).",
@@ -1397,6 +1398,8 @@ class ServingMiddleware:
 
         def too_big() -> dict[str, Any]:
             srv.counters["too_large_413"] += 1
+            if kind == "export":  # 내보내기는 계획서가 아니라 결과 JSON을 받는다(E4-L2f F6)
+                return _err("too_large", user_message("too_large_export", limit_mb=round(limit / 1048576, 1)), ticket)
             return _err("too_large", user_message("too_large_bytes", limit_mb=round(limit / 1048576, 1),
                                                    chars=cfg.max_plan_chars), ticket)
 
