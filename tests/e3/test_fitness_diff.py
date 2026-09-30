@@ -1,12 +1,9 @@
-"""E3-L1z: 규칙 판정 차등 검사 — 분야(field)를 뺀 반환값이 기준 커밋(main)과 같다(실제 API 없음).
+"""분야는 4cbf0f0과 비교, 승인된 300/600자 정책은 47acaba와 비교한다.
 
-E3-L1z는 분야 표지만 고친다(인지 복합어, 영어 약어+한글 조사, neuromorphic·neuro-symbolic). 판정
-(fit·unfit·uncertain), 요소별 줄 번호, 무관 표지, 사유, 강등 표기는 한 글자도 바뀌면 안 된다.
-기준 커밋의 `fitness.py`를 `git show`로 읽어 따로 올리고, 같은 입력(템플릿·예시·데모 계획서 + 무작위 240건)을
-두 판에 넣어 비교한다. git이나 기준 커밋이 없는 환경(얕은 복제 등)에서는 건너뛴다.
-
-이후 과제가 판정 규칙(요소·무관 사전, 판정 분기)을 일부러 바꾸면 이 검사는 실패한다. 그때는 그 과제의 기준
-커밋으로 `BASE_REV`를 옮기고 보고서에 적는다.
+정책 기준의 분야 탐지만 고정 통합 소스 da5aba7에서 가져온다. 분야는 input_quality의
+no_topic 분기와 metrics에도 쓰이므로, 필드를 삭제하는 대신 승인된 탐지기를 동일 입력에
+실행한다. 정책/사전/판정/반환값 코드는 독립된 47acaba 원본이다. 시간값 elapsed_s만 제외하고
+field, input_quality 전체, 사유, notice, status 등을 전부 비교한다. 기준이 없으면 실패한다.
 """
 
 from __future__ import annotations
@@ -28,29 +25,35 @@ from tests.fixtures.loader import DEMO_PLANS, NEGATIVE_PLAN, PLANS_DIR
 ROOT = Path(__file__).resolve().parents[2]
 TEMPLATES = ROOT / "src" / "neumann" / "api" / "templates"
 BASE_REV = "4cbf0f0"  # E3-L1z 착수 때 main(판정 규칙은 E3-L1x 병합본 3968cad와 같다)
+POLICY_REV = "47acaba"  # 승인된 L1s 300/600자 정책
+FIELD_REV = "da5aba7"  # 이번 과제의 고정 통합 소스; 현재 런타임에서 기준을 가져오지 않는다
 N_RANDOM = 240
 SEED = 20260930
 
 
-@functools.lru_cache(maxsize=1)
-def base_module() -> types.ModuleType | None:
-    """기준 커밋의 fitness.py를 별도 모듈로 올린다. git·커밋이 없으면 None."""
+@functools.lru_cache(maxsize=3)
+def revision_module(revision: str) -> types.ModuleType:
+    """본선에서 생성된 지정 커밋 원본을 읽는다. 누락/읽기 실패는 skip하지 않는다."""
     try:
         proc = subprocess.run(
-            ["git", "show", f"{BASE_REV}:src/neumann/analyze/fitness.py"],
+            ["git", "show", f"{revision}:src/neumann/analyze/fitness.py"],
             cwd=ROOT, capture_output=True, check=True, timeout=30,
         )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    mod = types.ModuleType("neumann_fitness_base")
-    exec(compile(proc.stdout.decode("utf-8"), f"{BASE_REV}:fitness.py", "exec"), mod.__dict__)  # noqa: S102
+    except (OSError, subprocess.SubprocessError) as exc:
+        pytest.fail(f"필수 차등 기준 {revision} 읽기 실패: {type(exc).__name__}")
+    mod = types.ModuleType(f"neumann_fitness_{revision}")
+    exec(compile(proc.stdout.decode("utf-8"), f"{revision}:fitness.py", "exec"), mod.__dict__)  # noqa: S102
     return mod
 
 
 def _need_base() -> types.ModuleType:
-    mod = base_module()
-    if mod is None:
-        pytest.skip(f"git 또는 기준 커밋 {BASE_REV}이 없다")
+    return revision_module(BASE_REV)
+
+
+@functools.lru_cache(maxsize=1)
+def policy_module() -> types.ModuleType:
+    mod = revision_module(POLICY_REV)
+    mod._FIELDS = revision_module(FIELD_REV)._FIELDS
     return mod
 
 
@@ -142,20 +145,18 @@ class FixedLLM:
         return {"verdict": self.verdict, "elements": elements, "field": "", "reason": "고정 응답(차등 검사)"}
 
 
-def _without_field(result: dict[str, Any]) -> dict[str, Any]:
-    out = {k: v for k, v in result.items() if k not in ("field", "elapsed_s")}
-    if isinstance(out.get("rule"), dict):
-        out["rule"] = {k: v for k, v in out["rule"].items() if k != "field"}
-    return out
+def _deterministic_output(result: dict[str, Any]) -> dict[str, Any]:
+    # 실행 시간만 비결정적이다. 정책·판정·분야를 포함한 결과 필드는 삭제하지 않는다.
+    return {k: v for k, v in result.items() if k != "elapsed_s"}
 
 
 def outcomes(mod: types.ModuleType, text: str) -> dict[str, Any]:
-    """한 입력의 규칙 판정·강등 판정·모델 판정 3종(분야 뺌)과 분야."""
+    """한 입력의 규칙·강등·고정 모델 판정 3종 전체(실행 시간 제외)."""
     plan = PlanDocument.from_text(text, "sess-e3-l1z")
     rule = mod.rule_fitness(plan)
-    runs = {"rule": _without_field(rule), "fallback": _without_field(mod.assess_fitness(plan, None))}
+    runs = {"rule": rule, "fallback": _deterministic_output(mod.assess_fitness(plan, None))}
     for v in ("research_plan", "not_research_plan", "uncertain"):
-        runs[f"llm_{v}"] = _without_field(mod.assess_fitness(plan, FixedLLM(v)))
+        runs[f"llm_{v}"] = _deterministic_output(mod.assess_fitness(plan, FixedLLM(v)))
     return {"field": rule["field"], "non_field": json.dumps(runs, ensure_ascii=False, sort_keys=True)}
 
 
@@ -173,8 +174,8 @@ def test_corpus_is_large_and_covers_all_verdicts() -> None:
 
 
 def test_non_field_outputs_equal_base() -> None:
-    """분야를 뺀 반환값(규칙·강등·모델 판정 3종)이 기준 커밋과 글자 단위로 같다."""
-    base = _need_base()
+    """승인된 정책+고정 분야 탐지 기준과 모든 결정적 반환값이 같다(251건 × 5)."""
+    base = policy_module()
     diffs = []
     for name, text in corpus():
         before, after = outcomes(base, text), outcomes(current, text)
@@ -217,3 +218,130 @@ def test_known_neuroscience_phrases_stay_neuroscience(text: str) -> None:
     base = _need_base()
     assert _field(base, text) == "신경과학·뇌영상"  # 기준 커밋에서도 정답이던 사례만 둔다
     assert _field(current, text) == "신경과학·뇌영상"
+
+
+# 정책 기대는 기준 모듈이나 현재 상수로 만들지 않고 대표 승인값으로 고정한다.
+def policy_plan(length: int, *, padded: bool = False) -> PlanDocument:
+    text = (
+        "연구 목표는 배터리 전해액 예측이다.\n"
+        "방법은 모델을 학습한다.\n"
+        "데이터를 수집한다.\n"
+        "정확도로 평가하고 기준선과 비교한다.\n"
+    )
+    text += "가" * (length - len(text))
+    assert len(text) == length
+    return PlanDocument.from_text("  " + text + "  " if padded else text, "policy-boundary")
+
+
+@pytest.mark.parametrize("length,level,codes", [
+    (299, "reject", ["too_short"]), (300, "warn", ["short"]),
+    (301, "warn", ["short"]), (599, "warn", ["short"]),
+    (600, "ok", []), (601, "ok", []),
+])
+@pytest.mark.parametrize("padded", [False, True])
+def test_approved_policy_boundaries(length: int, level: str, codes: list[str], padded: bool) -> None:
+    plan = policy_plan(length, padded=padded)
+    rule = current.rule_fitness(plan)
+    iq = rule["input_quality"]
+    assert iq["metrics"]["length"] == length  # 앞뒤 공백 제외, 내부 공백 포함, 한글 가중치 없음
+    assert iq["metrics"]["n_elements"] == rule["n_elements"] == 4
+    assert iq["thresholds"]["min_chars"] == 300
+    assert iq["thresholds"]["warn_chars"] == 600
+    assert iq["level"] == level
+    assert [r["code"] for r in iq["reasons"]] == codes
+    assert iq["status"] == {"reject": "rejected_thin_input", "warn": "warn_short_input", "ok": "ok"}[level]
+    assert iq["generator"] == "rule" and iq["source"] == "rule"
+    assert rule["verdict"] == ("unfit" if length == 299 else "fit")
+    assert rule["precheck"] == ("too_short" if length == 299 else None)
+    if level == "reject":
+        assert iq["message"] == (
+            "입력이 300자 미만이라 연구계획서로 분석하지 않습니다. 연구 질문·방법·데이터·평가를 적어 주세요."
+        )
+    elif level == "warn":
+        assert iq["message"].startswith("입력이 짧아 결과 신뢰도가 낮습니다")
+    else:
+        assert iq["message"] is None
+
+    fallback = current.assess_fitness(plan, None)
+    assert fallback["verdict"] == rule["verdict"]
+    assert fallback["input_quality"] == iq
+    assert fallback["decided_by"] == ("precheck" if level == "reject" else "rule_fallback")
+    assert fallback["status"] == ("ok" if level == "reject" else "degraded")
+    assert fallback["degraded_reason"] == (None if level == "reject" else "llm_unavailable: llm_call 없음")
+
+    class CountingLLM(FixedLLM):
+        calls = 0
+
+        def __call__(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+            self.calls += 1
+            return super().__call__(*args, **kwargs)
+
+    llm = CountingLLM("research_plan")
+    modeled = current.assess_fitness(plan, llm)
+    assert llm.calls == (0 if length == 299 else 1)
+    assert modeled["verdict"] == ("unfit" if length == 299 else "fit")
+    assert modeled["decided_by"] == ("precheck" if length == 299 else "llm")
+
+
+def test_classifications_unchanged_against_policy_reference() -> None:
+    """251건을 제외 없이 승인된 정책 기준과 대조한다(규칙 판정과 모델/강등 분류)."""
+    reference = policy_module()
+    for name, text in corpus():
+        plan = PlanDocument.from_text(text, "classification-regression")
+        assert current.rule_fitness(plan)["verdict"] == reference.rule_fitness(plan)["verdict"], name
+        for llm in (None, FixedLLM("research_plan"), FixedLLM("not_research_plan"), FixedLLM("uncertain")):
+            before = reference.assess_fitness(plan, llm)
+            after = current.assess_fitness(plan, llm)
+            assert (after["verdict"], after["analyze"], after["is_research_plan"]) == (
+                before["verdict"], before["analyze"], before["is_research_plan"]
+            ), name
+
+
+@pytest.mark.parametrize("mutation", ["rule_verdict", "model_verdict", "status", "notice", "quality_field"])
+def test_policy_comparison_catches_output_mutations(monkeypatch: pytest.MonkeyPatch, mutation: str) -> None:
+    """현재 코드에 회귀를 주입해도 독립된 정책 기준은 같이 바뀌지 않는다."""
+    if mutation == "rule_verdict":
+        original = current.rule_fitness
+
+        def changed_rule(plan: PlanDocument) -> dict[str, Any]:
+            out = original(plan)
+            out["verdict"] = "unfit" if out["verdict"] == "fit" else "fit"
+            return out
+
+        monkeypatch.setattr(current, "rule_fitness", changed_rule)
+    else:
+        original_assess = current.assess_fitness
+
+        def changed_assess(*args: Any, **kwargs: Any) -> dict[str, Any]:
+            out = original_assess(*args, **kwargs)
+            if mutation == "model_verdict":
+                if args[1] is not None:
+                    out["verdict"] = "unfit" if out["verdict"] == "fit" else "fit"
+                return out
+            if mutation == "quality_field":
+                out["input_quality"] = {**out["input_quality"], "metrics": {**out["input_quality"]["metrics"], "field": "오류"}}
+            else:
+                key = {"status": "status", "notice": "notice"}[mutation]
+                out[key] = "회귀"
+            return out
+
+        monkeypatch.setattr(current, "assess_fitness", changed_assess)
+    with pytest.raises(AssertionError, match="분야 밖 반환값"):
+        test_non_field_outputs_equal_base()
+
+
+@pytest.mark.parametrize("length,wrong_level", [(299, "warn"), (300, "reject"), (599, "ok"), (600, "warn")])
+def test_boundary_checks_catch_policy_mutations(monkeypatch: pytest.MonkeyPatch, length: int, wrong_level: str) -> None:
+    original = current.input_quality
+
+    def changed_quality(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        out = original(*args, **kwargs)
+        if out["metrics"]["length"] == length:
+            out["level"] = wrong_level  # 상수는 그대로 두고 경계 판정만 잘못되게 한다
+        return out
+
+    monkeypatch.setattr(current, "input_quality", changed_quality)
+    correct_level = {299: "reject", 300: "warn", 599: "warn", 600: "ok"}[length]
+    correct_codes = {299: ["too_short"], 300: ["short"], 599: ["short"], 600: []}[length]
+    with pytest.raises(AssertionError):
+        test_approved_policy_boundaries(length, correct_level, correct_codes, False)
