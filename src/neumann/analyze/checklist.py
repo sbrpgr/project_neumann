@@ -32,7 +32,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from typing import Any
 
-from neumann.analyze.gate import MISSING_CITATION, EvidenceIndex, evidence_link_problem
+from neumann.analyze.gate import MALFORMED, MISSING_CITATION, EvidenceIndex, evidence_link_problem
 from neumann.models import Excerpt, PlanDocument, PremortemResult, RiskCard, RiskCode, StageStatus, redact_pii
 
 log = logging.getLogger(__name__)
@@ -307,7 +307,7 @@ def gate_checklist_items(
     drops: list[dict[str, Any]] = []
     for it in items:
         if not isinstance(it, dict):
-            drops.append(_drop_record(None, MISSING_CITATION, "항목이 객체가 아니다", it, [], where=where))
+            drops.append(_drop_record(None, MALFORMED, "항목이 객체가 아니다", it, [], where=where))
             continue
         ev = it.get("evidence", it.get("evidence_ids"))
         reason, detail = evidence_link_problem(ev if isinstance(ev, list) else [], [it.get("card_id")], index)

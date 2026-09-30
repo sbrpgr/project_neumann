@@ -133,6 +133,10 @@
             "note": {
               "type": "string",
               "description": "E3-L1e add-only — 화면 문구 '근거 없는 항목 k개 제외'. 0이면 빈 문자열. required 아님."
+            },
+            "no_evidence_reasons": {
+              "type": "array", "items": {"type": "string"},
+              "description": "E3-L1e add-only — no_evidence로 세는 폐기 사유 코드. 화면은 dropped를 이 목록으로 '근거가 없어 제외한 문장'과 '검증에서 제외한 문장'으로 나눈다. required 아님."
             }
           }
         }
@@ -159,7 +163,7 @@
           "description": "어디서 뺐나: checklist(생성 직후) · semantic_validate(2차 검증) · view(화면)",
           "additionalProperties": {"type": "integer", "minimum": 0}
         },
-        "note": {"type": "string", "description": "화면 문구 '근거 없는 항목 k개 제외'. 0이면 빈 문자열"}
+        "note": {"type": "string", "description": "화면 문구 '근거 없는 항목 k개 제외'(남은 항목이 없으면 '근거 있는 항목이 없어 모두 제외했습니다(k개)'). 0이면 빈 문자열"}
       }
     },
     "kpi": {

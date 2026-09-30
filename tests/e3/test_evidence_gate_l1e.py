@@ -182,7 +182,7 @@ def test_gate_function_rejects_every_ungrounded_shape() -> None:
     assert [(d.get("item_id"), d["reason"]) for d in drops] == [
         ("A", g.MISSING_CITATION), ("B", g.MISSING_CITATION), ("C", g.UNKNOWN_EXCERPT),
         ("D", g.EXCERPT_CARD_MISMATCH), ("E", g.UNKNOWN_CARD), ("F", g.EXCERPT_CARD_MISMATCH),
-        (None, g.MISSING_CITATION),
+        (None, g.MALFORMED),  # 객체가 아닌 항목: 근거를 읽을 수 없다
     ]
 
 
@@ -349,3 +349,76 @@ def test_review_all_ungrounded_falls_back_to_rule_and_every_sentence_is_grounded
         for sent in er[sec]:
             assert g.evidence_link_problem(sent["c"], sent["cards"], idx) == (None, "")
     assert not any("근거 없는" in s["t"] for sec in ("weakness", "request") for s in er[sec])
+
+
+# ── 체크리스트 마지막 게이트(M1b) ────────────────────────────────────────
+
+
+def test_final_gate_drops_ungrounded_rule_items(monkeypatch: pytest.MonkeyPatch) -> None:
+    """규칙 경로 항목도 마지막 게이트를 지난다: 규칙 문구가 근거 없이·다른 카드 근거로 나오면 버린다(번호는 거른 뒤)."""
+    from neumann.analyze import checklist as ck
+
+    res = _result()
+    assert res.plan is not None
+    real = ck.rule_actions
+
+    def bad_rule_actions(card, valid_lines):
+        good = real(card, valid_lines)[:1]
+        other = SEED if card.card_id == LEAK else LEAK
+        return [
+            *good,
+            {**good[0], "action": f"{card.card_id} 근거 없는 규칙 문구", "evidence": []},
+            {**good[0], "action": f"{card.card_id} 다른 카드 근거 규칙 문구", "evidence": _card_ev(res, other)[:1]},
+        ]
+
+    monkeypatch.setattr(ck, "rule_actions", bad_rule_actions)
+    stats: dict[str, Any] = {}
+    items = ck.build_checklist(res, res.plan, None, stats=stats)  # llm 없음 → 전부 규칙 경로
+    assert [it["item_id"] for it in items] == ["C1", "C2"]  # 카드마다 좋은 규칙 항목 1개만, 번호 빈틈 없음
+    assert not any("규칙 문구" in it["action"] for it in items)
+    _assert_all_grounded(res, items)
+    assert stats["items_dropped_no_evidence"] == 4
+    finals = [d for d in stats["evidence_drops"] if d["where"] == "checklist_final"]
+    assert sorted(d["reason"] for d in finals) == sorted([g.MISSING_CITATION, g.EXCERPT_CARD_MISMATCH] * 2)
+
+
+def test_final_gate_catches_a_regression_in_action_cleaning(monkeypatch: pytest.MonkeyPatch) -> None:
+    """첫 게이트(_clean_actions)가 고장 나 근거 없는 행동을 흘려도 마지막 게이트가 잡는다."""
+    from neumann.analyze import checklist as ck
+
+    res = _result()
+    assert res.plan is not None
+    real = ck._clean_actions
+
+    def leaky(raw_actions, card, valid_lines, index):
+        kept, stats, drops = real(raw_actions, card, valid_lines, index)
+        leak = {**kept[0], "action": f"{card.card_id} 새어 나온 행동", "evidence": []} if kept else None
+        return ([*kept, leak] if leak else kept), stats, drops
+
+    monkeypatch.setattr(ck, "_clean_actions", leaky)
+    out = ck.attach_checklist(res, res.plan, FakeLLM(_good))
+    assert not any("새어 나온 행동" in it["action"] for it in out.checklist)
+    assert [it["item_id"] for it in out.checklist] == ["C1", "C2", "C3", "C4"]
+    _assert_all_grounded(out, out.checklist)
+    audit = out.verification["checklist_evidence"]
+    assert audit["dropped"] == 2 and {d["where"] for d in audit["dropped_detail"]} == {"checklist_final"}
+    stage = next(s for s in out.stages if s.stage == "checklist")
+    assert stage.counts["items_dropped_no_evidence"] == 2 and "근거 없는 항목 2개 제외" in (stage.detail or "")
+
+
+def test_review_malformed_citation_counts_as_no_evidence() -> None:
+    """심사평에서 근거 id를 읽을 수 없는 문장(형식 오류)도 '근거 없는 항목'으로 센다(화면 수와 일관)."""
+    res = _result()
+
+    def respond(input_text: str) -> dict:
+        code, ev = _aliases(input_text)
+        c_leak = next(k for k, v in code.items() if v == "R3")
+        return {"strength": [], "request": [], "weakness": [
+            _s("무작위 분할은 누출 위험이 있다 (16행).", ev[c_leak][:1], [c_leak], [16]),
+            {"text": "근거 형식이 틀린 문장.", "excerpt_ids": "E1", "card_ids": [], "plan_lines": []},  # 목록이 아님
+            _s("이 설계로는 R² 0.95 이상을 달성하기 어렵다.", ev[c_leak][:1], [c_leak]),  # 없는 수치(근거 문제 아님)
+        ]}
+
+    er = generate_expected_review(res, _ReviewCall(respond))
+    assert er["audit"]["reasons"] == {g.MALFORMED: 1, g.FABRICATED_NUMBER: 1}
+    assert er["audit"]["no_evidence"] == 1 and er["audit"]["drop"] == 2

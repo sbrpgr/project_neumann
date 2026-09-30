@@ -282,6 +282,8 @@ def test_only_failing_sentences_are_removed_and_audit_counts(result):
     audit = rep.audit()
     assert audit["gen"] == 3 and audit["pass"] == 2 and audit["drop"] == 1
     assert audit["no_evidence"] == 1  # E3-L1e: 근거 연결 실패로 뺀 수
+    assert set(g.NO_EVIDENCE_FAMILY) == {*g.NO_EVIDENCE_REASONS, g.MALFORMED}  # 형식 오류도 같은 계열로 센다
+    assert g.count_no_evidence([{"reason": g.MALFORMED}, {"reason": g.FABRICATED_NUMBER}, {"reason": g.DUPLICATE}]) == 1
     assert audit["gen"] == audit["pass"] + audit["drop"]
     assert audit["dropped"] == [[g.MISSING_CITATION, "대부분의 연구가 이 문제를 겪는다."]]
     assert audit["linked_rate"] == 1.0 and audit["gate"] == g.GATE_VERSION

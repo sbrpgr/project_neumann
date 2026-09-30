@@ -66,6 +66,8 @@ DROP_REASONS: tuple[str, ...] = (
 # 근거 연결 실패 사유(E3-L1e). 심사평 문장·체크리스트 항목이 같은 검사(`evidence_link_problem`)를 쓰고,
 # 화면의 "근거 없는 항목 k개 제외"는 이 사유로 빠진 것만 센다.
 NO_EVIDENCE_REASONS: tuple[str, ...] = (MISSING_CITATION, UNKNOWN_EXCERPT, UNKNOWN_CARD, EXCERPT_CARD_MISMATCH)
+# 제외 수("근거 없는 항목 k개 제외")로 세는 사유: 연결 실패 + 형식 오류(근거 id를 읽을 수 없어 근거를 확인할 수 없다)
+NO_EVIDENCE_FAMILY: tuple[str, ...] = (*NO_EVIDENCE_REASONS, MALFORMED)
 
 
 # ── 따옴표 인용 찾기 ──────────────────────────────────────────────────────
@@ -460,11 +462,11 @@ def gate_sentences(
 
 
 def count_no_evidence(drops: Iterable[Drop | Mapping[str, Any]]) -> int:
-    """폐기 기록 중 근거 연결 실패(NO_EVIDENCE_REASONS)로 빠진 수."""
+    """폐기 기록 중 근거를 확인할 수 없어 빠진 수(NO_EVIDENCE_FAMILY: 연결 실패 + 형식 오류)."""
     n = 0
     for d in drops:
         reason = d.reason if isinstance(d, Drop) else d.get("reason")
-        n += reason in NO_EVIDENCE_REASONS
+        n += reason in NO_EVIDENCE_FAMILY
     return n
 
 
@@ -488,6 +490,7 @@ __all__ = [
     "GATE_VERSION",
     "GateReport",
     "MIN_QUOTE_LEN",
+    "NO_EVIDENCE_FAMILY",
     "NO_EVIDENCE_REASONS",
     "SECTIONS",
     "check_sentence",

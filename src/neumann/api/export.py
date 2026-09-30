@@ -162,6 +162,23 @@ def _checklist_ids(checklist: Sequence[Mapping[str, Any]]) -> set[str]:
     return {str(item[k]) for item in checklist for k in CHECKLIST_ID_KEYS if item.get(k) is not None}
 
 
+def _review_for_report(er: Mapping[str, Any]) -> dict[str, Any]:
+    """리포트에 싣는 예상 심사평(E3-L1e): 게이트가 뺀 문장 원문(audit.dropped·dropped_detail)은 빼고 사유 코드·개수만 남긴다.
+    뺀 문장은 분석 결과가 아니므로 라벨 없이 문서에 나가지 않게 한다. 결과 JSON 원본은 바꾸지 않는다."""
+    out = dict(er)
+    audit = dict(out.get("audit") or {})
+    drops = [d for d in (audit.pop("dropped", None) or []) if isinstance(d, (list, tuple)) and d]
+    audit.pop("dropped_detail", None)
+    if drops or "drop" in audit:
+        codes: dict[str, int] = {}
+        for d in drops:
+            codes[str(d[0])] = codes.get(str(d[0]), 0) + 1
+        audit["dropped_reasons"] = codes
+        audit["dropped_text"] = "제외한 문장 원문은 싣지 않음(분석 결과 아님) — 사유 코드·개수만"
+    out["audit"] = audit
+    return out
+
+
 def _checklist_line(item: Mapping[str, Any]) -> str:
     """체크리스트 항목 한 줄. 키 이름은 E3 형식(text·risk_code·card_id·plan_lines)과 목업 형식(t·r·s·m)을 모두 읽는다."""
     text = item.get("text") or item.get("action") or item.get("t")
@@ -679,12 +696,12 @@ def _report(c: _Ctx) -> bytes:
         L.append("유사 연구가 없다.")
 
     if r.expected_review:
-        L += ["", "## 예상 심사평 (결과의 expected_review를 그대로 옮김)", ""]
+        L += ["", "## 예상 심사평 (결과의 expected_review를 옮김 · 제외한 문장은 사유 코드·개수만)", ""]
         er_gen = r.expected_review.get("generator")
         if er_gen:
             L += [f"생성: {display_generator(er_gen, r.expected_review.get('model'))}", ""]
         L.append("```json")
-        L += json.dumps(r.expected_review, ensure_ascii=False, indent=2).split("\n")
+        L += json.dumps(_review_for_report(r.expected_review), ensure_ascii=False, indent=2).split("\n")
         L.append("```")
     if r.checklist:
         L += ["", "## 체크리스트 (결과의 checklist를 옮김)", ""]
