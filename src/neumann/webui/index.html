@@ -607,7 +607,7 @@
 
   /* ---------- 2 실행 (E4-L2d: POST /premortem/jobs → 1~2초마다 GET /premortem/jobs/{id}. 작업 API가 없으면(404) POST /premortem/view) ---------- */
   var JOB_STAGES = [['plan_normalize', 'NORMALIZE', '계획서 정리'], ['query_axes', 'QUERIES', '검색 질의 만들기'], ['search', 'SEARCH', '유사 연구 검색'], ['extract_issues', 'EXTRACT', '지적 추출'], ['synthesize_cards', 'SYNTHESIZE', '위험카드 합성'], ['verify_evidence', 'VERIFY', '원문 대조']];
-  var JOB_ERR = { busy: '대기열이 가득 참', rate_limited: '요청이 너무 잦음', too_large: '계획서가 너무 김', budget_exhausted: '오늘 분석 한도 소진', blocked: '새 분석 일시 중지', timeout: '시간 초과', job_not_found: '작업 결과 없음', unavailable: '분석 기능 준비 중', internal: '처리 중 문제', invalid_request: '요청 형식 오류' };
+  var JOB_ERR = { busy: '대기열이 가득 참', rate_limited: '요청이 너무 잦음', too_large: '계획서가 너무 김', budget_exhausted: '오늘 분석 한도 소진', blocked: '새 분석 일시 중지', timeout: '시간 초과', job_not_found: '작업 결과 없음', unavailable: '분석 기능 준비 중', internal: '처리 중 문제', invalid_request: '요청 형식 오류', busy_ip: '진행 중인 분석이 많음', long_token: '입력 형식 확인' };
   function renderJob() {
     var j = S.job || {}, w = j.wait || null;
     var title = (planLines(S.text)[0] || '').replace(/^#+\s*/, '');
@@ -671,6 +671,7 @@
           var b = res.body || {};
           if (res.ok && b.status === 'done') return finish({ ok: true, code: 200, body: b.result || {} });
           if (res.ok && (b.status === 'queued' || b.status === 'running')) { waiting(b); return poll(id, Math.min(2000, Math.max(1000, (b.poll_after_s || 1.5) * 1000)), 0); }
+          if (res.code === 429) return poll(id, Math.min(10000, Math.max(2000, (b.retry_after_s || 2) * 1000)), fails);  /* 상태 확인 속도 제한: 기다렸다 다시 */
           refused(res);
         }).catch(function () { if (!alive()) return; if (fails >= 5) return fail('서버 연결 실패', '작업 상태를 확인하지 못했습니다. 잠시 뒤 다시 시도해 주세요.'); poll(id, 2000, fails + 1); });
       }, delay);
