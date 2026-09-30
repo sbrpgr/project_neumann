@@ -1,11 +1,13 @@
 """E4-L1b 입력 화면 Playwright 검사(1440×900): 범위 안내 · 템플릿 선택기 · 예시 불러오기 · 적합성 판정 자리.
 
     NEUMANN_UI_TESTS=1 python -m pytest tests/e4/test_templates_ui.py -q -s
-    python tests/e4/test_templates_ui.py [--port 8121] [--out docs/reports]
+    python tests/e4/test_templates_ui.py [--port 8140] [--out docs/reports] [--prefix E4-L1e] [--shots input]
 
 - 기본 pytest(verify)에서는 건너뛴다(브라우저·서버가 필요). ``NEUMANN_UI_TESTS=1``일 때만 돈다.
 - main.py는 건드리지 않는다. 하위 프로세스에서 ``main.app``에 이 과제의 ``router``를 붙여 띄우고(이미 붙어 있으면 그대로),
-  끝나면(실패해도) 종료한다. 포트 8010(대표 점검 서버)은 쓰지 않는다.
+  끝나면(실패해도) 종료한다. 포트 8010·8020(대표·검증 점검 서버)은 쓰지 않는다.
+- 서버는 ``NEUMANN_LLM_PROVIDER=mock``으로 강제한다(개발 중 실제 OpenAI 호출 금지, 대표 상시 규칙).
+- E4-L1e: 범위 안내·템플릿·예시에 신경과학·의료영상이 남아 있으면 실패. ``--shots``로 저장할 장면을 고른다.
 - 렌더 완료 DOM 조건(``data-ready``, 템플릿 버튼 수, 입력칸 값)을 기다린 뒤 찍는다.
 - 콘솔 오류·페이지 오류·실패 요청·외부 도메인 요청을 센다. 본 흐름에서 하나라도 있으면 실패.
 """
@@ -29,8 +31,10 @@ DATA = ROOT / "src" / "neumann" / "api" / "templates"
 PLANS = ROOT / "tests" / "fixtures" / "plans"
 OUT = ROOT / "docs" / "reports"
 PREFIX = "E4-L1b"
-DEFAULT_PORT = 8121
-FORBIDDEN_PORT = 8010
+DEFAULT_PORT = 8140
+FORBIDDEN_PORTS = {8010, 8020}
+SHOTS = ("input", "template", "example", "fitness", "no_router")
+OFF_SCOPE = ("신경과학", "의료영상", "fMRI", "X선", "폐렴")
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
 SCOPE = "AI 활용 과학 연구 계획서 전용"
 
@@ -54,11 +58,12 @@ def _port_free(port: int) -> bool:
 def start_server(port: int) -> subprocess.Popen:
     import httpx
 
-    if port == FORBIDDEN_PORT:
-        raise SystemExit("8010은 대표 점검 서버 포트다. 다른 포트를 써라")
+    if port in FORBIDDEN_PORTS:
+        raise SystemExit(f"{port}은 점검 서버 포트다(8010·8020 금지). 다른 포트를 써라")
     if not _port_free(port):
         raise SystemExit(f"포트 {port}가 이미 쓰이고 있다")
-    env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONPATH=os.pathsep.join([str(ROOT / "src"), str(ROOT)]))
+    env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONPATH=os.pathsep.join([str(ROOT / "src"), str(ROOT)]),
+               NEUMANN_LLM_PROVIDER="mock", NEUMANN_LIVE_TESTS="0")
     proc = subprocess.Popen([sys.executable, "-c", SERVER_CODE, str(port)], cwd=ROOT, env=env)
     deadline = time.time() + 40
     while time.time() < deadline:
@@ -91,7 +96,7 @@ def _norm(p: Path) -> str:
     return p.read_text(encoding="utf-8").replace("\r\n", "\n")
 
 
-def shoot(base: str, out: Path) -> dict:
+def shoot(base: str, out: Path, prefix: str = PREFIX, shots: tuple[str, ...] = SHOTS) -> dict:
     from playwright.sync_api import sync_playwright
 
     catalog = json.loads((DATA / "catalog.json").read_text(encoding="utf-8"))
@@ -100,6 +105,14 @@ def shoot(base: str, out: Path) -> dict:
     failed: list[str] = []
     requests: list[str] = []
     res: dict = {}
+    saved: list[str] = []
+
+    def snap(page, name: str) -> None:
+        if name in shots:
+            path = out / f"{prefix}_{name}.png"
+            page.screenshot(path=str(path))
+            saved.append(path.name)
+
     with sync_playwright() as p:
         browser = p.chromium.launch()
         ctx = browser.new_context(viewport={"width": 1440, "height": 900}, device_scale_factor=1, locale="ko-KR")
@@ -120,7 +133,7 @@ def shoot(base: str, out: Path) -> dict:
         res["templates_shown"] = page.eval_on_selector_all("#tplList .tp", "els => els.map(e => e.innerText.replace(/\\s+/g, ' ').trim())")
         res["examples_shown"] = page.eval_on_selector_all("#exList .exl", "els => els.map(e => e.innerText.replace(/\\s+/g, ' ').trim())")
         res["fitbox_hidden_initially"] = page.eval_on_selector("#fitBox", "e => e.hidden")
-        page.screenshot(path=str(out / f"{PREFIX}_input.png"))
+        snap(page, "input")
 
         # 2 템플릿 선택 → 입력칸에 골격
         first = catalog["templates"][0]
@@ -132,7 +145,7 @@ def shoot(base: str, out: Path) -> dict:
         res["template_selected"] = page.get_attribute(f'#tplList .tp[data-tpl="{first["id"]}"]', "aria-pressed")
         res["template_meta"] = page.inner_text("#tplMeta")
         res["start_enabled_after_template"] = page.is_enabled("#btnStart")
-        page.screenshot(path=str(out / f"{PREFIX}_template.png"))
+        snap(page, "template")
         page.click("#tplMeta .undo")
         page.wait_for_function("document.getElementById('ta').value === '사용자가 먼저 쓴 메모'")
         res["undo_restores_user_text"] = True
@@ -157,7 +170,7 @@ def shoot(base: str, out: Path) -> dict:
         page.click(f'#exList .exl[data-ex="{catalog["examples"][1]["id"]}"]')
         page.wait_for_function("t => document.getElementById('ta').value === t", arg=_norm(ROOT / catalog["examples"][1]["path"]))
         res["example_meta"] = page.inner_text("#tplMeta")
-        page.screenshot(path=str(out / f"{PREFIX}_example.png"))
+        snap(page, "example")
 
         # 4 적합성 판정 자리: mock 판정 주입(연결 전 자리 확인용, 화면에 'mock provider'로 표기)
         page.fill("#ta", _norm(PLANS / "negative_recipe.md"))
@@ -166,7 +179,7 @@ def shoot(base: str, out: Path) -> dict:
         page.wait_for_selector("#fitBox:not([hidden])")
         page.evaluate("document.getElementById('fitBox').scrollIntoView({block: 'center'})")
         res["fitbox_text"] = page.inner_text("#fitBox")
-        page.screenshot(path=str(out / f"{PREFIX}_fitness.png"))
+        snap(page, "fitness")
         page.evaluate("window.NeumannInput.clearFitness()")
         res["fitbox_hidden_after_clear"] = page.eval_on_selector("#fitBox", "e => e.hidden")
         main_console_errors = list(console_errors)
@@ -178,7 +191,7 @@ def shoot(base: str, out: Path) -> dict:
         page.wait_for_selector("#tplErr")
         res["no_router_error_text"] = page.inner_text("#tplErr")
         res["no_router_scope_text"] = page.inner_text("#scope")
-        page.screenshot(path=str(out / f"{PREFIX}_no_router.png"))
+        snap(page, "no_router")
         page.unroute("**/templates")
         browser.close()
 
@@ -192,6 +205,7 @@ def shoot(base: str, out: Path) -> dict:
         "requests_total": len(requests),
         "request_paths": sorted({urlparse(u).path for u in requests}),
         "external_requests": external,
+        "screenshots": saved,
     })
     return res
 
@@ -211,6 +225,12 @@ def check(res: dict) -> list[str]:
         problems.append("예시가 연결 템플릿을 선택하지 않는다")
     if "부적합" not in res["fitbox_text"] or "mock" not in res["fitbox_text"]:
         problems.append("적합성 판정 자리가 부적합 사유를 보이지 않는다")
+    shown = " ".join([res["scope_text"], *res["templates_shown"], *res["examples_shown"]])
+    if [w for w in OFF_SCOPE if w in shown]:
+        problems.append(f"범위 밖 분야가 화면에 남아 있다: {[w for w in OFF_SCOPE if w in shown]}")
+    for d in catalog["scope"]["domains"]:
+        if d not in res["scope_text"]:
+            problems.append(f"범위 안내에 분야 없음: {d}")
     if not res["fitbox_hidden_initially"] or not res["fitbox_hidden_after_clear"]:
         problems.append("적합성 판정 자리가 비었는데 보인다")
     if "404" not in res["no_router_error_text"] or SCOPE not in res["no_router_scope_text"]:
@@ -221,17 +241,17 @@ def check(res: dict) -> list[str]:
     return problems
 
 
-def run(port: int = DEFAULT_PORT, out: Path = OUT) -> dict:
+def run(port: int = DEFAULT_PORT, out: Path = OUT, prefix: str = PREFIX, shots: tuple[str, ...] = SHOTS) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     proc = start_server(port)
     try:
-        return shoot(f"http://127.0.0.1:{port}", out)
+        return shoot(f"http://127.0.0.1:{port}", out, prefix, shots)
     finally:
         stop_server(proc, port)
 
 
-def test_templates_ui_playwright() -> None:
-    res = run()
+def test_templates_ui_playwright(tmp_path: Path) -> None:
+    res = run(out=tmp_path)  # pytest는 docs/reports의 스크린샷을 덮지 않는다
     assert check(res) == [], json.dumps(res, ensure_ascii=False, indent=1)
 
 
@@ -241,8 +261,14 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
     ap.add_argument("--out", type=Path, default=OUT)
+    ap.add_argument("--prefix", default=PREFIX, help="스크린샷 파일 이름 앞부분(과제 ID)")
+    ap.add_argument("--shots", default=",".join(SHOTS), help=f"저장할 장면(쉼표): {','.join(SHOTS)}")
     a = ap.parse_args()
-    res = run(a.port, a.out)
+    shots = tuple(x.strip() for x in a.shots.split(",") if x.strip())
+    bad = [x for x in shots if x not in SHOTS]
+    if bad:
+        ap.error(f"모르는 장면: {bad}")
+    res = run(a.port, a.out, a.prefix, shots)
     problems = check(res)
     print(json.dumps({**res, "problems": problems}, ensure_ascii=False, indent=1))
     return 1 if problems else 0
