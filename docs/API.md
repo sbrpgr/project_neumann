@@ -1,6 +1,6 @@
 # API
 
-- 기준: 이 문서를 병합하기 직전의 `main`(작성 때 확인한 커밋 `b01df0a`, 파이프라인 v1 연결 뒤).
+- 기준: 이 문서를 병합하기 직전의 `main`(작성 때 확인한 커밋 `848bd50`, 파이프라인 v1 연결 뒤).
 - 아래 `/premortem`·`/premortem/view` 응답 예시는 main `b01df0a`에서 `NEUMANN_LLM_PROVIDER=mock`, 임베딩 모델 없이(어휘 검색만) FastAPI TestClient로 요청해 받은 값을 줄인 것이다(그 밖의 엔드포인트 예시는 `304e91e`·`d1dc0aa`에서 8125번 서버·TestClient로 받은 값). **mock 응답이라 카드·예상 심사평·체크리스트 내용은 분석 결과가 아니다.** 실제 서비스(provider를 `openai`로 켠 경우)에서는 `generator`가 `astra`이고, 임베딩 모델이 있으면 검색 강등이 없다.
 - **있음** = main의 서버에 라우트가 있다. **예정** = main에 없다(지금 요청하면 404).
 - 서버 실행은 [RUNNING.md §5](RUNNING.md#5-분석-실행). 기본 주소 `http://127.0.0.1:8000`.
@@ -213,8 +213,8 @@ curl http://127.0.0.1:8000/templates
 curl http://127.0.0.1:8000/templates/materials-gnn
 ```
 
-- 목록 응답 키: `version`, `scope`(`label`: "AI 활용 과학 연구 계획서 전용", `domains` 5개), `required_sections`(연구 목표·방법·데이터·평가·일정), `templates`, `examples`.
-- 실측 id: 템플릿 `materials-gnn`, `protein-molecule`, `physics-pde-climate`, `neuro-fmri`, `medical-imaging` · 예시 `example-battery`, `example-fmri`, `example-medimaging`.
+- 목록 응답 키: `version`, `scope`(`label`: "AI 활용 과학 연구 계획서 전용", `domains`: 소재·화학·분자 / 단백질·생물·신약 / 물리·PDE·기후), `required_sections`(연구 목표·방법·데이터·평가·일정), `templates`, `examples`.
+- 실측 id(main `848bd50`, E4-L1e 뒤): 템플릿 `materials-gnn`, `molecule-reaction`, `protein-binding`, `pde-operator`, `climate-emulator` · 예시 `example-battery`, `example-binding`, `example-operator`.
 - 단건 응답 키: `id`, `kind`(template·example), `name`, `domain`, `summary`, `sections`, `text`(계획서 골격 본문), `filename`, `source`, `chars`, `sha256`. 없는 id는 404.
 
 ## GET /api, GET /taxonomy, GET /config/weights

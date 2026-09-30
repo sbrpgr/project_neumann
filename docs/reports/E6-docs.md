@@ -426,13 +426,14 @@ verify 통과
 
 ## 재작업 3 (재검증 3: PASS-조건부 → 조건 해소)
 
-`git merge main`(`b01df0a`, E3-L1w 파이프라인 v1 포함, 충돌 없음) 뒤 문서만 고쳤다. 문서 기준 커밋은 `b01df0a`. 모든 python·pytest 명령에 `NEUMANN_LLM_PROVIDER=mock`을 명령줄로 붙이고 `OPENAI_API_KEY`·`NEUMANN_LIVE_TESTS`·`NEUMANN_EMBED_MODEL`을 `env -u`로 해제했다(설정 로더 출력 `provider mock has_key False`). 실제 OpenAI 호출 0회, 서버는 띄우지 않고 FastAPI TestClient로만 요청했다(포트 사용 0). `git stash`는 쓰지 않았다.
+`git merge main`(`b01df0a`, E3-L1w 파이프라인 v1 포함, 충돌 없음) 뒤 문서만 고쳤다. 그 뒤 `848bd50`(E4-L1e·E1-L1c)도 병합했다. 문서 기준 커밋은 `848bd50`. 모든 python·pytest 명령에 `NEUMANN_LLM_PROVIDER=mock`을 명령줄로 붙이고 `OPENAI_API_KEY`·`NEUMANN_LIVE_TESTS`·`NEUMANN_EMBED_MODEL`을 `env -u`로 해제했다(설정 로더 출력 `provider mock has_key False`). 실제 OpenAI 호출 0회, 서버는 띄우지 않고 FastAPI TestClient로만 요청했다(포트 사용 0). `git stash`는 쓰지 않았다.
 
 | 조건 | 고친 것 |
 |---|---|
 | ① E3-L1w 반영 | ARCHITECTURE: "있음(모듈만)" 정의와 표기 전부 삭제(예상 심사평·게이트, 체크리스트·2차 검증, 적합성·PII 강화 → "있음"), 상태 표·§2·요청 흐름·모듈 지도의 단계를 10개(`plan_normalize → fitness → query_axes → search → extract_issues → synthesize_cards → verify_evidence → expected_review → checklist → semantic_validate`)로, 부적합이면 검색 전에 멈추고 나머지 `skipped`, LLM 호출 "세 곳" → 일곱 단계, "모듈만 있는 LLM 호출(연결 전)" → 뒤쪽 단계의 실패 동작(규칙·`unverified`, 생성 주체는 provider에서만). API: :60 문장 삭제, 머리 예시 설명을 `b01df0a`·mock·TestClient로, `/premortem` 예시를 mock으로 다시 받은 값(`neumann-e3-l1w`, 단계 10개, 근거 28·카드 6, `expected_review`·`checklist`·`verification`·`stage_limits_s`·`query_cache`)으로 교체, 부적합 예시를 "…; 검색 안 함, 8단계 skipped"로, `/view` `_status`·package 예시 수치(mock 6, `neumann-e3-l1w`) 갱신. README 초안 :132 메모 갱신 |
 | ② 백테스트·평가 모델 범위 | ARCHITECTURE §5: "백테스트는 gpt-6-astra로 쟀다" 삭제 → "LLM으로 잰 수치(Macro-F1 0.4864, 라이브 E2E, v0)는 gpt-6-astra, 백테스트는 일반 LLM 기준선 30편 생성만 gpt-6-astra(참고용), 측정은 보류(19:42: 재개하면 승인 뒤 Neumann·기준선 모두 gpt-6.1-sol로 15편)". RUNNING 환경변수 표 `NEUMANN_LLM_MODEL`: "LLM으로 잰 평가 수치(Macro-F1 0.4864, 라이브 E2E)는 gpt-6-astra" |
 | ③ SEC-3(`NEUMANN_LIVE_LLM_OK`) | main `b01df0a`에 없다(`grep NEUMANN_LIVE_LLM_OK src .env.example AGENTS.md` 0건). 지시대로 문서에 넣지 않고 아래 "다음"에 적었다 |
+| 재작업 중 병합분(`848bd50`) | E4-L1e(템플릿·예시 AI for Science 3분야 재정렬): API 템플릿 절의 `domains`·id를 TestClient 실측으로 교체(템플릿 `materials-gnn`·`molecule-reaction`·`protein-binding`·`pde-operator`·`climate-emulator`, 예시 `example-battery`·`example-binding`·`example-operator`). E1-L1c(코드만): `load_corpus(include=)`·`build_index_elife.py`를 "있음(코드만)"으로, 수집기는 E1-L1b 예정 그대로. 새 스크립트(`build_index_elife*`, `build_index_calibrate`, `record_demo_edit`) 모듈 지도에 추가. 기준 커밋 `848bd50` |
 | 권고 R2(테스트 수) | RUNNING 재측정 줄을 `1047 passed, 26 skipped`(main `b01df0a` 병합 상태, mock 명시, 두 폴더 지정)로 |
 
 재측정(mock, TestClient):
@@ -466,12 +467,12 @@ $ grep -n "모듈만\|neumann-e3-l0\|세 곳\|백테스트는 `gpt-6-astra`로 �
 
 ## 최종 verify (재작업 3 후)
 
-worktree(`task/E6-docs`, main `b01df0a` 병합 상태, `NEUMANN_LLM_PROVIDER=mock` 명시, `OPENAI_API_KEY`·`NEUMANN_LIVE_TESTS` 해제, 데이터 폴더 환경변수 없음)에서 실행.
+worktree(`task/E6-docs`, main `848bd50` 병합 상태, `NEUMANN_LLM_PROVIDER=mock` 명시, `OPENAI_API_KEY`·`NEUMANN_LIVE_TESTS` 해제, 데이터 폴더 환경변수 없음)에서 실행.
 
 ```
 $ NEUMANN_LLM_PROVIDER=mock python scripts/verify.py
-1030 passed, 43 skipped in 74.23s (0:01:14)
-보안: 파일 364개
+1066 passed, 45 skipped in 73.96s (0:01:13)
+보안: 파일 376개
 계약: 2개
 테스트: 통과
 verify 통과

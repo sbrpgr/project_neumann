@@ -2,7 +2,7 @@
 
 Neumann은 연구계획서를 받아, 비슷한 연구가 실제로 받은 심사평·저자 답변·결정·정정/철회 기록에서 위험을 찾는다. 결과는 근거 문장과 원문 링크가 달린 위험카드다.
 
-- 기준: 이 문서를 병합하기 직전의 `main`(작성 때 확인한 커밋 `b01df0a`, 태그 `v0` 이후, 파이프라인 v1 `neumann-e3-l1w` 연결 뒤).
+- 기준: 이 문서를 병합하기 직전의 `main`(작성 때 확인한 커밋 `848bd50`, 태그 `v0` 이후, 파이프라인 v1 `neumann-e3-l1w` 연결 뒤).
 - 표기: **있음** = main에 코드와 테스트가 있고 제품 경로에서 쓰인다. **예정** = main에 없다(과제 ID를 붙였다).
 - 실행 방법은 [RUNNING.md](RUNNING.md), 엔드포인트는 [API.md](API.md).
 
@@ -36,7 +36,8 @@ Neumann은 연구계획서를 받아, 비슷한 연구가 실제로 받은 심�
 | 라이브 E2E(실서버·Playwright, `NEUMANN_LIVE_TESTS=1`일 때만) | 있음 | `tests/e2e/` |
 | 검증 러너·git 훅 | 있음 | `scripts/verify.py`, `.githooks/` |
 | 업로드 파서(txt·md·pdf·docx, HWP 거부, 디스크 미저장, 증폭 상한) | 있음(API만, 화면 연결은 예정 E4-L1f) | `src/neumann/api/upload.py` |
-| eLife·Europe PMC | 예정 (E1-L1b) | — |
+| eLife 합친 코퍼스 읽기(`load_corpus(include=)`)·eLife 포함 색인 빌드 | 있음(코드만, 수집 결과는 E1-L1b) | `src/neumann/sources/corpus.py`, `scripts/build_index_elife.py` |
+| eLife·Europe PMC 수집기 | 예정 (E1-L1b) | — |
 
 ## 2. 6단계
 
@@ -98,7 +99,7 @@ src/neumann/
 │  ├─ corpus_l3.py             확대 코퍼스(샤드 6개 + 일반 ML)                                  있음
 │  ├─ retraction.py            Retraction Watch CSV → PostStatus, get_post_status(doi)          있음
 │  ├─ disapere.py              DISAPERE.zip → 심사평 문장과 사람 라벨                           있음
-│  └─ elife …                  eLife·Europe PMC                                                예정 (E1-L1b)
+│  └─ elife …                  eLife·Europe PMC 수집기                                         예정 (E1-L1b)
 ├─ index/
 │  ├─ sentences.py             문장 분할 → Excerpt(원문 오프셋)                                 있음
 │  ├─ taxonomy.py              비상 경로용 최소 규칙 태거(R0~R8, generator="rule")               있음
@@ -130,9 +131,11 @@ scripts/
 ├─ collect_researcharcade.py · collect_l3_corpus.py · collect_l3_shards.py   코퍼스 조립·확대    있음
 ├─ build_index.py · build_index_check.py   색인 빌드 · 점검                                     있음
 ├─ build_index_l3.py · build_index_compare.py   확대 색인(index_l3) 빌드 · 전후 비교              있음
+├─ build_index_elife.py · build_index_elife_compare.py   eLife 포함 색인(index_elife) 빌드 · 비교  있음
+├─ build_index_calibrate.py    검색 보정 실측(점수 분포·데모 상위 10편)                         있음
 ├─ precompute_demo.py          데모 3건 사전 계산본                                             있음
 ├─ build_static_site.py · build_static_site_shots.py   서버 없이 도는 정적 데모 사이트          있음
-├─ record_demo.py              시연 영상 녹화(Playwright)                                       있음
+├─ record_demo.py · record_demo_edit.py   시연 영상 녹화(Playwright) · mp4 변환·편집          있음
 └─ codex_task.sh               인계 뒤 Codex 과제 실행기                                       있음
 eval/                          linkage · disapere_gold · disapere_extract · macro_f1 · baseline_freq   있음
                                backtest_* · baseline_llm · judge_run · judge_envelope · report_card   있음
