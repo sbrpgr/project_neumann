@@ -173,8 +173,23 @@ def revision_verified(revision: Mapping[str, Any], sig: Any = None) -> bool:
     return verify_payload("revision", body, sig if sig is not None else revision.get("revision_sig"))
 
 
+def assembly_pairing_problem(req: AssembleRequest) -> str | None:
+    """서명은 각각 유효한데 결과와 수정 권고가 같은 분석의 것이 아니면 그 사유(B1-pairing). 없으면 None."""
+    from neumann.api.export_revision import revision_result_problem
+
+    return revision_result_problem(req.result, req.revision)
+
+
 def assembly_verified(req: AssembleRequest) -> bool:
-    return verify_result(req.result, req.result_sig) and revision_verified(req.revision, req.revision_sig)
+    """결과·수정 권고 서명이 모두 확인되고, 둘이 같은 분석의 것(세션·카드·근거 결합)일 때만 통합본에 서명한다.
+
+    어긋난 결합(다른 서명 결과 + 옛 서명 수정 권고, 감사 A3)에 서버 서명을 새로 붙이지 않는다. 내보내기는 그런 결합을 422로
+    거절하므로 여기서 인증하면 모순이다. 422가 아니라 강등(서명 없음)인 이유: 조립 API의 기존 계약은 미확인 입력을 거절하지
+    않고 client_submitted_unverified로 정직하게 표기하는 것이다.
+    """
+    if not (verify_result(req.result, req.result_sig) and revision_verified(req.revision, req.revision_sig)):
+        return False
+    return assembly_pairing_problem(req) is None
 
 
 # ───────────────────────── 실행(동기, 작업 방식으로 감쌀 수 있게) ─────────────────────────
@@ -214,10 +229,15 @@ def run_assembly(req: AssembleRequest, *, provider: str | None = None, timeout_s
 
     check_cancelled(cancel_event)
     out = asm.assemble_revised_plan(req.plan_text, req.revision, req.decisions, result=req.result, regate=True)
-    verified = assembly_verified(req)
+    signed = verify_result(req.result, req.result_sig) and revision_verified(req.revision, req.revision_sig)
+    pairing_problem = assembly_pairing_problem(req) if signed else None
+    verified = signed and pairing_problem is None
     out["origin"] = "server_signed" if verified else "client_submitted_unverified"
-    if not verified:
+    if not signed:
         out["notices"].append("입력 결과·수정 권고의 서버 서명을 확인하지 못했다. 생성자·모델 표기와 근거 출처는 미확인이다.")
+    elif pairing_problem is not None:  # B1-pairing: 각각 서명됐어도 같은 분석의 결합이 아니면 서명하지 않는다
+        out["notices"].append(f"입력 결과와 수정 권고가 같은 분석의 것이 아니다({pairing_problem}). 통합본에 서명하지 않으며 "
+                              "생성자·모델 표기와 근거 출처는 미확인이다.")
     generator: str | None = None
     model: str | None = None
     if req.polish:

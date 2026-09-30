@@ -18,7 +18,7 @@
 | kind | tool | 구현 |
 |---|---|---|
 | constraint / units / dependency | z3 / pint / networkx | `analyze/final_tools.run_tool_checks` 어댑터(엔진 `analyze/finalize.py`의 checks 형식) |
-| arithmetic / sum / unit / structure / reference / citation / exec | calculator / arithmetic_sum / unit_dimension / structure / citation_lookup / restricted_exec | FIN-TOOLS(`neumann.finalize.tools.*`)가 `ToolSpec`으로 등록(규칙 추출기 `extract.py`의 출력) |
+| arithmetic / sum / unit / structure / reference / citation / exec | calculator / z3 / pint / networkx / citation_lookup / restricted_exec | FIN-TOOLS(`neumann.finalize.tools.*`)가 `ToolSpec`으로 등록(규칙 추출기 `extract.py`의 출력) |
 
 레지스트리는 도구 이름을 목록에 묶지 않는다: 소문자 식별자면 어떤 구현이든 등록할 수 있고(replace=True로 교체), 등록되지 않은
 이름을 부르면 `tool_unavailable`이다. `ensure_builtin()`(FIN-TOOLS `builtin`/`fin_tools` 등록)과 `ensure_adapters()`(final_tools
@@ -44,8 +44,8 @@ VERDICTS = ("pass", "fail", "unchecked")
 # 점검 유형 → 도구 이름. 코드가 정한다(LLM이 고르지 않는다). 유형을 더할 때는 여기만 늘린다(계약 추가만).
 TOOL_FOR_CHECK: dict[str, str] = {
     "constraint": "z3", "units": "pint", "dependency": "networkx",                      # analyze/final_tools 검사
-    "arithmetic": "calculator", "sum": "arithmetic_sum", "unit": "unit_dimension",      # FIN-TOOLS 규칙 추출 검사
-    "structure": "structure", "reference": "structure", "citation": "citation_lookup", "exec": "restricted_exec",
+    "arithmetic": "calculator", "sum": "z3", "unit": "pint",                          # FIN-TOOLS 규칙 추출 검사
+    "structure": "networkx", "reference": "networkx", "citation": "citation_lookup", "exec": "restricted_exec",
 }
 CHECK_KINDS: tuple[str, ...] = tuple(TOOL_FOR_CHECK)
 TOOL_NAMES: tuple[str, ...] = tuple(dict.fromkeys(TOOL_FOR_CHECK.values()))  # 알려진 이름(참고). 등록은 이 목록에 묶이지 않는다
@@ -240,7 +240,7 @@ def _adapter(tool: str, kind: str) -> ToolFn:
 
 ADAPTERS: tuple[ToolSpec, ...] = tuple(
     ToolSpec(tool, f"final_tools {kind} 검사 어댑터", _adapter(tool, kind), "final_tools@v1", _ARGS_SCHEMA, 10.0)
-    for kind, tool in TOOL_FOR_CHECK.items() if tool in ("z3", "pint", "networkx")
+    for kind, tool in TOOL_FOR_CHECK.items() if kind in ("constraint", "units", "dependency")
 )
 
 registry = ToolRegistry()
@@ -269,7 +269,10 @@ def ensure_builtin(reg: ToolRegistry | None = None) -> list[str]:
         register_all = getattr(module, "register_all", None)
         if callable(register_all):
             try:
-                register_all(reg)
+                if module_name == "neumann.finalize.tools.fin_tools":
+                    register_all(reg, replace=False)
+                else:
+                    register_all(reg)
             except Exception as exc:  # noqa: BLE001 — 한 구현의 등록 실패가 다른 도구를 막지 않는다
                 log.warning("tool registration failed module=%s kind=%s", module_name, type(exc).__name__)
     return sorted(set(reg.names()) - before)

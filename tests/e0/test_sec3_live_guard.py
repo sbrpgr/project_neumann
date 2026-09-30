@@ -225,7 +225,7 @@ def test_baseline_replaces_astra(monkeypatch):
     monkeypatch.setenv("NEUMANN_LLM_MODEL", "gpt-6-astra")
     assert bl.OpenAIBaseline().model == "gpt-6.1-sol"
     assert bl.OpenAIBaseline(model="gpt-6-astra").model == "gpt-6.1-sol"
-    assert bl.OpenAIBaseline(model="gpt-6-astra", client=object()).model == "gpt-6-astra"
+    assert bl.OpenAIBaseline(model="gpt-6-astra", client=object()).model == "gpt-6.1-sol"
 
 
 def test_health_shows_effective_model_not_astra(monkeypatch):

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import re
 from typing import Any
 
@@ -38,7 +39,8 @@ _PLACEHOLDER_VOCAB = frozenset({
     "순서", "순환", "선행", "후행", "방향", "모순", "가설", "방법", "데이터", "평가", "지표", "일정", "예산", "기대", "성과", "정정", "조정",
     "확정", "정의", "근거", "출처", "인용", "참조", "누락", "미기재", "재확인", "연구자", "결정", "세부", "기준", "절차", "증가", "감소",
     "이상", "이하", "같음", "다름", "또는", "및", "대비", "대조", "검산", "결과", "계산", "범위", "조건", "명시", "보완", "추가", "삭제",
-    "작성", "제시", "설명", "줄", "line", "sum", "unit", "order", "cycle", "limit", "value", "confirm", "todo",
+    "작성", "제시", "설명", "줄", "계산값", "line", "sum", "unit", "order", "cycle", "limit", "value", "confirm", "todo",
+    "numeric", "constraint", "semantic", "review", "tool", "unchecked", "dimension", "dependency", "computed",
 })
 
 
@@ -262,6 +264,54 @@ def _edit_scope(issue_ids: list, issue_by_id: dict, check_by_id: dict, rows: dic
 _DONE = ("pass", "passed", "ok", "fail", "failed")
 
 
+def _placeholder_template(issue_ids: list, issues: dict, checks: dict, rows: dict) -> str:
+    """Generate a closed placeholder from code-owned reasons, anchors and tool output.
+
+    Model prose is never copied into the placeholder body. Arithmetic stays in the
+    tool; only a completed tool's explicit computed value can appear here.
+    """
+    reasons, anchors, computed = set(), set(), set()
+    for iid in issue_ids:
+        issue = issues[iid]
+        anchors.update(issue["plan_lines"])
+        if not issue.get("check_ids"):
+            reasons.add("SEMANTIC_REVIEW")
+        for cid in issue.get("check_ids", []):
+            check, row = checks.get(cid, {}), rows.get(cid, {})
+            anchors.update(check.get("plan_lines", []))
+            if row.get("status") not in _DONE:
+                reasons.add("TOOL_UNCHECKED")
+                continue
+            reasons.add({"constraint": "NUMERIC_CONSTRAINT", "units": "UNIT_DIMENSION",
+                         "dependency": "DEPENDENCY_ORDER"}.get(check.get("kind"), "TOOL_REVIEW"))
+            value = row.get("details", {}).get("computed")
+            if type(value) in (int, float) and math.isfinite(value):
+                computed.add(str(int(value)) if float(value).is_integer() else str(value))
+    # Keep every generated body within PLACEHOLDER_RE's 120-character grammar,
+    # including checks with many anchors. Split into closed templates as needed.
+    line_tokens = [str(n) for n in sorted(anchors) if type(n) is int]
+    groups: list[str] = []
+    current = ""
+    for token in line_tokens:
+        candidate = (current + ", " if current else "") + token
+        if len(candidate) > 65:
+            groups.append(current)
+            current = token
+        else:
+            current = candidate
+    groups.append(current)
+    bodies = [reason + "; 줄 " + group for reason in sorted(reasons or {"SEMANTIC_REVIEW"}) for group in groups]
+    # Numeric output longer than the grammar stays in tool details, rather than
+    # creating a malformed placeholder. Ordinary computed values stay inline.
+    for value in sorted(computed):
+        if len(value) <= 40:
+            if len(bodies[0] + "; 계산값 " + value) <= 120:
+                bodies[0] += "; 계산값 " + value
+            else:
+                bodies.append("TOOL_COMPUTED; 계산값 " + value)
+    return " ".join("[확인 필요: " + body + "]" for body in bodies)
+
+
 def _unchecked_reason(check_ids: list, rows: dict) -> str:
     """Why an issue stayed unchecked: 판단 보류(no explicit tool-checkable condition) vs 미검사(tool could not run)."""
     if not check_ids:
@@ -407,6 +457,11 @@ def finalize_plan(plan_text: str, *, result=None, provider=None, checks=None,
                 if not reason and (_content_words(replacement) - _content_words(scope)
                                    or _grounded_words(replacement) - _grounded_words(scope)):
                     reason = "unsupported_content"
+                if not reason and PLACEHOLDER_RE.search(replacement):
+                    template = _placeholder_template(edit["issue_ids"], issue_by_id, check_by_id, rows_before)
+                    replacement = PLACEHOLDER_RE.sub(lambda _: template, replacement)
+                    if len(replacement) > 12000:
+                        reason = "invalid_line"
         touched.add(no)
         applied = not reason and replacement != lines[no - 1]
         output["corrections"].append({"line": no, "before": lines[no - 1],

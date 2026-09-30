@@ -27,7 +27,7 @@ def spec(name="z3", fn=None, schema=None, timeout_s=5.0):
 def test_code_fixed_tool_map_covers_both_check_families_and_rejects_unknown():
     assert set(T.TOOL_FOR_CHECK) == set(T.CHECK_KINDS)
     assert {T.tool_for(k) for k in ("constraint", "units", "dependency")} == {"z3", "pint", "networkx"}
-    assert T.tool_for("sum") == "arithmetic_sum" and T.tool_for("unit") == "unit_dimension" and T.tool_for("citation") == "citation_lookup"
+    assert T.tool_for("sum") == "z3" and T.tool_for("unit") == "pint" and T.tool_for("citation") == "citation_lookup"
     with pytest.raises(ValueError):
         T.tool_for("llm_choice")
 

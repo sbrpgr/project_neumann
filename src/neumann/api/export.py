@@ -66,6 +66,23 @@ MAX_PLAN_CHARS = 1_000_000
 MAX_PACKAGE_CARDS = 100
 MAX_PACKAGE_CARD_LINES = 200
 MAX_PACKAGE_DECISIONS = 1_000
+# B2: 요청 JSON 중첩 상한. 정상 결과·수정 권고는 10단 안팎이다. 더 깊으면 조립·렌더링 전에 422로 거절한다
+# (깊은 중첩이 JSON 직렬화의 RecursionError → 500이 되지 않게).
+MAX_PACKAGE_JSON_DEPTH = 64
+
+# B2: 예상 심사평 audit 필드 형태. 알려진 필드만 형태를 확인해 싣는다. 형태가 틀리거나 모르는 필드는
+# 값을 버리고 이름만 audit.dropped_keys에 남긴다(500·원문 유출 없이 내보내기는 계속한다).
+AUDIT_MAX_COUNT = 1_000_000_000
+AUDIT_MAX_TEXT_CHARS = 500
+AUDIT_MAX_CODES = 64
+AUDIT_MAX_CODE_CHARS = 64
+AUDIT_MAX_DROPPED_KEYS = 32
+_AUDIT_COUNT_KEYS = frozenset({"gen", "pass", "drop", "no_evidence", "generated", "passed"})
+_AUDIT_TEXT_KEYS = frozenset({"gate", "note", "dropped_text"})
+_AUDIT_CODE_MAPS = frozenset({"dropped_reasons", "reasons"})
+_AUDIT_CODE_LISTS = frozenset({"no_evidence_reasons", "dropped_keys"})
+_AUDIT_STRIPPED = frozenset({"dropped", "dropped_detail"})  # 뺀 문장 원문: 리포트에 싣지 않는다(사유 코드·개수만)
+_AUDIT_CODE_RE = re.compile(r"[A-Za-z0-9_.:@-]{1,%d}" % AUDIT_MAX_CODE_CHARS)
 
 FILE_NAMES: tuple[str, ...] = (
     "README.md",
@@ -195,24 +212,95 @@ def _checklist_ids(checklist: Sequence[Mapping[str, Any]]) -> set[str]:
     return {str(item[k]) for item in checklist for k in CHECKLIST_ID_KEYS if item.get(k) is not None}
 
 
-def _review_for_report(er: Mapping[str, Any]) -> dict[str, Any]:
-    """리포트에 싣는 예상 심사평(E3-L1e): 게이트가 뺀 문장 원문(audit.dropped·dropped_detail)은 빼고 사유 코드·개수만 남긴다.
-    뺀 문장은 분석 결과가 아니므로 라벨 없이 문서에 나가지 않게 한다. 결과 JSON 원본은 바꾸지 않는다."""
-    out = dict(er)
-    raw_audit = out.get("audit")
+def _audit_count(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= AUDIT_MAX_COUNT
+
+
+def _audit_code(value: Any) -> bool:
+    return isinstance(value, str) and _AUDIT_CODE_RE.fullmatch(value) is not None
+
+
+def _audit_value_ok(key: str, value: Any) -> bool:
+    """알려진 audit 필드의 형태. 모르는 필드는 False(값을 싣지 않는다)."""
+    if key in _AUDIT_COUNT_KEYS:
+        return _audit_count(value)
+    if key in _AUDIT_TEXT_KEYS:
+        return isinstance(value, str) and len(value) <= AUDIT_MAX_TEXT_CHARS
+    if key in _AUDIT_CODE_MAPS:
+        return (isinstance(value, Mapping) and len(value) <= AUDIT_MAX_CODES
+                and all(_audit_code(k) and _audit_count(n) for k, n in value.items()))
+    if key in _AUDIT_CODE_LISTS:
+        limit = AUDIT_MAX_DROPPED_KEYS if key == "dropped_keys" else AUDIT_MAX_CODES
+        return isinstance(value, list) and len(value) <= limit and all(_audit_code(x) for x in value)
+    if key == "linked_rate":
+        return value is None or (isinstance(value, (int, float)) and not isinstance(value, bool)
+                                 and 0 <= value <= 1)  # NaN·inf는 비교가 거짓이라 걸러진다
+    return False
+
+
+def _audit_key_name(key: Any) -> str:
+    """버린 필드의 이름만(값 없음). 코드 모양이 아니면 개인정보 가림 뒤 코드 글자만 남긴다."""
+    name = key if isinstance(key, str) else type(key).__name__
+    if not _audit_code(name):
+        name = re.sub(r"[^A-Za-z0-9_.:@-]+", "_", redact_pii(name))[:AUDIT_MAX_CODE_CHARS].strip("_") or "_"
+    return name
+
+
+def _sanitize_audit(raw_audit: Any) -> tuple[dict[str, Any], list[str]]:
+    """B2: audit 필드마다 형태를 확인한다 → (실을 audit, 새로 버린 필드 이름).
+
+    audit 자체가 객체가 아니면 ValueError(→ 422). 뺀 문장 원문(dropped·dropped_detail)은 싣지 않고,
+    dropped의 [사유 코드, 문장] 쌍에서 사유 코드 개수만 센다. 그 밖의 형태 오류·모르는 필드는 이름만 남긴다.
+    """
     if raw_audit is not None and not isinstance(raw_audit, Mapping):
         raise ValueError("expected_review.audit는 JSON 객체여야 합니다.")
-    audit = dict(raw_audit or {})
-    drops = [d for d in (audit.pop("dropped", None) or []) if isinstance(d, (list, tuple)) and d]
-    audit.pop("dropped_detail", None)
+    audit: dict[str, Any] = {}
+    bad: set[str] = set()
+    drops: list[str] = []
+    for key, value in (raw_audit or {}).items():
+        if key == "dropped":
+            items = value if isinstance(value, list) else None
+            if items is None and value is not None:
+                bad.add("dropped")
+            for d in items or ():
+                if isinstance(d, (list, tuple)) and d and _audit_code(d[0]):
+                    drops.append(d[0])
+                elif d:  # 코드 모양이 아닌 항목은 세지 않는다(값은 싣지 않는다)
+                    bad.add("dropped")
+        elif key == "dropped_detail":
+            continue  # 원문 기록: 형태와 관계없이 싣지 않는다
+        elif isinstance(key, str) and _audit_value_ok(key, value):
+            audit[key] = dict(value) if isinstance(value, Mapping) else (list(value) if isinstance(value, list) else value)
+        else:
+            bad.add(_audit_key_name(key))
     if drops or "drop" in audit:
-        codes: dict[str, int] = dict(audit.get("dropped_reasons") or {})
-        for d in drops:
-            codes[str(d[0])] = codes.get(str(d[0]), 0) + 1
-        audit["dropped_reasons"] = codes
+        codes: Counter[str] = Counter(audit.get("dropped_reasons") or {})
+        codes.update(drops)
+        if len(codes) <= AUDIT_MAX_CODES and all(_audit_count(n) for n in codes.values()):
+            audit["dropped_reasons"] = dict(codes)
+        else:
+            audit.pop("dropped_reasons", None)
+            bad.add("dropped_reasons")
         audit["dropped_text"] = "제외한 문장 원문은 싣지 않음(분석 결과 아님) — 사유 코드·개수만"
+    new = sorted(bad)
+    if new:
+        merged = sorted(set(audit.get("dropped_keys") or ()) | set(new))
+        audit["dropped_keys"] = merged[:AUDIT_MAX_DROPPED_KEYS]
+    return audit, new
+
+
+def _review_for_report_with_drops(er: Mapping[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    out = dict(er)
+    audit, dropped_keys = _sanitize_audit(out.get("audit"))
     out["audit"] = audit
-    return out
+    return out, dropped_keys
+
+
+def _review_for_report(er: Mapping[str, Any]) -> dict[str, Any]:
+    """리포트에 싣는 예상 심사평(E3-L1e): 게이트가 뺀 문장 원문(audit.dropped·dropped_detail)은 빼고 사유 코드·개수만 남긴다.
+    뺀 문장은 분석 결과가 아니므로 라벨 없이 문서에 나가지 않게 한다. 결과 JSON 원본은 바꾸지 않는다.
+    B2: audit 필드는 형태를 확인한 것만 싣고, 틀린 형태·모르는 필드는 이름만 audit.dropped_keys에 남긴다."""
+    return _review_for_report_with_drops(er)[0]
 
 
 def _checklist_line(item: Mapping[str, Any]) -> str:
@@ -259,6 +347,7 @@ class _Ctx:
     origin: str = "in_process"
     extra_files: list[str] = field(default_factory=list)  # E3-L2r: 덧붙인 파일 이름(revision.json·revised_plan.md)
     extra_summary: list[str] = field(default_factory=list)
+    composition: export_revision.Composition = field(default_factory=export_revision.Composition)  # B1-pairing 결합 판정
 
     @property
     def n_cards(self) -> int:
@@ -317,7 +406,8 @@ def _gate_export_result(result: PremortemResult) -> tuple[PremortemResult, list[
     """공용 조립 문맥 전에 저장 결과를 다시 검사한다. 원본 수정·규칙 대체 없이 사유 코드와 수만 남긴다."""
     index = EvidenceIndex(result)
     items, item_drops = gate_checklist_items(result.checklist, result, index=index, where="export")
-    review = _review_for_report(result.expected_review) if result.expected_review else {}
+    review, audit_dropped_keys = (_review_for_report_with_drops(result.expected_review) if result.expected_review
+                                  else ({}, []))
     reasons: Counter[str] = Counter()
     shown = 0
     for section in SECTIONS:
@@ -352,6 +442,9 @@ def _gate_export_result(result: PremortemResult) -> tuple[PremortemResult, list[
         codes.update(reasons)
         warnings.append(f"내보내기 근거 게이트: 심사평 {sum(reasons.values())}문장·체크리스트 {len(item_drops)}항목 제외 "
                         f"(분석 결과 아님). 사유 코드·개수: {json.dumps(dict(sorted(codes.items())), ensure_ascii=False)}")
+    if audit_dropped_keys:
+        warnings.append(f"예상 심사평 audit: 형식이 맞지 않거나 알 수 없는 필드 {len(audit_dropped_keys)}개를 값 없이 제외 "
+                        "(이름만 audit.dropped_keys에 기록).")
     return result.model_copy(update={"expected_review": review, "checklist": items}), warnings
 
 
@@ -1058,11 +1151,14 @@ def _manifest_json(c: _Ctx, files: Mapping[str, bytes], created_at: datetime) ->
             "warnings": c.warnings,
             "files": [
                 {"path": name, "sha256": _sha256(files[name]), "bytes": len(files[name]),
-                 **({"result_origin": c.origin, **_plan_metadata(c)} if name in FILE_NAMES else {})}
+                 **({"result_origin": c.origin, **_plan_metadata(c)} if name in FILE_NAMES
+                    else {"origin": c.composition.origin_of(name)})}  # B1-pairing: 덧붙인 파일은 결합 판정을 거친 출처
                 for name in (*FILE_NAMES, *c.extra_files)
                 if name != "manifest.json"
             ],
             "extra_files": list(c.extra_files),  # E3-L2r: 9파일 밖에 덧붙인 것(없으면 빈 목록)
+            # B1-pairing: 결과·수정 권고·통합본·결정의 결합 검증(계약 밖 패키지 메타데이터). 덧붙인 파일이 없으면 null.
+            "composition": c.composition.metadata(),
         }
     )
 
@@ -1092,19 +1188,24 @@ def build_package_files(
     revised_plan: Mapping[str, Any] | None = None,
     revision_sig: str | None = None,
     result_sig: str | None = None,
+    meta: dict[str, Any] | None = None,
 ) -> dict[str, bytes]:
     """9개 파일 {이름: 바이트}(FILE_NAMES 순서). 입력이 계약을 어기면 ValueError(ValidationError 포함).
 
     E3-L2r: `revision`(수정 권고)·`revised_plan`(통합본)이 오면 `revision.json`·`revised_plan.md`를 뒤에 덧붙인다(10·11번째).
+    B1-pairing: 세 객체와 결정의 결합을 한 번 판정(`export_revision.compose`)해 파일·README·manifest가 같은 출처를 쓴다.
+    결합 모순은 ValueError(API 422). `meta`(dict)를 넘기면 결합 판정을 `meta["composition"]`에 담아 준다(응답 헤더용).
     """
     _guard_export_plan(result, plan_text)
     if not isinstance(result, PremortemResult):
         result = PremortemResult.model_validate(result)
     c = _make_ctx(result, plan_text, decisions, result_origin)
-    extras = export_revision.extra_files(result, revision, revision_decisions, revised_plan, revision_sig, result_sig)
+    c.composition = export_revision.compose(result, revision, revision_decisions, revised_plan, revision_sig, result_sig)
+    extras = export_revision.render_files(c.composition, result)
     c.extra_files = list(extras)
-    c.extra_summary = export_revision.summary_lines(revision, revision_decisions, revised_plan,
-                                                  result=result, revision_sig=revision_sig, result_sig=result_sig)
+    c.extra_summary = export_revision.summary_of(c.composition)
+    if meta is not None:
+        meta["composition"] = c.composition
     files: dict[str, bytes] = {
         "README.md": _readme(c),
         "risk_cards.json": _risk_cards_json(c),
@@ -1141,6 +1242,7 @@ def build_package(
     - decisions: 카드별 채택·보류·기각 기록(선택). card_id가 결과에 없으면 ValueError.
     - created_at: 패키지 생성 시각(manifest). 없으면 지금. 넘기면 출력 전체가 결정적이다.
     - result_origin: 결과 출처(manifest·README). API는 서버 서명을 확인해 정한다. 직접 부르면 "in_process".
+    - meta(선택, dict): B1-pairing 결합 판정(`composition`)을 받아 갈 곳(API 응답 헤더용).
     """
     _guard_export_plan(result, plan_text)
     if not isinstance(result, PremortemResult):
@@ -1164,6 +1266,23 @@ router = APIRouter()
 
 
 RESULT_REQUIRED_MESSAGE = "내보내기에는 분석 결과가 필요합니다. 먼저 분석을 실행한 뒤 결과 화면에서 내보내 주세요."
+
+
+def json_depth_exceeds(obj: Any, limit: int = MAX_PACKAGE_JSON_DEPTH) -> bool:
+    """B2: dict·list 중첩이 limit단을 넘는지(재귀 없이 센다. 깊은 입력으로 이 검사 자체가 넘치지 않게)."""
+    stack: list[tuple[Any, int]] = [(obj, 1)]
+    while stack:
+        node, depth = stack.pop()
+        if isinstance(node, Mapping):
+            children: Any = node.values()
+        elif isinstance(node, (list, tuple)):
+            children = node
+        else:
+            continue
+        if depth > limit:
+            return True
+        stack.extend((child, depth + 1) for child in children if isinstance(child, (Mapping, list, tuple)))
+    return False
 
 
 def package_limit_refusal(
@@ -1190,6 +1309,8 @@ def package_limit_refusal(
     decisions = payload.get("decisions")
     if isinstance(decisions, list) and len(decisions) > MAX_PACKAGE_DECISIONS:
         return 422, "package_limits", f"결정 기록이 너무 많습니다(최대 {MAX_PACKAGE_DECISIONS:,}건)."
+    if json_depth_exceeds(payload, MAX_PACKAGE_JSON_DEPTH):
+        return 422, "package_limits", f"요청 JSON 중첩이 너무 깊습니다(최대 {MAX_PACKAGE_JSON_DEPTH}단)."
     result = payload.get("result", payload)
     if not isinstance(result, dict):
         return None
@@ -1287,19 +1408,25 @@ def premortem_package(request: Request, payload: dict[str, Any] = Body(...)) -> 
     origin: ResultOrigin = (
         "server_signed" if verify_result(req.result, req.result_sig) else "client_submitted_unverified"
     )
+    meta: dict[str, Any] = {}
     try:
         plan, plan_source = _resolve_plan(result, req.plan_text if has_text else None)
         plan_association = _plan_association(plan, plan_source, origin)
         data = build_package(result, plan_text=req.plan_text if has_text else None, decisions=req.decisions,
                              result_origin=origin,
                              revision=req.revision, revision_decisions=req.revision_decisions,
-                             revised_plan=req.revised_plan, revision_sig=req.revision_sig, result_sig=req.result_sig)
+                             revised_plan=req.revised_plan, revision_sig=req.revision_sig, result_sig=req.result_sig,
+                             meta=meta)
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=_errors(exc)) from None
-    except ValueError as exc:
+    except ValueError as exc:  # 계약 위반·plan_id 불일치·없는 edit_id·결합 모순(B1-pairing PairingConflict)
         raise HTTPException(status_code=422, detail=str(exc)) from None
 
     filename = f"neumann_package_{_safe_filename_part(result.plan_id)}.zip"
+    comp: export_revision.Composition = meta.get("composition") or export_revision.Composition()
+    # B1-pairing: 덧붙인 파일의 출처는 결과 서명과 별개다(결합 검증을 거친 값). 화면은 이 헤더로 파일별 출처를 보일 수 있다.
+    extra_headers = {name: value for name, value in (("X-Neumann-Revision-Origin", comp.revision_origin),
+                                                     ("X-Neumann-Assembly-Origin", comp.assembly_origin)) if value}
     return Response(
         content=data,
         media_type="application/zip",
@@ -1309,6 +1436,7 @@ def premortem_package(request: Request, payload: dict[str, Any] = Body(...)) -> 
             "X-Neumann-Cards": str(len(result.risk_cards)),
             "X-Neumann-Result-Origin": origin,
             "X-Neumann-Plan-Association": plan_association,
+            **extra_headers,
         },
     )
 

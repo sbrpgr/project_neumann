@@ -62,16 +62,17 @@ def _with_computed(monkeypatch, value):
 
 
 def test_tool_computed_value_only_inside_placeholder(monkeypatch):
-    engine_only = run("합계 최대 6이다. [확인 필요: 항목 합계 7 상한 6 초과]")
-    assert engine_only["corrections"][0]["reason"] == "unsupported_number"  # 엔진은 3+4를 스스로 계산하지 않는다(E-1)
-    _with_computed(monkeypatch, 7)
     ok = run("합계 최대 6이다. [확인 필요: 항목 합계 7 상한 6 초과]")
+    assert ok["tool_checks_before"][0]["details"]["computed"] == 7  # 실제 Z3 도구 경계가 계산값을 낸다
     assert ok["corrections"][0]["applied"], ok["corrections"][0]["reason"]
     assert ok["issues"][0]["status"] == "unresolved"  # 자리표시는 표시일 뿐, 도구 재검사는 여전히 실패
     bad = run("합계 최대 7이다.")  # 계산값을 본문 사실로 단정 → 거절
     assert bad["corrections"][0]["reason"] == "unsupported_number" and bad["final_text"] == bad["input_text"]
     other = run("합계 최대 6이다. [확인 필요: 항목 합계 8 상한 6 초과]")  # 도구가 내지 않은 수치
     assert other["corrections"][0]["reason"] == "unsupported_number"
+    _with_computed(monkeypatch, 8)
+    no_seven = run("합계 최대 6이다. [확인 필요: 항목 합계 7 상한 6 초과]")
+    assert no_seven["corrections"][0]["reason"] == "unsupported_number"  # 엔진이 3+4를 따로 계산하지 않는다(E-1)
 
 
 def test_placeholder_body_is_not_a_free_text_channel():
