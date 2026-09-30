@@ -283,5 +283,7 @@ def test_briefs_for_n5_one_per_judge(tmp_path):
         assert f"judge_n5/answers/{j}/" in text and "judge_n5_key" in text and "pairing.json" not in text
         for other in set(jr.JUDGES) - {j}:
             assert f"answers/{other}/" not in text
+        # 호스트의 임시 디렉터리 이름은 판정 내용이 아니다(저장소 경로에 시스템명이 있을 수 있음).
+        text = text.replace(tmp_path.as_posix(), "")
         for bad in ("neumann", "baseline", "astra", "셔플"):
             assert bad not in text.lower()
