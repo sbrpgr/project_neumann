@@ -1,5 +1,6 @@
 """Offline unit checks. Stub tool adapter tests engine orchestration, not tool validity."""
 import sys
+import json
 import threading
 import types
 
@@ -54,6 +55,8 @@ def test_numbers_entities_pii_markup_and_wrong_anchors_are_rejected():
         out = finalize_plan("방법을 검토한다.", provider=provider([edit(after)]))
         assert out["final_text"] == out["input_text"]
         assert out["corrections"][0]["reason"] == reason
+        assert out["corrections"][0]["after"] == "[검사에서 제외된 수정안]"
+        assert after not in json.dumps(out, ensure_ascii=False)
     out = finalize_plan("방법을 검토한다.", provider=provider([edit("검토한다.", before="다른 줄")]))
     assert out["corrections"][0]["reason"] == "anchor_mismatch"
 

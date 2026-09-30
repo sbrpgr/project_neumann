@@ -248,7 +248,7 @@ def finalize_plan(plan_text: str, *, result=None, provider=None, checks=None,
         touched.add(no)
         applied = not reason and replacement != lines[no - 1]
         output["corrections"].append({"line": no, "before": lines[no - 1],
-                                      "after": mask_pii(replacement) if not contains_identity(replacement) else "[폐기된 신원 정보]",
+                                      "after": "[검사에서 제외된 수정안]" if reason else replacement,
                                       "applied": applied, "reason": reason or ("applied" if applied else "no_change")})
         if applied:
             updated[no - 1] = replacement

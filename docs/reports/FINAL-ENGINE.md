@@ -33,6 +33,9 @@ notice and sanitized provider exceptions. Targeted adapter orchestration test us
 stub; actual tool-module integration and independent-model validation remain PM integration tasks.
 Additional tests cover correction timeout and cancellation after correction returning the untouched
 source without a correction batch or recheck.
+Independent review correction: every rejected edit uses a fixed audit placeholder rather than
+returning the unsupported/unsafe proposal in `corrections.after`. Regression checks verify rejected
+scientific claims, numbers, entities, PII and markup are absent from the entire serialized result.
 
 Limits: existing unsupported_facts patterns cannot prove scientific truth or recognize every entity. The
 draft is not certified as scientifically correct. Recheck retains original check anchors; changing the
