@@ -3,6 +3,49 @@
 - 빌더: Claude Opus 5.5 · 검증 예정: Claude Sonnet 5.5 · 브랜치 `task/E4-L2d`(`task/E4-L2c` 위에서 시작, 시작 때 `main` 병합 1회, 충돌 없음)
 - 스펙: PM 배정 지시(과제 파일 없음). 배경: cloudflared quick tunnel은 응답을 약 100초에서 끊는다(524). 분석 1건 60~70초라 대기열에서 기다리면 넘는다.
 
+## 재작업 3(E4-L2d 재검증 PASS-조건부 대응, 소유 범위) + PM 결정 ①(단계 보고)
+
+근거: main 체크아웃 `docs/reports/E4-L2d.verify.md` "재검증 (d44df68)". 필수 1번(이메일 정규식 O(n²), `models.py`)은 PM의 SEC-4가 맡아 **하지 않았다.** 모든 명령 `NEUMANN_LLM_PROVIDER=mock`, `git stash` 안 씀.
+
+| # | 지시 | 한 일 | 테스트(`tests/e4/test_jobs_limits.py`) |
+|---|---|---|---|
+| 2 | 여러 IP로 저장소 채우기 | 합류·캐시 적중으로 만든 작업(`shared`: 미들웨어가 자리를 안 잡은 요청, 끝날 때 `cache=="hit"` 또는 `queue=="joined"`로 다시 판정)은 **TTL 60초**(`NEUMANN_JOB_SHARED_TTL_S`), **IP별 활성 수 계산에서 제외**. `NEUMANN_JOB_MAX` 기본 **500**. 저장소가 차면 `/queue/status`가 **`accepting:false`**(serving `accept_checks`에 작업 저장소 `has_room` 등록) | `test_shared_jobs_short_ttl_and_not_counted_per_ip`(같은 IP 5명이 같은 예시 → 5건 모두 202, 새 분석은 따로 3건까지, 합류 4건 `expires_in_s` 60·61초 뒤 404, 새 분석 3건은 900·그대로 200), `test_full_store_shows_accepting_false_in_queue_status`(가득 → false·새 POST 503, TTL 지나면 true). 합류 홍수 테스트는 기대값을 바꿨다: 한 IP 230번 → 202 6건(분당 6 속도 제한이 막음)·분석 1회 |
+| 3 | 접근 로그 마스킹 | 경로(대소문자·겹 슬래시·`%2F`)와 쿼리(`?job=`·`?job_id=`·`?id=`·`?ticket=`), 접근 로그에서는 URL-safe 32자 이상 토큰 전부를 앞 6자 + "…"로. 두 번 걸려도 같은 결과(`……` 없음) | `test_access_log_masks_query_and_path_variants_idempotently`(변형 8종 × 필터 두 번) |
+| 행사 | 권장 기동값 | 보고서(아래)와 `scripts/serve.py --help` 끝에 적었다. **기본값은 그대로** | `serve.py --help` 출력 확인 |
+| PM ① | 단계 보고(E3-L1y `on_stage(name, state, seconds)`) | `state=="running"`일 때만 현재 단계(아직 안 끝난 단계 중 **마지막에 시작한 것**), 끝 보고는 완료 목록(`stages_done`: 이름·이름표·상태·초)에만. 병렬 구간에서 끝난 단계가 현재로 남지 않는다. 새 실행(진행 중 분석이 없을 때) 시작 때 기록 초기화. 이름표 추가: fitness 적합성 판정, expected_review 예상 심사평, checklist 체크리스트, semantic_validate 2차 검증. `on_stage` 인자가 없는 옛 파이프라인은 전처럼 queued/running(또는 `report_stage`). 화면: 6단계 목록에 없는 단계는 ANALYZE 줄에 서버 이름표로 보인다 | `test_on_stage_running_and_end_reports_with_parallel_stages`(보고 8건 순서대로: 현재 단계 fitness → running → expected_review → checklist → expected_review → semantic_validate → expected_review → running, 끝난 목록 4건·상태·초·이름표). 옛 모양 `test_stage_from_on_stage_kwarg…`(인자 하나)·`report_stage` 가짜 파이프라인도 통과 |
+
+### 행사용 권장 기동값(공개 프로필 위에 환경변수로만, E4-L2e 부하 시험 권장)
+
+| 키 | 권장(행사) | 기본(공개) |
+|---|---|---|
+| `NEUMANN_JOB_PER_IP` | 10 | 3 |
+| `NEUMANN_JOB_RATE_PER_MIN` | 30 | 6 |
+| `NEUMANN_RATE_PER_MIN` | 30 | 6 |
+| `NEUMANN_JOB_POLL_PER_MIN` | 1200 | 600 |
+| `NEUMANN_MAX_CONCURRENT` | 6 | 4 |
+
+같은 와이파이 인원이 10명을 넘으면 앞 네 값을 인원의 2~3배로(검증 보고: 25명이면 `PER_IP=25`, 두 속도 값 60, 폴링 1800, `NEUMANN_PREPARSE_PER_MIN=120`). 행사가 끝나면 환경변수를 지워 기본값으로 되돌린다.
+
+### 측정
+
+```
+$ NEUMANN_LLM_PROVIDER=mock python -m pytest tests/e4 -q
+294 passed, 5 skipped
+$ git archive HEAD → E4-L2c_main.patch → E4-L2d_main.patch (둘 다 git apply --check 통과) → pytest -q
+PATCHES: L2c→L2d check+apply OK
+1211 passed, 26 skipped in 117.84s   (0 failed)
+$ NEUMANN_LLM_PROVIDER=mock python scripts/verify.py
+1211 passed, 26 skipped in 115.65s
+보안: 파일 410개 / 계약: 2개 / 테스트: 통과 / verify 통과
+$ python tests/e4/test_jobs_live.py ui --port 8137 --run-s 12   # 화면 재시험
+정상 흐름 콘솔 오류·페이지 오류·실패한 요청 0건, 판정 PASS
+```
+
+### 남은 것
+
+- 이메일 정규식(최대 허용 페이로드 반복 시 이벤트 루프 정지)은 SEC-4 몫이다. 그 전에는 공개 창구에 "정지 없음"이라 말할 수 없다(검증 보고 필수 1).
+- 여러 IP가 **새 분석**으로 저장소를 채우는 경우는 IP별 3건·분당 6건·대기열 30이 막는다(합류·캐시는 60초 뒤 비워진다). 다른 IP의 끝난 결과는 여전히 밀어내지 않는다.
+
 ## 재작업 2(E4-L2c 재검증 PASS-조건부 대응, 이 브랜치가 L2c를 포함)
 
 근거: main 체크아웃 `docs/reports/E4-L2c.verify.md` "재검증 (83754ff)". 모든 명령 `NEUMANN_LLM_PROVIDER=mock`, `git stash` 안 씀.
@@ -75,7 +118,8 @@ verify 통과
 | `NEUMANN_RATE_PER_MIN` | 6 | 0 | IP별 새 분석(serving) |
 | `NEUMANN_JOB_RATE_PER_MIN` | 6 | 0 | IP별 작업 POST(합류·캐시 적중 포함) |
 | `NEUMANN_JOB_PER_IP` | 3 | 3 | IP별 보관(활성) 작업 |
-| `NEUMANN_JOB_MAX` | 200 | 200 | 전체 보관 작업 |
+| `NEUMANN_JOB_MAX` | 500 | 500 | 전체 보관 작업(재작업 3에서 200 → 500) |
+| `NEUMANN_JOB_SHARED_TTL_S` | 60 | 60 | 합류·캐시 적중 작업 보관 시간(재작업 3) |
 | `NEUMANN_JOB_POLL_PER_MIN` | 600 | 600 | IP별 폴링 GET |
 | `NEUMANN_JOB_TTL_S` / `NEUMANN_JOB_TIMEOUT_S` / `NEUMANN_JOB_POLL_S` | 900 / 900 / 1.5 | 같음 | 보관·작업 시간 상한·폴링 간격 |
 | `NEUMANN_MAX_TOKEN_CHARS` | 20000 | 20000 | 공백 없는 토큰 한 개 상한(422) |
