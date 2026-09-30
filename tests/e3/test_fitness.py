@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import re
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -52,7 +54,13 @@ def _response(verdict: str, lines: dict[str, list[int]] | None = None, *, field:
 
 
 class FakeLLM:
-    """llm_call 대역. 호출 인자를 기록하고 정해 둔 값을 돌려준다(callable이면 plan 입력으로 계산)."""
+    """llm_call 대역. 호출 인자를 기록하고 정해 둔 값을 돌려준다(callable이면 plan 입력으로 계산).
+
+    생성 주체를 정직하게 밝히는 `generator`·`model` 속성을 단다(astra가 아니다).
+    """
+
+    generator = "mock"
+    model = "mock-fitness"
 
     def __init__(self, reply: Any) -> None:
         self.reply = reply
@@ -75,7 +83,7 @@ def test_demo_plans_fit_via_llm(name: str) -> None:
     r = assess_fitness(plan, fake)
     assert r["verdict"] == "fit"
     assert r["analyze"] is True and r["is_research_plan"] is True
-    assert r["generator"] == "astra" and r["model"] == "gpt-6-astra"
+    assert r["generator"] == "mock" and r["model"] == "mock-fitness"  # llm_call 속성에서 읽는다
     assert r["status"] == "ok" and r["decided_by"] == "llm"
     assert r["missing"] == [] and r["notice"] is None
     assert r["field"] == "테스트 분야"
@@ -91,7 +99,7 @@ def test_recipe_unfit_via_llm() -> None:
     assert r["analyze"] is False and r["is_research_plan"] is False
     assert r["label_ko"] == "분석하지 않음"
     assert r["notice"] == "분석하지 않음: 조리법이며 연구 질문·데이터·평가가 없다."
-    assert r["generator"] == "astra" and r["status"] == "ok"
+    assert r["generator"] == "mock" and r["status"] == "ok"
     assert r["model_verdict"] == "not_research_plan"
 
 
@@ -190,6 +198,8 @@ def test_model_rejection_of_real_plan_is_softened() -> None:
     assert r["checks"]["overrides"] and "거절하지 않는다" in r["checks"]["overrides"][0]
     assert r["notice"].startswith("연구계획서인지 확실하지 않아")
     assert len(r["followup_questions"]) == 4  # 모델이 요소를 하나도 안 짚었으니 전부 보완 질문
+    stage = fitness_stage(r)
+    assert stage.counts["overrides"] == 1 and "not_research_plan → uncertain" in stage.detail
 
 
 def test_thin_idea_is_uncertain_with_followups() -> None:
@@ -252,9 +262,12 @@ def test_llm_input_is_masked_and_numbered() -> None:
     fake = FakeLLM(_response("research_plan", _section_lines(plan)))
     r = assess_fitness(plan, fake, effort="medium")
     sent = fake.calls[0]["input"]
-    assert "010-1234-5678" not in sent and "[PHONE]" in sent
-    assert "5: 리튬이온 배터리" in sent  # 줄 번호: 본문
-    assert "\n2: " not in sent  # 빈 줄은 뺀다
+    payload = json.loads(sent)  # provider 어댑터가 JSON payload로 읽을 수 있어야 한다
+    rows = payload["plan"].split("\n")
+    assert "010-1234-5678" not in sent and "[PHONE]" in payload["plan"]
+    assert f"5: {plan.line(5)}" in rows and plan.line(5).startswith("리튬이온 배터리")  # 줄 번호: 본문
+    assert not any(row.startswith("2: ") for row in rows)  # 빈 줄은 뺀다
+    assert payload["n_lines"] == len(plan.lines) and payload["truncated_after_line"] is None
     assert fake.calls[0]["effort"] == "medium"
     assert r["checks"]["pii_masked"] == {"phone": 1}
 
@@ -270,16 +283,85 @@ def test_llm_reason_and_field_are_masked() -> None:
 def test_build_llm_input_truncates() -> None:
     plan = _plan("plan.md")
     text, meta = build_llm_input(plan, max_chars=200)
-    assert meta["truncated"] is True and len(text) < 400
-    assert f"truncated after line {meta['last_line_sent']}" in text
+    payload = json.loads(text)
+    assert meta["truncated"] is True and len(payload["plan"]) <= 200
+    assert payload["truncated_after_line"] == meta["last_line_sent"]
 
 
 def test_generator_label_is_honest() -> None:
     plan = _plan("plan.md")
-    r = assess_fitness(plan, FakeLLM(_response("research_plan", _section_lines(plan))), generator="mock", model="mock-v1")
-    assert r["generator"] == "mock" and r["model"] == "mock-v1"
+    r = assess_fitness(plan, FakeLLM(_response("research_plan", _section_lines(plan))), generator="astra", model="m-1")
+    assert r["generator"] == "astra" and r["model"] == "m-1"  # 인자가 속성보다 우선
     with pytest.raises(ValueError):
         assess_fitness(plan, FakeLLM(None), generator="gpt")
+
+
+def test_bare_callable_without_generator_is_rejected_before_call(monkeypatch: pytest.MonkeyPatch) -> None:
+    """생성 주체를 모르는 callable은 설정이 openai여도 astra로 추정하지 않고 호출 전에 거부한다."""
+    monkeypatch.setenv("NEUMANN_LLM_PROVIDER", "openai")
+    plan = _plan("plan.md")
+    calls: list[str] = []
+
+    def bare(schema: dict, instructions: str, input: str, *, effort: str) -> dict:  # noqa: A002
+        calls.append(input)
+        return _response("research_plan", _section_lines(plan))
+
+    with pytest.raises(ValueError, match="생성 주체"):
+        assess_fitness(plan, bare)
+    assert calls == []
+    with pytest.raises(ValueError, match="생성 주체"):  # 짧은 입력(호출 안 하는 경로)도 같은 규칙
+        assess_fitness(_plan("안녕하세요"), bare)
+    bare.generator = "bogus"  # type: ignore[attr-defined]
+    with pytest.raises(ValueError, match="llm_call.generator"):
+        assess_fitness(plan, bare)
+    assert calls == []
+    r = assess_fitness(plan, None)  # 호출이 없으면 생성 주체도 필요 없다(규칙 경로)
+    assert r["generator"] == "rule"
+
+
+def test_generator_and_model_from_attributes() -> None:
+    plan = _plan("plan.md")
+
+    def call(schema: dict, instructions: str, input: str, *, effort: str) -> dict:  # noqa: A002
+        return _response("research_plan", _section_lines(plan))
+
+    call.generator = "astra"  # type: ignore[attr-defined]
+    r = assess_fitness(plan, call)
+    assert r["generator"] == "astra" and r["model"] is None  # 모델 id는 추정하지 않는다
+    call.model = "gpt-6-astra"  # type: ignore[attr-defined]
+    assert assess_fitness(plan, call)["model"] == "gpt-6-astra"
+
+
+class _FakeProvider:
+    """E3-L0 provider 모양(`name`, `model`, `complete_json(call) -> result`)의 대역."""
+
+    def __init__(self, name: str, data: dict | None, error: str | None = None) -> None:
+        self.name, self.model, self.data, self.error = name, f"{name}-model", data, error
+        self.calls: list[Any] = []
+
+    def complete_json(self, call: Any) -> Any:
+        self.calls.append(call)
+        gen = {"openai": "astra", "mock": "mock"}.get(self.name, "rule")
+        return SimpleNamespace(ok=self.data is not None, data=self.data, model=self.model, generator=gen,
+                               error=self.error, reason=lambda: f"{self.name}:{self.model} {self.error}")
+
+
+def test_works_with_provider_llm_call_adapter() -> None:
+    """main의 review.provider_llm_call로 감싼 provider를 그대로 넘길 수 있다(생성 주체는 provider 이름에서)."""
+    from neumann.analyze.review import provider_llm_call
+
+    plan = _plan("plan.md")
+    prov = _FakeProvider("mock", _response("research_plan", _section_lines(plan)))
+    r = assess_fitness(plan, provider_llm_call(prov, task="input_fitness"))
+    assert r["decided_by"] == "llm" and r["verdict"] == "fit"
+    assert r["generator"] == "mock" and r["model"] == "mock-model"
+    call = prov.calls[0]
+    assert call.task == "input_fitness" and call.schema is FITNESS_SCHEMA and "plan" in call.payload
+
+    failing = _FakeProvider("openai", None, error="timeout")
+    r2 = assess_fitness(plan, provider_llm_call(failing, task="input_fitness"))
+    assert r2["status"] == "degraded" and r2["generator"] == "rule"
+    assert "timeout" in r2["degraded_reason"]
 
 
 def _strict_problems(schema: dict, path: str = "$") -> list[str]:

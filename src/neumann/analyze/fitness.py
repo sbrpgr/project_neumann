@@ -28,7 +28,6 @@ from neumann.models import Generator, PlanDocument, StageStatus
 
 LLMCallable = Callable[..., dict[str, Any] | None]
 
-DEFAULT_MODEL = "gpt-6-astra"
 DEFAULT_EFFORT = "low"
 MIN_CHARS = 40  # 공백을 뺀 글자 수가 이보다 적으면 판정할 거리가 없다(호출하지 않는다)
 MAX_INPUT_CHARS = 12000  # 모델에 보내는 본문 상한
@@ -82,7 +81,8 @@ FITNESS_SCHEMA: dict[str, Any] = {
 
 INSTRUCTIONS = """You screen inputs for a research-risk analysis tool. A user pasted a text that should be a research plan
 (a proposal, a study design, or a research abstract), usually in Korean, sometimes mixed with English.
-Decide whether it is a research plan that can be analyzed. The input lists the non-empty lines as "<line number>: <text>".
+Decide whether it is a research plan that can be analyzed. The input is JSON; its "plan" field lists the non-empty
+lines as "<line number>: <text>" (empty lines omitted, "truncated_after_line" is set if the text was cut).
 
 Return JSON that matches the schema:
 - verdict:
@@ -261,9 +261,15 @@ def build_llm_input(plan: PlanDocument, max_chars: int = MAX_INPUT_CHARS) -> tup
         out.append(row)
         used += len(row) + 1
         last_no = ln.no
-    header = f"Plan text ({len(plan.lines)} lines total, empty lines omitted"
-    header += f", truncated after line {last_no})" if truncated else ")"
-    return header + "\n" + "\n".join(out), {"truncated": truncated, "last_line_sent": last_no, "pii_masked": masked}
+    # JSON 문자열로 준다: provider 어댑터(review.provider_llm_call)가 input을 JSON payload로 읽는다
+    payload = {
+        "n_lines": len(plan.lines),
+        "empty_lines_omitted": True,
+        "truncated_after_line": last_no if truncated else None,
+        "plan": "\n".join(out),
+    }
+    meta = {"truncated": truncated, "last_line_sent": last_no, "pii_masked": masked}
+    return json.dumps(payload, ensure_ascii=False), meta
 
 
 def parse_llm_output(raw: Any, plan: PlanDocument) -> tuple[dict[str, Any] | None, str | None, int]:
@@ -365,25 +371,57 @@ def _rule_result(rule: dict[str, Any], language: dict[str, Any], checks: dict[st
     )
 
 
+def resolve_generator(llm_call: Any, explicit: Generator | str | None) -> str:
+    """생성 주체 표기: (1) `generator=` 인자 (2) `llm_call.generator` 속성. 둘 다 없거나 값이 틀리면 ValueError.
+
+    설정(provider)이나 기본값에서 추정하지 않는다: 무엇이 호출됐는지 모르는 callable을 astra로 적지 않는다
+    (E3-L1a `review._resolve_generator`와 같은 규칙).
+    """
+    if explicit is not None:
+        try:
+            return Generator(explicit).value
+        except ValueError:
+            raise ValueError(f"generator 인자 값이 틀렸다: {explicit!r} (허용 {[g.value for g in Generator]})") from None
+    attr = getattr(llm_call, "generator", None)
+    if attr is None:
+        raise ValueError(
+            "llm_call의 생성 주체를 알 수 없다: generator= 인자를 주거나 llm_call에 generator 속성"
+            "(astra|mock|rule)을 달아라. provider는 review.provider_llm_call()로 감싸면 속성이 달린다"
+        )
+    try:
+        return Generator(attr).value
+    except ValueError:
+        raise ValueError(f"llm_call.generator 값이 틀렸다: {attr!r}") from None
+
+
+def _resolve_model(llm_call: Any, explicit: str | None) -> str | None:
+    """모델 id: 인자 > `llm_call.model` 속성 > None(추정하지 않는다)."""
+    if explicit is not None:
+        return explicit
+    attr = getattr(llm_call, "model", None)
+    return str(attr) if attr else None
+
+
 def assess_fitness(
     plan: PlanDocument,
     llm_call: LLMCallable | None,
     *,
-    generator: str = Generator.astra.value,
-    model: str | None = DEFAULT_MODEL,
+    generator: Generator | str | None = None,
+    model: str | None = None,
     effort: str = DEFAULT_EFFORT,
     max_chars: int = MAX_INPUT_CHARS,
 ) -> dict[str, Any]:
     """계획서 적합성 판정. astra(`llm_call`) 판정이 주력이고, 실패하면 규칙 판정으로 강등한다.
 
     `llm_call(schema, instructions, input, *, effort) -> dict | None`. None·예외·스키마 위반은 모두 비상 경로로 간다.
-    `generator`·`model`은 llm_call이 실제로 무엇인지 정직하게 적는 값이다(mock provider면 "mock").
+    생성 주체는 `generator=` 인자나 `llm_call.generator` 속성에서만 읽는다. 둘 다 없으면 **호출 전에** ValueError
+    (기본값·설정으로 추정하지 않는다). 모델 id는 `model=` 인자나 `llm_call.model` 속성, 없으면 None.
     반환: verdict(fit·unfit·uncertain), analyze(분석 여부), reason, notice(화면 문구), field, language,
     elements(요소별 present·plan_lines), missing, followup_questions, generator, model, status(ok·degraded),
     decided_by(llm·rule_fallback·precheck), degraded_reason, model_verdict, rule(규칙 신호), checks, elapsed_s.
     """
     t0 = time.perf_counter()
-    gen = Generator(generator).value
+    pre_gen = resolve_generator(llm_call, generator) if llm_call is not None else None  # 호출 전 거부
     rule = rule_fitness(plan)
     language = detect_language(plan.text)
     checks: dict[str, Any] = {"dropped_lines": 0, "overrides": []}
@@ -402,8 +440,9 @@ def assess_fitness(
         return _rule_result(rule, language, checks, t0, status="degraded", decided_by="rule_fallback",
                             degraded_reason=f"llm_exception: {type(exc).__name__}")
     if raw is None:
+        why = getattr(llm_call, "last_error", None)  # provider 어댑터가 남긴 실패 사유(비밀값 없음)
         return _rule_result(rule, language, checks, t0, status="degraded", decided_by="rule_fallback",
-                            degraded_reason="llm_unavailable: 호출 실패 또는 시간 초과")
+                            degraded_reason="llm_unavailable: " + (str(why) if why else "호출 실패 또는 시간 초과"))
     parsed, problem, dropped = parse_llm_output(raw, plan)
     checks["dropped_lines"] = dropped
     if parsed is None:
@@ -429,9 +468,14 @@ def assess_fitness(
             verdict = "unfit"
     else:
         verdict = "uncertain"
+    try:  # 호출 뒤 다시 읽는다: 어댑터는 실제 provider 결과로 generator·model 속성을 갱신한다
+        gen = resolve_generator(llm_call, generator)
+    except ValueError:
+        gen = pre_gen
+    assert gen is not None
     return _result(
         verdict=verdict, reason=reason, elements=parsed["elements"], field=parsed["field"] or rule["field"],
-        generator=gen, model=model, status="ok", decided_by="llm", degraded_reason=None,
+        generator=gen, model=_resolve_model(llm_call, model), status="ok", decided_by="llm", degraded_reason=None,
         model_verdict=model_verdict, rule=rule, language=language, checks=checks, t0=t0,
     )
 
@@ -446,6 +490,8 @@ def fitness_stage(result: dict[str, Any]) -> StageStatus:
     detail = f"{result['verdict']} by {result['generator']}"
     if result["degraded_reason"]:
         detail += f" — {result['degraded_reason']}"
+    if result["checks"].get("overrides"):  # 규칙 신호가 모델 판정을 바꿨으면 단계 기록에도 남긴다
+        detail += f" (model {result['model_verdict']} → {result['verdict']}: 규칙 신호로 조정)"
     return StageStatus(
         stage="fitness",
         state="degraded" if result["status"] == "degraded" else "ok",
@@ -456,13 +502,13 @@ def fitness_stage(result: dict[str, Any]) -> StageStatus:
         counts={
             "elements_present": sum(1 for e in ELEMENTS if result["elements"][e]["present"]),
             "dropped_lines": int(result["checks"].get("dropped_lines", 0)),
+            "overrides": len(result["checks"].get("overrides", [])),
         },
     )
 
 
 __all__ = [
     "DEFAULT_EFFORT",
-    "DEFAULT_MODEL",
     "ELEMENTS",
     "FITNESS_SCHEMA",
     "INSTRUCTIONS",
@@ -470,6 +516,7 @@ __all__ = [
     "build_llm_input",
     "detect_language",
     "fitness_stage",
+    "resolve_generator",
     "parse_llm_output",
     "rule_fitness",
 ]

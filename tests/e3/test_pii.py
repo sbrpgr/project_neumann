@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import random
 import re
+import time
 
 import pytest
 
@@ -192,6 +194,65 @@ def test_url_and_doi_are_not_phone() -> None:
 def test_fixture_plans_have_no_false_positive(name: str) -> None:
     text = plan_text(name)
     assert mask_pii(text) == text
+
+
+# ── 성능: 공개 서버 입력이라 긴 숫자 줄로 멈추지 않아야 한다(서비스 거부 방지) ──────────
+
+
+def _timed(text: str) -> tuple[float, str, dict[str, int]]:
+    t0 = time.perf_counter()
+    out, counts = mask_pii_counts(text)
+    return time.perf_counter() - t0, out, counts
+
+
+def test_long_line_of_space_joined_numbers_is_fast() -> None:
+    rng = random.Random(0)
+    text = " ".join(str(rng.randint(1, 99999)) for _ in range(3000))
+    elapsed, out, _ = _timed(text)
+    assert elapsed < 1.0, f"숫자 3,000개 한 줄에 {elapsed:.2f}s"
+    assert len(out) > 0
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "0.1 " * 3000,  # 소수 3,000개
+        "-".join(["12"] * 5000),  # 하이픈으로 이은 숫자 5,000개
+        "(0) " * 5000,
+        "a." * 20000 + "@b.com",  # 이메일 정규식이 제곱 시간이 되는 긴 토큰
+        "a" * 50000,
+        ("a." * 30 + "@") * 2000,
+    ],
+    ids=["decimals", "hyphens", "parens", "long-local-part", "long-token", "many-at"],
+)
+def test_adversarial_inputs_are_fast(text: str) -> None:
+    elapsed, _, _ = _timed(text)
+    assert elapsed < 1.0, f"{elapsed:.2f}s"
+
+
+def test_many_phones_masked_quickly() -> None:
+    elapsed, out, counts = _timed("010-1234-5678 " * 2000)
+    assert elapsed < 1.0 and counts == {"phone": 2000}
+    assert out == "[PHONE] " * 2000
+
+
+def test_phone_found_inside_long_number_chain() -> None:
+    """묶음 창 상한을 둬도 긴 사슬 가운데의 번호는 잡힌다."""
+    prefix = " ".join(str(n) for n in range(1, 40))
+    text = f"{prefix} 010-1234-5678 7 8 9"
+    assert mask_pii(text) == f"{prefix} [PHONE] 7 8 9"
+
+
+def test_plan_document_from_adversarial_text_is_fast() -> None:
+    t0 = time.perf_counter()
+    plan, _ = plan_document_from_text("a." * 20000 + "\n" + " ".join(["12"] * 3000), "sess-dos")
+    assert time.perf_counter() - t0 < 1.0
+    assert len(plan.lines) == 2
+
+
+def test_long_local_part_email_still_masked() -> None:
+    assert mask_pii("x " + "a." * 20000 + "b@c.com").endswith("[EMAIL]")
+    assert mask_pii("a@b.com@c.com") == "[EMAIL]@c.com"  # EMAIL_RE.finditer와 같은 결과
 
 
 def test_plan_document_from_text_masks_phone_and_rrn() -> None:

@@ -13,11 +13,16 @@
 - 오탐 방지: 점(.) 구분자는 모든 구분자가 점 하나이고 묶음이 3개 이상일 때만 인정한다(`0.95`, `0.12 0.34` 보존).
   `15xx-xxxx` 대표번호와 7~8자리 번호는 "전화·연락처·Tel" 같은 단서가 앞에 있을 때만 가린다(`1600-1700` 연도 범위 보존).
 
+성능(공개 서버 입력이다): 모든 탐지는 입력 길이에 선형에 가깝다. 전화번호 후보는 사슬 안에서 묶음 `MAX_GROUPS`개
+창으로만 본다(실제 번호는 묶음 6개 안). 이메일은 `@` 둘레(앞 64자·뒤 255자)만 `models.EMAIL_RE`로 맞춘다
+(본문 전체에 돌리면 `a.a.a…` 같은 긴 토큰에서 제곱 시간이 걸린다). 겹침 검사는 이분 탐색이다.
+
 마스킹은 길이를 바꾸므로 Excerpt·PlanDocument를 만들기 **전에** 한다(models 모듈 설명과 같은 순서).
 """
 
 from __future__ import annotations
 
+import bisect
 import re
 import unicodedata
 from collections import Counter
@@ -37,6 +42,11 @@ _MIDDOTS = "·・‧"
 _PLUS = "+＋"
 _LINE_BREAKS = "\n\r\v\f\x1c\x1d\x1e\x85  "
 MAX_GAP = 3  # 숫자 덩어리 사이 구분자 최대 글자 수
+MAX_GROUPS = 7  # 전화번호 후보 하나의 숫자 묶음 수 상한(+82 (0)10 1234 5678 = 5, +33 1 23 45 67 89 = 6)
+EMAIL_LOCAL_MAX = 64  # RFC 5321 local-part 상한
+EMAIL_DOMAIN_MAX = 255
+_EMAIL_LOCAL_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._%+-")
+_EMAIL_DOMAIN_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-")
 
 _DIGIT_RUN = re.compile(r"[0-9]+")
 _CUE_RE = re.compile(
@@ -114,8 +124,9 @@ def _looks_like_date_or_range(groups: list[str]) -> bool:
 
 
 def _has_cue(norm: str, pos: int) -> bool:
-    line_start = norm.rfind("\n", 0, pos) + 1
-    return bool(_CUE_RE.search(norm[max(line_start, pos - 24) : pos]))
+    lo = max(0, pos - 24)
+    line_start = norm.rfind("\n", lo, pos) + 1  # 앞 24자 안에서만 찾는다(긴 줄에서도 선형)
+    return bool(_CUE_RE.search(norm[max(line_start, lo) : pos]))
 
 
 def _phone_shape_ok(groups: list[str], gaps: list[str], *, plus: bool, cue: bool) -> bool:
@@ -200,62 +211,116 @@ def _phone_span(norm: str, chain: list[tuple[int, int]], i: int, j: int) -> PiiS
     return PiiSpan("phone", k, end)
 
 
-def _protected(norm: str) -> list[tuple[int, int]]:
-    return [(m.start(), m.end()) for rx in _PROTECTED_RES for m in rx.finditer(norm)]
+class _Zones:
+    """겹치지 않게 합친 구간 목록. 겹침 검사를 이분 탐색으로 한다(구간이 많아도 느려지지 않는다)."""
+
+    def __init__(self, spans: list[tuple[int, int]]) -> None:
+        merged: list[list[int]] = []
+        for a, b in sorted(spans):
+            if merged and a <= merged[-1][1]:
+                merged[-1][1] = max(merged[-1][1], b)
+            else:
+                merged.append([a, b])
+        self.starts = [a for a, _ in merged]
+        self.ends = [b for _, b in merged]
+
+    def overlaps(self, start: int, end: int) -> bool:
+        k = bisect.bisect_left(self.starts, end)  # 시작이 end보다 앞인 구간 중 마지막이 k-1
+        return k > 0 and self.ends[k - 1] > start
+
+    def add(self, start: int, end: int) -> None:
+        """겹치지 않는 구간을 넣는다(호출 전에 overlaps로 확인한다)."""
+        k = bisect.bisect_left(self.starts, start)
+        self.starts.insert(k, start)
+        self.ends.insert(k, end)
 
 
-def _inside(span: PiiSpan, zones: list[tuple[int, int]]) -> bool:
-    return any(span.start < b and a < span.end for a, b in zones)
+def _protected(norm: str) -> _Zones:
+    return _Zones([(m.start(), m.end()) for rx in _PROTECTED_RES for m in rx.finditer(norm)])
+
+
+def _find_emails(norm: str) -> list[PiiSpan]:
+    """`@`마다 앞뒤 허용 문자를 상한까지 걷고 그 구간에서만 `models.EMAIL_RE`를 맞춘다.
+
+    local-part가 64자 이하이면 결과는 `EMAIL_RE.finditer`와 같다(맨 왼쪽 시작 = 허용 문자 연속의 시작).
+    """
+    out: list[PiiSpan] = []
+    n = len(norm)
+    at = norm.find("@")
+    while at != -1:
+        s = at
+        while s > 0 and at - s < EMAIL_LOCAL_MAX and norm[s - 1] in _EMAIL_LOCAL_CHARS:
+            s -= 1
+        e = at + 1
+        while e < n and e - at <= EMAIL_DOMAIN_MAX and norm[e] in _EMAIL_DOMAIN_CHARS:
+            e += 1
+        if s < at:
+            m = EMAIL_RE.match(norm, s, e)
+            if m is not None:
+                out.append(PiiSpan("email", m.start(), m.end()))
+        at = norm.find("@", at + 1)
+    return out
 
 
 # ── 공개 함수 ─────────────────────────────────────────────────────────────
 
 
-def find_phones(text: str) -> list[PiiSpan]:
-    norm = ascii_digits(text)
-    zones = _protected(norm)
+def _find_phones(norm: str, zones: _Zones) -> list[PiiSpan]:
     found: list[PiiSpan] = []
     for chain in _chains(norm):
         i = 0
         while i < len(chain):
             hit = None
-            for j in range(len(chain) - 1, i - 1, -1):  # 가장 긴 사슬부터
+            end_j = i
+            # 가장 긴 후보부터, 단 묶음 MAX_GROUPS개 창 안에서만 본다(사슬이 길어도 선형)
+            for j in range(min(len(chain) - 1, i + MAX_GROUPS - 1), i - 1, -1):
                 hit = _phone_span(norm, chain, i, j)
                 if hit is not None:
+                    end_j = j
                     break
-            if hit is not None and not _inside(hit, zones):
+            if hit is not None and not zones.overlaps(hit.start, hit.end):
                 found.append(hit)
-                i = j + 1
+                i = end_j + 1
             else:
                 i += 1
     return found
 
 
+def find_phones(text: str) -> list[PiiSpan]:
+    norm = ascii_digits(text)
+    return _find_phones(norm, _protected(norm))
+
+
 def find_rrns(text: str) -> list[PiiSpan]:
     """주민등록번호(외국인등록번호) 형태: YYMMDD-[1-8]NNNNNN, 뒷자리가 *로 가려진 형태 포함. 월·일이 유효해야 한다."""
     norm = ascii_digits(text)
-    zones = _protected(norm)
+    return _find_rrns(norm, _protected(norm))
+
+
+def _find_rrns(norm: str, zones: _Zones) -> list[PiiSpan]:
     out: list[PiiSpan] = []
     for m in _RRN_RE.finditer(norm):
         month, day = int(m.group(2)), int(m.group(3))
         if not (1 <= month <= 12 and 1 <= day <= 31):
             continue
-        span = PiiSpan("rrn", m.start(), m.end())
-        if not _inside(span, zones):
-            out.append(span)
+        if not zones.overlaps(m.start(), m.end()):
+            out.append(PiiSpan("rrn", m.start(), m.end()))
     return out
 
 
 def find_pii(text: str) -> list[PiiSpan]:
     """이메일·ORCID(models 정규식 재사용)·주민번호·전화번호 구간. 겹치면 우선순위가 높은 쪽만 남긴다."""
     norm = ascii_digits(text)
-    cands = [PiiSpan("email", m.start(), m.end()) for m in EMAIL_RE.finditer(norm)]
+    zones = _protected(norm)
+    cands = _find_emails(norm)
     cands += [PiiSpan("orcid", m.start(), m.end()) for m in ORCID_RE.finditer(norm)]
-    cands += find_rrns(text)
-    cands += find_phones(text)
+    cands += _find_rrns(norm, zones)
+    cands += _find_phones(norm, zones)
     chosen: list[PiiSpan] = []
+    taken = _Zones([])
     for span in sorted(cands, key=lambda s: (_PRIORITY[s.kind], s.start)):
-        if not any(span.start < c.end and c.start < span.end for c in chosen):
+        if not taken.overlaps(span.start, span.end):
+            taken.add(span.start, span.end)
             chosen.append(span)
     return sorted(chosen, key=lambda s: s.start)
 
@@ -290,9 +355,13 @@ def mask_plan_text(text: str) -> tuple[str, dict[str, int]]:
 
 
 def plan_document_from_text(text: str, session_id: str) -> tuple[PlanDocument, dict[str, int]]:
-    """정규화 → 강화 마스킹 → 줄 번호. `PlanDocument.from_text` 대신 쓰면 전화번호·주민번호도 가려진다."""
+    """정규화 → 강화 마스킹 → 줄 번호. `PlanDocument.from_text` 대신 쓰면 전화번호·주민번호도 가려진다.
+
+    이메일·ORCID는 위 마스킹이 같은 정규식으로 이미 가렸으므로 `models.redact_pii`를 다시 돌리지 않는다
+    (`EMAIL_RE`를 본문 전체에 돌리면 긴 토큰에서 제곱 시간이 걸린다).
+    """
     body, counts = mask_plan_text(text)
-    return PlanDocument.from_text(body, session_id, redact=True), counts
+    return PlanDocument.from_text(body, session_id, redact=False), counts
 
 
 __all__ = [

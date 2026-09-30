@@ -57,6 +57,8 @@ def _openai_llm_call(timeout_s: float = 60.0):
         return json.loads(resp.output_text)
 
     call.log = log  # type: ignore[attr-defined]
+    call.generator = "astra"  # type: ignore[attr-defined]  # 실제 OpenAI gpt-6-astra 호출이다
+    call.model = MODEL  # type: ignore[attr-defined]
     return call
 
 
@@ -84,7 +86,7 @@ def _summary(name: str, r: dict[str, Any], call_log: list[dict[str, Any]]) -> di
 def test_live_astra_fitness(name: str, expected: str) -> None:
     call = _openai_llm_call()
     plan = PlanDocument.from_text(plan_text(name), "live-e3-l1c")
-    r = assess_fitness(plan, call, model=MODEL)
+    r = assess_fitness(plan, call)
     print("\n" + json.dumps(_summary(name, r, call.log), ensure_ascii=False, indent=2))
     assert r["decided_by"] == "llm", r["degraded_reason"]
     assert r["generator"] == "astra" and r["status"] == "ok"
