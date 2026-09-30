@@ -1,3 +1,14 @@
+## ★ 실서비스 공개 중 — 2026-10-01 08:0x KST (대표 승인, 심사 종료까지)
+
+- 공개 주소는 https://cameron-metric-compile-science.trycloudflare.com 이다. Cloudflare 임시 터널 → 127.0.0.1:8000, `serve.py --public`, 99b775b로 돈다.
+- 제한: 분당 6건/IP, DAILY_BUDGET 40, 동시 2, /docs 404.
+- 8020은 녹화용 로컬 서버로 그대로 둔다.
+- **심사가 끝나면 즉시 할 일(대표 몫 포함):**
+  1. 터널 프로세스(cloudflared)와 8000 서버를 종료한다.
+  2. OpenAI 키를 폐기한다(03:2x 결정).
+  3. Codex/ChatGPT에서 로그아웃하고 다시 로그인한다(03:4x 권고).
+- 알고 승인한 잔여 위험은 SEC-PUBLIC 잔여 항목과 V-B1-C 입력값 반사다. 상세는 decisions 07:5x에 있다.
+
 ## ★ 녹화 판 99b775b — 2026-10-01 07:15 KST, PM(Claude) · 이 절이 가장 최신(아래 06:15 절을 대체)
 
 - **8020 = 99b775b**(07:08:50 기동). origin/main과 main 작업 폴더가 같다.
