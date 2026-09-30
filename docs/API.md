@@ -285,7 +285,9 @@ plan.hwp(HWP 매직바이트) → 415 {"detail": "HWP는 PDF나 DOCX로 저장�
 | 422 | `file` 필드 없음, 빈 파일, 손상·암호 PDF, 텍스트 없음 |
 | 503 | 동시 처리 상한 초과 |
 
-## 최종 초안 검사·교정 — POST /premortem/revise/finalize
+## 최종 초안 검사·교정 — POST /premortem/finalize
+
+결정된 경로는 `/premortem/finalize`다. 옛 경로 `/premortem/revise/finalize`는 같은 핸들러·같은 보호 관문의 alias로 남겨 두었다(계약 추가만). 응답 최상위에 `generator`·`model`(결과별 생성 방식), `text_source`(`server_assembled`/`researcher_confirmed`), `provenance`{inputs_signed, coupled, coupling, researcher_text}가 추가됐다.
 
 수정본 뷰어의 `수정 확정·검증`은 기존 수정 권고와 연구자 결정을 조립하고, 최종 의미 검사·제한된 도구 검사·교정 1묶음·대상 도구 재검사를 수행해 초안을 반환한다. 같은 제출 안에서 전체 검색을 반복하거나 임의 생성 코드를 실행하지 않는다.
 

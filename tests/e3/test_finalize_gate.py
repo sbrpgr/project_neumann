@@ -77,7 +77,8 @@ def test_tool_computed_value_only_inside_placeholder(monkeypatch):
 def test_placeholder_body_is_not_a_free_text_channel():
     cases = [("합계 최대 6이다. [확인 필요: https://evil.example/x]", "placeholder_unsafe"),
              ("합계 최대 6이다. [확인 필요: www.example.com 참조]", "placeholder_unsafe"),
-             ("합계 최대 6이다. [확인 필요: 문의 admin@example.com]", "placeholder_unsafe"),
+             ("합계 최대 6이다. [확인 필요: 문의 admin@example.com]", "pii_or_identity"),  # 이메일은 개인정보 게이트가 먼저 잡는다
+             ("합계 최대 6이다. [확인 필요: 계정 @admin 확인]", "placeholder_unsafe"),
              ("합계 최대 6이다. [확인 필요: 링크](x)", "placeholder_unsafe"),
              ("합계 최대 6이다. [확인 필요: 신약 임상 결과가 우수함]", "placeholder_vocabulary"),
              ("합계 최대 6이다. [확인 필요 항목 합계]", "placeholder_malformed")]
