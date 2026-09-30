@@ -80,22 +80,36 @@ def _timed_calls(llm: lt.DelayedMockProvider, n: int, *, threaded: bool) -> floa
     if not threaded:
         t0 = time.perf_counter()
         for _ in range(n):
-            llm.complete_json(_call())
+            assert llm.complete_json(_call()).ok
         return time.perf_counter() - t0
     go = threading.Barrier(n + 1, timeout=30)
+    release = threading.Event()
+    results, errors = [], []
 
     def work() -> None:
-        go.wait()
-        llm.complete_json(_call())
+        try:
+            go.wait()
+            assert release.wait(30)
+            results.append(llm.complete_json(_call()))
+        except BaseException as exc:
+            errors.append(exc)
 
     ths = [threading.Thread(target=work) for _ in range(n)]
     for t in ths:
         t.start()
-    go.wait()
-    t0 = time.perf_counter()
-    for t in ths:
-        t.join()
-    return time.perf_counter() - t0
+    try:
+        go.wait()
+        t0 = time.perf_counter()
+        release.set()  # 시계를 시작한 뒤에 호출을 푼다(스케줄링 지연으로 측정 시작이 늦어지지 않는다).
+    finally:
+        release.set()
+        deadline = time.monotonic() + 30
+        for t in ths:
+            t.join(max(0.0, deadline - time.monotonic()))
+    elapsed = time.perf_counter() - t0
+    assert not any(t.is_alive() for t in ths), "지연 호출이 종료되지 않았다"
+    assert errors == [] and len(results) == n and all(r.ok for r in results)
+    return elapsed
 
 
 def test_delayed_mock_real_sleep_overlaps_across_threads():
@@ -115,7 +129,7 @@ def test_delayed_mock_delays_are_in_flight_together():
 
     지연 구간이 직렬화되면(락 안에서 잔다 등) 배리어가 풀리지 않아 시간 초과로 실패한다.
     """
-    rendezvous = threading.Barrier(4, timeout=5)
+    rendezvous = threading.Barrier(4, timeout=20)
     llm = lt.DelayedMockProvider({"query_axes": (0.2, 0.2)}, sleep=lambda _s: rendezvous.wait())
     errors: list[BaseException] = []
     results: list[object] = []
@@ -200,14 +214,18 @@ def test_timed_lock_measures_wait_and_hold_per_thread(monkeypatch):
     for t in ths:
         t.start()
     # 기다리는 쪽이 대기 시작 시각(t0)을 읽은 뒤에 시계를 0.15초 돌리고 점유자를 놓는다(스케줄링 순서와 무관하게 같은 결과)
-    deadline = time.monotonic() + 10
-    while ident.get("waiter") not in clock.readers:
-        assert time.monotonic() < deadline, "기다리는 스레드가 락을 요청하지 않았다"
-        time.sleep(0.005)
-    clock.advance(0.15)
-    release.set()
-    for t in ths:
-        t.join()
+    try:
+        deadline = time.monotonic() + 10
+        while ident.get("waiter") not in clock.readers:
+            assert time.monotonic() < deadline, "기다리는 스레드가 락을 요청하지 않았다"
+            time.sleep(0.005)
+        clock.advance(0.15)
+    finally:
+        release.set()
+        deadline = time.monotonic() + 20
+        for t in ths:
+            t.join(max(0.0, deadline - time.monotonic()))
+    assert not any(t.is_alive() for t in ths), "계측 락 시험 스레드가 남아 있다"
     assert got["holder"] == {"n": 1, "wait": 0.0, "hold": pytest.approx(0.15)}
     assert got["waiter"] == {"n": 1, "wait": pytest.approx(0.15), "hold": 0.0}
     snap = lock.snapshot()
@@ -273,16 +291,32 @@ def test_stats_percentiles():
     assert lt.stats([]) == {"n": 0}
 
 
-def test_direct_round_runs_concurrently_and_matches_sequential_reference():
-    """fixture backend로 동시 3명: 모두 성공, 지문이 순차 기준과 같고, 실행이 겹친다(전체 < 건별 합)."""
+def test_direct_round_runs_concurrently_and_matches_sequential_reference(monkeypatch):
+    """fixture backend로 동시 3명: 순차 기준과 같은 결과, 사용자 3명의 검색어 호출이 함께 진입."""
     fx = load_fixtures()
     backend = FixtureBackend(fx.works, fx.reviews)
     delays = {k: (0.05, 0.05) for k in lib.DEFAULT_DELAYS}
     texts = lt.round_texts(lt.plan_bases(), 3, "시험")
     probe = lt.EmbedProbe(None)
     sampler = lt.ProcSampler(interval=0.05).start()
+    rendezvous = threading.Barrier(3, timeout=20)
+    entered: set[int] = set()
+    errors: list[BaseException] = []
+    original = lt.DelayedMockProvider
+
+    class ConcurrentMock(original):
+        def complete_json(self, call):
+            if call.task == "query_axes":
+                entered.add(threading.get_ident())
+                try:
+                    rendezvous.wait()
+                except threading.BrokenBarrierError as exc:
+                    errors.append(exc)
+            return super().complete_json(call)
+
     try:
         ref = lt.reference_pass([t for _, t in texts], delays, probe, backend)
+        monkeypatch.setattr(lt, "DelayedMockProvider", ConcurrentMock)
         rnd = lt.run_round_direct(texts, delays, 1.0, probe, sampler, backend)
     finally:
         sampler.stop()
@@ -293,14 +327,19 @@ def test_direct_round_runs_concurrently_and_matches_sequential_reference():
     # 지연이 실제로 들어갔다: 적어도 적합성·검색어 두 호출(각 0.05초). fixture 코퍼스가 작아 유사 연구가 없으면
     # 그 뒤 단계는 건너뛴다(그래서 건마다 호출 수가 다르다)
     assert min(runs) >= 0.09
-    # 과제(단계)끼리는 대체로 차례로 돈다(한 과제 안의 묶음만 병렬). 예외(E3-L1y): 예상 심사평은
-    # 체크리스트→2차 검증과 동시에 돌므로, 둘 다 불렸으면 임계 경로에서 과제 하나를 뺀다
-    def _serial_tasks(by_task: dict) -> int:
-        n = len(by_task)
-        return n - 1 if "expected_review" in by_task and "checklist" in by_task else n
+    # 이름 수는 임계 경로가 아니다: 지연표에 없는 호출은 지연 0이며, v1은
+    # expected_review ∥ (checklist → semantic_validate)다. 묶음 내부 병렬은
+    # 해당 단계의 호출 한 번분만 하한에 넣는다(추가 파가 있으면 더 길어진다).
+    def critical_delay(by_task: dict) -> float:
+        one_call = {task: row["delay_s"] / row["calls"] for task, row in by_task.items()}
+        review = one_call.pop("expected_review", 0.0)
+        chain = one_call.pop("checklist", 0.0) + one_call.pop("semantic_validate", 0.0)
+        return sum(one_call.values()) + max(review, chain)
 
-    assert all(r["run_s"] >= 0.045 * _serial_tasks(r["llm"]["by_task"]) for r in rnd["records"])
-    assert rnd["makespan_s"] < 0.8 * sum(runs)
+    for rec in rnd["records"]:
+        # run_s 통계는 소수 셋째 자리로 반올림하므로 양자화 오차만 허용한다.
+        assert rec["run_s"] + 0.0005 >= critical_delay(rec["llm"]["by_task"]), rec
+    assert errors == [] and len(entered) == 3, "사용자 3명의 검색어 호출이 함께 진입하지 못했다"
     assert row["llm_calls_per_analysis"]["min"] >= 2 and row["proc"]["rss_max_mb"] > 0
     md = lt.table([row], "시험")
     assert md.count("\n| 3 |") == 1 and "| 3/3 |" in md
