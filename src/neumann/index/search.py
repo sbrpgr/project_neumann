@@ -39,6 +39,8 @@
 - `exclude_work_ids`: 백테스트 누출 제거(E5-L2). work_id 완전 일치. 색인에 없는 id는 상태의 `unmatched_excludes`.
 - 임베딩 모델을 못 읽으면 어휘 검색만 하고 `last_search_status()`에 강등(degraded)을 남긴다.
   이때 점수는 `(1−alpha)·lexical`(L0와 같은 척도)이고 기본 하한은 0이다.
+- `last_search_status()`는 호출 스레드 자신의 마지막 검색 상태다(SEC-5). 그 스레드가 검색한 적이 없을 때만
+  프로세스 공용 값(어느 스레드든 마지막 호출)을 준다. 동시 요청의 파이프라인이 남의 판정·강등을 옮겨 적지 않게 한다.
 """
 
 from __future__ import annotations
@@ -88,8 +90,11 @@ class SearchHit(NeumannModel):
 
 
 _QUERY_EMBEDDER: Embedder | None = None
+# 마지막 search() 상태. 프로세스 공용(_STATUS)과 호출 스레드별(_THREAD_STATUS) 두 벌을 같이 쓴다(SEC-5):
+# 여러 요청이 동시에 검색해도 파이프라인은 자기 스레드의 상태를 읽고, 검색한 적 없는 스레드는 공용 값을 읽는다.
 _STATUS: dict[str, Any] = {}
 _STATUS_LOCK = threading.Lock()
+_THREAD_STATUS = threading.local()
 
 
 def set_query_embedder(embedder: Embedder | None) -> None:
@@ -117,7 +122,14 @@ def _query_embedder(store: IndexStore) -> tuple[Embedder | None, str | None]:
 
 
 def last_search_status() -> dict[str, Any]:
-    """마지막 search() 호출의 백엔드·강등·하한·관련성 판정·질의별 요약·소요 시간. 파이프라인이 StageStatus에 옮겨 적는다."""
+    """마지막 search() 호출의 백엔드·강등·하한·관련성 판정·질의별 요약·소요 시간. 파이프라인이 StageStatus에 옮겨 적는다.
+
+    이 스레드가 search()를 부른 적이 있으면 **이 스레드의** 마지막 호출 상태다(동시 요청끼리 섞이지 않는다, SEC-5).
+    없으면 프로세스 공용 값(어느 스레드든 마지막 호출)으로 돌아간다(이전 동작, mcp_server는 잠금으로 직렬화).
+    """
+    mine = getattr(_THREAD_STATUS, "status", None)
+    if mine is not None:
+        return dict(mine)
     with _STATUS_LOCK:
         return dict(_STATUS)
 
@@ -367,6 +379,7 @@ def _unit(x: float) -> float:
 
 
 def _set_status(status: dict[str, Any]) -> None:
+    _THREAD_STATUS.status = dict(status)  # 이 스레드 몫(다른 스레드가 덮어쓰지 못한다)
     with _STATUS_LOCK:
         _STATUS.clear()
         _STATUS.update(status)
