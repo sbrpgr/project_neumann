@@ -379,16 +379,27 @@ def longest_token(text: str) -> int:
     return max((len(t) for t in text.split()), default=0)
 
 
-_JOB_PATH_RE = re.compile(r"(/premortem/jobs/)([A-Za-z0-9_\-]{1,6})[A-Za-z0-9_\-%]*")
+# 로그의 job_id 가리기(재작업 3): 경로(대소문자·겹 슬래시·%2F)와 쿼리(?job=·?job_id=·?id=·?ticket=), 그리고
+# 접근 로그에서는 job_id 모양(URL-safe 32자 이상) 토큰 전부. 앞 6자 + "…"만 남기고, 두 번 걸려도 결과가 같다.
+_JOB_PATH_RE = re.compile(r"(?i)(/premortem/+jobs(?:/|%2F)+)([A-Za-z0-9_\-]{1,6})[A-Za-z0-9_\-%]*…?")
+_JOB_QUERY_RE = re.compile(r"(?i)([?&;](?:job|job_id|jobid|id|ticket)=)([A-Za-z0-9_\-]{1,6})[A-Za-z0-9_\-%]*…?")
+_LONG_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9_\-])([A-Za-z0-9_\-]{6})[A-Za-z0-9_\-]{26,}(?![A-Za-z0-9_\-])")
 
 
-def mask_job_paths(text: str) -> str:
-    """로그용: ``/premortem/jobs/<job_id>``의 id를 앞 6자만 남긴다(job_id는 결과 열람 자격이다)."""
-    return _JOB_PATH_RE.sub(lambda m: m.group(1) + m.group(2) + "…", text) if "/premortem/jobs/" in text else text
+def mask_job_paths(text: str, *, access: bool = False) -> str:
+    """로그용: job_id(결과 열람 자격)를 앞 6자만 남긴다. ``access``면 32자 이상 URL-safe 토큰도 모두 가린다."""
+    low = text.lower()
+    if "jobs" in low:
+        text = _JOB_PATH_RE.sub(lambda m: m.group(1) + m.group(2) + "…", text)
+    if "=" in text:
+        text = _JOB_QUERY_RE.sub(lambda m: m.group(1) + m.group(2) + "…", text)
+    if access:
+        text = _LONG_TOKEN_RE.sub(lambda m: m.group(1) + "…", text)
+    return text
 
 
-def _scrub_log(text: str) -> str:
-    return mask_job_paths(scrub_secrets(text))
+def _scrub_log(text: str, access: bool = False) -> str:
+    return mask_job_paths(scrub_secrets(text), access=access)
 
 
 def scrub_ok_payload(data: Any) -> Any:
@@ -404,12 +415,13 @@ class RedactingFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         try:
+            acc = record.name == "uvicorn.access"
             if isinstance(record.msg, str):
-                record.msg = _scrub_log(record.msg)
+                record.msg = _scrub_log(record.msg, acc)
             if isinstance(record.args, tuple):
-                record.args = tuple(_scrub_log(a) if isinstance(a, str) else a for a in record.args)
+                record.args = tuple(_scrub_log(a, acc) if isinstance(a, str) else a for a in record.args)
             elif isinstance(record.args, dict):
-                record.args = {k: _scrub_log(v) if isinstance(v, str) else v for k, v in record.args.items()}
+                record.args = {k: _scrub_log(v, acc) if isinstance(v, str) else v for k, v in record.args.items()}
             if record.exc_info:
                 exc = record.exc_info[1]
                 note = f" [트레이스 생략: {type(exc).__name__ if exc else '?'}]"
@@ -419,7 +431,7 @@ class RedactingFilter(logging.Filter):
                     record.msg = record.msg + note
             record.stack_info = None
             msg = record.getMessage()
-            clean = _scrub_log(msg)
+            clean = _scrub_log(msg, acc)
             if clean != msg and record.name != "uvicorn.access":  # 인자를 합쳐야 드러나는 키
                 record.msg, record.args = clean, None
         except Exception:  # noqa: BLE001 - 로그 필터가 로그를 막지 않게
@@ -959,6 +971,7 @@ class Serving:
         # 코드가 등록하는 보호 경로(E4-L2d: POST /premortem/jobs). 설정(NEUMANN_PROTECTED_PATHS)보다 우선한다.
         self.extra_protected: dict[str, str] = {}
         self.async_paths: set[str] = set()  # 응답을 기다리지 않는 경로(작업 방식): 대기열 전체(queue_max)를 쓴다
+        self.accept_checks: list[Callable[[], bool]] = []  # 새 분석을 받을 수 있나(작업 저장소 가득 등, /queue/status)
 
     def protect(self, path: str, kind: str = "analysis", *, async_: bool = False) -> None:
         """경로를 보호 경로로 등록한다. 설정으로 빼거나 다른 종류로 바꿀 수 없다(우회 경로 방지)."""
@@ -1130,7 +1143,7 @@ class Serving:
             **g.summary(),
             "avg_run_s": round(g.avg_run_s, 1), "eta_new_s": g.eta(g.waiting + 1) if g.active >= g.max_active else 0.0,
             "accepting": g.active + g.waiting < g.max_active + g.max_waiting and not self.blocked()
-            and not self.budget.exhausted(),
+            and not self.budget.exhausted() and all(check() for check in self.accept_checks),
             "blocked": self.blocked(),
             "aux": self.aux_gate.summary(),
             "limits": self.config.public_view(),
