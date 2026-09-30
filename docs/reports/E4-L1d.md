@@ -88,7 +88,14 @@ verify 통과
 
 ## PM이 main.py에 붙일 줄
 
-main(6067212)의 `OPTIONAL_ROUTERS`에 이미 `"neumann.api.meta"`가 들어 있어 이 브랜치를 병합하면 추가 작업 없이 연결된다(`/health`의 `routers["neumann.api.meta"] == "ok"`로 확인). 직접 붙인다면:
+main(6067212)의 `OPTIONAL_ROUTERS`에 이미 `"neumann.api.meta"`가 들어 있어서, 이 브랜치를 병합하면 따로 할 일 없이 연결된다. 확인도 했다. main의 `main.py` 소스(`git show main:src/neumann/api/main.py`, 읽기만 함)를 이 브랜치 패키지로 실행하니 다음과 같았다.
+
+```
+routers: {'neumann.api.export': 'ok', 'neumann.api.upload': 'missing', 'neumann.api.precomputed': 'missing', 'neumann.api.templates': 'missing', 'neumann.api.meta': 'ok'}
+/api 200 /taxonomy 200 /config/weights 200
+```
+
+직접 붙인다면:
 
 ```python
 from neumann.api.meta import router as meta_router
