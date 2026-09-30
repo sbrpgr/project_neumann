@@ -4,7 +4,7 @@
 `LLMResult(ok=False, error=...)`로 돌려주고, 호출부가 그 단계만 비상 규칙 경로로 돌린다.
 
 provider
-- `openai`: OpenAI Responses API. 제품 모델은 `gpt-6-astra`. `temperature`는 보내지 않는다(최신 추론 모델이 거부).
+- `openai`: OpenAI Responses API. 제품 모델 기본값은 `gpt-6.1-sol`(설정 NEUMANN_LLM_MODEL). `temperature`는 보내지 않는다(최신 추론 모델이 거부).
   추론 강도(`reasoning.effort`)는 호출마다 정한다. 키는 설정의 SecretStr에서만 꺼낸다.
 - `mock`: 결정적 응답. 과제(task)별 응답 함수(규칙 결과를 LLM 응답 모양으로 만든 것)나 대본(scripted)으로 답한다.
   mock 응답도 같은 로컬 재검증을 거친다.
@@ -29,7 +29,7 @@ import jsonschema
 
 log = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "gpt-6-astra"
+DEFAULT_MODEL = "gpt-6.1-sol"
 MOCK_MODEL = "mock-deterministic-v1"
 EFFORTS = frozenset({"none", "minimal", "low", "medium", "high", "xhigh"})
 

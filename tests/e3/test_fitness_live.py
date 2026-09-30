@@ -24,7 +24,7 @@ pytestmark = pytest.mark.skipif(
     reason="실제 API 테스트는 NEUMANN_LIVE_TESTS=1이고 키가 있을 때만 돈다",
 )
 
-MODEL = os.getenv("NEUMANN_LLM_MODEL") or "gpt-6-astra"
+MODEL = os.getenv("NEUMANN_LLM_MODEL") or "gpt-6.1-sol"
 
 
 def _openai_llm_call(timeout_s: float = 60.0):

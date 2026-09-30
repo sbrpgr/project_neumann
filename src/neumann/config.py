@@ -36,7 +36,7 @@ class Settings(BaseSettings):
 
     # 제품 LLM
     llm_provider: Literal["openai", "mock"] = Field(default="openai", validation_alias="NEUMANN_LLM_PROVIDER")
-    llm_model: str = Field(default="gpt-6-astra", validation_alias="NEUMANN_LLM_MODEL")
+    llm_model: str = Field(default="gpt-6.1-sol", validation_alias="NEUMANN_LLM_MODEL")
     llm_timeout_s: float = Field(default=60.0, gt=0, validation_alias="NEUMANN_LLM_TIMEOUT_S")
 
     # 임베딩·데이터 경로

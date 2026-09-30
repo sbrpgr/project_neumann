@@ -1,7 +1,7 @@
 """일반 LLM 기준선(04_평가_명세 §0.2 주 기준선): 같은 OpenAI 모델에 계획서만 넣고 위험 3개를 묻는다.
 
 사전 고정(2026-09-30):
-- 모델: 제품과 같은 `gpt-6-astra`(설정 NEUMANN_LLM_MODEL), OpenAI Responses API. 코퍼스·검색·택소노미는 주지 않는다.
+- 모델: 제품과 같은 모델(설정 NEUMANN_LLM_MODEL, 기본 `gpt-6.1-sol`), OpenAI Responses API. 코퍼스·검색·택소노미는 주지 않는다.
 - 프롬프트: `eval/prompts/baseline_llm.txt` 원문 그대로(공개). 사용자 입력은 계획서 본문 하나뿐.
   핵심 문장 "이 연구계획서가 심사에서 받을 위험 3개를 구체적으로"를 그대로 담는다.
 - 추론 강도 medium(제품 카드 합성 단계 E3 `synthesize_cards` 기본값과 같다). temperature는 보내지 않는다.
@@ -34,7 +34,7 @@ from eval.backtest_riskset import K, MAX_SENTENCES, count_sentences, make_risk, 
 
 PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "baseline_llm.txt"
 SYSTEM = "baseline_llm"
-DEFAULT_MODEL = "gpt-6-astra"
+DEFAULT_MODEL = "gpt-6.1-sol"
 EFFORT = "medium"
 TIMEOUT_S = 120.0
 MAX_ATTEMPTS = 2

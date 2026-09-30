@@ -76,7 +76,7 @@ FILE_ROLES: dict[str, str] = {
 }
 
 GENERATOR_LABELS: dict[Generator, str] = {
-    Generator.astra: "제품 LLM(gpt-6-astra)이 만든 카드",
+    Generator.astra: "제품 LLM(OpenAI, 모델은 manifest 참조)이 만든 카드",
     Generator.rule: "규칙(비상 경로: 키워드 태거·태그 빈도)으로 만든 카드. LLM 결과가 아니다",
     Generator.mock: "테스트용 가짜(mock). 실제 분석 결과가 아니다",
 }
