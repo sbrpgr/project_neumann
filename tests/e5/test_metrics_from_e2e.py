@@ -110,6 +110,15 @@ def test_failed_plan_not_counted_as_demo_and_linkage_shortfall_kept():
     assert by[("demo_e2e", "all")]["value"] == 1 and by[("demo_e2e", "all")]["detail"] == "1/2"
 
 
+def test_plan_failing_other_checks_not_counted_as_demo():
+    """근거 연결은 완전해도 다른 검사(브라우저·결과 상태)가 실패한 계획서는 시연 통과로 세지 않는다."""
+    s = _summary(**{"a.md": _plan(failures=["콘솔 오류 1건"]), "b.md": _plan(), "c.md": _plan()})
+    s["plans"]["c.md"]["result_status"] = "degraded"
+    by = _by(mfe.convert(s, model="m"))
+    assert (by[("demo_e2e", "all")]["value"], by[("demo_e2e", "all")]["detail"]) == (1, "1/3")
+    assert by[("linkage_rate", "neumann")]["value"] == 1.0  # 연결률 자체는 개수 그대로
+
+
 def test_ratio_never_rounds_to_perfect_or_zero():
     assert mfe.ratio(19_999, 20_000) == 0.9999
     assert mfe.ratio(1, 100_000) == 1e-05 and mfe.ratio(1, 100_000) > 0
