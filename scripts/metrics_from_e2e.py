@@ -168,7 +168,7 @@ def convert(summary: dict[str, Any], *, model: str, product_model: str | None = 
         lim = f"{gen_note}. 전수라 구간 없음. 제품 기본 모델로는 재측정 안 함{miss_note}"
         metrics.append({
             "id": "linkage_rate", "system": "neumann", "value": ratio(l_ok, l_tot) if l_tot else None,
-            "n": l_tot, "detail": f"{l_ok}/{l_tot}; {per('links')}", "conditions": cond,
+            "n": l_tot, "detail": f"{l_ok}/{l_tot}; {per('links')}; 검사 실행 카드 generator 미기록", "conditions": cond,
             "limits": lim + ". 폐기율과 같이 읽는다(04_평가_명세 §2.2)",
         })
         metrics.append({

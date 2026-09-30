@@ -55,6 +55,7 @@ def test_live_summary_converts_to_counts_from_file():
     assert lr["detail"].startswith("43/43; plan.md 10/10 · plan_elife_neuro.md 13/13 · plan_medimaging.md 20/20")
     assert "평가 모델 gpt-6-astra" in lr["conditions"]
     assert "generator는 요약에 기록되지 않았다" in lr["limits"]  # 연결 검사 실행은 화면 실행과 다르다
+    assert lr["detail"].endswith("검사 실행 카드 generator 미기록")  # 약속 표(P2) 칸에도 보이게
     cp = by[("card_pass_rate", "neumann")]
     assert (cp["value"], cp["n"], cp["detail"].split(";")[0]) == (1.0, 12, "12/12")
     dr = by[("drop_rate", "neumann")]
