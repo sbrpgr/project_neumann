@@ -104,14 +104,16 @@ def test_join_flood_from_one_ip_cannot_fill_store_or_block_others(tmp_path, monk
             for _ in range(230):   # 같은 계획서(합류)를 한 IP에서 230번
                 r = await c.post("/premortem/jobs", json={"plan_text": plan("flood")}, headers=ip(66))
                 codes[r.status_code] = codes.get(r.status_code, 0) + 1
-            assert codes.get(202) == 3 and codes.get(429) == 227, codes   # 보관 3건, 나머지는 IP별 상한·속도 제한
-            assert len(store) == 3 and fake.calls == 1                   # 분석은 1회(합류)
+            # 합류 작업은 IP별 보관 수에서 빠지고(재작업 3) IP별 작업 POST 속도 제한(분당 6)이 막는다
+            assert codes.get(202) == 6 and codes.get(429) == 224, codes
+            assert len(store) == 6 and fake.calls == 1                   # 분석은 1회(합류)
+            assert sum(1 for j in store._jobs.values() if j.shared) == 5
             assert time.monotonic() - t0 < 10
             r = await c.post("/premortem/jobs", json={"plan_text": plan("victim")}, headers=ip(7))
             assert r.status_code == 202                                  # 다른 IP의 새 분석은 받는다
             fake.release_all()
             assert (await poll_done(c, r.json()["job_id"]))["status"] == "done"
-            assert store.counters["per_ip_429"] >= 1 and store.counters["rate_429"] >= 1
+            assert store.counters["per_ip_429"] == 0 and store.counters["rate_429"] >= 1   # 합류는 속도 제한이 막는다
 
     asyncio.run(go())
 
@@ -133,7 +135,8 @@ def test_cached_flood_does_not_evict_other_ip_results(tmp_path, monkeypatch):
             assert codes.get(202, 0) <= 5 and codes.get(429, 0) >= 295, codes   # 캐시 적중 POST도 IP별 분당 6건
             g = await c.get(f"/premortem/jobs/{victim}", headers=ip(8))
             assert g.status_code == 200 and g.json()["status"] == "done"     # 남의 완료 결과는 그대로
-            assert sum(1 for j in store._jobs.values() if j.ipk == "198.51.100.99") <= 3
+            mine = [j for j in store._jobs.values() if j.ipk == "198.51.100.99"]
+            assert len(mine) <= 6 and all(store.ttl_for(j) == 60 for j in mine if j.shared)
 
     asyncio.run(go())
 
@@ -353,3 +356,77 @@ def test_serve_py_survives_cp949_redirected_stdout(tmp_path):
     text = out.read_bytes().decode("utf-8", errors="replace")
     assert rc == 2, text   # mock provider → 공개 기동 거부(정상 종료 코드 2), UnicodeEncodeError(1) 아님
     assert "UnicodeEncodeError" not in text and "provider" in text
+
+
+# ───────────────────────── 재작업 3(재검증 권장 2·4) ─────────────────────────
+
+
+def test_shared_jobs_short_ttl_and_not_counted_per_ip(tmp_path, monkeypatch):
+    """같은 공인 IP(행사장 와이파이) 5명이 같은 예시를 동시에 눌러도 모두 받는다(합류는 비용 0).
+    합류·캐시 작업은 60초만 보관, 새 분석 작업은 15분."""
+    fake = Gated()
+    srv, app, store = make(tmp_path, monkeypatch, fake, jobs.JobsConfig(per_ip=3, rate_per_min=30, max_jobs=500))
+    now = {"t": 5000.0}
+    store.clock = lambda: now["t"]
+    assert (jobs.JobsConfig().max_jobs, jobs.JobsConfig().shared_ttl_s) == (500, 60.0)
+
+    async def go() -> None:
+        async with client(app) as c:
+            rs = await asyncio.gather(*(c.post("/premortem/jobs", json={"plan_text": plan("demo")}, headers=ip(50))
+                                        for _ in range(5)))
+            assert [r.status_code for r in rs] == [202] * 5 and fake.calls <= 1
+            # 새 분석은 IP별 3건: 합류 4건이 있어도 새 분석 2건 더(첫 건 포함 3건)
+            extra = [await c.post("/premortem/jobs", json={"plan_text": plan(f"new{i}")}, headers=ip(50))
+                     for i in range(3)]
+            assert [r.status_code for r in extra] == [202, 202, 429]
+            fake.release_all()
+            ids = [r.json()["job_id"] for r in rs + extra[:2]]
+            done = [await poll_done(c, x) for x in ids]
+            shared = [j for j in store._jobs.values() if j.shared]
+            assert len(shared) == 4 and all(d["status"] == "done" for d in done)
+            assert sorted(d["expires_in_s"] for d in done) == [60.0] * 4 + [900.0] * 3
+            now["t"] += 61
+            alive = [(await c.get(f"/premortem/jobs/{x}", headers=ip(50))).status_code for x in ids]
+            assert alive.count(404) == 4 and alive.count(200) == 3   # 합류 작업만 사라졌다
+
+    asyncio.run(go())
+
+
+def test_full_store_shows_accepting_false_in_queue_status(tmp_path, monkeypatch):
+    srv, app, store = make(tmp_path, monkeypatch, slow(0.01), jobs.JobsConfig(per_ip=0, rate_per_min=0, max_jobs=2,
+                                                                              ttl_s=30))
+    now = {"t": 100.0}
+    store.clock = lambda: now["t"]
+
+    async def go() -> None:
+        async with client(app) as c:
+            assert (await c.get("/queue/status")).json()["accepting"] is True
+            for i in range(2):
+                await poll_done(c, (await c.post("/premortem/jobs", json={"plan_text": plan(f"f{i}")},
+                                                 headers=ip(60 + i))).json()["job_id"])
+            assert (await c.get("/queue/status")).json()["accepting"] is False   # 저장소 가득
+            r = await c.post("/premortem/jobs", json={"plan_text": plan("f9")}, headers=ip(69))
+            assert r.status_code == 503
+            now["t"] += 31
+            assert (await c.get("/queue/status")).json()["accepting"] is True    # TTL 지나 비었다
+
+    asyncio.run(go())
+
+
+def test_access_log_masks_query_and_path_variants_idempotently():
+    jid = "Zx9_-Q" + "k" * 26
+    paths = [f"/premortem/jobs/{jid}?x=1", f"/PREMORTEM/JOBS/{jid}", f"/premortem//jobs//{jid}",
+             f"/premortem/jobs%2F{jid}", f"/queue/status?ticket={jid}", f"/premortem/jobs?job={jid}",
+             f"/x?a=1&job_id={jid}", f"/anything/{jid}/more"]
+    f = serving.RedactingFilter()
+    for path in paths:
+        rec = logging.LogRecord("uvicorn.access", logging.INFO, __file__, 1, '%s - "%s %s HTTP/%s" %d',
+                                ("127.0.0.1:5000", "GET", path, "1.1", 200), None)
+        f.filter(rec)
+        f.filter(rec)   # 로거와 핸들러에 두 번 걸려도 같은 결과
+        msg = rec.getMessage()
+        assert jid not in msg and jid[6:] not in msg, msg
+        assert "Zx9_-Q…" in msg and "……" not in msg, msg
+    # 앱 로그(접근 로그 아님)도 경로·쿼리 모양은 가린다
+    assert jid not in serving.mask_job_paths(f"GET /Premortem/Jobs/{jid}")
+    assert serving.mask_job_paths("plan_id=3d35460def76 chars=669") == "plan_id=3d35460def76 chars=669"
