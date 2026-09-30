@@ -1,0 +1,33 @@
+[project]
+name = "neumann"
+version = "0.0.0"
+description = "연구계획서의 위험을 유사 연구의 실제 심사 기록에서 찾아 근거가 연결된 위험카드로 돌려준다"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.141",
+    "uvicorn[standard]>=0.54",
+    "pydantic>=2.13",
+    "pydantic-settings",
+    "python-multipart",
+    "httpx",
+    "openai>=3.20",
+    "sentence-transformers>=6.1",
+    "torch>=2.14",
+    "numpy",
+    "pandas>=3.0",
+    "pyarrow>=25",
+    "jsonschema",
+    "pypdf",
+    "python-docx",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.1",
+    "playwright>=1.63",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
