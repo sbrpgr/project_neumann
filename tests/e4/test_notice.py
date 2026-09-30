@@ -110,6 +110,12 @@ def test_notice_style_tokens_and_sticky(html: str) -> None:
     assert "background: var(--card)" in css
     for bad in ("letter-spacing", "uppercase", "var(--mono)", "border-left", "border-radius"):
         assert bad not in css, f"디자인 규칙 위반: {bad}"
+    # 긴 글 끝에서 치거나 붙여넣을 때 캐럿이 sticky 고지 밑으로 가지 않게(접힘·펼침 각각)
+    assert re.search(r"^\s*html \{ scroll-padding-bottom: (\d+)px; \}", html, re.M)
+    assert re.search(r"^\s*html:has\(#sendNote\[open\]\) \{ scroll-padding-bottom: (\d+)px; \}", html, re.M)
+    closed = int(re.search(r"html \{ scroll-padding-bottom: (\d+)px", html).group(1))
+    opened = int(re.search(r"html:has\(#sendNote\[open\]\) \{ scroll-padding-bottom: (\d+)px", html).group(1))
+    assert closed >= 56 and opened > closed
 
 
 def test_no_external_requests_in_page(html: str) -> None:

@@ -114,6 +114,13 @@ MEASURE = """() => {
 }"""
 
 
+def click_summary(page) -> None:
+    """사용자처럼 보이는 자리를 마우스로 누른다. page.click은 누르기 전에 scrollIntoView를 해서
+    scroll-padding 영역 안의 sticky 고지를 보면 화면을 내려 버린다(사용자 동작과 다름)."""
+    b = page.locator("#sendNote summary").bounding_box()
+    page.mouse.click(b["x"] + 40, b["y"] + b["height"] / 2)
+
+
 def _in_viewport(m: dict) -> bool:
     b = m["box"]
     return b["x"] >= 0 and b["y"] >= 0 and b["right"] <= VW and b["bottom"] <= VH
@@ -153,13 +160,13 @@ def shoot(base: str, out: Path) -> dict:
         page.screenshot(path=str(out / f"{PREFIX}_notice.png"))
 
         # 1b 펼치기: 전문 두 줄이 보이고 여전히 첫 화면 안. 다시 접는다
-        page.click("#sendNote summary")
+        click_summary(page)
         page.wait_for_function("document.getElementById('sendNote').open === true && document.querySelector('#sendNote .more').textContent === '접기'")
         mo = page.evaluate(MEASURE)
         res["text_first_open"] = mo
         res["text_first_open_in_viewport"] = _in_viewport(mo)
         page.screenshot(path=str(out / f"{PREFIX}_notice_open.png"))
-        page.click("#sendNote summary")
+        click_summary(page)
         page.wait_for_function("document.getElementById('sendNote').open === false && document.querySelector('#sendNote .more').textContent === '자세히'")
         res["text_first_reclosed"] = page.evaluate(MEASURE)["open"] is False
 
@@ -169,6 +176,43 @@ def shoot(base: str, out: Path) -> dict:
         m2 = page.evaluate(MEASURE)
         res["text_scrolled"] = m2
         res["text_gap_to_button_px"] = round(m2["btn"]["y"] - m2["box"]["bottom"], 1)
+
+        # 2b 긴 글 끝에서 타이핑(접힘)·붙여넣기(펼침): 캐럿이 있는 마지막 줄이 고지 위에 보인다(scroll-padding-bottom)
+        caret_js = """() => {
+          const n = document.getElementById('sendNote'), ta = document.getElementById('ta');
+          const r = n.getBoundingClientRect(), tr = ta.getBoundingClientRect(), cs = getComputedStyle(ta);
+          /* 마지막 줄(캐럿 줄) 아래 끝의 화면 좌표 = 입력칸 위 + 테두리 + (전체 높이 - 안쪽 스크롤) - 아래 안쪽 여백 */
+          const lastLineBottom = tr.top + parseFloat(cs.borderTopWidth) + ta.scrollHeight - ta.scrollTop - parseFloat(cs.paddingBottom);
+          /* 줄 상자(line-height)는 캐럿 글자보다 아래로 몇 px 길다 → 입력칸 안 보이는 끝을 넘는 것은 반 줄까지 허용 */
+          const lh = parseFloat(cs.lineHeight), caretBottom = Math.min(lastLineBottom, tr.bottom);
+          return {open: n.open, note_top: r.top, last_line_bottom: lastLineBottom, ta_bottom: tr.bottom, caret_bottom: caretBottom,
+                  at_end: ta.selectionStart === ta.value.length,
+                  caret_in_ta_view: lastLineBottom <= tr.bottom + lh / 2,
+                  scroll_padding: getComputedStyle(document.documentElement).scrollPaddingBottom};
+        }"""
+        long_text = "# 긴 계획서 [FAKE]\n" + "\n".join(f"{i}번째 줄 [FAKE] 가짜 문장" for i in range(1, 121))
+        caret = {}
+        for label, want_open in (("typing_collapsed", False), ("paste_open", True)):
+            page.evaluate("window.scrollTo(0, 0)")
+            if page.evaluate("document.getElementById('sendNote').open") != want_open:
+                click_summary(page)
+                page.wait_for_function("o => document.getElementById('sendNote').open === o", arg=want_open)
+            page.fill("#ta", long_text)
+            page.evaluate("window.scrollTo(0, 0)")
+            page.focus("#ta")
+            page.keyboard.press("Control+End")
+            if want_open:
+                page.keyboard.insert_text("\n붙여넣은 마지막 줄 [FAKE]")
+            else:
+                page.keyboard.type("\n마지막 줄 입력")
+            page.wait_for_timeout(200)
+            caret[label] = page.evaluate(caret_js)
+        res["caret"] = caret
+        page.evaluate("window.scrollTo(0, 0)")
+        if page.evaluate("document.getElementById('sendNote').open"):
+            click_summary(page)
+            page.wait_for_function("document.getElementById('sendNote').open === false")
+        page.fill("#ta", "")
 
         # 3 파일 업로드 모드: 같은 고지, 첫 화면 안
         page.evaluate("window.scrollTo(0, 0)")
@@ -227,13 +271,20 @@ def check(res: dict) -> list[str]:
         bad.append(f"펼치기: 전문이 안 보임 {mo['spans_shown']} {mo['more_text']}")
     if not res["text_first_reclosed"]:
         bad.append("다시 접기 실패")
+    for label, c in res["caret"].items():
+        if not (c["at_end"] and c["caret_in_ta_view"]):
+            bad.append(f"{label}: 캐럿이 글 끝에 있지 않음 {c}")
+        if c["caret_bottom"] > c["note_top"]:
+            bad.append(f"{label}: 방금 친 줄이 고지 밑에 가려짐 {c}")
+    if res["caret"]["paste_open"]["open"] is not True or res["caret"]["typing_collapsed"]["open"] is not False:
+        bad.append("캐럿 검사의 접힘·펼침 상태가 다름")
     if res["text_first"]["mode"] != "text" or res["file_first"]["mode"] != "file":
         bad.append("모드 전환 확인 실패")
     for key in ("text_first_in_viewport", "text_first_open_in_viewport", "file_first_in_viewport",
                 "file_loaded_first_in_viewport"):
         if not res[key]:
             bad.append(f"{key}: 첫 화면(1440×900) 밖")
-    for key in ("text_first", "file_first", "file_loaded_first"):
+    for key in ("text_first", "text_first_open", "file_first", "file_loaded_first"):  # 펼쳐도 화면이 튀지 않는다
         if res[key]["scrollY"] != 0:
             bad.append(f"{key}: 스크롤된 상태에서 잼")
     if not (0 <= res["text_gap_to_button_px"] <= NEAR_PX):

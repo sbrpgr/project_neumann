@@ -396,6 +396,9 @@
   .sendnote summary:hover .more { color: var(--ink); text-decoration-color: var(--ink); }
   .sendnote .snl { display: block; }
   .sendnote .snl:first-of-type { margin-top: 4px; }
+  /* 입력칸 끝에서 치거나 붙여넣을 때 캐럿이 sticky 고지 밑으로 가지 않게: 접힘 37px → 56px, 펼침 82px → 100px */
+  html { scroll-padding-bottom: 56px; }
+  html:has(#sendNote[open]) { scroll-padding-bottom: 100px; }
 </style>
 </head>
 <body data-view="boot">
