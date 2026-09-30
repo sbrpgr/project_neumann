@@ -207,8 +207,13 @@ def test_direct_round_runs_concurrently_and_matches_sequential_reference():
     # 지연이 실제로 들어갔다: 적어도 적합성·검색어 두 호출(각 0.05초). fixture 코퍼스가 작아 유사 연구가 없으면
     # 그 뒤 단계는 건너뛴다(그래서 건마다 호출 수가 다르다)
     assert min(runs) >= 0.09
-    # 과제(단계)끼리는 차례로 돈다(한 과제 안의 묶음만 병렬): 건별 시간 ≥ 부른 과제 수 × 0.05초
-    assert all(r["run_s"] >= 0.045 * len(r["llm"]["by_task"]) for r in rnd["records"])
+    # 과제(단계)끼리는 대체로 차례로 돈다(한 과제 안의 묶음만 병렬). 예외(E3-L1y): 예상 심사평은
+    # 체크리스트→2차 검증과 동시에 돌므로, 둘 다 불렸으면 임계 경로에서 과제 하나를 뺀다
+    def _serial_tasks(by_task: dict) -> int:
+        n = len(by_task)
+        return n - 1 if "expected_review" in by_task and "checklist" in by_task else n
+
+    assert all(r["run_s"] >= 0.045 * _serial_tasks(r["llm"]["by_task"]) for r in rnd["records"])
     assert rnd["makespan_s"] < 0.8 * sum(runs)
     assert row["llm_calls_per_analysis"]["min"] >= 2 and row["proc"]["rss_max_mb"] > 0
     md = lt.table([row], "시험")
