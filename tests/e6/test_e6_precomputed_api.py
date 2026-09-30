@@ -242,6 +242,23 @@ def test_marked_result_renders_through_e4_view_with_label(store):
     assert len(view["cards"]) == 2  # 카드도 그대로 그려진다
 
 
+def test_wired_into_main_app(store):
+    """PM의 main.py(선택 라우터 자동 연결)에 실제로 붙어 돈다."""
+    main = pytest.importorskip("neumann.api.main", reason="E4 main.py가 이 브랜치에 없다")
+    if "neumann.api.precomputed" not in getattr(main, "OPTIONAL_ROUTERS", ()):
+        pytest.skip("main.py가 precomputed 라우터를 아직 연결하지 않는다")
+    assert main.ROUTER_STATE["neumann.api.precomputed"] == "ok"
+    directory, manifest = store
+    main.app.dependency_overrides[pc.precomputed_dir] = lambda: directory
+    try:
+        c = TestClient(main.app)
+        assert c.get(BASE).json()["items"][0]["integrity"] == "ok"
+        res = c.get(f"{BASE}/plan")
+        assert res.status_code == 200 and res.json()["notices"][0].startswith("사전 계산본(")
+    finally:
+        main.app.dependency_overrides.pop(pc.precomputed_dir, None)
+
+
 def test_default_folder_follows_data_dir_setting(monkeypatch, tmp_path):
     from neumann.config import get_settings
 
