@@ -100,7 +100,11 @@ META_FORBIDDEN = re.compile(
     re.I,
 )
 # 위험 글에 나오면 안 되는 말(시스템 이름). "baseline" 같은 일반어는 위험 내용일 수 있어 여기서는 뺀다.
-RISK_FORBIDDEN = re.compile(r"neumann|노이만|gpt-6|astra|일반\s*LLM|baseline_llm|유사\s*(?:연구|논문)의?\s*심사평", re.I)
+RISK_FORBIDDEN = re.compile(
+    r"neumann|노이만|gpt-6|astra|일반\s*LLM|baseline_llm"
+    r"|유사\s*(?:연구|논문)(?:의|에서는?|들의?)?\s*(?:심사평|리뷰어|심사자|리뷰|지적|검토)",
+    re.I,
+)
 RISK_ID = re.compile(r"^k\d{2}$")
 ENV_ID = re.compile(r"^env_[0-9a-f]{12}$")
 
@@ -126,13 +130,23 @@ RISK_SEP = " — "
 LEADING_PARTICLE = re.compile(r"^(?:은|는|이|가|을|를|의|에서|에게|에|과|와|도|으로|로)\s+")
 
 
+# 근거 출처 문장("유사 연구의 리뷰어들은 … 지적했다", "유사 연구에서는 … 쟁점이었다"). 사전 등록 블라인드 규칙
+# ("근거 인용·원문 링크는 지운다")에 해당하는 근거 참조 문장이다. Neumann에만 있어 시스템 구분 단서가 되므로
+# (E5-L2c 검증) 두 시스템 모두에서 이런 문장을 통째로 지운다. 판정은 위험 자체의 내용으로 한다.
+SOURCE_SENTENCE = re.compile(r"유사\s*(?:연구|논문)")
+_SENT_SPLIT = re.compile(r"(?<=[.!?。])\s+")
+
+
 def normalize_risk_text(text: str) -> str:
-    """"제목 — 설명"에서 설명 앞머리의 조사 하나를 지운다. 구분자가 없으면 그대로."""
+    """"제목 — 설명"에서 설명 앞머리의 조사 하나와, 유사 연구 심사평을 가리키는 근거 출처 문장을 지운다."""
     title, sep, body = text.partition(RISK_SEP)
     if not sep:
         return text
     body2 = LEADING_PARTICLE.sub("", body, count=1)
-    return f"{title}{sep}{body2}" if body2 else title
+    sentences = [x for x in _SENT_SPLIT.split(body2) if x.strip()]
+    kept = [x for x in sentences if not SOURCE_SENTENCE.search(x)]
+    body3 = " ".join(kept).strip()
+    return f"{title}{sep}{body3}" if body3 else title
 
 
 def build_envelopes(
