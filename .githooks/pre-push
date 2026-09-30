@@ -1,0 +1,4 @@
+#!/bin/sh
+# 공개 저장소다. push 직전에 추적 파일 전체와 커밋 메시지를 다시 검사한다.
+. "$(dirname "$0")/_python.sh"
+exec "$PY" scripts/verify.py --security

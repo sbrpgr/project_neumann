@@ -1,0 +1,4 @@
+#!/bin/sh
+# 스테이징된 내용에 비밀값·금지 파일·대용량 파일이 있으면 커밋을 막는다.
+. "$(dirname "$0")/_python.sh"
+exec "$PY" scripts/verify.py --staged

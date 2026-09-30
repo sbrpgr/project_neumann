@@ -1,0 +1,4 @@
+#!/bin/sh
+# 커밋 메시지에 비밀값이 있으면 커밋을 막는다.
+. "$(dirname "$0")/_python.sh"
+exec "$PY" scripts/verify.py --message "$1"
