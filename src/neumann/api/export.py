@@ -259,6 +259,7 @@ class _Ctx:
     origin: str = "in_process"
     extra_files: list[str] = field(default_factory=list)  # E3-L2r: 덧붙인 파일 이름(revision.json·revised_plan.md)
     extra_summary: list[str] = field(default_factory=list)
+    composition: export_revision.Composition = field(default_factory=export_revision.Composition)  # B1-pairing 결합 판정
 
     @property
     def n_cards(self) -> int:
@@ -1058,11 +1059,14 @@ def _manifest_json(c: _Ctx, files: Mapping[str, bytes], created_at: datetime) ->
             "warnings": c.warnings,
             "files": [
                 {"path": name, "sha256": _sha256(files[name]), "bytes": len(files[name]),
-                 **({"result_origin": c.origin, **_plan_metadata(c)} if name in FILE_NAMES else {})}
+                 **({"result_origin": c.origin, **_plan_metadata(c)} if name in FILE_NAMES
+                    else {"origin": c.composition.origin_of(name)})}  # B1-pairing: 덧붙인 파일은 결합 판정을 거친 출처
                 for name in (*FILE_NAMES, *c.extra_files)
                 if name != "manifest.json"
             ],
             "extra_files": list(c.extra_files),  # E3-L2r: 9파일 밖에 덧붙인 것(없으면 빈 목록)
+            # B1-pairing: 결과·수정 권고·통합본·결정의 결합 검증(계약 밖 패키지 메타데이터). 덧붙인 파일이 없으면 null.
+            "composition": c.composition.metadata(),
         }
     )
 
@@ -1092,19 +1096,24 @@ def build_package_files(
     revised_plan: Mapping[str, Any] | None = None,
     revision_sig: str | None = None,
     result_sig: str | None = None,
+    meta: dict[str, Any] | None = None,
 ) -> dict[str, bytes]:
     """9개 파일 {이름: 바이트}(FILE_NAMES 순서). 입력이 계약을 어기면 ValueError(ValidationError 포함).
 
     E3-L2r: `revision`(수정 권고)·`revised_plan`(통합본)이 오면 `revision.json`·`revised_plan.md`를 뒤에 덧붙인다(10·11번째).
+    B1-pairing: 세 객체와 결정의 결합을 한 번 판정(`export_revision.compose`)해 파일·README·manifest가 같은 출처를 쓴다.
+    결합 모순은 ValueError(API 422). `meta`(dict)를 넘기면 결합 판정을 `meta["composition"]`에 담아 준다(응답 헤더용).
     """
     _guard_export_plan(result, plan_text)
     if not isinstance(result, PremortemResult):
         result = PremortemResult.model_validate(result)
     c = _make_ctx(result, plan_text, decisions, result_origin)
-    extras = export_revision.extra_files(result, revision, revision_decisions, revised_plan, revision_sig, result_sig)
+    c.composition = export_revision.compose(result, revision, revision_decisions, revised_plan, revision_sig, result_sig)
+    extras = export_revision.render_files(c.composition, result)
     c.extra_files = list(extras)
-    c.extra_summary = export_revision.summary_lines(revision, revision_decisions, revised_plan,
-                                                  result=result, revision_sig=revision_sig, result_sig=result_sig)
+    c.extra_summary = export_revision.summary_of(c.composition)
+    if meta is not None:
+        meta["composition"] = c.composition
     files: dict[str, bytes] = {
         "README.md": _readme(c),
         "risk_cards.json": _risk_cards_json(c),
@@ -1141,6 +1150,7 @@ def build_package(
     - decisions: 카드별 채택·보류·기각 기록(선택). card_id가 결과에 없으면 ValueError.
     - created_at: 패키지 생성 시각(manifest). 없으면 지금. 넘기면 출력 전체가 결정적이다.
     - result_origin: 결과 출처(manifest·README). API는 서버 서명을 확인해 정한다. 직접 부르면 "in_process".
+    - meta(선택, dict): B1-pairing 결합 판정(`composition`)을 받아 갈 곳(API 응답 헤더용).
     """
     _guard_export_plan(result, plan_text)
     if not isinstance(result, PremortemResult):
@@ -1287,19 +1297,25 @@ def premortem_package(request: Request, payload: dict[str, Any] = Body(...)) -> 
     origin: ResultOrigin = (
         "server_signed" if verify_result(req.result, req.result_sig) else "client_submitted_unverified"
     )
+    meta: dict[str, Any] = {}
     try:
         plan, plan_source = _resolve_plan(result, req.plan_text if has_text else None)
         plan_association = _plan_association(plan, plan_source, origin)
         data = build_package(result, plan_text=req.plan_text if has_text else None, decisions=req.decisions,
                              result_origin=origin,
                              revision=req.revision, revision_decisions=req.revision_decisions,
-                             revised_plan=req.revised_plan, revision_sig=req.revision_sig, result_sig=req.result_sig)
+                             revised_plan=req.revised_plan, revision_sig=req.revision_sig, result_sig=req.result_sig,
+                             meta=meta)
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=_errors(exc)) from None
-    except ValueError as exc:
+    except ValueError as exc:  # 계약 위반·plan_id 불일치·없는 edit_id·결합 모순(B1-pairing PairingConflict)
         raise HTTPException(status_code=422, detail=str(exc)) from None
 
     filename = f"neumann_package_{_safe_filename_part(result.plan_id)}.zip"
+    comp: export_revision.Composition = meta.get("composition") or export_revision.Composition()
+    # B1-pairing: 덧붙인 파일의 출처는 결과 서명과 별개다(결합 검증을 거친 값). 화면은 이 헤더로 파일별 출처를 보일 수 있다.
+    extra_headers = {name: value for name, value in (("X-Neumann-Revision-Origin", comp.revision_origin),
+                                                     ("X-Neumann-Assembly-Origin", comp.assembly_origin)) if value}
     return Response(
         content=data,
         media_type="application/zip",
@@ -1309,6 +1325,7 @@ def premortem_package(request: Request, payload: dict[str, Any] = Body(...)) -> 
             "X-Neumann-Cards": str(len(result.risk_cards)),
             "X-Neumann-Result-Origin": origin,
             "X-Neumann-Plan-Association": plan_association,
+            **extra_headers,
         },
     )
 
