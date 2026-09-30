@@ -3,11 +3,13 @@
 - 빌더: Claude Opus 5.5 · 브랜치 `task/E6-L3d`(main `4cbf0f0` 기준) · 2026-09-30
 - 실제 OpenAI 호출 0건. 모든 명령은 `NEUMANN_LLM_PROVIDER=mock`으로 돌렸고 `NEUMANN_LIVE_LLM_OK`는 켜지 않았다.
 
-## 상태: 준비 완료, 라이브 결과 대기
+## 상태: 준비 완료, 공유 데이터 교체는 DISP-1 병합 뒤
 
-- E5-L1e2e 라이브 실행(21:13~21:24)은 결과 JSON을 남기지 않았다(PM 확인). 그 워크트리에는 저장 코드만 들어갔고, 다음 승인 라이브부터 `docs/reports/E5-L1e2e_live/<계획서>.result.json`이 생긴다.
-- 그래서 가져오기, DEMO_PLANS 교체, 정적 판 배지, 녹화 예시 선택, 테스트를 가짜 결과와 mock 결과로 끝냈다. 공유 데이터 폴더의 `data/precomputed`와 `data/site`는 **바꾸지 않았다**. 지금은 옛 fixture 판(plan, plan_elife_neuro, plan_medimaging, 09:55Z와 10:17Z에 만든 것)이 그대로 있다. mock 결과로 덮으면 8010·8020의 폴백 조회(`lookup_by_text`)까지 mock이 되기 때문이다.
-- 실제 교체 명령은 아래 "남은 일"에 있다. 두 줄로 끝난다.
+- E5-L1e2e 첫 라이브 실행(21:13~21:24)은 결과 JSON을 남기지 않았다(PM 확인). 그래서 가져오기, DEMO_PLANS 교체, 정적 판 배지, 녹화 예시 선택, 테스트를 가짜 결과와 mock 결과로 먼저 끝냈다.
+- 검증(PASS-조건부, `80fc245`)을 반영했다. 필수 2건과 권고 3건이다(아래 "검증 반영").
+- 그 사이 E5 라이브 결과 3건이 생겼다: `E5-L1e2e_live/{plan,protein_ligand_affinity,neural_operator_weather}.result.json`(21:58~22:03 KST, openai gpt-6.1-sol, status ok). 반영한 코드로 **scratchpad에 가져오기를 시험**했고 3/3 재생됐다(아래). 범위 밖 입력의 결과는 E5가 저장하지 않아 없다.
+- 공유 데이터 폴더의 `data/precomputed`와 `data/site`는 **아직 바꾸지 않았다**. PM 순서가 "정적 판 재생성과 녹화는 DISP-1 병합 뒤"이기 때문이다(그 전에는 화면에 astra 합성 표기가 보인다). 지금은 옛 fixture 판(plan, plan_elife_neuro, plan_medimaging, 09:55Z와 10:17Z에 만든 것)이 그대로 있다.
+- 실제 교체 명령은 아래 "남은 일"에 있다.
 
 ## 무엇을 했나
 
@@ -36,13 +38,37 @@
 - **전부 아니면 쓰지 않음.** 데모 하나라도 결과가 없으면 아무것도 쓰지 않고 exit 1이다. `--allow-partial`을 주면 있는 것만 쓰고 `partial: true`와 failures를 남긴다.
 - **`--server-port 0`.** "로컬 리허설(라이브 서버 아님)"으로 표기한다. mock 결과로 절차만 확인할 때 라이브 서버 결과처럼 보이지 않게 하려는 것이다.
 
+## 검증 반영(PASS-조건부 `80fc245` → `325ef91`, `eeb516f`)
+
+| 항목 | 반영 | 테스트 |
+|---|---|---|
+| 필수 1. 결과 0건이면 쓰지 않음 | `--allow-partial`이어도 고른 결과가 0건이면 `({}, failures)`를 돌려주고 아무것도 쓰지 않는다. failures에는 "가져올 결과 0건 — 아무것도 쓰지 않았다(기존 사전 계산본 그대로)"가 남는다. 경로 오타로 기존 manifest가 비는 문제를 막는다 | `test_zero_results_never_overwrite_existing_manifest`: 없는 경로와 빈 폴더 두 경우 모두 manifest 바이트가 그대로다 |
+| 필수 2. fixture·오류 결과 거부 | 다음이면 거부한다. 단계 impl이 `fallback:fixture`·`fixture`·`fixture:*`·`fallback:pipeline_unavailable`·`fallback:pipeline_error`, `status == "error"`, `manifest.llm_provider` 없음. 부분 대체(`fallback:rules.*`, `fallback:cards.rule_cards`)는 받는다. mock provider나 mock 카드는 받되 `substitute: true`와 `substitute_reason`을 남기고, 정적 판에서도 대체(가짜 데이터)로 센다 | 거부 매개변수 테스트 8건 추가(총 22건), `test_partial_fallbacks_inside_live_run_are_accepted`, `test_mock_results_are_substitute_and_rehearsal_whatever_the_port`, `test_mock_cards_in_precomputed_are_substitute` |
+| 권고 3. 개인정보·astra 검사 | 프로필 id는 수집 단계의 `neumann.sources.researcharcade.PROFILE_ID_RE`로 본다(`~Geoffrey_E._Hinton1`, `~conor_o'brien2`도 잡힘). 신원 키는 `_`로 나눈 조각에 reviewer·author·email·orcid·signature·affiliation·institution·handle·profile·phone 계열이 있으면 잡는다(`author_response(s)`만 예외). astra 검사에 `model_name`·`requested_model`·`*_model`을 넣었다 | 매개변수 테스트(점·아포스트로피·소문자 프로필 id, `meta_reviewer_ids`, `paper_authors`, astra `model_name`·`requested_model`). 실제 E5 결과 3건은 거부 없이 통과했다(오탐 없음) |
+| 권고 4. mock은 로컬 리허설 | provider가 mock이거나 mock 카드가 있으면 포트와 무관하게 `live.rehearsal: true`, "로컬 리허설(라이브 서버 아님)"으로 적는다. 정적 판 배지도 같다 | 위 mock 테스트, `test_live_mock_or_rule_results_are_not_called_real` |
+| 권고 5. 라이브 우선 | 후보는 (mock 아님, generated_at) 순으로 고른다 | `test_live_result_preferred_over_later_mock`(더 늦은 mock이 있어도 openai 결과를 고름) |
+
+### 실제 E5 라이브 결과 가져오기 시험(scratchpad, 공유 데이터 아님 · 반영 코드를 커밋하기 직전 작업 트리에서 실행)
+
+```
+$ python scripts/precompute_demo.py --from-results <E5 워크트리>/docs/reports/E5-L1e2e_live --out <scratch>/live_trial --allow-partial
+결과: E5-L1e2e_live · 후보 3건
+  plan: live_e2e · openai:gpt-6.1-sol · 생성 2026-09-30T12:58:17Z · 카드 5(astra 5)
+  protein_ligand_affinity: live_e2e · openai:gpt-6.1-sol · 생성 2026-09-30T13:01:05Z · 카드 7(astra 7)
+  neural_operator_weather: live_e2e · openai:gpt-6.1-sol · 생성 2026-09-30T13:03:53Z · 카드 7(astra 7)
+재생 확인: 3/3
+  실패 negative_recipe: 라이브 결과 없음(plan_id 일치 후보 0건)
+라이브: 라이브 서버(8020) · 모델 gpt-6.1-sol · 서버 커밋 미기록(미기록) · 가져온 커밋 80fc245…
+exit 0
+```
+
 ## 완료 기준
 
 ### 1. `pytest tests/e6 -q`
 
 ```
 $ NEUMANN_LLM_PROVIDER=mock python -m pytest tests/e6 -q      # _COMMON.md 환경변수, NEUMANN_LIVE_LLM_OK 없음
-124 passed in 73.05s (0:01:13)
+142 passed in 57.67s
 ```
 
 ### 2. 정적 판과 스크린샷 — 라이브 결과가 없어 가짜(mock) 결과로 만들었다
@@ -85,7 +111,7 @@ shots: 통과
 
 ```
 $ NEUMANN_LLM_PROVIDER=mock python scripts/verify.py     # _COMMON.md 환경변수
-1240 passed, 27 skipped in 141.45s (0:02:21)
+1258 passed, 27 skipped in 118.31s (0:01:58)
 보안: 파일 413개
 계약: 2개
 테스트: 통과
@@ -104,10 +130,10 @@ verify 통과
 
 ## 못 한 것 / 남은 일
 
-1. **실제 교체(라이브 결과가 생기면).** 예상 경로는 `…/s2-E5-L1e2e/docs/reports/E5-L1e2e_live/`다.
+1. **실제 교체(DISP-1 병합 뒤).** 결과 3건은 `…/s2-E5-L1e2e/docs/reports/E5-L1e2e_live/`에 있다.
    ```
    python scripts/precompute_demo.py --from-results <E5 워크트리>/docs/reports/E5-L1e2e_live --run-commit <8020 서버 커밋> --allow-partial
-   python scripts/build_static_site.py                     # data/site 재생성, 배지 "사전 계산본(라이브 서버, gpt-6.1-sol, …)"
+   python scripts/build_static_site.py                     # data/site 재생성, 배지 "사전 계산본(라이브 서버, gpt-6.1-sol, 2026-09-30 22:03 KST)"
    python scripts/build_static_site_shots.py --prefix E6-L3d_live
    ```
    - `--allow-partial`이 필요할 가능성이 크다. E5 저장 코드(`_save_result`)는 `test_demo_plan`에서만 부르고, 범위 밖 입력(`test_negative_recipe`)은 `/premortem/view`만 불러 PremortemResult를 남기지 않는다. 그러면 범위 밖 항목은 빠지고, 정적 판은 AI4S 3건만 싣는다.
