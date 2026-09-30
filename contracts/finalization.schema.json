@@ -46,13 +46,15 @@
       "required": ["check_id", "kind", "tool", "status", "plan_lines", "message", "details"],
       "properties": {
         "check_id": {"type": "string"},
-        "kind": {"enum": ["constraint", "units", "dependency"]},
+        "kind": {"enum": ["constraint", "units", "dependency", "unknown"]},
         "tool": {"type": "string"},
         "status": {"enum": ["passed", "failed", "unchecked"]},
         "plan_lines": {"type": "array", "items": {"type": "integer", "minimum": 1}},
         "message": {"type": "string"},
         "details": {"type": "object"}
-      }
+      },
+      "if": {"properties": {"kind": {"const": "unknown"}}},
+      "then": {"properties": {"status": {"const": "unchecked"}}}
     }
   }
 }
