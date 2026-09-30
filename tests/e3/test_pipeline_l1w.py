@@ -92,12 +92,77 @@ def test_mock_all_stages_attached_in_order_with_results(no_fitness):
     assert sem["generator"] == "mock" and sem["status"] == "ok"
     assert {row["card_id"] for row in sem["cards"]} == card_ids
     assert {row["item_id"] for row in sem["actions"]} == {it["item_id"] for it in r.checklist}
-    # LLM 호출 순서: 체크리스트가 검증보다 먼저
+    # LLM 호출 순서: 체크리스트가 검증보다 먼저(실제 의존). 예상 심사평은 체크리스트와 동시에 돌 수 있어(E3-L1y)
+    # 둘의 순서는 단언하지 않는다 — 대신 병렬·순차 결과가 같다는 것을 아래 테스트가 고정한다.
     tasks = _tasks(llm)
-    assert tasks.index("expected_review") < tasks.index("checklist") < tasks.index("semantic_validate")
+    assert tasks.index("checklist") < tasks.index("semantic_validate")
+    assert max(i for i, t in enumerate(tasks) if t == "checklist") < tasks.index("semantic_validate")
     # mock은 status를 ok로 두지 않는다(SEC-1 S-05)
     assert r.status == "degraded" and MOCK_NOTICE in r.notices
     jsonschema.validate(r.model_dump(mode="json"), CONTRACT)
+
+
+class _JitterMock(MockProvider):
+    """호출마다 무작위 지연(0~max_s). 병렬 구간의 완료 순서를 흔든다."""
+
+    def __init__(self, *a: Any, max_s: float, seed: int, **kw: Any) -> None:
+        super().__init__(*a, **kw)
+        import random
+        import threading
+
+        self._rng, self._lock, self._max = random.Random(seed), threading.Lock(), max_s
+
+    def complete_json(self, call):
+        import time
+
+        with self._lock:
+            delay = self._rng.random() * self._max
+        time.sleep(delay)
+        return super().complete_json(call)
+
+
+_VOLATILE = {"elapsed_s", "latency_s", "total_s", "timings_s", "v1_wall_s", "v1_parallel", "generated_at"}
+
+
+def _without_time(x: Any) -> Any:
+    if isinstance(x, dict):
+        return {k: _without_time(v) for k, v in x.items() if k not in _VOLATILE}
+    if isinstance(x, list):
+        return [_without_time(v) for v in x]
+    return x
+
+
+@pytest.mark.parametrize("plan_name", ["demo:plan.md", "corpus:battery", "corpus:imaging"])
+def test_parallel_equals_sequential_full_json_on_demo_plans(monkeypatch, plan_name):
+    """E3-L1y 고정: 병렬(기본)과 순차(V1_PARALLEL=False) 결과 JSON이 시간 값 외 전부 같다(데모 계획서, 무작위 지연 반복).
+
+    demo:plan.md = 공용 fixture(tests/fixtures)의 데모 계획서와 코퍼스, corpus:* = E3 가짜 코퍼스 계획서.
+    """
+    from tests.fixtures.loader import load_fixtures, plan_text
+
+    if plan_name.startswith("demo:"):
+        fx = load_fixtures()
+        text = plan_text(plan_name.split(":", 1)[1])
+
+        def backend():
+            return FixtureBackend(fx.works, fx.reviews)
+    else:
+        text = {"corpus:battery": PLAN_BATTERY, "corpus:imaging": PLAN_IMAGING}[plan_name]
+        backend = build_backend
+
+    def run(parallel: bool, seed: int, max_s: float) -> dict[str, Any]:
+        monkeypatch.setattr(pl, "V1_PARALLEL", parallel)
+        r = run_premortem(text, llm=_JitterMock(default_responders(), max_s=max_s, seed=seed),
+                          backend=backend(), cache_dir=None, session_id="l1y-fixed")
+        assert r.manifest["v1_parallel"] is parallel
+        return _without_time(r.model_dump(mode="json"))
+
+    expect = run(False, 0, 0.0)
+    assert expect["risk_cards"] and expect["checklist"] and expect["expected_review"]
+    for seed in range(4):
+        got = run(True, seed, 0.03)
+        assert got == expect, (plan_name, seed, [k for k in expect if expect[k] != got.get(k)])
+    assert run(False, 99, 0.03) == expect  # 순차도 지연과 무관
 
 
 def test_timings_total_and_limits_recorded(no_fitness):

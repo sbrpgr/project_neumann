@@ -677,38 +677,85 @@
       }, function () { UP.busy = ''; readLocal(file, name, UP_OFFLINE); });
   }
 
-  /* ---------- 2 실행 ---------- */
+  /* ---------- 2 실행 (E4-L2d: POST /premortem/jobs → 1~2초마다 GET /premortem/jobs/{id}. 작업 API가 없으면(404) POST /premortem/view) ---------- */
+  var JOB_STAGES = [['plan_normalize', 'NORMALIZE', '계획서 정리'], ['query_axes', 'QUERIES', '검색 질의 만들기'], ['search', 'SEARCH', '유사 연구 검색'], ['extract_issues', 'EXTRACT', '지적 추출'], ['synthesize_cards', 'SYNTHESIZE', '위험카드 합성'], ['verify_evidence', 'VERIFY', '원문 대조']];
+  var JOB_ERR = { busy: '대기열이 가득 참', rate_limited: '요청이 너무 잦음', too_large: '계획서가 너무 김', budget_exhausted: '오늘 분석 한도 소진', blocked: '새 분석 일시 중지', timeout: '시간 초과', job_not_found: '작업 결과 없음', unavailable: '분석 기능 준비 중', internal: '처리 중 문제', invalid_request: '요청 형식 오류', busy_ip: '진행 중인 분석이 많음', long_token: '입력 형식 확인' };
   function renderJob() {
-    var j = S.job || {};
+    var j = S.job || {}, w = j.wait || null;
     var title = (planLines(S.text)[0] || '').replace(/^#+\s*/, '');
-    var tl = (j.view && j.view.pipeline && j.view.pipeline.length) ? j.view.pipeline.map(function (p) { var bad = p.log.some(function (x) { return x[0] === 'w'; }); return '<div class="tn done"><div class="nm">' + esc(p.k) + '</div><div class="msg"' + (bad ? ' style="color:var(--red-d)"' : '') + '>' + esc(p.m) + '</div><div class="tm">' + (p.ms / 1000).toFixed(1) + 's</div></div>'; }).join('')
-      : '<div class="tn' + (j.state === 'running' ? ' run' : '') + '"><div class="nm">REQUEST</div><div class="msg">' + (j.state === 'running' ? 'POST /premortem/view · 서버 응답 대기' : '응답 없음') + '</div><div class="tm"></div></div>';
+    var si = -1; if (w) JOB_STAGES.forEach(function (s, i) { if (s[0] === w.stage) si = i; });
+    var tl;
+    if (j.view && j.view.pipeline && j.view.pipeline.length) tl = j.view.pipeline.map(function (p) { var bad = p.log.some(function (x) { return x[0] === 'w'; }); return '<div class="tn done"><div class="nm">' + esc(p.k) + '</div><div class="msg"' + (bad ? ' style="color:var(--red-d)"' : '') + '>' + esc(p.m) + '</div><div class="tm">' + (p.ms / 1000).toFixed(1) + 's</div></div>'; }).join('');
+    else if (j.state === 'running') {
+      var running = !!(w && w.status === 'running');
+      tl = '<div class="tn ' + (running ? 'done' : 'run') + '" id="jobQueue"><div class="nm">' + (running ? 'QUEUE' : 'WAIT') + '</div><div class="msg" id="jobWait" role="status" aria-live="polite"></div><div class="tm"></div></div>' +
+        (si >= 0 ? JOB_STAGES.map(function (s, i) { return '<div class="tn' + (i < si ? ' done' : (i === si ? ' run' : '')) + '"><div class="nm">' + esc(s[1]) + '</div><div class="msg">' + esc(s[2]) + '</div><div class="tm"></div></div>'; }).join('')
+          : (running ? '<div class="tn run"><div class="nm">ANALYZE</div><div class="msg">' + esc(w.label || '분석 중 · 진행 단계 보고 없음') + '</div><div class="tm"></div></div>' : ''));
+    } else tl = '<div class="tn"><div class="nm">REQUEST</div><div class="msg">' + (j.state === 'failed' ? '분석하지 못함' : '응답 없음') + '</div><div class="tm"></div></div>';
     var logs = (j.view && j.view.pipeline ? j.view.pipeline : []).reduce(function (a, p) { return a.concat(p.log.map(function (x) { return '<div><span class="' + esc(x[0]) + '">' + (x[0] === 'ok' ? '✓ ' : x[0] === 'w' ? '! ' : '› ') + '</span>' + esc(x[1]) + '</div>'; })); }, []).join('');
-    var stateTxt = j.state === 'failed' ? 'failed' : (j.state === 'done' ? 'complete' : 'running');
+    var stateTxt = j.state === 'failed' ? 'failed' : (j.state === 'done' ? 'complete' : (w && w.status === 'queued' ? 'queued' : 'running'));
     var stateCol = j.state === 'failed' ? 'var(--red)' : (j.state === 'done' ? 'var(--green)' : 'var(--red)');
-    return '<div class="col"><div class="hero" style="margin-bottom:8px; text-align:left;"><div class="eyebrow"><span class="eyebrow en">job</span> · ' + esc(title || '연구계획서') + '</div><h1 style="margin-top:10px; font-size:32px; display:flex; align-items:baseline; gap:14px;">분석 실행 <span class="serif" style="font-style:italic; font-size:26px; color:' + stateCol + '; font-weight:400;" id="jobState">' + stateTxt + '</span><span class="mono" style="margin-left:auto; font-size:13px; color:var(--muted);"><span id="elapsed">' + S.elapsed.toFixed(1) + '</span>s</span></h1></div><div class="pbar"><div id="pbar" style="width:' + (j.state === 'running' ? '12' : '100') + '%"></div></div>' +
+    var pct = j.state !== 'running' ? 100 : (!w || w.status === 'queued' ? 6 : (si >= 0 ? 14 + si * 14 : 12));
+    return '<div class="col"><div class="hero" style="margin-bottom:8px; text-align:left;"><div class="eyebrow"><span class="eyebrow en">job</span> · ' + esc(title || '연구계획서') + '</div><h1 style="margin-top:10px; font-size:32px; display:flex; align-items:baseline; gap:14px;">분석 실행 <span class="serif" style="font-style:italic; font-size:26px; color:' + stateCol + '; font-weight:400;" id="jobState">' + stateTxt + '</span><span class="mono" style="margin-left:auto; font-size:13px; color:var(--muted);"><span id="elapsed">' + S.elapsed.toFixed(1) + '</span>s</span></h1></div><div class="pbar"><div id="pbar" style="width:' + pct + '%"></div></div>' +
       '<div class="tl">' + tl + '</div>' + (logs ? '<div class="log" id="log">' + logs + '</div>' : '') +
-      (j.state === 'failed' ? '<div class="errbox" id="jobErr"><b>' + esc(j.label || '분석 실패') + '</b> ' + esc(j.reason || '') + '</div><div style="display:flex; gap:8px; margin-top:14px;"><button class="btn" id="btnRetry" type="button">다시 시도</button><button class="btn" data-step="0" type="button">입력 수정</button></div>' : '') + '</div>';
+      (j.state === 'failed' ? '<div class="errbox" id="jobErr" role="alert"><b id="jobErrLabel"></b> <span id="jobErrMsg"></span></div><div style="display:flex; gap:8px; margin-top:14px;"><button class="btn" id="btnRetry" type="button">다시 시도</button><button class="btn" data-step="0" type="button">입력 수정</button></div>' : '') + '</div>';
+  }
+  /* 서버 문구(대기 순번·사용자 오류 안내)는 textContent로만 넣는다 */
+  function paintJob() {
+    var j = S.job || {}, w = $('jobWait'), l = $('jobErrLabel'), m = $('jobErrMsg');
+    if (w) w.textContent = j.waitText || '서버 응답 대기';
+    if (l) l.textContent = j.label || '분석 실패';
+    if (m) m.textContent = j.reason || '';
   }
   function startAnalysis() {
-    var t0 = Date.now();
-    S.job = { state: 'running' }; S.elapsed = 0; D = null;
+    var t0 = Date.now(), run = {};
+    var alive = function () { return !!(S.job && S.job.run === run); };
+    S.job = { state: 'running', run: run, waitText: '작업 등록 중' }; S.elapsed = 0; D = null;
     render();
-    var tick = setInterval(function () { S.elapsed = (Date.now() - t0) / 1000; var e = $('elapsed'); if (e) e.textContent = S.elapsed.toFixed(1); }, 100);
-    fetch('premortem/view', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ plan_text: S.text, filename: S.filename || null }) })
-      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, code: r.status, body: j }; }); })
-      .then(function (res) {
-        clearInterval(tick); S.elapsed = (Date.now() - t0) / 1000;
-        var b = res.body || {}, st = b._status || {};
-        if (res.ok && b.cards && b.plan) { D = b; S.job = { state: 'done', view: b }; if (S.step === 1) { render(); setTimeout(function () { if (S.step === 1 && D) go(2); }, 700); } return; }
-        var reason = st.notices && st.notices.length ? st.notices[0] : (typeof b.detail === 'string' ? b.detail : (Array.isArray(b.detail) ? b.detail.map(function (d) { return d.msg; }).join(' · ') : 'HTTP ' + res.code));
-        S.job = { state: 'failed', view: b.pipeline ? b : null, label: st.label || ('HTTP ' + res.code), reason: reason };
-        if (S.step === 1) render();
-      })
-      .catch(function () { clearInterval(tick); S.job = { state: 'failed', label: '서버 연결 실패', reason: 'POST /premortem/view 응답 없음' }; if (S.step === 1) render(); });
+    var tick = setInterval(function () { if (!alive()) { clearInterval(tick); return; } S.elapsed = (Date.now() - t0) / 1000; var e = $('elapsed'); if (e) e.textContent = S.elapsed.toFixed(1); }, 100);
+    var payload = JSON.stringify({ plan_text: S.text, filename: S.filename || null });
+    var asJson = function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, code: r.status, body: j }; }); };
+    var post = function (url) { return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload }).then(asJson); };
+    function fail(label, reason) { if (!alive()) return; clearInterval(tick); S.job = { state: 'failed', run: run, label: label, reason: reason }; if (S.step === 1) render(); }
+    function finish(res) {
+      if (!alive()) return;
+      clearInterval(tick); S.elapsed = (Date.now() - t0) / 1000;
+      var b = res.body || {}, st = b._status || {};
+      if (res.ok && b.cards && b.plan) { D = b; S.job = { state: 'done', run: run, view: b }; if (S.step === 1) { render(); setTimeout(function () { if (S.step === 1 && D) go(2); }, 700); } return; }
+      var reason = typeof b.message === 'string' && b.message ? b.message : (st.notices && st.notices.length ? st.notices[0] : (typeof b.detail === 'string' ? b.detail : (Array.isArray(b.detail) ? b.detail.map(function (d) { return d.msg; }).join(' · ') : 'HTTP ' + res.code)));
+      S.job = { state: 'failed', run: run, view: b.pipeline ? b : null, label: st.label || JOB_ERR[b.error_code] || ('HTTP ' + res.code), reason: reason };
+      if (S.step === 1) render();
+    }
+    function refused(res) { var b = res.body || {}; fail(JOB_ERR[b.error_code] || ('HTTP ' + res.code), typeof b.message === 'string' && b.message ? b.message : 'HTTP ' + res.code); }
+    function waiting(b) {
+      var txt = b.status === 'queued' ? (b.position > 0 ? '대기 ' + b.position + '번째 · 약 ' + Math.max(1, Math.round(b.eta_s || 0)) + '초' : '곧 분석을 시작합니다')
+        : '분석 중' + (b.stage_label && b.stage !== 'running' ? ' · ' + b.stage_label : '') + (b.eta_s != null ? ' · 약 ' + Math.max(1, Math.round(b.eta_s)) + '초 남음' : '');
+      var prev = S.job.wait, changed = !prev || prev.status !== b.status || prev.stage !== b.stage;
+      S.job = { state: 'running', run: run, wait: { status: b.status, stage: b.stage, position: b.position, label: b.stage && b.stage !== 'running' ? String(b.stage_label || '') : '' }, waitText: txt };
+      if (S.step !== 1) return;
+      if (changed) render(); else paintJob();
+    }
+    function poll(id, delay, fails) {
+      setTimeout(function () {
+        if (!alive()) return;
+        fetch('premortem/jobs/' + encodeURIComponent(id), { cache: 'no-store' }).then(asJson).then(function (res) {
+          if (!alive()) return;
+          var b = res.body || {};
+          if (res.ok && b.status === 'done') return finish({ ok: true, code: 200, body: b.result || {} });
+          if (res.ok && (b.status === 'queued' || b.status === 'running')) { waiting(b); return poll(id, Math.min(2000, Math.max(1000, (b.poll_after_s || 1.5) * 1000)), 0); }
+          if (res.code === 429) return poll(id, Math.min(10000, Math.max(2000, (b.retry_after_s || 2) * 1000)), fails);  /* 상태 확인 속도 제한: 기다렸다 다시 */
+          refused(res);
+        }).catch(function () { if (!alive()) return; if (fails >= 5) return fail('서버 연결 실패', '작업 상태를 확인하지 못했습니다. 잠시 뒤 다시 시도해 주세요.'); poll(id, 2000, fails + 1); });
+      }, delay);
+    }
+    post('premortem/jobs').then(function (res) {
+      if (!alive()) return;
+      if (res.code === 404 || res.code === 405) return post('premortem/view').then(finish);  /* 작업 API가 없는 서버: 기존 동기 방식 */
+      if (!res.ok || !res.body || !res.body.job_id) return refused(res);                    /* 503·429·413·예산·차단: 서버 문구 */
+      waiting(res.body); poll(res.body.job_id, 1000, 0);
+    }).catch(function () { fail('서버 연결 실패', '분석 요청을 보내지 못했습니다. 연결을 확인하고 다시 시도해 주세요.'); });
   }
 
-  /* ---------- 3 리포트 ---------- */
   function evBlock(k) {
     var e = D.ev[String(k)]; if (!e) return '';
     var u = safeUrl(e.u);
@@ -957,7 +1004,7 @@
       });
     } else if (S.step === 1) {
       document.body.dataset.view = 'job';
-      app.innerHTML = renderJob();
+      app.innerHTML = renderJob(); paintJob();
       var rt = $('btnRetry'); if (rt) rt.addEventListener('click', startAnalysis);
     } else if (S.step === 2 && D) {
       document.body.dataset.view = 'report';
