@@ -1,6 +1,6 @@
 # Project Neumann — 검증 리포트 카드
 
-- 생성: 2026-09-30T22:07:56+09:00 · 코드 커밋: `245e904` · 생성 명령: `python -m eval.report_card --inputs C:/Users/User/Desktop/project_neumann/data/eval/score_baseline_freq.json C:/Users/User/Desktop/project_neumann/data/eval/score_astra.json C:/Users/User/Desktop/project_neumann/data/eval/score_rule.json docs/reports/E5-L3b_metrics_e2e.json --out docs/reports/report_card.md`
+- 생성: 2026-09-30T22:17:21+09:00 · 코드 커밋: `6d47c8a` · 생성 명령: `python -m eval.report_card --inputs C:/Users/User/Desktop/project_neumann/data/eval/score_baseline_freq.json C:/Users/User/Desktop/project_neumann/data/eval/score_astra.json C:/Users/User/Desktop/project_neumann/data/eval/score_rule.json docs/reports/E5-L3b_metrics_e2e.json --out docs/reports/report_card.md`
 - 규칙(04_평가_명세 §7): 참조선 먼저 · 미달 먼저 · 모든 숫자에 n과 95% 구간 · 없는 지표는 "측정 전"(추정 금지)
 - 값은 입력 JSON의 숫자를 그대로 옮겼다. 합쳐서 계산한 값은 '계산'으로 표시했다.
 - 모델 칸: 행마다 입력 파일에 기록된 모델(Macro-F1은 채점한 예측 파일의 행별 `model`, 일반 지표는 행의 `model`). 기록이 없으면 "(모델 기록 없음)", 측정 전 행은 비운다.
@@ -63,7 +63,7 @@
 | 판정 κ (대표 vs AI 다수결, A 여부 이진) | 전체 | 측정 전 | — | — | — | — | 입력 없음 | — |
 | 대표 계획 end-to-end 시연 | Neumann 참고(검사 실행 generator 미기록, 약속 판정 제외) | 3 (3/3; generator 미기록 실행) | 없음 | 3 | 라이브 E2E http://127.0.0.1:8010/ 2026-09-30T10:19:48+00:00~2026-09-30T10:25:34+00:00, 1회 실행, 평가 모델 gpt-6-astra(모델은 명령행 값(요약에 기록 없음)). 데모 계획서가 실서버에서 붙여넣기→리포트 화면·파이프라인 연결·카드 인용·원문 링크·생성 방식 표시·브라우저 오류 0·근거 연결 1.0 검사를 실패 0으로 통과한 수. 범위 밖 입력 negative_recipe.md: 카드 0장, 실패 0건, 사유 표시 | generator 미기록 실행: 통과 조건인 근거 연결 검사 실행의 카드 generator가 요약에 없어 약속 P6 판정에 쓰지 않는 참고값이다(PM 결정 2026-09-30: generator·model을 기록한 라이브 결과로 채운다). 리포트 화면까지. 결과 패키지(ZIP) 내보내기는 재지 않았다. 1회 실행 | E5-L3b_metrics_e2e.json | (모델 기록 없음) |
 | 대표 계획 end-to-end 시연 | Neumann 제품 기본 모델(gpt-6.1-sol) | 측정 전 | — | — | 측정 전. 이 모델로 다시 재지 않았다. 이 카드의 Neumann 수치는 평가 모델 gpt-6-astra로 잰 것 | 재측정 안 한 사유: 비용(docs/decisions.md 2026-09-30 19:38(평가 모델·제품 모델 구분)·19:42(실제 호출 동결)) | E5-L3b_metrics_e2e.json | — |
-| 라이브 E2E 화면 위험카드 수 (데모 계획서 합) | Neumann (astra) | 13 (plan.md 5 · plan_elife_neuro.md 3 · plan_medimaging.md 5) | 없음 | 3 | 라이브 E2E http://127.0.0.1:8010/ 2026-09-30T10:19:48+00:00~2026-09-30T10:25:34+00:00, 1회 실행, 평가 모델 gpt-6-astra(모델은 명령행 값(요약에 기록 없음)). 화면(/premortem/view)에 나온 위험카드 수, 데모 계획서 합. 화면 카드 generator {'astra': 13} | 개수일 뿐 품질 지표가 아니다. 연결 검사 카드 수(card_pass_rate의 n)와 다른 실행이라 다를 수 있다 | E5-L3b_metrics_e2e.json | (모델 기록 없음) |
+| 라이브 E2E 화면 위험카드 수 (데모 계획서 합) | Neumann (astra) | 13 (plan.md 5 · plan_elife_neuro.md 3 · plan_medimaging.md 5) | 없음 | 3 | 라이브 E2E http://127.0.0.1:8010/ 2026-09-30T10:19:48+00:00~2026-09-30T10:25:34+00:00, 1회 실행, 평가 모델 gpt-6-astra(모델은 명령행 값(요약에 기록 없음)). 화면(/premortem/view)에 나온 LLM(astra) 위험카드 수, 데모 계획서 합. 화면 카드 generator {'astra': 13} | 개수일 뿐 품질 지표가 아니다. 연결 검사 카드 수(card_pass_rate의 n)와 다른 실행이라 다를 수 있다. 규칙 카드는 세지 않는다(따로 적는다) | E5-L3b_metrics_e2e.json | (모델 기록 없음) |
 
 ## 4. 골드 없는 클래스 — Macro-F1에서 제외[주3]
 
@@ -98,7 +98,7 @@
 | `C:\Users\User\Desktop\project_neumann\data\eval\score_baseline_freq.json` | macro_f1 | `e9b7e44c5ca4d8a704606b92a0333d277f4c3066267049012dbdec35ce066404` |
 | `C:\Users\User\Desktop\project_neumann\data\eval\score_astra.json` | macro_f1 | `c409bed9f294bd14ee666b21514389fb721517da9db402bf61663a8cf4e89595` |
 | `C:\Users\User\Desktop\project_neumann\data\eval\score_rule.json` | macro_f1 | `b6d90596d39ad08f4dfd2c54f1013abe0379500c6b36bda68a930deed82ebc1a` |
-| `docs\reports\E5-L3b_metrics_e2e.json` | metrics | `5e94e8c9e3555f5b1e8a80984508b350d06492d950c1c7c54dbedd9bd1bc876d` |
+| `docs\reports\E5-L3b_metrics_e2e.json` | metrics | `13f6b109218f588f567a8c1d9101ca08e709d7909fe9e27f0832878731aa771c` |
 
 ```
 python -m eval.macro_f1 --pred C:\Users\User\Desktop\project_neumann\data\eval\pred_baseline_freq.jsonl --gold C:\Users\User\Desktop\project_neumann\data\eval\disapere_gold.jsonl --out <score_baseline_freq.json>
