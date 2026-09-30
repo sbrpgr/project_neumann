@@ -299,6 +299,8 @@ docs/API.md:3:- 기준: `main` 커밋 `5e14b1c`. 아래 응ë
 
 3. 병합 뒤 새로 들어온 것(E2-L3 확대 색인, E5-L0e2e 라이브 E2E, E5-L1b DISAPERE 추출 채점)도 반영했다(c1a1895). 마지막으로 `2c37557`을 병합해 E4-S06(입력 화면의 OpenAI 전송·본문 미저장 고지)을 ARCHITECTURE 표와 README 초안 보안 절에 한 줄씩 더하고 문서 기준 커밋을 `2c37557`로 올렸다(그 사이 변경은 `webui/index.html`과 테스트뿐이라 API 실측은 그대로 유효).
 4. 기획 키트의 폐기된 문서 이름을 문서·보고서에서 모두 뺐다(이 보고서 머리 한 곳).
+4-1. main이 재작업 중 계속 움직여 `234b0f3`·`c4679f9`도 병합했다. `234b0f3`(결정 19:38)으로 **제품 기본 모델이 `gpt-6.1-sol`로 바뀌어**, 세 문서와 README 초안에서 "제품 LLM = gpt-6-astra" 서술을 "기본 모델 gpt-6.1-sol, 이미 잰 평가 수치는 gpt-6-astra"로 고치고 `generator` 값 `astra`는 계약 이름(실제 모델은 `model`·`manifest.llm_model`)이라고 밝혔다(438db31). `c4679f9`는 결정 기록(19:42 OpenAI 호출 동결)과 테스트 1줄뿐이라 문서 내용 변경은 없고 기준 커밋만 올렸다. 입력 화면 고지 문구(`webui/index.html`)에는 아직 "OpenAI API(gpt-6-astra)"가 남아 있어 README 초안에서는 모델 이름 없이 인용했다(화면 문구 수정은 E4 몫).
+4-2. 최종 문서 기준 커밋: **main `c4679f9`**.
 5. PM 추가 배정: 루트 README v0 개정 초안을 `docs/reports/E6-docs_README_draft.md`로 커밋(f65281d, 267a50c). 숫자는 저장소 보고서·결정 기록 값만 쓰고 파일별 출처 표를 붙였다. 목표 미달(Macro-F1 0.4864 < 0.70)을 먼저 적고, PM 정정대로 "Macro에서만 기준선 초과·Micro 구간 겹침·단일 실행"을 밝혔다.
 
 ### 재측정 (실제 OpenAI 호출 없음)
@@ -375,11 +377,11 @@ $ python -m pytest -q -rs     (588da63 병합 상태, NEUMANN_RAW_DIR·NEUMANN_D
 
 ## 최종 verify (재작업 후)
 
-worktree(`task/E6-docs`, main `2c37557` 병합 상태)에서 실행. `verify`는 공개자료·공유 데이터 폴더 환경변수 없이 돌려 원본·실데이터 테스트가 더 많이 건너뛰었다(위 재측정 `908 passed, 22 skipped`는 두 폴더를 준 값).
+worktree(`task/E6-docs`, main `c4679f9` 병합 상태)에서 실행. `verify`는 공개자료·공유 데이터 폴더 환경변수 없이 돌려 원본·실데이터 테스트가 더 많이 건너뛰었다(위 재측정 `908 passed, 22 skipped`는 두 폴더를 준 값).
 
 ```
 $ python scripts/verify.py
-897 passed, 41 skipped in 49.10s
+897 passed, 41 skipped in 48.52s
 보안: 파일 327개
 계약: 2개
 테스트: 통과

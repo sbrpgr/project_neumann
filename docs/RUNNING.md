@@ -1,6 +1,6 @@
 # 실행 방법
 
-- 기준: 이 문서를 병합하기 직전의 `main`(작성 때 확인한 커밋 `234b0f3`). 이 문서의 명령은 `304e91e`·`588da63`에서 Windows 11 + Git Bash + Python 3.12.10으로 실행해 확인했다(결과는 `docs/reports/E6-docs.md`). 실행하지 않은 명령은 그렇다고 적었다.
+- 기준: 이 문서를 병합하기 직전의 `main`(작성 때 확인한 커밋 `c4679f9`). 이 문서의 명령은 `304e91e`·`588da63`에서 Windows 11 + Git Bash + Python 3.12.10으로 실행해 확인했다(결과는 `docs/reports/E6-docs.md`). 실행하지 않은 명령은 그렇다고 적었다.
 - 구조와 상태는 [ARCHITECTURE.md](ARCHITECTURE.md), 엔드포인트는 [API.md](API.md).
 
 > **비용 주의:** 기본 설정(`NEUMANN_LLM_PROVIDER=openai`)에서는 서버의 분석 요청(`/premortem`, `/premortem/view`, `plan_text`만 보낸 `/premortem/package`)과 파이프라인 명령이 OpenAI API(기본 모델 `gpt-6.1-sol`)를 부른다. 시험·개발은 `NEUMANN_LLM_PROVIDER=mock`으로 한다. mock 결과는 분석이 아니며 결과에 그렇게 표시된다.
