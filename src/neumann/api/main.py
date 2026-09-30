@@ -55,12 +55,13 @@ MAX_CONCURRENT = 2
 # /health가 보고하는 단계별 구현 모듈(계획서 §4.0 골격). import가 되면 available.
 STAGE_MODULES: dict[str, list[str]] = {
     "pipeline": [PIPELINE_MODULE],
-    "INPUT": ["neumann.analyze.plan"],
-    "EVIDENCE": ["neumann.index.hybrid", "neumann.analyze.retrieve"],
+    # 실제 모듈 이름(E2·E3 병합 뒤 기준)
+    "INPUT": ["neumann.analyze.queries"],
+    "EVIDENCE": ["neumann.index.search", "neumann.index.store", "neumann.analyze.extract"],
     "RISK": ["neumann.analyze.cards"],
-    "REVIEW": ["neumann.analyze.review"],
-    "ACTION": ["neumann.analyze.checklist"],
-    "TRACE": [PIPELINE_MODULE],
+    "REVIEW": ["neumann.analyze.review", "neumann.analyze.gate"],
+    "ACTION": ["neumann.analyze.checklist", "neumann.analyze.validate"],
+    "TRACE": ["neumann.api.export"],
     "llm": ["neumann.llm"],
     "models": ["neumann.models"],
     "config": ["neumann.config"],
@@ -68,6 +69,24 @@ STAGE_MODULES: dict[str, list[str]] = {
 
 app = FastAPI(title="Neumann", version=neumann.__version__, description="Research pre-mortem API")
 app.mount("/fonts", StaticFiles(directory=WEBUI_DIR / "fonts"), name="fonts")
+
+# 선택 라우터(PM 연결). 모듈이 아직 없으면 건너뛰고, 상태는 /health의 routers에 드러난다.
+OPTIONAL_ROUTERS: tuple[str, ...] = (
+    "neumann.api.export",
+    "neumann.api.upload",
+    "neumann.api.precomputed",
+    "neumann.api.templates",
+    "neumann.api.meta",
+)
+ROUTER_STATE: dict[str, str] = {}
+for _mod_name in OPTIONAL_ROUTERS:
+    try:
+        app.include_router(importlib.import_module(_mod_name).router)
+        ROUTER_STATE[_mod_name] = "ok"
+    except ModuleNotFoundError as _exc:
+        ROUTER_STATE[_mod_name] = "missing" if _exc.name == _mod_name else f"error: 의존 모듈 없음({_exc.name})"
+    except Exception as _exc:  # 라우터 하나가 깨져도 서버는 뜨게 하고, 상태로 드러낸다
+        ROUTER_STATE[_mod_name] = f"error: {type(_exc).__name__}"
 
 _sem: asyncio.Semaphore | None = None
 
@@ -211,6 +230,7 @@ def health() -> dict[str, Any]:
         "pipeline": {"state": state, "reason": reason, "mode": "pipeline" if state == "connected" else (
             "sample" if state == "unavailable" else "error"), "label": SAMPLE_LABEL if state == "unavailable" else ""},
         "stages": stages,
+        "routers": dict(ROUTER_STATE),
     }
 
 
