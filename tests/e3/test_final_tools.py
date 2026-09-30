@@ -191,3 +191,26 @@ def test_cropped_numeric_quote_cannot_erase_source_qualification(line, qualifier
 def test_cropped_units_quote_cannot_erase_negation():
     plan, check = units()
     assert run((plan.replace("합산 3 m", "합산 3 m (합산 아님)"), check))["status"] == "unchecked"
+
+
+@pytest.mark.parametrize("limit,status", [(6, "failed"), (10, "passed")])
+def test_korean_particles_attached_to_numeric_literals(limit, status):
+    _, check = constraint(limit)
+    plan = f"합계 항목은 3이다.\n추가 항목은 4이다.\n합계 최대 {limit}이다."
+    check["params"]["sources"] = [{"line": i + 1, "quote": line} for i, line in enumerate(plan.splitlines())]
+    assert run((plan, check))["status"] == status
+
+
+@pytest.mark.parametrize("token", ["abc3", "3abc", "3e2", "abc-3", "-3", "3.1.2"])
+def test_ascii_numeric_fragments_are_not_grounded(token):
+    plan, check = constraint()
+    quote = f"합계 {token}이다"
+    check["params"]["sources"][0]["quote"] = quote
+    assert run((plan.replace("총 3", quote), check))["message"] == "ambiguous_or_ungrounded_number"
+
+
+def test_repeated_korean_attached_numbers_are_ambiguous():
+    plan, check = constraint()
+    quote = "합계 3이며 대안도 3이다"
+    check["params"]["sources"][0]["quote"] = quote
+    assert run((plan.replace("총 3", quote), check))["message"] == "ambiguous_or_ungrounded_number"

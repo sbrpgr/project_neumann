@@ -14,7 +14,9 @@ from decimal import Decimal
 MAX_CHECKS = 16
 MAX_FACTS = 32
 SOLVER_TIMEOUT_MS = 200
-_NUMBER = re.compile(r"(?<![\w.])[-+]?\d+(?:\.\d+)?(?![\w.])")
+# Korean particles can attach directly to a numeral (``3이다``). ASCII
+# identifiers/exponents and fragments of signed or dotted tokens cannot.
+_NUMBER = re.compile(r"(?<![A-Za-z0-9_.+-])[-+]?[0-9]+(?:\.[0-9]+)?(?![A-Za-z0-9_.])")
 _TOOLS = {"constraint": "z3", "units": "pint", "dependency": "networkx"}
 _QUALIFIED_NUMERIC = re.compile(
     r"아님|아닌|아니|않|없|불필요|예시|참고|가정|추정|대략|약\s*\d|"
