@@ -37,7 +37,12 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 # 예시 계획서가 있어도 되는 폴더(경로는 카탈로그의 저장소 기준 상대 경로, 스키마 패턴과 같은 두 곳)
 EXAMPLE_DIRS = (DATA_DIR / "examples", REPO_ROOT / "tests" / "fixtures" / "plans")
 ID_PATTERN = r"^[a-z0-9]+(-[a-z0-9]+)*$"
-HEADING = re.compile(r"^##\s+(?:\d+\.\s*)?(.+?)\s*$", re.M)
+# 2단 제목 줄 `## …`: 줄 시작에서만 맞추고 `[^\n]*`가 줄 끝까지 한 번에 가므로 입력 길이에 선형이다.
+# 번호(`1.`)와 앞뒤 공백은 정규식이 아니라 sections()에서 문자열로 벗긴다(SEC-6).
+# 옛 `^##\s+(?:\d+\.\s*)?(.+?)\s*$`(re.M)는 `(.+?)\s*$`가 겹쳐 "## a" + 공백 N개 + "." 에서 제곱 시간이었고,
+# `\s+`가 줄바꿈을 넘어 `##`만 있는 줄 다음 줄을 칸 이름으로 삼았다.
+HEADING = re.compile(r"^##[^\S\n]([^\n]*)$", re.M)
+_SECTION_NUMBER = re.compile(r"\d+\.")
 
 router = APIRouter(tags=["templates"])
 
@@ -47,8 +52,16 @@ class CatalogError(RuntimeError):
 
 
 def sections(text: str) -> list[str]:
-    """``## 1. 연구 목표`` 같은 2단 제목에서 칸 이름만 뽑는다(번호 제거)."""
-    return [m.group(1) for m in HEADING.finditer(text)]
+    """``## 1. 연구 목표`` 같은 2단 제목에서 칸 이름만 뽑는다(번호 제거). 이름이 빈 제목 줄은 건너뛴다."""
+    out: list[str] = []
+    for m in HEADING.finditer(text):
+        name = m.group(1).strip()
+        num = _SECTION_NUMBER.match(name)
+        if num and name[num.end() :].strip():  # 번호 뒤에 이름이 있을 때만 번호를 뗀다(옛 규칙: `## 1.`은 `1.`)
+            name = name[num.end() :].lstrip()
+        if name:
+            out.append(name)
+    return out
 
 
 def _read(path: Path) -> str:
