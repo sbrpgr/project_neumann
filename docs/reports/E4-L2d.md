@@ -3,6 +3,84 @@
 - 빌더: Claude Opus 5.5 · 검증 예정: Claude Sonnet 5.5 · 브랜치 `task/E4-L2d`(`task/E4-L2c` 위에서 시작, 시작 때 `main` 병합 1회, 충돌 없음)
 - 스펙: PM 배정 지시(과제 파일 없음). 배경: cloudflared quick tunnel은 응답을 약 100초에서 끊는다(524). 분석 1건 60~70초라 대기열에서 기다리면 넘는다.
 
+## 재작업(검증 PASS-조건부 대응 · 대표 지시 "여러 명이 동시에" · PM 조정)
+
+검증 보고서 `docs/reports/E4-L2d.verify.md`(main 체크아웃)의 고칠 것 1~3·권고 4·5와 이후 지시 두 건을 반영했다. 모든 명령은 `NEUMANN_LLM_PROVIDER=mock`, 실제 OpenAI·bge-m3 호출 0회, `git stash` 안 씀.
+
+| # | 지시 | 한 일 | 테스트(`tests/e4/test_jobs_limits.py`) |
+|---|---|---|---|
+| 1 | `git merge task/E4-L2c`(83754ff) | 병합 커밋 `33a8351`. 충돌은 `serving.py`의 `__all__` 한 곳(양쪽 합침). L2c가 `_admit_new_analysis`를 없애고 `run()` 재검사(`AdmissionRefused`)를 넣었으므로 내 옛 훅 `admit_new_analysis`를 지우고, 작업은 `run()`의 거절을 받아 사용자 문구로 끝낸다 | — |
+| 1 | `create_job` 글자 상한 | 핸들러가 `len(plan_text) > max_plan_chars`면 직접 413(미들웨어와 이중). 공백 없는 긴 토큰도 직접 422 | `test_create_job_checks_char_limit_itself`(12만 자 → 413, 작업 0건) |
+| 1 | BOM 본문 테스트 | UTF-8 BOM·UTF-16·UTF-16-LE·UTF-32 본문으로 jobs·/view 각각: 정상 202/200, 차단 스위치 503, 글자 상한 413, 거절 때 작업·분석 0건 | `test_bom_and_utf16_bodies_hit_gates_on_jobs_and_view` |
+| 2 | 저장소 고갈 | IP(/64)별 보관 작업 상한 `NEUMANN_JOB_PER_IP`(3): 넘으면 **그 IP의** 끝난 작업부터 밀어내고, 모두 진행 중이면 429 `busy_ip`. IP별 작업 POST 속도 제한 `NEUMANN_JOB_RATE_PER_MIN`(공개 6): **합류·캐시 적중 POST 포함** 모든 작업 POST. 전체 상한이 차면 요청한 IP의 끝난 작업만 밀어내고, 없으면 **그 요청을 503**(다른 IP 결과는 밀어내지 않음) | `test_join_flood_from_one_ip_cannot_fill_store_or_block_others`(같은 계획서 230번 → 202 3건·429 227건, 분석 1회, 다른 IP 202), `test_cached_flood_does_not_evict_other_ip_results`(캐시 계획서 300번 → 202 ≤5, 남의 완료 결과 200 유지), `test_full_store_refuses_requester_and_keeps_other_ips_results` |
+| 3 | 긴 토큰 서버 정지 | serving 미들웨어: 글자 상한(413) 다음, `plan_key` 전에 `longest_token()`(`str.split`, 선형)으로 공백 없는 토큰이 `NEUMANN_MAX_TOKEN_CHARS`(PM 조정: **20,000**)를 넘으면 422 `long_token`(사용자 문구, 입력을 되돌려 싣지 않음). `plan_key`는 `asyncio.to_thread`, 캐시 적중 복원(`PlanDocument.from_text`)도 스레드, 작업 결과 조립(`build_ui_view`)도 스레드. models.py는 안 고침(근본 수정은 SEC-4) | `test_long_single_token_is_422_at_once_and_health_stays_fast`(20만 자 한 토큰을 jobs·/view·/premortem에 동시에 → 각각 1초 안에 422, 그동안 `/health` 10회 최대 500ms 미만, 파이프라인 0회), `test_normal_plans_templates_and_long_urls_pass_token_check`(정상 예시 3건·템플릿 5종·URL 2천/5천/1만 자·base64 1.6만 자 한 줄 → 모두 202·결과) |
+| 4 | 폴링 속도 제한 | `GET /premortem/jobs/{id}` IP별 분당 `NEUMANN_JOB_POLL_PER_MIN`(600, 정상 사용 약 40). 넘으면 429 + Retry-After(결과 없음). 화면은 429면 기다렸다 다시 확인 | `test_poll_rate_limit_per_ip` |
+| 5 | 접근 로그 job_id | `RedactingFilter`가 모든 로그(uvicorn 접근 로그 인자 포함)에서 `/premortem/jobs/<id>`를 앞 6자 + "…"로 바꾼다. 인자 구조 유지 | `test_access_log_masks_job_id` |
+| 대표 | 다중 사용자 공개 기본값 | 공개 프로필: 동시 분석 `NEUMANN_MAX_CONCURRENT` **4**, 대기열 `NEUMANN_QUEUE_MAX` **30**(작업 방식), 동기 경로(/premortem·/view) 입장 대기 상한 `NEUMANN_SYNC_QUEUE_MAX` **4**(대기가 4 이상이면 동기 요청은 바로 503, 화면은 jobs), IP당 활성 작업 3, IP당 분석 POST 분당 6(합류·캐시 포함, 남을 밀어내지 않음). 예상 시간은 serving `Gate.eta`가 동시 슬롯 수로 계산한다 | `test_ten_users_four_run_six_wait_all_get_results_and_no_ip_monopoly`(서로 다른 IP 10개 동시 → 실행 4·대기 6, 순번 1~6, 예상 시간 1~4번째 약 60초·5~6번째 약 120초, 전부 결과. 같은 IP 10건 → 2건만 더 받고 429. 대기 8일 때 /view 503·jobs 202) |
+
+- E4-L2c 테스트 `tests/e4/test_serving.py`의 공개 기본값 단정 2줄을 대표 지시값(동시 4·대기 30·동기 대기 4)으로 바꿨다(E4 에픽 테스트, 기본값이 바뀌어 불가피).
+- 긴 토큰 순서: 글자 상한(413)을 먼저 본다. 그래서 기본 설정(5만 자)에서 20만 자 한 토큰은 **즉시 413**, 5만 자 이하의 긴 토큰은 **즉시 422**다(L2c 테스트가 글자 상한 우선을 잰다). 테스트는 글자 상한을 30만 자로 올려 20만 자 한 토큰이 즉시 422임을 잰다.
+- 남은 위험: 토큰 상한 2만 자에서는 이메일 정규식(O(n²))이 토큰 하나에 약 0.3초(검증 보고 수치로 추정)를 쓸 수 있다. 스레드에서 돌아 `/health`는 응답하지만 GIL을 나눠 쓴다. 근본 수정은 SEC-4(선형 email_spans).
+
+### 권장 설정(공개, 모두 환경변수로 덮어쓰기)
+
+| 키 | 공개 기본 | 개발 기본 | 뜻 |
+|---|---|---|---|
+| `NEUMANN_MAX_CONCURRENT` | 4 | 2 | 동시 분석(부하 시험 결과로 PM이 조정) |
+| `NEUMANN_QUEUE_MAX` | 30 | 20 | 대기 수 상한(작업 방식) |
+| `NEUMANN_SYNC_QUEUE_MAX` | 4 | 0(=QUEUE_MAX) | 동기 경로 입장 때 대기 상한 |
+| `NEUMANN_RATE_PER_MIN` | 6 | 0 | IP별 새 분석(serving) |
+| `NEUMANN_JOB_RATE_PER_MIN` | 6 | 0 | IP별 작업 POST(합류·캐시 적중 포함) |
+| `NEUMANN_JOB_PER_IP` | 3 | 3 | IP별 보관(활성) 작업 |
+| `NEUMANN_JOB_MAX` | 200 | 200 | 전체 보관 작업 |
+| `NEUMANN_JOB_POLL_PER_MIN` | 600 | 600 | IP별 폴링 GET |
+| `NEUMANN_JOB_TTL_S` / `NEUMANN_JOB_TIMEOUT_S` / `NEUMANN_JOB_POLL_S` | 900 / 900 / 1.5 | 같음 | 보관·작업 시간 상한·폴링 간격 |
+| `NEUMANN_MAX_TOKEN_CHARS` | 20000 | 20000 | 공백 없는 토큰 한 개 상한(422) |
+| `NEUMANN_REQUEST_TIMEOUT_S` | 90 | 300 | 동기 경로 시간 상한(L2c) |
+
+- 같은 공유기(행사장 와이파이 NAT)의 여러 사람은 한 IP로 보인다. 그때는 IP당 활성 작업 3·분당 6이 좁을 수 있으니 `NEUMANN_JOB_PER_IP`·`NEUMANN_JOB_RATE_PER_MIN`·`NEUMANN_RATE_PER_MIN`을 올린다.
+
+### 재작업 측정
+
+```
+$ NEUMANN_LLM_PROVIDER=mock python -m pytest tests/e4/test_jobs_limits.py -q
+10 passed
+$ NEUMANN_LLM_PROVIDER=mock python -m pytest tests/e4 -q
+261 passed, 4 skipped
+```
+
+실제 서버(포트 8136, `scripts/serve.py`, 가짜 분석 1건 **실제 60초**, 동시 4, 서로 다른 사용자 IP 10개):
+
+```
+$ NEUMANN_LLM_PROVIDER=mock python tests/e4/test_jobs_live.py load --port 8136 --run-s 60 --jobs 10 --concurrent 4 --out docs/reports/E4-L2d_loadtest.txt
+[+   1.62s]   POST L0: code=202 0.031s job_id=tVWkk2… status=queued position=0 eta_s=0.0 message="곧 분석을 시작합니다"
+[+   1.62s]   POST L4: code=202 0.031s job_id=rODxfS… status=queued position=1 eta_s=60.0 message="대기 1번째 · 약 60초"
+[+   1.62s]   POST L9: code=202 0.031s job_id=k3FxUn… status=queued position=6 eta_s=120.0 message="대기 6번째 · 약 120초"
+[+   3.16s]   queue active=4 waiting=6 avg_run_s=60.0
+[+  62.50s]   L3: 결과 받음 status=done 카드 2장 계획서 줄 18줄 대기 0.0s 실행 60.0s 작업 등록→결과 60.9s
+[+ 121.70s]   L7: 결과 받음 status=done 카드 2장 계획서 줄 18줄 대기 60.0s 실행 60.0s 작업 등록→결과 120.1s
+[+ 182.02s]   L9: 결과 받음 status=done 카드 2장 계획서 줄 18줄 대기 120.0s 실행 60.0s 작업 등록→결과 180.4s
+[+ 182.02s] == HTTP 응답 733건(POST 10, GET 723): 가장 긴 응답 0.032s (GET code=200), POST 최장 0.031s, GET 최장 0.032s, 100초 이상 0건
+[+ 182.02s] == 결과 받은 작업 10/10건, 등록→결과 시간 60.9s ×4, 120.1s ×4, 180.4s ×2
+[+ 190.94s] 판정: PASS
+[+ 190.95s] 서버 로그 861줄 중 계획서 본문·트레이스가 든 줄: 0
+```
+
+(전체: `docs/reports/E4-L2d_loadtest.txt`. 처음 동시 5건·동시 2 시험 로그는 이 파일로 대체했다. 예상 시간은 동시 4를 반영해 1~4번째 약 60초, 5~6번째 약 120초.)
+
+화면(Playwright, 포트 8137) 재실행: PASS — "대기 1번째 · 약 11초" → "분석 중 · 유사 연구 검색 · 약 7초 남음" → 리포트(카드 2장), 정상 흐름 콘솔 오류 0건, 차단 문구 textContent, 404 폴백(`docs/reports/E4-L2d_ui.txt`, 스크린샷 4장 갱신).
+
+패치 적용 사본(`git archive HEAD` → `E4-L2c_main.patch` → `E4-L2d_main.patch`, 둘 다 `git apply --check` 통과, 패치 파일은 바꿀 필요 없었음) 전체 pytest: `1085 passed, 24 skipped in 127.06s`.
+
+```
+$ NEUMANN_LLM_PROVIDER=mock python scripts/verify.py
+1085 passed, 24 skipped in 110.91s (0:01:50)
+보안: 파일 373개
+계약: 2개
+테스트: 통과
+verify 통과
+```
+
 ## 무엇을 했나
 
 | 파일 | 내용 |
@@ -110,6 +188,8 @@ tests/e4/test_jobs_live.py::test_five_concurrent_jobs_scaled                    
 가짜 파이프라인만 쓴다(bge-m3·OpenAI 호출 0회).
 
 ### 2) 실제 서버 동시 5건(포트 8136, serve.py, 가짜 분석 1건 60초, 동시 상한 2) — PASS
+
+(첫 제출 때 측정. 로그 파일 `E4-L2d_loadtest.txt`는 재작업 뒤 동시 10건·동시 4 시험으로 바뀌었다 — 위 "재작업" 절)
 
 ```
 $ python tests/e4/test_jobs_live.py load --port 8136 --run-s 60 --jobs 5 --out docs/reports/E4-L2d_loadtest.txt
