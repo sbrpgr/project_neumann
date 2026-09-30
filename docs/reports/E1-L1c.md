@@ -35,10 +35,10 @@
 | 파일 | 내용 |
 |---|---|
 | `src/neumann/sources/corpus.py` (추가만) | `load_corpus(data_dir, *, include=None)`: **include를 안 주면 지금과 똑같이** E1-L0 파일만 읽는다(기존 본문 그대로, 앞에 분기 한 줄). `include=("researcharcade","elife")`면 새 함수 `load_sources`가 소스별 접두 파일(`elife_works.jsonl` 등)을 합쳐 하나의 `Corpus`로 돌려준다(겹치는 work_id·고아 레코드·빠진 파일은 오류). `audit_sources`(소스별 전량 검사), `check_elife_decisions`(eLife 결정 매핑 원칙 검사), 소스 표(`SOURCE_FILE_PREFIXES`·`SOURCE_URL_PREFIXES`·딥링크·work_id 네임스페이스). `europepmc`도 같은 표로 읽을 수 있다(기본 포함은 아님). |
-| `scripts/build_index_elife.py` (새 파일) | `scripts/build_index.py`(E2-L0)를 **고치지 않고** 불러, 입력 함수만 `load_corpus(include=...)`로 바꿔 끼운다. ① 출력이 `data/index`·`data/index_l3`·`NEUMANN_INDEX_DIR`·입력 폴더면 거부(rc 2) ② 빌드 전 `audit_sources` + `check_elife_decisions` 통과 필수(위반이면 rc 1, 색인 안 만듦) ③ 색인 입력 sha256을 소스 manifest(`corpus_manifest.json`·`elife_manifest.json`) `outputs`와 대조 ④ 소스별 논문·심사평·문장 수와 문장 오프셋 독립 재대조를 manifest `elife`에 덧붙임 ⑤ CUDA OOM이면 배치 반으로 재시도 |
+| `scripts/build_index_elife.py` (새 파일) | `scripts/build_index.py`(E2-L0)를 **고치지 않고** 불러, 입력 함수만 `load_corpus(include=...)`로 바꿔 끼운다. ① 출력이 `data/index`·`data/index_l3`·`NEUMANN_INDEX_DIR`·입력 폴더면 거부(rc 2) ② 빌드 전 `audit_sources` + `check_elife_decisions` 통과 필수(위반이면 rc 1, 색인 안 만듦) ③ 색인 입력 sha256을 소스 manifest(`corpus_manifest.json`·`elife_manifest.json`) `outputs`와 대조 ④ 소스별 논문·심사평·문장 수와 문장 오프셋 독립 재대조를 manifest `elife`에 덧붙임 ⑤ CUDA OOM이면 배치 반으로 재시도 ⑥ (검증 지적 반영) 입력 해시 불일치·오프셋 실패로 rc≠0이면 `--out` 폴더에 `DO_NOT_SERVE.txt`와 manifest `do_not_serve`를 **스크립트가 직접** 남기고, `전환: NEUMANN_INDEX_DIR=…` 안내는 성공일 때만 찍는다. 이미 있던 표시는 성공 재빌드에서도 지우지 않는다(manifest에 "이전 표시 유지") |
 | `scripts/build_index_elife_compare.py` (새 파일) | 두 색인 문장 전량 오프셋 대조, 데모 3건 × (계획서 전문 · 짧은 영어) + 무관한 글, 상위 k 전후 비교(겹침·새로 든 논문의 소스·eLife 최고 순위·같은 논문 dense 차), `--json`·`--md` |
 | `tests/e1/test_corpus_elife.py` | 20건: 기본 load_corpus 불변(eLife 파일이 옆에 있어도 무시), include 합치기, `("researcharcade",)` = 기본과 같은 레코드, 모르는·빈·빠진 소스, 겹치는 work_id, 고아 레코드, 검사기가 실제로 잡는지 6종(다른 호스트 URL·신원 키·딥링크 없음·소스 이름·네임스페이스·해시 형식), eLife 결정 매핑 위반 4종, 실제 eLife 산출물 검사 |
-| `tests/e1/test_corpus_elife_index.py` | 8건: 보호 색인 거부(표기 달라도·`NEUMANN_INDEX_DIR`·`index_l3`), main 거부 rc 2, 가짜 두 소스 임베딩 없이 빌드(manifest `elife`·eLife Excerpt source_url=DOI), 입력 검사 위반이면 rc 1·색인 안 만듦, 해시 불일치 rc 1, 비교 스크립트가 새로 든 eLife 논문을 잡는지, **실제 `index_elife` manifest 검사** |
+| `tests/e1/test_corpus_elife_index.py` | 11건: 보호 색인 거부(표기 달라도·`NEUMANN_INDEX_DIR`·`index_l3`), main 거부 rc 2, 가짜 두 소스 임베딩 없이 빌드(manifest `elife`·eLife Excerpt source_url=DOI), 입력 검사 위반이면 rc 1·색인 안 만듦, 해시 불일치 rc 1 + DO_NOT_SERVE·manifest 표시·전환 안내 없음, 오프셋 재대조 실패 표시, 성공이면 표시 없음·전환 안내, 이전 표시 유지, 비교 스크립트가 새로 든 eLife 논문을 잡는지, **실제 `index_elife` manifest 검사** |
 
 `src/neumann/index/`(E2-L1 작업 중)·`scripts/build_index.py`·E2-L3 파일 이름(`build_index_l3.py`·`build_index_compare.py`)과 겹치지 않게 새 파일만 만들었다.
 
@@ -291,9 +291,9 @@ get_excerpts elife:86740 39 'In uncertain conditions, decisions are not made in 
 
 ```
 $ python -m pytest tests/e1/test_corpus_elife.py tests/e1/test_corpus_elife_index.py -q
-28 passed
+31 passed      (검증 지적 반영 뒤, NEUMANN_LLM_PROVIDER=mock: `pytest tests/e1 -q -k elife` → 31 passed, 125 deselected)
 $ python scripts/verify.py        (NEUMANN_DATA_DIR=공유 data, 실제 index_elife·eLife 산출물 검사 포함)
-910 passed, 21 skipped in 70.33s
+910 passed, 21 skipped in 70.33s   (검증 지적 반영 뒤 NEUMANN_LLM_PROVIDER=mock 재실행: 913 passed, 21 skipped in 76.41s, 보안 파일 312개)
 보안: 파일 311개
 계약: 2개
 테스트: 통과

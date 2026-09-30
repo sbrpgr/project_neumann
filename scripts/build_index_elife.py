@@ -11,6 +11,8 @@
 2. 빌드 전에 소스별 전량 검사(`audit_sources`: 출처 URL·원문 해시·신원 키)와 eLife 결정 매핑 검사를 통과해야 한다.
 3. 색인 입력 해시를 소스별 manifest(`corpus_manifest.json`·`elife_manifest.json`)의 `outputs` sha256과 대조한다.
 4. manifest.json에 `elife`(소스별 논문·심사평·문장 수, 검사 결과, 해시 대조, 전환 방법)를 덧붙인다.
+5. 해시 불일치·오프셋 실패로 rc≠0이면 `--out` 폴더에 `DO_NOT_SERVE.txt`와 manifest `do_not_serve`를 남긴다
+   (전환 안내는 성공일 때만). 이미 있던 표시는 지우지 않는다.
 
 전환은 설정으로만 한다: `NEUMANN_INDEX_DIR=<data>/index_elife`. 코드 기본값(`{DATA_DIR}/index`)은 그대로다.
 """
@@ -23,6 +25,7 @@ import json
 import os
 import sys
 from collections import Counter
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -143,6 +146,31 @@ def source_counts(index_dir: Path) -> dict[str, dict[str, int]]:
     return {s: dict(sorted(c.items())) for s, c in sorted(out.items())}
 
 
+DO_NOT_SERVE_FILE = "DO_NOT_SERVE.txt"
+
+
+def rebuild_command(out: Path, include: tuple[str, ...]) -> str:
+    return f"python scripts/build_index_elife.py --batch 8 --include {','.join(include)} --out {out}"
+
+
+def mark_do_not_serve(out: Path, manifest: dict[str, Any], reasons: list[str], rebuild_cmd: str) -> None:
+    """실패한 색인 폴더에 `DO_NOT_SERVE.txt`와 manifest `do_not_serve`를 남긴다(서비스 전환 금지 표시)."""
+    now = datetime.now(UTC).isoformat(timespec="seconds")
+    reason = " / ".join(reasons)
+    text = "\n".join([
+        "DO NOT SERVE — 서비스 전환 금지",
+        "",
+        f"사유: {reason}",
+        f"표시 시각: {now} (scripts/build_index_elife.py가 자동으로 남김)",
+        f"재빌드 명령(원인을 고친 뒤, 저장소 루트에서): {rebuild_cmd}",
+        "NEUMANN_INDEX_DIR를 이 폴더로 두지 말 것. 표시는 원인을 확인한 사람이 손으로 지운다.",
+        "",
+    ])
+    (out / DO_NOT_SERVE_FILE).write_text(text, encoding="utf-8", newline="\n")
+    manifest["do_not_serve"] = {"flag": True, "reason": reason, "reasons": reasons, "marked_at": now,
+                                "marked_by": "scripts/build_index_elife.py", "rebuild_command": rebuild_cmd}
+
+
 def _is_oom(exc: BaseException) -> bool:
     return "out of memory" in str(exc).lower() or type(exc).__name__ == "OutOfMemoryError"
 
@@ -197,6 +225,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"{TAG} 입력 검사 통과: 레코드 {audit['records_total']}, 출처 URL {audit['source_url_ratio']}, "
           f"원문 해시 {audit['content_sha256_ratio']}, 신원 키 {audit['identity_key_records']}, eLife 결정 {decisions}")
 
+    # 이전 빌드·사람이 남긴 서비스 금지 표시는 자동으로 지우지 않는다(원인 확인 뒤 손으로 지운다)
+    prior_marker = (out / DO_NOT_SERVE_FILE).is_file()
     build = _load_build_index()
     build.load_source = make_load_source(build, include)
     batch = args.batch
@@ -239,19 +269,34 @@ def main(argv: list[str] | None = None) -> int:
         "switch": f"NEUMANN_INDEX_DIR={out}",
         "note": "현재 색인(data/index)·확대 색인(data/index_l3)은 건드리지 않는다. 전환은 NEUMANN_INDEX_DIR 설정으로만",
     }
+    failures: list[str] = []
+    if rc != 0:
+        failures.append(f"build_index.py rc {rc}(오프셋 대조 실패)")
+    if hashes["sha256_match"] is False:
+        bad = sorted(k for k, v in hashes["files"].items() if v["match"] is False)
+        failures.append(f"색인 입력 해시가 소스 manifest outputs와 다르다: {bad}")
+    if n_ok != n_ex:
+        failures.append(f"소스별 오프셋 재대조 실패 {n_ex - n_ok}/{n_ex}")
+    if failures:
+        mark_do_not_serve(out, manifest, failures, rebuild_command(out, include))
+    elif prior_marker:
+        mark_do_not_serve(out, manifest, ["이전 DO_NOT_SERVE 표시 유지(원인 확인 뒤 손으로 지운다)"],
+                          rebuild_command(out, include))
     mpath.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
     print(f"{TAG} 소스별 {by_source}")
     print(f"{TAG} 소스별 오프셋 재대조 {n_ok}/{n_ex}")
     print(f"{TAG} 소스 manifest 해시 대조: {hashes['sha256_match']} (대조 못 한 파일 {hashes['unchecked']})")
+    if failures:
+        for f in failures:
+            print(f"{TAG} 실패: {f}")
+        print(f"{TAG} 서비스 전환 금지: {out / DO_NOT_SERVE_FILE}와 manifest do_not_serve를 남겼다")
+        return 1
+    if prior_marker:
+        print(f"{TAG} 주의: 이전 {DO_NOT_SERVE_FILE}가 남아 있다. 원인을 확인한 뒤 손으로 지워야 전환할 수 있다")
+        return 0
     print(f"{TAG} 전환: {manifest['elife']['switch']}")
-    if hashes["sha256_match"] is False:
-        print(f"{TAG} 실패: 색인 입력 해시가 소스 manifest와 다르다")
-        return 1
-    if n_ok != n_ex:
-        return 1
-    return rc
-
+    return 0
 
 if __name__ == "__main__":
     raise SystemExit(main())

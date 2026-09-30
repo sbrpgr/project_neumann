@@ -120,15 +120,64 @@ def test_build_fails_on_audit_violation(bie, processed: Path) -> None:
     assert not out.exists()
 
 
-def test_build_fails_on_manifest_hash_mismatch(bie, processed: Path) -> None:
+def test_build_fails_on_manifest_hash_mismatch(bie, processed: Path, capsys: pytest.CaptureFixture[str]) -> None:
     mp = processed / "elife_manifest.json"
     m = json.loads(mp.read_text(encoding="utf-8"))
     m["outputs"]["elife_reviews.jsonl"]["sha256"] = "0" * 64
     mp.write_text(json.dumps(m), encoding="utf-8")
     out = processed.parent / "index_elife"
     assert bie.main(["--processed", str(processed), "--out", str(out), "--no-embed"]) == 1
-    got = json.loads((out / "manifest.json").read_text(encoding="utf-8"))["elife"]["corpus_hash_check"]
+    manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+    got = manifest["elife"]["corpus_hash_check"]
     assert got["sha256_match"] is False and got["files"]["elife_reviews.jsonl"]["match"] is False
+    # 실패한 색인에는 스크립트가 직접 서비스 금지 표시를 남기고, 전환 안내는 찍지 않는다
+    marker = out / "DO_NOT_SERVE.txt"
+    assert marker.is_file()
+    text = marker.read_text(encoding="utf-8")
+    assert "elife_reviews.jsonl" in text and "--include researcharcade,elife" in text
+    dns = manifest["do_not_serve"]
+    assert dns["flag"] is True and "해시" in dns["reason"] and "elife_reviews.jsonl" in dns["reason"]
+    assert dns["rebuild_command"].startswith("python scripts/build_index_elife.py")
+    printed = capsys.readouterr().out
+    assert "전환: NEUMANN_INDEX_DIR" not in printed and "서비스 전환 금지" in printed
+
+
+def test_build_success_has_no_marker_and_prints_switch(bie, processed: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    out = processed.parent / "index_elife"
+    assert bie.main(["--processed", str(processed), "--out", str(out), "--no-embed"]) == 0
+    assert not (out / "DO_NOT_SERVE.txt").exists()
+    assert "do_not_serve" not in json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+    assert "전환: NEUMANN_INDEX_DIR=" in capsys.readouterr().out
+
+
+def test_build_marks_on_offset_recheck_failure(bie, processed: Path, monkeypatch: pytest.MonkeyPatch,
+                                               capsys: pytest.CaptureFixture[str]) -> None:
+    real = bie.source_counts
+
+    def broken(index_dir):  # 소스별 재대조에서 한 문장이 원문과 안 맞은 것처럼
+        got = real(index_dir)
+        got["elife"]["excerpt_offsets_ok"] -= 1
+        return got
+
+    monkeypatch.setattr(bie, "source_counts", broken)
+    out = processed.parent / "index_elife"
+    assert bie.main(["--processed", str(processed), "--out", str(out), "--no-embed"]) == 1
+    assert (out / "DO_NOT_SERVE.txt").is_file()
+    dns = json.loads((out / "manifest.json").read_text(encoding="utf-8"))["do_not_serve"]
+    assert dns["flag"] is True and "오프셋" in dns["reason"]
+    assert "전환: NEUMANN_INDEX_DIR" not in capsys.readouterr().out
+
+
+def test_prior_marker_is_kept_on_successful_rebuild(bie, processed: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    out = processed.parent / "index_elife"
+    out.mkdir()
+    (out / "DO_NOT_SERVE.txt").write_text("E1-L1b 실명 잔존 FAIL", encoding="utf-8")
+    assert bie.main(["--processed", str(processed), "--out", str(out), "--no-embed"]) == 0
+    assert (out / "DO_NOT_SERVE.txt").is_file()  # 사람이 원인을 확인한 뒤 손으로 지운다
+    dns = json.loads((out / "manifest.json").read_text(encoding="utf-8"))["do_not_serve"]
+    assert dns["flag"] is True and "이전" in dns["reason"]
+    printed = capsys.readouterr().out
+    assert "전환: NEUMANN_INDEX_DIR" not in printed and "손으로 지워야" in printed
 
 
 def test_compare_marks_elife_hits(processed: Path) -> None:
