@@ -430,3 +430,52 @@ def test_access_log_masks_query_and_path_variants_idempotently():
     # 앱 로그(접근 로그 아님)도 경로·쿼리 모양은 가린다
     assert jid not in serving.mask_job_paths(f"GET /Premortem/Jobs/{jid}")
     assert serving.mask_job_paths("plan_id=3d35460def76 chars=669") == "plan_id=3d35460def76 chars=669"
+
+
+def test_on_stage_running_and_end_reports_with_parallel_stages(tmp_path, monkeypatch):
+    """E3-L1y 모양의 on_stage(name, state, seconds): 시작("running")만 현재 단계가 되고, 끝 보고는 완료 목록에만.
+    병렬 구간(예상 심사평 ∥ 체크리스트→2차 검증)에서 끝난 단계가 현재 단계로 남지 않는다."""
+    import threading
+
+    steps = [("fitness", "running", 0.0), ("fitness", "ok", 0.4), ("expected_review", "running", 0.0),
+             ("checklist", "running", 0.0), ("checklist", "ok", 1.2), ("semantic_validate", "running", 0.0),
+             ("semantic_validate", "ok", 0.8), ("expected_review", "degraded", 2.5)]
+    go_next = [threading.Event() for _ in steps]
+    hold = threading.Event()   # 마지막 보고 뒤 결과를 내기 전에 멈춰 둔다(끝난 뒤 상태를 재려고)
+    reached = {"i": -1}
+
+    def run_premortem(plan_text: str, on_stage: Any = None) -> dict[str, Any]:
+        for i, (name, state, secs) in enumerate(steps):
+            go_next[i].wait(10)
+            on_stage(name, state, secs)
+            reached["i"] = i
+        hold.wait(10)
+        return fake_result(plan_text)
+
+    srv, app, store = make(tmp_path, monkeypatch, run_premortem, jobs.JobsConfig(per_ip=0, rate_per_min=0))
+    expect_current = ["fitness", "running", "expected_review", "checklist", "expected_review", "semantic_validate",
+                      "expected_review", "running"]
+
+    async def go() -> None:
+        async with client(app) as c:
+            jid = (await c.post("/premortem/jobs", json={"plan_text": plan("stages")})).json()["job_id"]
+            seen = []
+            for i in range(len(steps)):
+                go_next[i].set()
+                await wait_until(lambda i=i: reached["i"] >= i)
+                j = (await c.get(f"/premortem/jobs/{jid}")).json()
+                seen.append(j["stage"])
+                if j["stage"] in jobs.STAGE_LABELS and j["stage"] not in ("running",):
+                    assert j["stage_label"] == jobs.STAGE_LABELS[j["stage"]] and j["stage_label"] in j["message"]
+            assert seen == expect_current, seen
+            last = (await c.get(f"/premortem/jobs/{jid}")).json()
+            assert last["status"] == "running" and last["message"].startswith("분석 중 · 약 ")
+            assert [(d["stage"], d["status"]) for d in last["stages_done"]] == [
+                ("fitness", "ok"), ("checklist", "ok"), ("semantic_validate", "ok"), ("expected_review", "degraded")]
+            assert last["stages_done"][1]["label"] == "체크리스트" and last["stages_done"][1]["elapsed_s"] == 1.2
+            hold.set()
+            assert (await poll_done(c, jid))["status"] == "done"
+            assert {"fitness": "적합성 판정", "expected_review": "예상 심사평", "checklist": "체크리스트",
+                    "semantic_validate": "2차 검증"}.items() <= jobs.STAGE_LABELS.items()
+
+    asyncio.run(go())
