@@ -9,11 +9,16 @@ from __future__ import annotations
 import importlib
 import math
 import re
+import threading
 from decimal import Decimal
 
 MAX_CHECKS = 16
 MAX_FACTS = 32
 SOLVER_TIMEOUT_MS = 200
+# Z3 is not thread-safe through its global main context: concurrent calls crashed the
+# process (VER-FIN C-1). Every Z3 path runs under this process-wide lock with a fresh
+# per-call Context. Other modules that touch Z3 must take the same lock.
+Z3_LOCK = threading.Lock()
 # Korean particles can attach directly to a numeral (``3이다``). ASCII
 # identifiers/exponents and fragments of signed or dotted tokens cannot.
 _NUMBER = re.compile(r"(?<![A-Za-z0-9_.+-])[-+]?[0-9]+(?:\.[0-9]+)?(?![A-Za-z0-9_.])")
@@ -84,17 +89,28 @@ def _constraint(params, sources):
     markers = {"le": r"이하|최대|<=|≤|at most", "ge": r"이상|최소|>=|≥|at least", "eq": r"같다|equal|(?<![<>])="}
     _require(bool(re.search(markers[comparator], _source(params["limit"]["source"], sources), re.I)), "ungrounded_comparator")
     z3 = importlib.import_module("z3")
-    values = [z3.RealVal(str(v)) for v in terms]
-    expr = z3.Sum(values) if operation == "sum" else values[0]
-    if operation == "product":
-        for value in values[1:]:
-            expr = expr * value
-    rhs = z3.RealVal(str(limit))
-    relation = {"le": lambda: expr <= rhs, "ge": lambda: expr >= rhs, "eq": lambda: expr == rhs}[comparator]()
-    solver = z3.Solver()
-    solver.set(timeout=SOLVER_TIMEOUT_MS)
-    solver.add(relation)
-    answer = solver.check()
+    with Z3_LOCK:
+        ctx = z3.Context()
+        values = [z3.RealVal(str(v), ctx) for v in terms]
+        expr = z3.Sum(values) if operation == "sum" else values[0]
+        if operation == "product":
+            for value in values[1:]:
+                expr = expr * value
+        rhs = z3.RealVal(str(limit), ctx)
+        if comparator == "le":
+            relation = expr <= rhs
+        elif comparator == "ge":
+            relation = expr >= rhs
+        else:
+            relation = expr == rhs
+        solver = z3.Solver(ctx=ctx)
+        solver.set(timeout=SOLVER_TIMEOUT_MS)
+        solver.add(relation)
+        answer = solver.check()
+        # Release every Z3 reference (and finally the context) while the lock is held.
+        del solver, relation, expr, values, rhs
+        value = None
+        del ctx
     if answer == z3.unknown:
         raise _Unchecked("solver_timeout_or_unknown")
     return answer == z3.sat, {"operation": operation, "comparator": comparator, "scope": "anchored_numeric_relation"}
