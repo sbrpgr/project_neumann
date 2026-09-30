@@ -1,31 +1,28 @@
-"""FIN-ENGINE ↔ FIN-TOOLS 도구 인터페이스(공유 계약). 먼저 커밋하는 파일이다.
+"""FIN-ENGINE ↔ FIN-TOOLS 도구 인터페이스(공유 계약). 실제 계산은 ``neumann.analyze.final_tools``(Z3·Pint·NetworkX)가 한다.
 
-    from neumann.finalize.tools import ToolCall, ToolResult, ToolSpec, registry, run_tool, tool_for
+    from neumann.finalize.tools import ToolCall, ToolResult, run_tool, tool_for
 
-    call   = ToolCall(name="arithmetic_sum", args={"items": [3, 4, 3], "total": 12})
-    result = run_tool(call)                      # → ToolResult(ok, output, evidence)
-    result.verdict                               # "pass" | "fail" | "unchecked"
+    call   = ToolCall(name="z3", args={"plan_text": text, "check": check})   # check = final_tools 검사 1건(원문 발췌 앵커)
+    result = run_tool(call)                                                # → ToolResult(ok, output, evidence)
+    result.verdict                                                         # "pass" | "fail" | "unchecked"
 
 원칙(대표 원칙·AGENTS.md)
-- **도구 선택은 코드가 한다.** 점검 유형(check kind) → 도구 이름은 `TOOL_FOR_CHECK` 표 하나로 고정한다. LLM은 "어느 줄의 어떤
-  종류의 주장을 검사하라"고 가리킬 뿐 도구 이름·인자를 정하지 않는다. 인자는 코드가 계획서 원문에서 추출해 만든다.
+- **도구 선택은 코드가 한다.** 점검 유형(check kind) → 도구 이름은 `TOOL_FOR_CHECK` 표 하나로 고정한다(constraint→z3,
+  units→pint, dependency→networkx). LLM은 "어느 줄의 어떤 종류의 조건을 검사하라"(줄 번호·값)만 가리키고 도구 이름·인용문을
+  정하지 않는다. 인용문은 코드가 원문 줄에서 붙인다(`finalize._bind_sources`).
 - **수치·단위·합계 판정은 도구 결과로만 한다.** `ToolResult.ok=False`는 "검사하지 못함(unchecked)"이지 통과가 아니다. 도구가
-  없거나(ImportError) 인자가 어긋나거나 시간·취소가 걸리면 `unchecked`로 남고, 엔진은 그 항목을 `[확인 필요]`로 둔다.
-- **근거 정직성.** `ToolResult.evidence`는 {tool, version, input, output, verdict, elapsed_ms, reason}이다. 엔진은 이것을 문제·
-  변경 이력에 그대로 붙인다(도구 이름·입력·출력). 예외 원문·경로·비밀값은 evidence에 넣지 않는다(종류만).
-- 도구는 모델이 만든 코드를 실행하지 않는다(`restricted_exec`도 코드 검사·승인 경계를 통과한 명령 규격만 받고, 기본은 꺼짐).
+  없거나(ImportError) 인자가 어긋나거나 시간·취소가 걸리면 `unchecked`로 남고, 엔진은 그 항목을 판단 보류로 둔다.
+- **근거 정직성.** `ToolResult.evidence`는 {tool, version, input, output, verdict, reason, elapsed_ms}다. 예외 원문·경로·
+  비밀값은 evidence에 넣지 않는다(종류만). 모델이 만든 코드는 어떤 도구도 실행하지 않는다.
 
-도구 이름과 인자 규격(FIN-TOOLS가 구현, 이 모듈의 `builtin`이 최소 참조 구현을 등록한다)
-| name | args | output(verdict 포함) |
-|---|---|---|
-| calculator     | {"expression": "4*12", "expected": 40, "tolerance": 1e-6} | {"value": 48, "expected": 40, "verdict": "fail"} |
-| unit_dimension | {"left": {"value": 10, "unit": "mS"}, "right": {"value": 1, "unit": "S/cm"}, "operation": "compare"} 또는 {"quantity": {...}, "expected_dimension": "S/cm"} | {"compatible": false, "left_dimension": "...", "verdict": "fail"} |
-| arithmetic_sum | {"items": [70, 20, 20], "total": 100, "tolerance": 1e-9} | {"computed": 110, "stated": 100, "verdict": "fail"} |
-| structure      | {"lines": [...], "required_sections": [...], "references": [{"line": 7, "ref": "§7"}]} | {"missing": [...], "order_ok": true, "broken_references": [...], "verdict": ...} |
-| citation_lookup| {"doi": "10.../x", "title": "...", "year": 2024} | {"found": true, "retracted": false, "post_status": [...], "verdict": "pass"} |
-| restricted_exec| {"language": "python", "code": "...", "timeout_s": 5, "inputs": {}} | {"verdict": "unchecked", "reason": "exec_disabled"} (기본) |
+도구 이름과 인자(모두 `args = {"plan_text": str, "check": dict}`; check 형식은 `docs/reports/FINAL-TOOLS.md`)
+| name | kind | 검사 | output |
+|---|---|---|---|
+| z3       | constraint | 원문에 명시된 합/곱 제약(≤·≥·=) | final_tools 결과 행(status·message·details) + verdict |
+| pint     | units      | 명시 단위의 차원 호환·변환 | 〃 |
+| networkx | dependency | 명시된 필수 선행 관계의 순환 | 〃 |
 
-verdict 의미: pass = 도구가 주장을 확인함, fail = 도구가 주장과 어긋남을 확인함, unchecked = 판단 불가(통과 아님).
+FIN-TOOLS는 같은 이름으로 `ToolSpec`을 등록(replace=True)해 구현을 바꿀 수 있다. 등록이 없으면 `final_tools` 어댑터가 쓰인다.
 """
 
 from __future__ import annotations
@@ -39,21 +36,14 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-INTERFACE_VERSION = "finalize-tools@v1"
+INTERFACE_VERSION = "finalize-tools@v2"
 VERDICTS = ("pass", "fail", "unchecked")
 
-# 점검 유형 → 도구 이름. 코드가 정한다(LLM이 고르지 않는다). 유형을 더할 때는 여기와 CHECK_KINDS만 늘린다(계약 추가만).
-TOOL_FOR_CHECK: dict[str, str] = {
-    "arithmetic": "calculator",      # 명시된 산식(A × B = C)의 검산
-    "sum": "arithmetic_sum",         # 항목 합계(일정·예산·분할 비율)
-    "unit": "unit_dimension",        # 단위·차원 일관성
-    "structure": "structure",        # 필수 절·순서
-    "reference": "structure",        # 절·표·그림 참조
-    "citation": "citation_lookup",   # 선행연구·인용 ↔ 코퍼스·철회 데이터
-    "exec": "restricted_exec",       # 제한 실행(기본 꺼짐)
-}
+# 점검 유형 → 도구 이름. 코드가 정한다(LLM이 고르지 않는다). 유형을 더할 때는 여기만 늘린다(계약 추가만).
+TOOL_FOR_CHECK: dict[str, str] = {"constraint": "z3", "units": "pint", "dependency": "networkx"}
 CHECK_KINDS: tuple[str, ...] = tuple(TOOL_FOR_CHECK)
 TOOL_NAMES: tuple[str, ...] = tuple(dict.fromkeys(TOOL_FOR_CHECK.values()))
+_STATUS_VERDICT = {"passed": "pass", "pass": "pass", "ok": "pass", "failed": "fail", "fail": "fail"}
 
 
 def tool_for(check_kind: str) -> str:
@@ -83,7 +73,7 @@ class ToolResult:
     ok: bool
     output: dict[str, Any]
     evidence: dict[str, Any]
-    error: str | None = None  # 짧은 분류(invalid_args · tool_unavailable · timeout · cancelled · tool_error)
+    error: str | None = None  # 짧은 분류(invalid_args · tool_unavailable · timeout · cancelled · tool_error · unchecked)
 
     @property
     def verdict(self) -> str:
@@ -140,7 +130,7 @@ class ToolRegistry:
         t0 = time.perf_counter()
         spec = self.get(call.name)
         base = {"tool": call.name, "version": spec.version if spec else None, "interface": INTERFACE_VERSION,
-                "input": _jsonable(dict(call.args)), "check_id": call.check_id}
+                "input": _jsonable(dict(call.args)) if isinstance(call.args, Mapping) else None, "check_id": call.check_id}
 
         def fail(reason: str, error: str) -> ToolResult:
             ev = {**base, "output": {}, "verdict": "unchecked", "reason": reason,
@@ -206,7 +196,45 @@ def _jsonable(value: Any) -> Any:
         return str(value)[:500]
 
 
+# ── final_tools 어댑터(기본 구현) ────────────────────────────────────────
+
+_ARGS_SCHEMA = {"type": "object", "required": ["plan_text", "check"], "additionalProperties": False,
+                "properties": {"plan_text": {"type": "string", "maxLength": 200_000}, "check": {"type": "object"}}}
+
+
+def _adapter(tool: str, kind: str) -> ToolFn:
+    def run(args: dict[str, Any]) -> dict[str, Any]:
+        from neumann.analyze.final_tools import run_tool_checks  # ImportError → tool_unavailable
+
+        check = dict(args["check"])
+        if check.get("kind") not in (None, kind):
+            return {"verdict": "unchecked", "reason": "kind_mismatch", "tool": tool}
+        check["kind"] = kind
+        rows = run_tool_checks(args["plan_text"], [check])
+        row = rows[0] if rows else {"status": "unchecked", "message": "no_result", "details": {}, "plan_lines": []}
+        return {"verdict": _STATUS_VERDICT.get(str(row.get("status")), "unchecked"), "reason": row.get("message"),
+                "tool": row.get("tool", tool), "status": row.get("status"), "details": row.get("details", {}),
+                "plan_lines": row.get("plan_lines", [])}
+    return run
+
+
+ADAPTERS: tuple[ToolSpec, ...] = tuple(
+    ToolSpec(tool, f"final_tools {kind} 검사 어댑터", _adapter(tool, kind), "final_tools@v1", _ARGS_SCHEMA)
+    for kind, tool in TOOL_FOR_CHECK.items()
+)
+
 registry = ToolRegistry()
+
+
+def ensure_adapters(reg: ToolRegistry | None = None) -> list[str]:
+    """등록되지 않은 이름에 final_tools 어댑터를 붙인다(FIN-TOOLS 구현이 먼저 있으면 유지). 반환: 이번에 붙인 이름."""
+    reg = reg or registry
+    added = []
+    for spec in ADAPTERS:
+        if reg.get(spec.name) is None:
+            reg.register(spec)
+            added.append(spec.name)
+    return added
 
 
 def register(spec: ToolSpec, *, replace: bool = False) -> None:
@@ -215,23 +243,28 @@ def register(spec: ToolSpec, *, replace: bool = False) -> None:
 
 def run_tool(call: ToolCall, *, cancel_event: threading.Event | None = None,
              reg: ToolRegistry | None = None) -> ToolResult:
-    """기본 레지스트리로 도구 1건 실행. 참조 구현이 아직 없으면 `builtin`을 먼저 붙인다."""
+    """기본 레지스트리로 도구 1건 실행. 등록된 구현이 없으면 final_tools 어댑터를 쓴다."""
     reg = reg or registry
-    if reg is registry and not registry.names():
-        ensure_builtin()
+    ensure_adapters(reg)
     return reg.run(call, cancel_event=cancel_event)
 
 
-def ensure_builtin() -> None:
-    """최소 참조 구현(`neumann.finalize.tools.builtin`)을 기본 레지스트리에 등록한다(이미 있으면 유지)."""
+def run_check(plan_text: str, check: Mapping[str, Any], *, cancel_event: threading.Event | None = None,
+              reg: ToolRegistry | None = None) -> ToolResult:
+    """검사 1건(final_tools 형식)을 코드가 정한 도구로 돌린다. 모르는 kind는 unchecked."""
+    kind = check.get("kind") if isinstance(check, Mapping) else None
+    check_id = check.get("check_id") if isinstance(check, Mapping) else None
     try:
-        from neumann.finalize.tools import builtin
-    except ImportError:
-        return
-    builtin.register_all(registry)
+        name = tool_for(str(kind))
+    except ValueError:
+        ev = {"tool": None, "version": None, "interface": INTERFACE_VERSION, "input": {"check": _jsonable(dict(check))},
+              "check_id": check_id, "output": {}, "verdict": "unchecked", "reason": "unknown_check_kind", "elapsed_ms": 0.0}
+        return ToolResult(ok=False, output={"verdict": "unchecked", "reason": "unknown_check_kind"}, evidence=ev, error="invalid_args")
+    return run_tool(ToolCall(name, {"plan_text": plan_text, "check": dict(check)}, check_id=check_id), cancel_event=cancel_event, reg=reg)
 
 
 __all__ = [
+    "ADAPTERS",
     "CHECK_KINDS",
     "INTERFACE_VERSION",
     "TOOL_FOR_CHECK",
@@ -242,9 +275,10 @@ __all__ = [
     "ToolRegistry",
     "ToolResult",
     "ToolSpec",
-    "ensure_builtin",
+    "ensure_adapters",
     "register",
     "registry",
+    "run_check",
     "run_tool",
     "tool_for",
 ]

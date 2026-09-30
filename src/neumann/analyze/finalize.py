@@ -7,13 +7,14 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 from typing import Any
 
 from neumann.analyze.gate import extract_numbers
 from neumann.analyze.assemble import _content_words
 from neumann.analyze.pii import mask_pii
 from neumann.analyze.revise import (
-    CONTROL_RE, UNSAFE_MARKUP_RE, contains_identity, unsupported_facts, written_numbers,
+    CONTROL_RE, PLACEHOLDER_RE, UNSAFE_MARKUP_RE, contains_identity, unsupported_facts, written_numbers,
 )
 from neumann.llm import LLMCall, make_llm, validate_output
 from neumann.models import PlanDocument, contains_pii
@@ -122,16 +123,109 @@ def _run_checks(text: str, checks: list, event: Any) -> list:
                 for c in checks]
 
 
-def _text_problem(text: str, source: str) -> str:
+def _numbers(text: str) -> set[str]:
+    return set(extract_numbers(text) + written_numbers(text))
+
+
+def _text_problem(text: str, source: str, tool_numbers: frozenset[str] | set[str] = frozenset()) -> str:
+    """Gate against invented content. ``source`` is the grounded scope (issue lines + tool source quotes).
+
+    Numbers outside ``[확인 필요: …]`` must already occur in ``source``. Inside a placeholder, a number may also
+    be a tool-computed value (``tool_numbers``): the computation is shown to the researcher, never asserted as fact.
+    """
     if contains_pii(text) or contains_identity(text):
         return "pii_or_identity"
     if CONTROL_RE.search(text) or UNSAFE_MARKUP_RE.search(text):
         return "unsafe_markup"
     if unsupported_facts(text, source):
         return "unsupported_fact"
-    if set(extract_numbers(text) + written_numbers(text)) - set(extract_numbers(source) + written_numbers(source)):
+    allowed = _numbers(source)
+    if _numbers(PLACEHOLDER_RE.sub(" ", text)) - allowed:
+        return "unsupported_number"
+    if _numbers(" ".join(PLACEHOLDER_RE.findall(text))) - allowed - set(tool_numbers):
         return "unsupported_number"
     return ""
+
+
+def _computed_numbers(check: dict, row: dict) -> set[str]:
+    """Numbers a completed tool check (passed/failed) established from grounded facts: term/limit values, their
+    stated operation result, and numeric leaves of the tool ``details``. Unchecked rows contribute nothing."""
+    if row.get("status") not in ("pass", "passed", "ok", "fail", "failed"):
+        return set()
+    values: list[str] = []
+    params = check.get("params", {}) if isinstance(check, dict) else {}
+    params = params if isinstance(params, dict) else {}
+
+    def number(v: Any) -> bool:
+        return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+    terms = [t.get("value") for t in params.get("terms", []) if isinstance(t, dict) and number(t.get("value"))]
+    others = [params[k].get("value") for k in ("limit", "left", "right") if isinstance(params.get(k), dict) and number(params[k].get("value"))]
+    values += [str(v) for v in terms + others]
+    if terms and params.get("operation") in ("sum", "product"):
+        total = sum(terms) if params["operation"] == "sum" else math.prod(terms)
+        values.append(str(int(total)) if float(total).is_integer() else str(total))
+
+    def leaves(obj: Any) -> None:
+        if isinstance(obj, bool):
+            return
+        if isinstance(obj, (int, float)):
+            values.append(str(int(obj)) if float(obj).is_integer() else str(obj))
+        elif isinstance(obj, dict):
+            for v in obj.values():
+                leaves(v)
+        elif isinstance(obj, list):
+            for v in obj:
+                leaves(v)
+    leaves(row.get("details", {}))
+    return set(extract_numbers(" ".join(values)))
+
+
+def _edit_scope(issue_ids: list, issue_by_id: dict, check_by_id: dict, rows: dict, lines: list[str]) -> tuple[set[int], str, set[str]]:
+    """Grounded scope of one correction: the issue's plan lines, the source lines/quotes of its tool checks,
+    and numbers those completed checks computed. Text outside this scope cannot enter the draft."""
+    scope_lines: set[int] = set()
+    quotes: list[str] = []
+    tool_numbers: set[str] = set()
+    for iid in issue_ids:
+        issue = issue_by_id[iid]
+        scope_lines.update(n for n in issue.get("plan_lines", []) if isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= len(lines))
+        for cid in issue.get("check_ids", []):
+            check = check_by_id.get(cid)
+            if not isinstance(check, dict):
+                continue
+            params = check.get("params") if isinstance(check.get("params"), dict) else {}
+            for source in params.get("sources", []) if isinstance(params.get("sources"), list) else []:
+                if not isinstance(source, dict):
+                    continue
+                n = source.get("line")
+                if isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= len(lines):
+                    scope_lines.add(n)
+                if isinstance(source.get("quote"), str):
+                    quotes.append(source["quote"])
+            row = rows.get(cid)
+            if row is not None:
+                tool_numbers |= _computed_numbers(check, row)
+    scope = "\n".join(lines[n - 1] for n in sorted(scope_lines))
+    if quotes:
+        scope += "\n" + "\n".join(quotes)
+    return scope_lines, scope, tool_numbers
+
+
+_DONE = ("pass", "passed", "ok", "fail", "failed")
+
+
+def _unchecked_reason(check_ids: list, rows: dict) -> str:
+    """Why an issue stayed unchecked: 판단 보류(no explicit tool-checkable condition) vs 미검사(tool could not run)."""
+    if not check_ids:
+        return "no_tool_check"
+    for cid in check_ids:
+        row = rows.get(cid)
+        if row is None:
+            return "check_not_run"
+        if row.get("status") not in _DONE:
+            return str(row.get("message") or "unchecked")[:80]
+    return "unchecked"
 
 
 def finalize_plan(plan_text: str, *, result=None, provider=None, checks=None,
@@ -159,6 +253,8 @@ def finalize_plan(plan_text: str, *, result=None, provider=None, checks=None,
     def stop(reason: str) -> dict:
         output["notices"].append(reason)
         for issue in output["issues"]:
+            if issue.get("status") == "unchecked":
+                issue.setdefault("unchecked_reason", "review_incomplete")
             issue.pop("check_ids", None)
         return output
     if _cancelled(cancel_event):
@@ -226,7 +322,9 @@ def finalize_plan(plan_text: str, *, result=None, provider=None, checks=None,
     if correction is None:
         return stop("수정 제안 실패로 원문을 보존했습니다. 최종 검토 미완료입니다.")
     updated, edited, touched = list(lines), set(), set()
-    issue_ids = {i["issue_id"] for i in issues}
+    issue_by_id = {i["issue_id"]: i for i in issues}
+    check_by_id = {c.get("check_id"): c for c in selected if isinstance(c, dict) and isinstance(c.get("check_id"), str)}
+    rows_before = {r["check_id"]: r for r in output["tool_checks_before"]}
     for edit in correction["edits"]:
         no, replacement = edit["line"], edit["replacement"]
         reason = ""
@@ -234,17 +332,22 @@ def finalize_plan(plan_text: str, *, result=None, provider=None, checks=None,
             reason = "duplicate_line"
         elif edit["current_text"] != lines[no - 1]:
             reason = "anchor_mismatch"
-        elif not edit["issue_ids"] or set(edit["issue_ids"]) - issue_ids:
+        elif not edit["issue_ids"] or set(edit["issue_ids"]) - set(issue_by_id):
             reason = "unknown_issue"
         elif not replacement.strip() or "\n" in replacement or "\r" in replacement:
             reason = "invalid_line"
         else:
-            reason = _text_problem(replacement, lines[no - 1])
-            # Existing conservative polish vocabulary gate: do not introduce new scientific
-            # content merely because it escaped numeric/entity regular expressions. Unknown
-            # researcher facts can be expressed only inside explicit confirmation placeholders.
-            if not reason and _content_words(replacement) - _content_words(lines[no - 1]):
-                reason = "unsupported_content"
+            scope_lines, scope, tool_numbers = _edit_scope(edit["issue_ids"], issue_by_id, check_by_id, rows_before, lines)
+            if no not in scope_lines:
+                reason = "line_outside_issue"
+            else:
+                reason = _text_problem(replacement, scope, tool_numbers)
+                # Grounded-vocabulary gate: a correction may only use words the issue's own lines and the
+                # tool-checked source quotes already contain ("fix the text with facts the text states").
+                # New scientific content, numbers, entities or achieved results are still rejected; unknown
+                # researcher facts can be expressed only inside explicit [확인 필요: …] placeholders.
+                if not reason and _content_words(replacement) - _content_words(scope):
+                    reason = "unsupported_content"
         touched.add(no)
         applied = not reason and replacement != lines[no - 1]
         output["corrections"].append({"line": no, "before": lines[no - 1],
@@ -272,6 +375,9 @@ def finalize_plan(plan_text: str, *, result=None, provider=None, checks=None,
         statuses = [rows.get(cid, {}).get("status", "unchecked") for cid in issue["check_ids"]]
         issue["status"] = ("resolved" if statuses and all(s in ("pass", "passed", "ok") for s in statuses)
                            else "unresolved" if any(s in ("fail", "failed") for s in statuses) else "unchecked")
+        if issue["status"] == "unchecked":
+            issue["unchecked_reason"] = _unchecked_reason(issue["check_ids"], rows)
+        issue["corrected_lines"] = sorted(n for n in issue.get("plan_lines", []) if n in edited)
         issue.pop("check_ids", None)
     output["status"] = "partial" if any(i["status"] != "resolved" for i in issues) or any(not c["applied"] for c in output["corrections"]) else "completed"
     return output
