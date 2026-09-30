@@ -1,5 +1,9 @@
 # 인계 문서
 
+## 후속 기능 인수 안내 — 2026-10-01
+
+최종 검사·교정 후보의 인수 위치, 재검증 명령, 기존 core 차단 사항과 통합 순서는 [FINALIZATION_HANDOFF.md](FINALIZATION_HANDOFF.md)에 정리했다. 이 브랜치의 PASS와 root 최신 core의 미해결 출처 결합/export 오류를 구분한다. 서비스 연결 전 최신 core 수정과 동일 결합 후보 검증이 필요하다.
+
 ## 최종 검사·교정 후속 후보 — 2026-10-01 (이 채팅의 별도 개발 브랜치)
 
 - `codex/finalization-20261001`은 기존 UI/core `ff7e474`에서 분리한 후속 후보다. 기존 main/8020/8099와 다른 PM의 core 통합 작업은 변경하지 않았다.
