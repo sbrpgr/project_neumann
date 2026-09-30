@@ -838,28 +838,29 @@
   var order = ['채택', '보류', '기각'];
 
   /* ---------- E4-L2f 내보내기: POST /premortem/package → ZIP 9파일(결정은 decision_log.json) ----------
-     화면 데이터(ui_view)에는 분석 결과 원본(PremortemResult)이 없다. 뷰에 원본(result)이 실려 오면 그것을 쓰고,
-     없으면 같은 계획서로 POST /premortem을 한 번 더 불러 원본을 받은 뒤 화면과 같은지(계획서 id·카드 id·체크리스트 id·문구)
-     확인하고 묶는다. 다르면 내보내지 않는다. 결정은 연구자가 고른 항목만(결정 전 기본값 보류는 싣지 않음). */
+     원결과는 화면 응답(/premortem/view, jobs 화면 결과)의 result(PremortemResult 계약 필드만)를 그대로 쓴다. 재분석하지 않는다.
+     result가 없으면(샘플·오류·옛 서버) 버튼을 끄고 사유를 보인다. 결정은 연구자가 고른 항목만(결정 전 기본값 보류는 싣지 않음). */
   var EXP_FILES = ['README.md', 'manifest.json', 'risk_cards.json', 'evidence_pack.json', 'similar_works.csv', 'plan_annotated.md', 'neumann_report.md', 'ai_context.md', 'decision_log.json'];
   var EXP_DEC = { '채택': 'adopt', '보류': 'hold', '기각': 'reject' };
-  var EXP = { d: null, raw: null, via: '', busy: false, msg: '', err: false };
-  function expState() { if (EXP.d !== D) EXP = { d: D, raw: null, via: '', busy: false, msg: '', err: false }; return EXP; }
+  var EXP = { d: null, busy: false, msg: '', err: false };
+  function expState() { if (EXP.d !== D) EXP = { d: D, busy: false, msg: '', err: false }; return EXP; }
   function expBlock() {  /* 내보낼 수 없는 사유(없으면 '') */
     if (!D) return '분석 결과 없음';
     var st = D._status || {};
     if (st.source === 'sample') return '샘플 데이터(분석 결과 아님)';
     if (st.result_status === 'error' || st.contract_ok === false) return '분석 오류 결과';
-    if (!expInline(D) && !String(S.text || '').trim()) return '원본 계획서 텍스트 없음';
+    var raw = expInline(D), ex = st.export || {};
+    if (!raw) return '화면 응답에 원결과가 없음' + (ex.reason ? ' · ' + ex.reason : '');
+    if (raw.plan_id !== D.plan_id) return '원결과와 화면의 계획서 id가 다름';
     return '';
   }
-  function expShort(why) { return why.indexOf('샘플') === 0 ? '샘플' : (why.indexOf('오류') >= 0 ? '오류' : '결과 없음'); }
+  function expShort(why) { return why.indexOf('샘플') === 0 ? '샘플' : (why.indexOf('오류') >= 0 ? '오류' : (why.indexOf('원결과') >= 0 ? '원결과 없음' : '결과 없음')); }
   function expStepHtml(s) {
     var why = expBlock();
     if (why) return '<button class="stp" type="button" id="stpExport" disabled title="' + esc('내보내기 · ' + why) + '"><span class="n">IV</span>' + s + '<span class="soon">' + esc(expShort(why)) + '</span></button>';
     return '<button class="stp exp" type="button" id="stpExport" title="내보내기 · ZIP 9파일"><span class="n">IV</span>' + s + '</button>';
   }
-  function expInline(d) { var r = d && (d.result || d._result); return r && typeof r === 'object' && r.plan_id && r.session_id ? r : null; }
+  function expInline(d) { var r = d && d.result; return r && typeof r === 'object' && r.plan_id && r.session_id ? r : null; }
   function expDecided(d) { return (d.checklist || []).filter(function (it) { return it.set !== false; }); }
   function expDecisions(d) {
     return expDecided(d).map(function (it) {
@@ -875,13 +876,7 @@
     dd.forEach(function (it) { c[it.s] = (c[it.s] || 0) + 1; });
     return '결정 로그에 싣는 결정 ' + dd.length + '건 · 채택 ' + c['채택'] + ' · 보류 ' + c['보류'] + ' · 기각 ' + c['기각'] + (rest > 0 ? ' · 결정 전 ' + rest + '건은 싣지 않음(화면 기본값 보류)' : '');
   }
-  function expSrcText() {
-    var e = expState();
-    if (expInline(D) || e.via === 'view') return '원본 결과: 화면 응답에 실린 분석 결과 JSON을 그대로 씁니다.';
-    if (e.via === 'refetch') return '원본 결과: 같은 계획서로 POST /premortem을 다시 불러 받았고, 계획서 id·위험카드·체크리스트가 화면과 같음을 확인했습니다(세션 id는 새로 받은 값).';
-    var live = H && H.llm && H.llm.effective && H.llm.effective !== 'mock';
-    return '원본 결과: 화면 데이터에는 분석 결과 원본이 없어, 내려받을 때 같은 계획서로 POST /premortem을 한 번 더 불러 받고 화면과 같은지(계획서 id·위험카드·체크리스트) 확인합니다. 다르면 내보내지 않습니다.' + (live ? ' 실제 LLM 서버라 재분석 시간·비용이 듭니다.' : '');
-  }
+  function expSrcText() { return '원결과: 화면 응답에 함께 실린 분석 결과 JSON(계약 필드만)을 그대로 보냅니다. 재분석하지 않습니다.'; }
   function expHtml() {
     var e = expState(), why = expBlock();
     return '<section id="s-export"><div class="sec"><span class="num">VI</span><h2>내보내기</h2><span class="d">ZIP 9파일 · 체크리스트 결정은 decision_log.json</span></div><div class="card expbox">' +
@@ -909,27 +904,6 @@
     return 'HTTP ' + code;
   }
   function expJson(r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error(expServerMsg(j, r.status)); return j; }); }
-  function expMismatch(d, raw) {
-    if (!raw || typeof raw !== 'object' || !raw.plan_id) return '분석 결과 JSON이 아님';
-    if (raw.sample) return '서버가 샘플 데이터를 돌려줌';
-    if (raw.plan_id !== d.plan_id) return '계획서 id가 화면과 다름';
-    var ids = {}; (raw.risk_cards || []).forEach(function (c) { ids[c.card_id] = 1; });
-    var badCard = (d.cards || []).filter(function (c) { return c.id && !ids[c.id]; })[0];
-    if (badCard) return '위험카드가 화면과 다름(' + badCard.id + ')';
-    var ck = {}; (raw.checklist || []).forEach(function (it) { var id = it.item_id || it.id; if (id) ck[id] = it.action || it.t || it.text || it.title || ''; });
-    var badIt = (d.checklist || []).filter(function (it) { return ck[it.id] !== it.t; })[0];
-    if (badIt) return '체크리스트가 화면과 다름(' + badIt.id + ')';
-    return '';
-  }
-  function expRaw(d) {
-    var e = expState(), inline = expInline(d);
-    if (e.raw) return Promise.resolve(e.raw);
-    if (inline) { e.raw = inline; e.via = 'view'; return Promise.resolve(inline); }
-    expMsg('원본 결과 받는 중 · POST /premortem(같은 계획서)');
-    return fetch('premortem', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ plan_text: S.text, filename: S.filename || null }) })
-      .then(expJson)
-      .then(function (raw) { var bad = expMismatch(d, raw); if (bad) throw new Error('다시 받은 결과가 화면과 달라 내보내지 않음 · ' + bad); if (EXP.d === d) { EXP.raw = raw; EXP.via = 'refetch'; } return raw; });
-  }
   function expFileName(cd) { var m = /filename="?([^";]+)"?/.exec(cd || ''); var n = m ? m[1].replace(/[^0-9A-Za-z_.-]/g, '') : ''; return /\.zip$/i.test(n) ? n : 'neumann_package.zip'; }
   function expSave(blob, name) {
     var u = URL.createObjectURL(blob), a = document.createElement('a');
@@ -941,12 +915,9 @@
     if (e.busy) return;
     if (why) { expMsg('내보낼 수 없음 · ' + why, true); return; }
     e.busy = true; expPaint();
-    var n = 0;
-    expRaw(d).then(function (raw) {
-      var decisions = expDecisions(d); n = decisions.length;
-      expMsg('ZIP 만드는 중 · POST /premortem/package · 결정 ' + n + '건');
-      return fetch('premortem/package', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ result: raw, decisions: decisions }) });
-    }).then(function (r) {
+    var raw = expInline(d), decisions = expDecisions(d), n = decisions.length;
+    expMsg('ZIP 만드는 중 · POST /premortem/package · 결정 ' + n + '건');
+    fetch('premortem/package', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ result: raw, decisions: decisions }) }).then(function (r) {
       if (!r.ok) return expJson(r);
       var name = expFileName(r.headers.get('Content-Disposition'));
       return r.blob().then(function (b) { if (EXP.d !== d) return; expSave(b, name); e.busy = false; expMsg('내려받음 · ' + name + ' · ' + upSize(b.size) + ' · 결정 ' + n + '건'); });
