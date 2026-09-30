@@ -354,6 +354,11 @@ def _scrub_ok_str(s: str) -> str:
     return scrub_public(s)
 
 
+def scrub_ok_payload(data: Any) -> Any:
+    """정상 분석 응답의 진단 필드에서 키·절대 경로·상류 API 문구·트레이스를 가린다(미들웨어와 같은 규칙)."""
+    return _walk_diag(data, _scrub_ok_str)
+
+
 class RedactingFilter(logging.Filter):
     """로그 레코드에서 키 모양 문자열·실제 키 값을 가리고, 트레이스를 예외 종류 한 줄로 줄인다.
 
@@ -593,6 +598,16 @@ class Gate:
 
     def has_plan(self, plan_id: str) -> bool:
         return any(t.plan_id == plan_id for t in (*self._waiting.values(), *self._running.values()))
+
+    def ticket_for_plan(self, plan_id: str) -> Ticket | None:
+        """그 계획서의 실행 중 자리(없으면 대기 중 자리). 작업(jobs) 상태 조회용(E4-L2d)."""
+        for t in self._running.values():
+            if t.plan_id == plan_id:
+                return t
+        for t in self._waiting.values():
+            if t.plan_id == plan_id:
+                return t
+        return None
 
     async def acquire(self, t: Ticket) -> None:
         """차례가 올 때까지 기다린다. 취소되면 자리를 비운다."""
@@ -868,6 +883,20 @@ class Serving:
         self.warmup_state: dict[str, Any] = {"state": "off" if not c.warmup else "pending", "plans": 0, "cached": 0,
                                              "failed": 0}
         self._warm_task: asyncio.Task[Any] | None = None
+        # 코드가 등록하는 보호 경로(E4-L2d: POST /premortem/jobs). 설정(NEUMANN_PROTECTED_PATHS)보다 우선한다.
+        self.extra_protected: dict[str, str] = {}
+
+    def protect(self, path: str, kind: str = "analysis") -> None:
+        """경로를 보호 경로로 등록한다. 설정으로 빼거나 다른 종류로 바꿀 수 없다(우회 경로 방지)."""
+        self.extra_protected[path.rstrip("/") or "/"] = kind if kind in KINDS else "gated"
+
+    def kind_for(self, path: str) -> str | None:
+        key = path.rstrip("/") or "/"
+        return self.extra_protected.get(key) or self.config.protected.get(key)
+
+    def admit_new_analysis(self, ctx: RequestCtx) -> tuple[int, dict[str, Any], dict[str, str]] | None:
+        """새 분석 입장 관문(차단 스위치 → IP 속도 제한 → 일일 예산 → 대기열). 미들웨어와 같은 코드다."""
+        return ServingMiddleware(None, self)._admit_new_analysis(ctx)
 
     def blocked(self) -> bool:
         """차단 스위치: 환경변수(NEUMANN_BLOCK_NEW) 또는 파일 플래그가 있으면 새 분석을 받지 않는다."""
@@ -889,7 +918,9 @@ class Serving:
         serving_pipeline.__wrapped_pipeline__ = raw  # type: ignore[attr-defined]
         return serving_pipeline
 
-    async def run(self, fn: Callable[..., Any], plan_text: str, **kwargs: Any) -> dict[str, Any]:
+    async def run(self, fn: Callable[..., Any], plan_text: str, *, timeout_s: float | None = None,
+                  **kwargs: Any) -> dict[str, Any]:
+        """캐시 → 같은 계획서 합류 → 대기열·실행. ``timeout_s``를 주면 요청 시간 상한 대신 그 값(작업 방식)."""
         ctx = current_request() or RequestCtx(ticket="int_" + uuid.uuid4().hex[:12])
         pid = ctx.plan_id or plan_key(plan_text)
         ctx.plan_id, ctx.chars = pid, len(plan_text)
@@ -918,7 +949,8 @@ class Serving:
             self._drop_reservation(ctx)
             ctx.queue = "joined"
             self.counters["joined"] += 1
-        remaining = self.config.request_timeout_s - (time.monotonic() - ctx.started)
+        limit = self.config.request_timeout_s if timeout_s is None else timeout_s
+        remaining = limit - (time.monotonic() - ctx.started)
         try:
             result = await asyncio.wait_for(asyncio.shield(job), timeout=max(remaining, 0.01))
         except asyncio.TimeoutError:
@@ -1095,6 +1127,9 @@ def _header(scope: dict[str, Any], name: str) -> str | None:
     return None
 
 
+_APP_BUSY_CODES = frozenset({"busy", "unavailable"})  # 앱이 503으로 돌려주는 사용자 안내(E4-L2d 작업 API)
+
+
 def _err(code: str, message: str, ticket: str, **extra: Any) -> dict[str, Any]:
     return {"status": "error", "error_code": code, "message": message, "request_id": ticket, "ticket": ticket, **extra}
 
@@ -1133,7 +1168,7 @@ class ServingMiddleware:
                                     (b"content-length", str(len(body)).encode("latin-1"))]})
             await send({"type": "http.response.body", "body": body})
             return
-        kind = cfg.protected.get(path.rstrip("/") or "/")
+        kind = self.serving.kind_for(path)
         if scope.get("method") != "POST" or kind is None:
             await self.app(scope, receive, send)
             return
@@ -1370,6 +1405,9 @@ class ServingMiddleware:
                 data = _err("invalid_request", msg, ctx.ticket, fields=_validation_fields(data))
             elif not isinstance(data, dict):
                 data = _err(kind, msg if code >= 500 or data is None else scrub_public(str(data))[:300], ctx.ticket)
+            elif code == 503 and data.get("status") == "error" and data.get("error_code") in _APP_BUSY_CODES:
+                data = _walk_strings(data, scrub_public)  # 앱이 만든 "잠시 뒤 다시" 안내(작업 보관 상한 등)는 문구를 둔다
+                data.setdefault("request_id", ctx.ticket)
             elif code >= 500:
                 data = _walk_strings(data, lambda s: _sanitize_error_str(s, msg))
                 data.update({"message": msg, "error_code": kind, "request_id": ctx.ticket, "ticket": ctx.ticket})
@@ -1484,5 +1522,6 @@ __all__ = [
     "MESSAGES", "AnalysisTimeout", "DailyBudget", "Gate", "QueueFull", "RateLimiter", "RedactingFilter", "RequestCtx",
     "ResultCache", "Serving", "ServingConfig", "ServingMiddleware", "client_ip", "current_request",
     "ensure_log_handler", "get_serving", "install", "install_exception_handlers", "install_log_filter", "plan_key",
-    "public_plan_ids", "router", "scrub_public", "scrub_secrets", "user_message", "wrap_pipeline",
+    "public_plan_ids", "router", "scrub_ok_payload", "scrub_public", "scrub_secrets", "user_message",
+    "wrap_pipeline",
 ]
