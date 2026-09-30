@@ -151,6 +151,57 @@ def test_static_injection_is_relative_and_complete(tmp_path: Path, webui: Path) 
     assert not re.search(r"""(?:src|href)\s*=\s*["'](?:https?:)?//""", page)
 
 
+FAKE_TEMPLATES = {
+    "index": {"version": 1, "scope": {"label": "t", "domains": ["d"]}, "required_sections": [],
+              "templates": [{"id": "tpl-a", "kind": "template", "name": "A"}],
+              "examples": [{"id": "ex-plan", "kind": "example", "name": "P", "filename": "plan.md"}]},
+    "items": {"tpl-a": {"id": "tpl-a", "kind": "template", "text": "# 골격\n## 1. 연구 목표\n"},
+              "ex-plan": {"id": "ex-plan", "kind": "example", "text": (PLANS / "plan.md").read_text(encoding="utf-8")}},
+}
+
+
+def test_templates_are_served_as_static_json(tmp_path: Path, webui: Path) -> None:
+    """E4-L1b 템플릿 선택기(GET templates, templates/{id})를 정적 JSON으로 돌려준다."""
+    (webui / "index.html").write_text(FAKE_INDEX.replace("fetch('health')", "fetch('templates')"), encoding="utf-8")
+    site, summary = build(tmp_path, webui, templates_source=lambda: FAKE_TEMPLATES)
+    assert summary["templates"] == 2
+    assert json.loads((site / "templates.json").read_text(encoding="utf-8")) == FAKE_TEMPLATES["index"]
+    for item_id, item in FAKE_TEMPLATES["items"].items():
+        assert json.loads((site / "templates" / f"{item_id}.json").read_text(encoding="utf-8")) == item
+    blob = static_blob(site)
+    assert blob["templates"] == {"index": "templates.json", "dir": "templates/", "ids": ["tpl-a", "ex-plan"]}
+    page = (site / "index.html").read_text(encoding="utf-8")
+    assert "r === 'templates'" in page and "ST.templates.dir + id + '.json'" in page
+    assert blob["not_demo_note"].startswith("정적 판")
+    problems, stats = bss.check_site(site)
+    assert problems == [] and stats["templates"] == 2
+
+    (site / "templates" / "tpl-a.json").unlink()
+    assert any(p.startswith("[필수] templates/tpl-a.json") for p in bss.check_site(site)[0])
+
+
+def test_page_calling_templates_needs_catalog(tmp_path: Path, webui: Path) -> None:
+    (webui / "index.html").write_text(FAKE_INDEX.replace("fetch('health')", "fetch('templates')"), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="templates"):
+        build(tmp_path, webui, templates_source=lambda: None)
+    bad = {"index": FAKE_TEMPLATES["index"], "items": {"../x": {"id": "../x", "text": ""}}}
+    with pytest.raises(ValueError, match="id"):
+        build(tmp_path, webui, templates_source=lambda: bad)
+    assert not (tmp_path / "data" / "site").exists()
+
+
+def test_real_template_catalog_matches_api() -> None:
+    try:
+        from neumann.api.templates import get_template, list_templates
+    except ImportError:
+        pytest.skip("neumann.api.templates 없음(E4-L1b 병합 전)")
+    got = bss._default_templates()
+    assert got is not None and got["index"] == list_templates()
+    ids = [t["id"] for t in got["index"]["templates"]] + [e["id"] for e in got["index"]["examples"]]
+    assert list(got["items"]) == ids and all(got["items"][i] == get_template(i) for i in ids)
+    assert all(bss.TEMPLATE_ID.match(i) for i in ids)
+
+
 def test_script_json_cannot_close_script_tag() -> None:
     s = bss._script_json({"t": "</script><script>alert(1)</script> <!-- &  "})
     assert "</" not in s and "<!--" not in s and " " not in s
@@ -339,3 +390,5 @@ def test_real_webui_build_passes_contract_and_checks(tmp_path: Path) -> None:
     problems, stats = bss.check_site(out)
     assert problems == [], problems
     assert stats["demos"] == 3
+    if bss.PAGE_CALLS_TEMPLATES.search(src):  # E4-L1b 템플릿 선택기
+        assert summary["templates"] > 0 and stats["templates"] == summary["templates"]

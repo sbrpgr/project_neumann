@@ -56,6 +56,10 @@ LIVE_NOTE = "라이브 분석 아님"
 SITE_TITLE_SUFFIX = " (정적 데모 · 사전 계산본)"
 INPUT_NOTE = ("정적 판: 미리 계산해 둔 데모 3건 중 하나를 고르면 본문이 채워집니다. "
               "본문 수정·파일 업로드·라이브 분석은 서버 판에서만 됩니다.")
+NOT_DEMO_NOTE = ("정적 판: 템플릿 골격은 보기만 할 수 있습니다. 분석 결과(사전 계산본)는 데모 3건에만 있어 "
+                 "위 데모나 '예시 불러오기'를 고르면 실행할 수 있습니다.")
+TEMPLATE_ID = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")  # api/templates.py의 id 규칙(파일 이름으로 쓴다)
+TEMPLATES_INDEX = "templates.json"
 
 ViewBuilder = Callable[..., dict[str, Any]]
 Validator = Callable[[dict[str, Any]], list[str]]
@@ -339,7 +343,8 @@ STATIC_CSS = """
   .sdemo .m { display: block; font-size: 12px; color: var(--green); }
   .sdemo .m.fx { color: var(--red); }
   .sdemo.on { border-color: var(--ink); box-shadow: inset 0 -3px 0 var(--red); }
-  .snote { font-size: 12.5px; color: var(--text2); margin: 0 0 10px 0; }
+  .snote { font-size: 12.5px; color: var(--text2); margin: 10px 0; }
+  .snote.warn { color: var(--red-d); }
   textarea.ta[readonly] { background: var(--soft); color: var(--text2); cursor: default; }
   @media (max-width: 860px) { .sdemos { grid-template-columns: 1fr; } .sbanner { padding: 8px 18px; } }
 """
@@ -373,6 +378,15 @@ STATIC_SHIM_JS = r"""
       return realFetch(d.json, { cache: 'no-cache' });
     }
     if (r === 'premortem' || (r && r.indexOf('premortem/') === 0)) return reply(ST.not_found, 404);
+    if (r === 'templates') {
+      if (!ST.templates) return reply({ status: 'error', reason: '정적 판: 템플릿 카탈로그 없음' }, 404);
+      return realFetch(ST.templates.index, { cache: 'no-cache' });
+    }
+    if (r && r.indexOf('templates/') === 0) {
+      var id = ''; try { id = decodeURIComponent(r.slice('templates/'.length)); } catch (e) { id = ''; }
+      if (ST.templates && ST.templates.ids.indexOf(id) >= 0) return realFetch(ST.templates.dir + id + '.json', { cache: 'no-cache' });
+      return reply({ detail: '템플릿 없음: ' + id }, 404);
+    }
     return realFetch(input, init);
   };
 })();
@@ -386,13 +400,25 @@ STATIC_INPUT_JS = r"""
   if (!ST || !ST.demos || !ST.demos.length || !app) return;
   var sel = 0;
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
+  function norm(t) { return String(t == null ? '' : t).replace(/\r\n?/g, '\n').trim(); }
+  function matchDemo(text) { for (var i = 0; i < ST.demos.length; i++) { if (norm(ST.demos[i].plan_text) === norm(text)) return i; } return -1; }
+  function sync() {
+    var ta = document.getElementById('ta'); if (!ta) return;
+    var k = matchDemo(ta.value);
+    if (k >= 0) sel = k;
+    Array.prototype.forEach.call(document.querySelectorAll('#demoPicker .sdemo'), function (b) {
+      var on = Number(b.getAttribute('data-demo')) === k; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    var btn = document.getElementById('btnStart'); if (btn) btn.disabled = k < 0;
+    var note = document.getElementById('staticNote');
+    if (note) { note.textContent = k < 0 ? ST.not_demo_note : ST.input_note; note.classList.toggle('warn', k < 0); }
+    document.body.setAttribute('data-static-demo', String(k));
+  }
   function fill() {
     var ta = document.getElementById('ta'); if (!ta) return;
     var d = ST.demos[sel];
     if (ta.value !== d.plan_text) { ta.value = d.plan_text; ta.dispatchEvent(new Event('input', { bubbles: true })); }
-    Array.prototype.forEach.call(document.querySelectorAll('#demoPicker .sdemo'), function (b) {
-      var on = Number(b.getAttribute('data-demo')) === sel; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
-    });
+    sync();
   }
   function decorate() {
     if (document.body.getAttribute('data-view') !== 'input') return;
@@ -410,7 +436,7 @@ STATIC_INPUT_JS = r"""
     var note = document.createElement('p'); note.className = 'snote'; note.id = 'staticNote'; note.textContent = ST.input_note;
     ta.parentNode.insertBefore(note, ta);
     picker.addEventListener('click', function (ev) { var b = ev.target.closest('[data-demo]'); if (!b) return; sel = Number(b.getAttribute('data-demo')); fill(); });
-    fill();
+    if (norm(ta.value)) sync(); else fill();  /* 템플릿·예시로 불러온 본문은 덮어쓰지 않는다 */
   }
   new MutationObserver(decorate).observe(app, { childList: true });
   decorate();
@@ -480,6 +506,26 @@ def _git_commit() -> str:
     return out.stdout.strip() if out.returncode == 0 else ""
 
 
+def _default_templates() -> dict[str, Any] | None:
+    """E4-L1b 템플릿 카탈로그(GET /templates, /templates/{id} 응답)를 정적 JSON으로. 모듈이 없으면 None."""
+    try:
+        from neumann.api.templates import get_template, list_templates
+    except ImportError:
+        return None
+    index = list_templates()  # 카탈로그 검사 실패면 CatalogError로 빌드를 멈춘다
+    ids = [t["id"] for t in index.get("templates", [])] + [e["id"] for e in index.get("examples", [])]
+    items = {}
+    for item_id in ids:
+        item = get_template(item_id)
+        if item is None:
+            raise ValueError(f"템플릿 카탈로그의 {item_id}를 읽지 못함")
+        items[item_id] = item
+    return {"index": index, "items": items}
+
+
+PAGE_CALLS_TEMPLATES = re.compile(r"""fetch\(\s*['"]templates\b""")
+
+
 def build_site(
     out_dir: Path,
     *,
@@ -490,6 +536,7 @@ def build_site(
     fixture_path: Path = FIXTURE_RESULT,
     build_view: ViewBuilder | None = None,
     validate: Validator | None = None,
+    templates_source: Callable[[], dict[str, Any] | None] = _default_templates,
     force: bool = False,
 ) -> dict[str, Any]:
     """정적 사이트를 out_dir에 만든다(임시 폴더에서 만든 뒤 바꿔 끼운다). 빌드 요약을 돌려준다."""
@@ -504,6 +551,9 @@ def build_site(
 
     built_at = datetime.now(UTC).isoformat(timespec="seconds")
     src_bytes = src_index.read_bytes()
+    templates = templates_source()
+    if templates is None and PAGE_CALLS_TEMPLATES.search(src_bytes.decode("utf-8")):
+        raise RuntimeError("화면이 GET templates를 부르는데 템플릿 카탈로그(neumann.api.templates)를 읽지 못했다")
     demos = [resolve_demo(d, precomputed_dir, fixture_path) for d in load_demos(plans_dir, demo_names)]
 
     out_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -525,10 +575,21 @@ def build_site(
                 "label": demo_label(d), "badge": demo_badge(d), "reason": d.reason,
                 "cards": len(view.get("cards", [])), "works": len(view.get("works", [])),
             })
+        tpl_info = None
+        if templates is not None:
+            ids = list(templates["items"])
+            bad = [i for i in ids if not TEMPLATE_ID.match(i)]
+            if bad:
+                raise ValueError(f"템플릿 id가 파일 이름 규칙에 맞지 않는다: {bad}")
+            (tmp / "templates").mkdir(exist_ok=True)
+            (tmp / TEMPLATES_INDEX).write_text(json.dumps(templates["index"], ensure_ascii=False), encoding="utf-8")
+            for item_id, item in templates["items"].items():
+                (tmp / "templates" / f"{item_id}.json").write_text(json.dumps(item, ensure_ascii=False), encoding="utf-8")
+            tpl_info = {"index": TEMPLATES_INDEX, "dir": "templates/", "ids": ids}
         label = site_label(demos)
         static = {
             "version": 1, "built_at": built_at, "live": False, "label": label, "input_note": INPUT_NOTE,
-            "demos": entries,
+            "not_demo_note": NOT_DEMO_NOTE, "demos": entries, "templates": tpl_info,
             "health": {
                 "status": "ok",
                 "version": f"{_neumann_version()} · 정적 판",
@@ -549,6 +610,7 @@ def build_site(
         summary = {
             "built_at": built_at, "neumann_version": _neumann_version(), "git_commit": _git_commit(),
             "webui_index_sha256": _sha256_bytes(src_bytes), "label": label,
+            "templates": len(tpl_info["ids"]) if tpl_info else 0,
             "demos": [{k: e[k] for k in ("id", "file", "kind", "substitute", "origin", "generated_at", "model", "sha256", "cards",
                                           "works", "reason")} for e in entries],
         }
@@ -696,6 +758,28 @@ def check_site(site: Path, *, expect_demos: int = len(DEMO_PLANS)) -> tuple[list
         if not isinstance(view.get("plan"), dict) or not isinstance(view.get("cards"), list):
             problems.append(f"[필수] {rel}: 화면 데이터(plan·cards) 없음")
 
+    tpl_index = site / TEMPLATES_INDEX
+    if PAGE_CALLS_TEMPLATES.search(page) and not tpl_index.is_file():
+        problems.append(f"[필수] 화면이 templates를 부르는데 {TEMPLATES_INDEX} 없음")
+    stats["templates"] = 0
+    if tpl_index.is_file():
+        try:
+            cat = json.loads(tpl_index.read_text(encoding="utf-8"))
+            tpl_ids = [t["id"] for t in cat.get("templates", [])] + [e["id"] for e in cat.get("examples", [])]
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            tpl_ids = []
+            problems.append(f"[필수] {TEMPLATES_INDEX}를 읽지 못함")
+        stats["templates"] = len(tpl_ids)
+        for item_id in tpl_ids:
+            item_path = site / "templates" / f"{item_id}.json"
+            try:
+                item = json.loads(item_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                problems.append(f"[필수] templates/{item_id}.json 없음 또는 파싱 실패")
+                continue
+            if not isinstance(item, dict) or not isinstance(item.get("text"), str) or item.get("id") != item_id:
+                problems.append(f"[필수] templates/{item_id}.json: id·text 없음")
+
     # 2) 비밀값·환경변수·로컬 경로 (텍스트 파일 전부)
     verify = _load_verify()
     secrets = verify.load_real_secrets()
@@ -788,7 +872,7 @@ def main(argv: list[str] | None = None) -> int:
                   f"카드 {d['cards']} · 유사 연구 {d['works']}{extra}")
         problems, stats = check_site(out)
     print(f"검사: 파일 {stats['files']}개({stats['bytes'] / 1024 / 1024:.1f}MB) · 텍스트 {stats['text_files']}개 · "
-          f"리소스 참조 {stats['resource_refs']}개 · 데모 {stats['demos']}건")
+          f"리소스 참조 {stats['resource_refs']}개 · 데모 {stats['demos']}건 · 템플릿·예시 {stats.get('templates', 0)}건")
     if problems:
         print(f"검사 실패 {len(problems)}건:")
         for p in problems:

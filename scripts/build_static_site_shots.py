@@ -6,6 +6,8 @@
   ``http://127.0.0.1:<port>/project_neumann/``을 연다(상대 경로가 깨지면 여기서 드러난다).
 - 1440×900, 렌더 완료 DOM 조건을 기다린 뒤 찍는다: 입력(데모 선택) → 데모 1 리포트 → 위험카드·근거 패널.
 - 데모 3건을 모두 돌려 리포트에 "라이브 분석 아님" 표시가 나오는지, 데모 밖 입력이 거절되는지 잰다.
+- 화면이 템플릿 선택기(GET templates, E4-L1b)를 쓰면: 목록이 정적 JSON으로 뜨는지, 골격을 고르면 본문이 바뀌고
+  실행이 막히는지(분석 결과는 데모뿐), 예시를 고르면 데모와 맞아 실행이 열리는지 잰다.
 - 콘솔 오류·페이지 오류·실패 요청(4xx/5xx 포함)·외부 도메인 요청을 기록한다. 하나라도 있으면 exit 1.
 - 서버는 끝나면(실패해도) 종료하고 포트가 비었는지 확인한다. 8010(PM 점검 서버)·8000은 쓰지 않는다.
 """
@@ -83,7 +85,8 @@ def stop_server(proc: subprocess.Popen, port: int) -> bool:
 
 
 WAIT_INPUT = ("document.body.dataset.view === 'input' && document.body.dataset.ready === '1' && "
-              "!!document.getElementById('demoPicker') && document.getElementById('hdrState').textContent !== '서버 확인 중'")
+              "!!document.getElementById('demoPicker') && document.getElementById('hdrState').textContent !== '서버 확인 중' && "
+              "(!document.getElementById('tplArea') || !!document.getElementById('tplList') || !!document.getElementById('tplErr'))")
 WAIT_REPORT = ("document.body.dataset.view === 'report' && document.body.dataset.ready === '1' && "
                "!!document.getElementById('statusNotice') && "
                "!!(document.querySelector('#s-cards .rc') || document.querySelector('#noCards'))")
@@ -123,9 +126,34 @@ def shoot(base: str, out: Path, prefix: str) -> dict:
               file_upload_visible: !!document.querySelector('#app [data-mode="file"]'),
               start_enabled: !document.getElementById('btnStart').disabled,
               title: document.title,
+              template_selector: !!document.getElementById('tplArea'),
+              templates: document.querySelectorAll('#tplList [data-tpl]').length,
+              examples: document.querySelectorAll('#exList [data-ex]').length,
+              template_error: (document.getElementById('tplErr') || {}).textContent || '',
             };
         }""")
         page.screenshot(path=str(out / f"{prefix}_input.png"))
+
+        # 1-2 템플릿 선택기(있으면): 골격 → 실행 막힘, 예시 → 데모와 맞아 실행 열림, 데모 1로 되돌림
+        if res["input"]["templates"]:
+            state = """() => ({text: document.getElementById('ta').value.split('\\n')[0],
+                              start_enabled: !document.getElementById('btnStart').disabled,
+                              demo: document.body.getAttribute('data-static-demo'),
+                              note_warn: document.getElementById('staticNote').classList.contains('warn'),
+                              tpl_on: (document.querySelector('#tplList .tp.on') || {}).dataset?.tpl || '',
+                              ex_on: (document.querySelector('#exList .exl.on') || {}).dataset?.ex || ''})"""
+            tpl_id = page.get_attribute("#tplList [data-tpl]", "data-tpl")
+            page.click(f'#tplList [data-tpl="{tpl_id}"]')
+            page.wait_for_function(f"(document.querySelector('#tplList .tp.on') || {{}}).dataset?.tpl === '{tpl_id}' "
+                                   "&& document.body.getAttribute('data-static-demo') === '-1'")
+            res["template_pick"] = {"id": tpl_id, **page.evaluate(state)}
+            ex_id = page.get_attribute("#exList [data-ex]", "data-ex")
+            page.click(f'#exList [data-ex="{ex_id}"]')
+            page.wait_for_function(f"(document.querySelector('#exList .exl.on') || {{}}).dataset?.ex === '{ex_id}' "
+                                   "&& document.body.getAttribute('data-static-demo') !== '-1'")
+            res["example_pick"] = {"id": ex_id, **page.evaluate(state)}
+            page.click('#demoPicker .sdemo[data-demo="0"]')
+            page.wait_for_function("document.body.getAttribute('data-static-demo') === '0'")
 
         # 2 데모 3건 → 리포트
         n = len(res["input"]["demos"])
@@ -216,11 +244,19 @@ def main() -> int:
         shutil.rmtree(stage, ignore_errors=True)
         result.update({"server": f"python -m http.server (127.0.0.1, 하위 경로 /{SUBPATH}/)",
                        "server_stopped": proc is None or proc.poll() is not None, "port_free_after": stopped})
-    print(json.dumps(result, ensure_ascii=False, indent=1))
     bad = (result.get("console_errors") or result.get("page_errors") or result.get("failed_requests")
            or result.get("bad_status") or result.get("external_requests"))
     reports = result.get("reports", [])
-    ok = (not bad and len(reports) == 3 and all(r["live_note_shown"] for r in reports)
+    inp = result.get("input", {})
+    tpl_ok = True
+    if inp.get("template_selector"):
+        tp, ex = result.get("template_pick", {}), result.get("example_pick", {})
+        tpl_ok = (inp.get("templates", 0) > 0 and not inp.get("template_error")
+                  and tp.get("start_enabled") is False and tp.get("note_warn") is True
+                  and ex.get("start_enabled") is True and ex.get("demo") not in (None, "-1"))
+    result["templates_ok"] = tpl_ok
+    print(json.dumps(result, ensure_ascii=False, indent=1))
+    ok = (not bad and tpl_ok and len(reports) == 3 and all(r["live_note_shown"] for r in reports)
           and result.get("input", {}).get("textarea_readonly") and result.get("non_demo", {}).get("status") == 404)
     print("shots:", "통과" if ok else "실패")
     return 0 if ok else 1

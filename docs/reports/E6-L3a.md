@@ -100,6 +100,37 @@ verify 통과
 
 (main `82146f9`까지 병합한 뒤. `data/site/`는 저장소 밖 공유 폴더라 커밋 대상이 아니다)
 
+## 검증 뒤 보완 (PM 지시: main의 E4-L1b 템플릿 선택기 호환)
+
+검증(PASS-조건부) 1번: main 화면이 입력 화면에서 `GET templates`·`GET templates/{id}`를 불러 정적 판에서 404 ×3, 콘솔 오류가 났다. `git merge main`(`00d7cb1`) 뒤 고쳤다.
+
+- 빌드: `neumann.api.templates.list_templates()`·`get_template(id)` 응답을 그대로 `templates.json`, `templates/<id>.json`(템플릿 5 + 예시 3)으로 넣는다. 카탈로그 검사 실패면 빌드 중단, id는 API의 id 규칙(`^[a-z0-9]+(-[a-z0-9]+)*$`)일 때만 파일 이름으로 쓴다. 화면이 `templates`를 부르는데 카탈로그를 못 읽으면 빌드 실패
+- 가로채기: `templates` → `templates.json`, `templates/<id>` → 목록에 있는 id만 `templates/<id>.json`, 없으면 404 JSON(네트워크로 안 나감)
+- 입력 덧붙이기: 템플릿·예시로 불러온 본문은 덮어쓰지 않는다. 본문이 데모 3건 중 하나와 같으면 그 데모 칸을 켜고 실행을 연다. 템플릿 골격처럼 데모가 아니면 실행 단추를 막고 "정적 판: 템플릿 골격은 보기만 … 분석 결과는 데모 3건에만"을 붉게 적는다
+- 검사: 화면이 `templates`를 부르면 `templates.json` 필수, 목록의 id마다 `templates/<id>.json`(id·text) 필수
+- 대표 실명 배지는 대표 결정대로 그대로 둔다
+
+측정(main `00d7cb1` 화면 기준):
+
+```
+$ python -m pytest tests/e6/test_static_site.py -q
+29 passed
+$ python scripts/build_static_site.py --data-dir C:/Users/User/Desktop/project_neumann/data
+검사: 파일 35개(6.1MB) · 텍스트 21개 · 리소스 참조 22개 · 데모 3건 · 템플릿·예시 8건
+검사 통과: 필수 파일·데모 JSON, 비밀값 0, 환경변수 이름 0, 로컬 경로 0, 외부·루트 절대 참조 0
+$ python scripts/build_static_site_shots.py --site C:/Users/User/Desktop/project_neumann/data/site
+"input": {..., "template_selector": true, "templates": 5, "examples": 3, "template_error": ""}
+"template_pick": {"id": "materials-gnn", "start_enabled": false, "demo": "-1", "note_warn": true}
+"example_pick": {"id": "example-battery", "start_enabled": true, "demo": "0", "note_warn": false}
+"reports": 데모 3건 모두 리포트, live_note_shown true
+"console_errors": [], "page_errors": [], "failed_requests": [], "bad_status": [], "external_requests": [],
+"requests": 18 (templates.json, templates/materials-gnn.json, templates/example-battery.json 포함, 전부 /project_neumann/ 아래)
+"server_stopped": true, "port_free_after": true, "templates_ok": true
+shots: 통과  (exit 0)
+```
+
+새 테스트 3건: 템플릿 정적 JSON·가로채기·검사(빠진 템플릿 JSON을 잡음), 카탈로그 없이 templates를 부르는 화면·잘못된 id는 빌드 실패, 실제 카탈로그 = API 응답. 스크린샷 3장은 새 화면(범위 안내·템플릿 선택기 포함)으로 다시 찍었다.
+
 ## 빌드 명령
 
 ```bash
