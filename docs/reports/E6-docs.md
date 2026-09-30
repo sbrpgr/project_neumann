@@ -10,9 +10,9 @@
 |---|---|
 | `docs/ARCHITECTURE.md` | 현재 상태 표(있음·예정), 6단계(INPUT→EVIDENCE→RISK→REVIEW→ACTION→TRACE)별 하는 일·산출·상태, 현재 요청 흐름(파이프라인 미연결 → 샘플 표시), 모듈 지도, astra 주력·비상 규칙 경로(설계와 main 구현 상태를 나눠 적음), 근거 정직성 장치 12종, 데이터 출처와 라이선스, 계약 |
 | `docs/RUNNING.md` | 설치(uv venv), 환경변수(키는 이름만), 공개자료 폴더 구조, 코퍼스 조립, Retraction Watch 빌드·조회, 색인 빌드(예정), 서버 실행, 테스트·화면 스크린샷, 평가 명령 4종, verify·훅, 비밀값 규칙 |
-| `docs/API.md` | 엔드포인트 표(있음 6 + 예정 6), 지금 main의 샘플 동작, `/health`·`/premortem`·`/premortem/view`·`/premortem/package`의 본문·제약·오류 코드·실측 응답, 알려진 제약, 예정 엔드포인트(과제 지시문 기준) |
+| `docs/API.md` | 엔드포인트 표(있음 11 + MCP, 예정 3), 지금 main의 샘플 동작, `/health`·`/premortem`·`/premortem/view`·`/premortem/package`·`/templates`·`/api`·`/taxonomy`·`/config/weights`의 본문·제약·오류 코드·실측 응답, MCP 도구 3종, 알려진 제약, 예정 엔드포인트(과제 지시문 기준) |
 
-문서의 기준 커밋은 **main `82146f9`**(2026-09-30 19:02)다. 작업을 `ed1d1a0` 기준으로 시작했는데 도중에 E1-L2(Retraction Watch)와 E3-L1b(체크리스트·2차 의미검증)가 병합돼, 그 둘을 "있음"으로 고치고 명령과 응답을 `82146f9`에서 다시 확인했다.
+문서의 기준 커밋은 **main `5e14b1c`**(커밋 시각 2026-09-30 19:08)다. 작업 중 main이 네 번 바뀌었다(`6067212` → `ed1d1a0` → `82146f9` → `5e14b1c`). `82146f9`에서 E1-L2·E3-L1b를, `5e14b1c`에서 E2-L0 색인·E3-L1a 예상 심사평·E4-L1b 템플릿·E4-L1d 메타 API·E4-L2b MCP를 "있음"으로 고치고 명령과 응답을 다시 확인했다. 아래 출력 중 기준 커밋을 따로 적지 않은 것은 `82146f9`에서, "5e14b1c 재확인" 절은 `5e14b1c`에서 잰 것이다.
 
 ## 확인 방법
 
@@ -118,7 +118,7 @@ GET /api 404 · GET /taxonomy 404 · GET /config/weights 404 · GET /templates 4
 
 추가 확인: `GET /docs`는 Swagger UI를 `https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/…`에서 받는다(그래서 API.md에 "오프라인은 `/openapi.json`"이라고 적음). Git Bash에서 한글을 `-d '…'`로 직접 보내면 `{"detail":"There was an error parsing the body"}` 400이 났다(그래서 API.md 예시는 `--data-binary @파일`).
 
-서버 종료 확인(3회 모두):
+서버 종료 확인(4회 모두):
 
 ```
 PS> Get-NetTCPConnection -LocalPort 8125 -State Listen …; Stop-Process …
@@ -174,17 +174,57 @@ $ python -m eval.linkage --result tests/fixtures/premortem_result.json --sources
 - 색인 빌드 `scripts/build_index.py`(E2-L0, main에 없음, bge-m3 로드): "예정, 이 문서에서 실행하지 않음"으로 표시.
 - 서버의 기본 포트 8000 예시: 명령은 같고 포트만 8125로 바꿔 실행했다(8000·8010은 쓰지 않음).
 
+**5e14b1c 재확인** — 새로 병합된 것과 테스트 수:
+
+```
+$ python -m pytest -q -rs          (main 5e14b1c 사본, NEUMANN_DATA_DIR = 공유 데이터 폴더)
+SKIPPED [1] tests\e2\test_e2_build.py:131: 실제 bge-m3 검사는 NEUMANN_E2_MODEL_TESTS=1
+SKIPPED [1] tests\e3\test_checklist_live.py:73: 실제 API 테스트는 NEUMANN_LIVE_TESTS=1과 OPENAI_API_KEY가 있을 때만
+SKIPPED [1] tests\e3\test_checklist_live.py:113: 실제 API 테스트는 NEUMANN_LIVE_TESTS=1과 OPENAI_API_KEY가 있을 때만
+SKIPPED [1] tests\e3\test_review.py:369: could not import 'neumann.llm': No module named 'neumann.llm'
+SKIPPED [1] tests\e3\test_review_live.py:68: NEUMANN_LIVE_TESTS=1일 때만 실제 API를 부른다
+SKIPPED [1] tests\e4\test_templates_ui.py:233: NEUMANN_UI_TESTS=1일 때만(브라우저·서버 필요)
+456 passed, 6 skipped in 21.95s
+$ python scripts/build_index.py --source fixtures --out <SP>/idx --no-embed
+[build_index] 입력 fixtures: 논문 6편, 심사평 12건 (0.0s)
+[build_index] 강등: --no-embed: 임베딩 없이 빌드
+[build_index] 문장 44개 (0.0s), 태그 18개 (0.0s), BM25 0.0s, 임베딩 0.0s
+[build_index] 오프셋 대조(메모리) 44/44, (디스크) 44/44
+[build_index] 태그 종류 7: {'R1': 1, 'R2': 7, 'R3': 4, 'R4': 1, 'R5': 2, 'R6': 1, 'R7': 2}, 극성 {'negative': 18}
+$ python scripts/build_index_check.py --help     (usage 출력 확인, 실행은 bge-m3 로드라 하지 않음)
+$ python -m pytest tests/e4 -q -k mcp
+11 passed, 105 deselected in 4.25s
+$ python -m pytest tests/e2 -q
+41 passed, 1 skipped in 3.10s
+$ uvicorn … --port 8125  (5e14b1c)
+unavailable {'pipeline': False, 'INPUT': False, 'EVIDENCE': False, 'RISK': False, 'REVIEW': True, 'ACTION': True, 'TRACE': False, 'llm': False, 'models': True, 'config': True}
+{'neumann.api.export': 'ok', 'neumann.api.upload': 'missing', 'neumann.api.precomputed': 'missing', 'neumann.api.templates': 'ok', 'neumann.api.meta': 'ok'}
+openapi paths: ['POST /premortem/package', 'GET /templates', 'GET /templates/{item_id}', 'GET /api', 'GET /taxonomy', 'GET /config/weights', 'GET /health', 'POST /premortem', 'POST /premortem/view']
+GET /templates HTTP 200 → keys ['version', 'scope', 'required_sections', 'templates', 'examples']
+  templates ['materials-gnn', 'protein-molecule', 'physics-pde-climate', 'neuro-fmri', 'medical-imaging']
+  examples [('example-battery', 'example'), ('example-fmri', 'example'), ('example-medimaging', 'example')]
+GET /templates/materials-gnn HTTP 200 → ['chars', 'domain', 'filename', 'id', 'kind', 'name', 'sections', 'sha256', 'source', 'summary', 'text']
+GET /templates/nope 404
+GET /api HTTP 200 → summary_ko "ICLR 2024 · ICLR 2025 · 논문 1,128편 · 심사평 5,366건 · 거절 60.3% · 색인 문장 133,769개"
+GET /taxonomy HTTP 200 → version v1.0, tier1_count 10, tier2_count 59, severity ['S5', 'S4', 'S3', 'S2', 'S1'], classes 10
+GET /config/weights HTTP 200 → {"weights":{"similarity":0.3,"frequency":0.3,"severity":0.3,"confidence":0.1}, … "source":"default","is_default":true,"label":"기본값", … "formula_ko":"위험점수 = 유사도 × 빈도 × 심각도 × 신뢰도", "pipeline":{"module":"neumann.analyze.cards","state":"missing", …}}
+POST /premortem/package (plan_text만) HTTP 200 application/zip
+8125 free
+```
+
 ### 2. 사실과 다른 기능을 쓰지 않음: 통과(자체 점검)
 
-- 문서마다 기준 커밋(`82146f9`)을 적고, main에 코드가 있는 것만 "있음"으로 썼다. 예정 항목은 과제 ID를 붙이고 "main에 없음/지금 요청하면 404"를 실측으로 확인했다.
+- 문서마다 기준 커밋(`5e14b1c`)을 적고, main에 코드가 있는 것만 "있음"으로 썼다. 예정 항목은 과제 ID를 붙이고 "main에 없음/지금 요청하면 404"를 실측으로 확인했다.
 - 파이프라인이 없어서 **서버는 계획서를 분석하지 않고 가짜 fixture 샘플을 돌려준다**는 사실을 세 문서 모두 앞쪽에 적었다.
 - `/health`의 `ACTION: true`는 체크리스트 모듈이 import될 뿐 서버 응답에 쓰이지 않는다는 것을 API.md에 적었다.
 - 숫자는 모두 이번에 다시 잰 값이다(1,128편·4,298·66,737·Macro-F1 0.3308·301 passed 등). DISAPERE 인간 상한 0.725는 외부 참조선이라고 적었다.
 - 점검 명령:
 
 ```
-$ grep -n "ed1d1a0" docs/ARCHITECTURE.md docs/RUNNING.md docs/API.md     (옛 기준 잔존 없음)
-(출력 없음)
+$ grep -n "기준: `main` 커밋" docs/ARCHITECTURE.md docs/RUNNING.md docs/API.md   (앞 60자)
+docs/ARCHITECTURE.md:5:- 기준: `main` 커밋 `5e14b1c` (20
+docs/RUNNING.md:3:- 기준: `main` 커밋 `5e14b1c`. 이 문
+docs/API.md:3:- 기준: `main` 커밋 `5e14b1c`. 아래 응ë
 ```
 
 ### 3. 루트 README 개정 초안: 아래 "README 개정 초안"
@@ -200,7 +240,7 @@ $ grep -n "ed1d1a0" docs/ARCHITECTURE.md docs/RUNNING.md docs/API.md     (옛 �
 
 ## 결정 (스펙이 모호해서 고른 것)
 
-1. **"현재 main"을 무엇으로 볼지**: main이 작업 중 세 번 바뀌었다(`6067212` → `ed1d1a0` → `82146f9`). 문서에 기준 커밋을 적고, 마지막으로 확인한 `82146f9`에 맞췄다. 이후 병합분(E2-L0 색인, E3-L0 파이프라인 등)이 들어오면 "예정" 표시와 API 예시를 PM이 고치거나 후속 과제로 돌린다.
+1. **"현재 main"을 무엇으로 볼지**: main이 작업 중 네 번 바뀌었다. 문서에 기준 커밋을 적고, 마지막으로 확인한 `5e14b1c`에 맞췄다. 그 뒤 병합분(E3-L0 파이프라인 등)은 PM이 "예정" 표시와 API 예시를 고치거나 후속 과제로 돌린다. "있음(모듈만)" 표기를 새로 두었다: 모듈은 main에 있지만 파이프라인이 없어 서버 응답에 쓰이지 않는 것(예상 심사평·게이트·체크리스트·2차 검증).
 2. **명령 확인을 main 사본에서**: worktree는 `481e11c` 기준이고 merge 금지라, `git archive`로 main 사본을 스크래치에 풀어 실행했다. 산출은 스크래치로 보내 공유 데이터 폴더를 건드리지 않았다.
 3. **설치 방법은 uv만 적음**: 개발 venv에 pip이 없고(uv로 만든 venv), `pyproject.toml`에 빌드 설정이 없어 `pip install -e .`는 확인할 수 없었다. 확인할 수 있는 `uv pip install -r pyproject.toml --extra dev`만 적었다.
 4. **예정 엔드포인트의 모양**: 브랜치 코드는 병합 때 바뀔 수 있어, API.md에는 과제 지시문의 요약만 적고 "병합 뒤 `/openapi.json`과 보고서를 본다"고 했다. MCP 도구 이름은 E4-L2b 지시문과 브랜치 머리말이 같아 그대로 적었다.
@@ -210,19 +250,25 @@ $ grep -n "ed1d1a0" docs/ARCHITECTURE.md docs/RUNNING.md docs/API.md     (옛 �
 ## 못 한 것
 
 - 새 venv에 실제 설치(네트워크·다운로드 필요)와 `git clone`: dry-run으로만 확인.
-- 색인 빌드·파이프라인·예정 엔드포인트의 명령: main에 없어 실행하지 않음(예정으로 표시).
+- 실데이터 색인 빌드(`scripts/build_index.py` 기본)와 `build_index_check.py`: bge-m3 로드라 실행하지 않음(fixture `--no-embed`로만 확인, 문서에 표시).
+- MCP 서버 단독 실행: stdio라 테스트(`-k mcp`)로만 확인.
+- 파이프라인·업로드·사전 계산본: main에 없어 실행하지 않음(예정으로 표시).
 - 루트 `README.md` 수정: PM 소유라 초안만 아래에 둠.
+- **5e14b1c 이후 병합분 미반영**: 마감 시점 main은 `bbc688a`이고, 그사이 E6-L2a(사전 계산본 API `/premortem/precomputed`·`scripts/precompute_demo.py`), E5-L3a(리포트 카드 생성기), E6-L3b(시연 녹화 스크립트)가 병합됐다. 문서는 기준 커밋(`5e14b1c`)을 밝히고 이 셋을 "예정"으로 적고 있다. main이 계속 움직여 따라가기를 멈췄다. 병합 때 PM이 ARCHITECTURE §1·§4, API 목록·예정 절, RUNNING §8의 표시를 "있음"으로 바꾸거나 후속 과제로 돌린다.
 
 ## 다음 과제에 넘길 것
 
 1. **`/premortem` 샘플 응답이 `/premortem/package`에서 422**(E4, PM 판단): 샘플에 붙는 `sample` 키와 `stages[0]`의 `status: "unavailable"`·`degraded`·`details`가 `PremortemResult` 계약(`extra="forbid"`, `StageState`는 ok·degraded·skipped·error)에 없다. 화면에서 샘플 결과로 "내보내기"를 누르면 실패할 수 있다. 파이프라인이 붙으면 사라지는 문제지만, 파이프라인 오류 시 샘플이 아니라 500이므로 영향은 "파이프라인 미연결" 상태에 한정된다. 고칠 곳 후보: `api/main.py`의 `_sample_result`가 `StageStatus` 모양(`status: "degraded"`, `impl: "fallback:sample"`)을 쓰고 `sample` 표시는 `notices`·`manifest`로 옮기거나, `export.py`가 알려진 샘플 키를 벗겨 받기.
 2. `/docs`(Swagger UI)가 외부 CDN을 부른다. 오프라인 데모에서 누가 `/docs`를 열면 빈 화면이다. 필요하면 `FastAPI(docs_url=None)` 또는 로컬 자산으로.
-3. 문서 갱신 시점: E2-L0·E3-L0 병합(v0) 때 ARCHITECTURE §1·§2·§5, RUNNING §5·§6, API "지금 main에서…" 절을 고쳐야 한다(샘플 → 실제 분석).
+3. 문서 갱신 시점: E3-L0 병합(v0) 때 ARCHITECTURE §1·§2·§3·§5, RUNNING §6, API "지금 main에서…" 절을 고쳐야 한다(샘플 → 실제 분석). `/health` 예시도 바뀐다.
 4. `NEUMANN_API_HOST`·`NEUMANN_API_PORT` 설정 칸은 지금 서버 실행에 쓰이지 않는다(uvicorn 명령줄이 정함). 쓰지 않을 거면 `.env.example` 설명을 맞추고, 쓸 거면 실행 진입점을 둔다.
+5. **`/config/weights`와 결정 기록 불일치**(E4-L1d/PM): 결정 기록 19:15는 "곱, 가중치 없음"을 보이게 한다고 했으나 `5e14b1c` 응답은 기본 가중치 0.3/0.3/0.3/0.1을 `weights`로 돌려준다(`formula_ko`는 곱). API.md에 주의로 적었다.
+6. **`/premortem/package`의 `plan_text`만 받는 경로**: 결정 기록 19:20은 없앤다고 했으나 `5e14b1c`에서는 아직 200을 돌려준다. 고치면 API.md의 `plan_text` 행을 바꾼다.
+7. **`/health`의 EVIDENCE 단계 모듈 이름**: `STAGE_MODULES["EVIDENCE"]`가 `neumann.index.hybrid`를 보는데 색인은 `neumann.index.search`로 들어왔다. 파이프라인이 붙어도 `neumann.index.hybrid`가 없으면 EVIDENCE가 계속 `false`로 보인다(PM 소유 `main.py`).
 
 ## README 개정 초안
 
-루트 `README.md`를 아래로 바꾸자고 제안한다(PM 소유라 고치지 않았다). 기준은 main `82146f9`이고, v0 병합 때 "상태" 표와 첫 문단의 "샘플" 문장을 고친다.
+루트 `README.md`를 아래로 바꾸자고 제안한다(PM 소유라 고치지 않았다). 기준은 main `5e14b1c`이고, v0 병합 때 "상태" 표와 첫 문단의 "샘플" 문장을 고친다.
 
 ````markdown
 # Neumann
@@ -243,10 +289,11 @@ $ grep -n "ed1d1a0" docs/ARCHITECTURE.md docs/RUNNING.md docs/API.md     (옛 �
 | 데이터 계약·설정·검증 러너 | 있음 |
 | 코퍼스: OpenReview 공개 심사 기록(ResearchArcade 경유) AI for Science 1,128편, 심사평 4,298건 | 있음 |
 | 정정·철회 사후 상태(Retraction Watch) | 있음(소스) |
-| API 서버·화면·내보내기 ZIP | 있음 |
+| 검색 색인: 문장 133,769개(원문 오프셋 전량 대조), BM25 + bge-m3 하이브리드 | 있음 |
+| API 서버·화면(템플릿 선택기)·메타 API·내보내기 ZIP·MCP 서버(읽기 전용 도구 3종) | 있음 |
 | 평가: 근거 연결 검사, DISAPERE 골드 148건 Macro-F1(빈도 기준선 0.3308) | 있음 |
-| 예방 체크리스트·2차 의미검증 | 있음(모듈, 파이프라인 연결 전) |
-| 검색 색인, astra 분석 파이프라인, 예상 심사평 | 진행 중 |
+| 예상 심사평·근거 게이트, 예방 체크리스트·2차 의미검증 | 있음(모듈, 파이프라인 연결 전) |
+| astra 분석 파이프라인(지적 추출·카드 합성) | 진행 중 |
 
 아직 분석 파이프라인이 main에 없다. 지금 서버는 입력한 계획서를 분석하지 않고 가짜 샘플을 "분석 파이프라인 미연결(샘플 데이터)" 표시와 함께 돌려준다.
 
@@ -298,7 +345,7 @@ python -m uvicorn neumann.api.main:app --host 127.0.0.1 --port 8000   # http://1
 | `contracts/` | 데이터 계약 JSON Schema(API 응답, 화면 데이터) |
 | `src/neumann/` | 제품 코드: `models.py`(계약), `config.py`, `sources/`(수집), `index/`(색인), `analyze/`(분석), `api/`(서버·내보내기), `webui/`(화면) |
 | `eval/` | 평가: 근거 연결 검사, DISAPERE 골드, Macro-F1, 기준선 |
-| `scripts/` | 검증 러너, 수집·색인 스크립트 |
+| `scripts/` | 검증 러너, 코퍼스 수집·색인 빌드 스크립트 |
 | `tests/` | 테스트와 공용 가짜 데이터(`tests/fixtures/`) |
 
 ## 데이터 출처와 라이선스
@@ -316,4 +363,13 @@ python -m uvicorn neumann.api.main:app --host 127.0.0.1 --port 8000   # http://1
 
 ## 최종 verify
 
-(아래에 붙임)
+이 worktree(`task/E6-docs`, 보고서 스테이징 상태)에서 실행. worktree는 `481e11c` 기준이라 테스트 수가 main 사본보다 적다.
+
+```
+$ python scripts/verify.py
+183 passed, 2 skipped in 1.73s
+보안: 파일 126개
+계약: 2개
+테스트: 통과
+verify 통과
+```
