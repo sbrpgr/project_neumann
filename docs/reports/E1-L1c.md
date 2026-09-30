@@ -185,6 +185,27 @@ $ python scripts/build_index_elife_compare.py --json compare_elife.json --md com
 3. **데모 1(전해액)은 그대로다.** eLife가 끼어들지 않고, 점수 변화는 BM25 idf·평균 길이 변화에서 오는 0.001~0.013이다. 같은 논문의 dense 점수 차는 최대 0.00037(fp16 저장 오차 수준).
 4. **무관한 글**(조리법) 1등 0.243은 변하지 않았다(eLife 논문이 끼어들지 않음). 관련 질의(0.36 이상)와의 간격은 유지된다.
 
+**참고 실험: Europe PMC(PLOS) 388편까지 넣으면** (스펙 밖. 공유 `data/`에 쓰지 않고 세션 임시 폴더에 빌드한 뒤 지웠다)
+
+```
+$ python scripts/build_index_elife.py --batch 8 --include researcharcade,elife,europepmc --out <임시>/idx_epmc
+[build_index_elife] 입력 검사 통과: 레코드 24932, 출처 URL 1.0, 원문 해시 1.0, 신원 키 0, ...
+[build_index] 입력 processed: 논문 2016편, 심사평 7435건 · 문장 214061개 · 오프셋 (메모리) 214061/214061, (디스크) 214061/214061 · 161.37MB, 총 113.7s
+[build_index_elife] 소스별 오프셋 재대조 214061/214061 · 소스 manifest 해시 대조: True
+$ python scripts/build_index_elife_compare.py --new <임시>/idx_epmc
+[plan/plan] 겹침 10/10, 1등 0.37036 → 0.372503 (researcharcade)
+[plan/en] 겹침 9/10, 새로 든 1 {'researcharcade': 1}
+[plan_elife_neuro/plan] 겹침 0/10, 새로 든 10 {'elife': 5, 'europepmc': 5}, 1등 0.357768 → 0.394392 (elife)
+[plan_elife_neuro/en] 겹침 0/10, 새로 든 10 {'elife': 3, 'europepmc': 7}, 1등 0.465887 → 0.639876 (europepmc)
+[plan_medimaging/plan] 겹침 0/10, 새로 든 10 {'europepmc': 10}, 1등 0.36224 → 0.410311 (europepmc)
+[plan_medimaging/en] 겹침 0/10, 새로 든 10 {'europepmc': 10}, 1등 0.408281 → 0.642168 (europepmc)
+[negative_recipe/unrelated] 겹침 9/10, 새로 든 1 {'europepmc': 1}, 1등 0.243076 → 0.243116
+```
+
+- 데모 3(의료영상) 상위 10편이 **전부 Europe PMC 흉부 X선·폐렴·의료영상 CNN 논문**으로 바뀐다. 계획서 전문 상위: Attention based automated radiology report generation using CNN and LSTM · Quantitative evaluation model of variable diagnosis for chest X-ray images using deep learning · CNNs trained with adult data are useful in pediatrics. A pneumonia classification example · Automated detection of COVID-19 through CNN using chest x-ray images · A hybrid dense convolutional network and fuzzy inference system for pneumonia diagnosis. 영어 질의 1등 0.408 → 0.642.
+- 데모 2(fMRI)는 eLife와 Europe PMC가 반씩 섞인다. 데모 1은 그대로다(겹침 10/10). 무관한 글 1등은 0.243 그대로이고 Europe PMC 1편(흉부 CT 나이 추정)이 7위에 들어온다.
+- **데모 3번까지 살리려면 Europe PMC를 넣은 색인이 필요하다.** 스펙 출력은 `data/index_elife`(eLife만)라 공유 폴더에는 만들지 않았다. PM이 원하면 `python scripts/build_index_elife.py --include researcharcade,elife,europepmc --out C:/Users/User/Desktop/project_neumann/data/index_elife_epmc`(약 2분, GPU 최대 할당 약 1.3GB) 한 번이면 된다.
+
 ### 5. 전환 방법 (설정으로만)
 
 코드 기본값은 그대로 `{NEUMANN_DATA_DIR}/index`다. eLife 포함 색인을 쓰려면 프로세스 환경변수(또는 main `.env`)에:
