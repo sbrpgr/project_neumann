@@ -293,6 +293,7 @@ def health(request: Request) -> dict[str, Any]:
         "status": "ok",
         "version": neumann.__version__,
         "commit": SERVER_COMMIT,
+        "warmup": srv.warmup_status() if srv is not None else {"state": "pending", "elapsed_s": 0.0},
         "started_at": SERVER_STARTED_AT,
         "pipeline": {"state": state, "reason": reason, "mode": "pipeline" if state == "connected" else (
             "sample" if state == "unavailable" else "error"), "label": SAMPLE_LABEL if state == "unavailable" else ""},
@@ -306,7 +307,7 @@ def _public_health(srv: Any) -> dict[str, Any]:
     """공개 모드(SEC-7) /health: 운영·화면에 필요한 값만. 모듈별 import 상태·라우터·키 존재 여부·실패 사유·기동 시각은 뺀다.
 
     남기는 값: status·version·commit, pipeline.state/mode/label(화면 머리 표시·녹화 판정·터널 점검),
-    llm.effective/model/live_llm_ok(OPS-tun 점검), accepting(새 분석을 받는지).
+    llm.effective/model/live_llm_ok(OPS-tun 점검), accepting(새 분석을 받는지), warmup(예열 상태·소요 초).
     """
     _fn, state, _reason = _load_pipeline()
     llm = _llm_state()
@@ -318,6 +319,7 @@ def _public_health(srv: Any) -> dict[str, Any]:
         "status": "ok",
         "version": neumann.__version__,
         "commit": SERVER_COMMIT,
+        "warmup": srv.warmup_status() if srv is not None else {"state": "pending", "elapsed_s": 0.0},
         "pipeline": {"state": state, "mode": "pipeline" if state == "connected" else (
             "sample" if state == "unavailable" else "error"), "label": SAMPLE_LABEL if state == "unavailable" else ""},
         "llm": {k: llm.get(k) for k in ("effective", "model", "live_llm_ok")},

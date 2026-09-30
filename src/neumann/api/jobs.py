@@ -66,7 +66,7 @@ MAX_PLAN_CHARS = 200_000  # main.PremortemRequest와 같다(실제 상한은 ser
 
 # 파이프라인 단계(neumann.pipeline 순서)와 화면 이름
 STAGE_LABELS: dict[str, str] = {
-    "queued": "대기", "running": "분석 중", "done": "완료", "error": "오류",
+    "queued": "대기", "warmup": "모델 준비 중 · 첫 실행은 1~3분", "running": "분석 중", "done": "완료", "error": "오류",
     "plan_normalize": "계획서 정리", "query_axes": "검색 질의 만들기", "search": "유사 연구 검색",
     "extract_issues": "지적 추출", "synthesize_cards": "위험카드 합성", "verify_evidence": "원문 대조",
     "assemble": "결과 정리",
@@ -471,6 +471,10 @@ class JobStore:
                 out["error_code"] = job.error_code
                 if job.retry_after_s is not None:
                     out["retry_after_s"] = job.retry_after_s
+            return out
+        if self.srv.warming and not self.srv.cache.has(job.plan_id):
+            out.update(status="running", stage="warmup", stage_label=STAGE_LABELS["warmup"],
+                       message=STAGE_LABELS["warmup"], warmup=self.srv.warmup_status())
             return out
         gate = self.srv.gate
         t = gate.ticket_for_plan(job.plan_id)
