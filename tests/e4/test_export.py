@@ -22,7 +22,7 @@ from fastapi.testclient import TestClient
 
 from neumann.api import export
 from neumann.api.export import FILE_NAMES, build_package, build_package_files, router
-from neumann.models import PremortemResult, sha256_text
+from neumann.models import PlanDocument, PremortemResult, sha256_text
 from tests.fixtures.loader import load_fixtures, plan_text
 
 EXPECTED_FILES = [
@@ -188,7 +188,7 @@ def test_plan_annotated_without_plan_lists_line_numbers_only() -> None:
 
 def test_plan_text_is_masked_when_result_has_no_plan() -> None:
     body = plan_text("plan.md") + "\n문의: researcher.kim@example.ac.kr / ORCID 0000-0002-1825-0097\n"
-    result = variant(plan=None)
+    result = variant(plan=None, plan_id=PlanDocument.from_text(body, "mask-test").plan_id)
     data = build_package(result, plan_text=body)
     assert b"researcher.kim@example.ac.kr" not in data
     files = unzip(data)
@@ -200,7 +200,7 @@ def test_plan_text_is_masked_when_result_has_no_plan() -> None:
     assert "16 [C1] | We randomly split" in md
     manifest = as_json(files, "manifest.json")
     assert manifest["plan_source"].startswith("plan_text")
-    assert manifest["warnings"]  # 본문 해시가 결과 plan_id와 달라진 것을 알린다
+    assert manifest["plan_verified"] is False  # 직접 호출은 서버 HMAC 검증이 아니다.
 
 
 def test_plan_text_matching_result_has_no_warning() -> None:

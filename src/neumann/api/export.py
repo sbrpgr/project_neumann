@@ -262,6 +262,49 @@ class _Ctx:
         """서버가 만든 결과라고 말할 수 있는지(서명 확인 또는 프로세스 안 직접 호출)."""
         return self.origin != "client_submitted_unverified"
 
+    @property
+    def plan_association(self) -> str:
+        return _plan_association(self.plan, self.plan_source, self.origin)
+
+    @property
+    def plan_verified(self) -> bool:
+        return self.plan_association in {"signed_result_plan", "hash_verified"}
+
+
+def _resolve_plan(result: PremortemResult, plan_text: str | None) -> tuple[PlanDocument | None, str]:
+    """External text may supply a missing body only when its canonical hash matches."""
+    if result.plan is not None:
+        return result.plan, "result.plan (plan_text는 쓰지 않음)" if plan_text else "result.plan"
+    if plan_text is not None and plan_text.strip():
+        plan = PlanDocument.from_text(plan_text, result.session_id)
+        if plan.plan_id != result.plan_id:
+            raise ValueError("계획서 본문 해시가 분석 결과의 plan_id와 맞지 않아 내보낼 수 없습니다.")
+        return plan, "plan_text (이메일·ORCID 가림, 결과 plan_id와 해시 일치)"
+    return None, "none"
+
+
+def _plan_association(plan: PlanDocument | None, source: str, origin: str) -> str:
+    if plan is None:
+        return "missing"
+    if origin != "server_signed":
+        return "unverified"  # 직접 호출(in_process)도 서버 HMAC 검증을 주장하지 않는다.
+    return "signed_result_plan" if source.startswith("result.plan") else "hash_verified"
+
+
+def _plan_metadata(c: _Ctx) -> dict[str, Any]:
+    return {"plan_association": c.plan_association, "plan_verified": c.plan_verified}
+
+
+def _plan_authority_text(c: _Ctx) -> str:
+    explanation = {
+        "signed_result_plan": "결과 JSON 안의 계획서 본문이 서버 서명 범위에 포함된다.",
+        "hash_verified": "보조 본문을 정규화·마스킹한 해시가 서버 서명된 결과의 plan_id와 일치한다.",
+        "missing": "계획서 본문 없음. 계획서 본문을 서버 검증된 입력으로 보증하지 않는다.",
+        "unverified": "계획서 본문을 서버 검증된 입력으로 보증하지 않는다. 결과의 plan_id와 일치는 서버 출처 보증이 아니다.",
+    }[c.plan_association]
+    return (f"계획서 연결 상태: `{c.plan_association}` — {explanation}\n"
+            "결과 서명은 결과 JSON에만 적용되며 패키지 전체나 새 외부 입력을 서명한 것이 아니다.")
+
 
 def _gate_export_result(result: PremortemResult) -> tuple[PremortemResult, list[str]]:
     """공용 조립 문맥 전에 저장 결과를 다시 검사한다. 원본 수정·규칙 대체 없이 사유 코드와 수만 남긴다."""
@@ -315,18 +358,7 @@ def _make_ctx(
         raise ValueError(f"result_origin은 {RESULT_ORIGINS} 중 하나다")
     original_item_ids = _checklist_ids(result.checklist)
     result, warnings = _gate_export_result(result)
-    plan: PlanDocument | None
-    if result.plan is not None:
-        plan, plan_source = result.plan, "result.plan"
-        if plan_text:
-            plan_source = "result.plan (plan_text는 쓰지 않음)"
-    elif plan_text is not None and plan_text.strip():
-        plan = PlanDocument.from_text(plan_text, result.session_id)  # NFC+LF, 이메일·ORCID 가림
-        plan_source = "plan_text (이메일·ORCID 가림)"
-        if plan.plan_id != result.plan_id:
-            warnings.append("plan_text의 해시가 결과의 plan_id와 다르다. 분석한 계획서와 다른 본문일 수 있다.")
-    else:
-        plan, plan_source = None, "none"
+    plan, plan_source = _resolve_plan(result, plan_text)
 
     refs = [(f"C{i}", card) for i, card in enumerate(result.risk_cards, start=1)]
     if plan is not None:
@@ -660,6 +692,7 @@ def _evidence_pack_json(c: _Ctx) -> bytes:
             "schema_version": SCHEMA_VERSION,
             "plan_id": r.plan_id,
             "result_origin": c.origin,
+            **_plan_metadata(c),
             "reverification": {
                 "status": "not_reverified",
                 "note": (
@@ -968,6 +1001,7 @@ def _decision_log_json(c: _Ctx) -> bytes:
             ],
             "checklist_item_ids": sorted(_checklist_ids(r.checklist)),
             "decisions": [d.model_dump(mode="json") for d in c.decisions],
+            **_plan_metadata(c),
         }
     )
 
@@ -980,6 +1014,7 @@ def _manifest_json(c: _Ctx, files: Mapping[str, bytes], created_at: datetime) ->
             "schema_version": SCHEMA_VERSION,
             "created_at": _iso(created_at),
             "result_origin": c.origin,
+            **_plan_metadata(c),
             "result": {
                 "session_id": r.session_id,
                 "plan_id": r.plan_id,
@@ -1002,7 +1037,8 @@ def _manifest_json(c: _Ctx, files: Mapping[str, bytes], created_at: datetime) ->
             "evidence_reverification": "not_reverified",
             "warnings": c.warnings,
             "files": [
-                {"path": name, "sha256": _sha256(files[name]), "bytes": len(files[name])}
+                {"path": name, "sha256": _sha256(files[name]), "bytes": len(files[name]),
+                 **({"result_origin": c.origin, **_plan_metadata(c)} if name in FILE_NAMES else {})}
                 for name in (*FILE_NAMES, *c.extra_files)
                 if name != "manifest.json"
             ],
@@ -1051,6 +1087,11 @@ def build_package_files(
         "ai_context.md": _ai_context(c),
         "decision_log.json": _decision_log_json(c),
     }
+    # Preserve the first-line result warning/title. Every human-facing member states
+    # the narrower plan authority; manifest entries also cover card-list and CSV members.
+    for name in ("README.md", "plan_annotated.md", "neumann_report.md", "ai_context.md"):
+        head, separator, tail = files[name].decode("utf-8").partition("\n")
+        files[name] = (head + separator + "\n" + _plan_authority_text(c) + "\n" + tail).encode("utf-8")
     files.update(extras)
     when = created_at or datetime.now(UTC).replace(microsecond=0)
     files["manifest.json"] = _manifest_json(c, files, when)
@@ -1068,7 +1109,7 @@ def build_package(
 ) -> bytes:
     """분석 결과 → ZIP 바이트(9파일 + E3-L2r 선택 파일: revision·revision_decisions·revised_plan·revision_sig).
 
-    - plan_text: result.plan이 없을 때만 쓴다. PlanDocument 규칙대로 정규화·마스킹한 줄만 담는다.
+    - plan_text: result.plan이 없을 때만 쓴다. 정규화·마스킹한 해시가 result.plan_id와 다르면 거절한다.
     - decisions: 카드별 채택·보류·기각 기록(선택). card_id가 결과에 없으면 ValueError.
     - created_at: 패키지 생성 시각(manifest). 없으면 지금. 넘기면 출력 전체가 결정적이다.
     - result_origin: 결과 출처(manifest·README). API는 서버 서명을 확인해 정한다. 직접 부르면 "in_process".
@@ -1158,6 +1199,8 @@ def premortem_package(payload: dict[str, Any] = Body(...)) -> Response:
         "server_signed" if verify_result(req.result, req.result_sig) else "client_submitted_unverified"
     )
     try:
+        plan, plan_source = _resolve_plan(result, req.plan_text if has_text else None)
+        plan_association = _plan_association(plan, plan_source, origin)
         data = build_package(result, plan_text=req.plan_text if has_text else None, decisions=req.decisions,
                              result_origin=origin,
                              revision=req.revision, revision_decisions=req.revision_decisions,
@@ -1176,6 +1219,7 @@ def premortem_package(payload: dict[str, Any] = Body(...)) -> Response:
             "X-Neumann-Status": result.status,
             "X-Neumann-Cards": str(len(result.risk_cards)),
             "X-Neumann-Result-Origin": origin,
+            "X-Neumann-Plan-Association": plan_association,
         },
     )
 
