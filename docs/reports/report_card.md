@@ -1,6 +1,6 @@
 # Project Neumann — 검증 리포트 카드
 
-- 생성: 2026-09-30T18:58:18+09:00 · 코드 커밋: `3d028f1` · 생성 명령: `python -m eval.report_card --inputs C:/Users/User/Desktop/project_neumann/data/eval/score_baseline_freq.json --out docs/reports/report_card.md`
+- 생성: 2026-09-30T19:06:50+09:00 · 코드 커밋: `1032ae3` · 생성 명령: `python -m eval.report_card --inputs C:/Users/User/Desktop/project_neumann/data/eval/score_baseline_freq.json --out docs/reports/report_card.md`
 - 규칙(04_평가_명세 §7): 참조선 먼저 · 미달 먼저 · 모든 숫자에 n과 95% 구간 · 없는 지표는 "측정 전"(추정 금지)
 - 값은 입력 JSON의 숫자를 그대로 옮겼다. 합쳐서 계산한 값은 '계산'으로 표시했다.
 
@@ -33,10 +33,10 @@
 
 | 지표 | 시스템 | 값 | 95% 구간 | n | 조건 | 한계 | 입력 |
 |---|---|---|---|---|---|---|---|
-| 지적 추출 Macro-F1 (리뷰 단위) | 빈도 기준선(안 읽음) | 0.3308 | [0.298, 0.3623] | 148 | 리뷰 단위 멀티라벨 Tier-1, 골드 disapere_gold.jsonl n=148 (sha256 ad25cb4ad575), 부트스트랩 2000회 시드 20260930 percentile, generator {'baseline': 148}, 예측 없음 0건은 빈 예측으로 채점 | 골드 support 0 클래스 ['R3', 'R4', 'R8', 'R9'] 제외[주3], R7 근사[주1], 골드 대체[주2]. 안 읽는 기준선이라 Micro-F1이 높게 나온다(흔한 R2를 늘 맞힘, 04_평가_명세 §6) | score_baseline_freq.json |
+| 지적 추출 Macro-F1 (리뷰 단위) | 빈도 기준선(안 읽음) | 0.3308 | [0.298, 0.3623] | 148 | 리뷰 단위 멀티라벨 Tier-1, 골드 disapere_gold.jsonl n=148 (sha256 ad25cb4ad575), 부트스트랩 2000회 시드 20260930 percentile, generator {'baseline': 148}, 예측 없음 0건은 빈 예측으로 채점 | 골드 support 0 클래스 ['R3', 'R4', 'R8', 'R9'] 제외[주3], R7 근사[주1], 골드 대체[주2]. 안 읽는 기준선이다(04_평가_명세 §6: 기준선 없는 단독 숫자 보고 금지). 늘 내는 코드(R1·R2·R6)는 재현율 1.0, 안 내는 코드(R5·R7)는 재현율 0이라 Micro-F1(0.5379)이 Macro-F1(0.3308)보다 높다 | score_baseline_freq.json |
 | 지적 추출 Macro-F1 (리뷰 단위) | Neumann (astra) | 측정 전 | — | — | — | — | 입력 없음 |
 | 지적 추출 Macro-F1 (리뷰 단위) | Neumann 비상 규칙 | 측정 전 | — | — | — | — | 입력 없음 |
-| 지적 추출 Micro-F1 (리뷰 단위) | 빈도 기준선(안 읽음) | 0.5379 | [0.4871, 0.5861] | 148 | 리뷰 단위 멀티라벨 Tier-1, 골드 disapere_gold.jsonl n=148 (sha256 ad25cb4ad575), 부트스트랩 2000회 시드 20260930 percentile, generator {'baseline': 148}, 예측 없음 0건은 빈 예측으로 채점 | 골드 support 0 클래스 ['R3', 'R4', 'R8', 'R9'] 제외[주3], R7 근사[주1], 골드 대체[주2]. 안 읽는 기준선이라 Micro-F1이 높게 나온다(흔한 R2를 늘 맞힘, 04_평가_명세 §6) | score_baseline_freq.json |
+| 지적 추출 Micro-F1 (리뷰 단위) | 빈도 기준선(안 읽음) | 0.5379 | [0.4871, 0.5861] | 148 | 리뷰 단위 멀티라벨 Tier-1, 골드 disapere_gold.jsonl n=148 (sha256 ad25cb4ad575), 부트스트랩 2000회 시드 20260930 percentile, generator {'baseline': 148}, 예측 없음 0건은 빈 예측으로 채점 | 골드 support 0 클래스 ['R3', 'R4', 'R8', 'R9'] 제외[주3], R7 근사[주1], 골드 대체[주2]. 안 읽는 기준선이다(04_평가_명세 §6: 기준선 없는 단독 숫자 보고 금지). 늘 내는 코드(R1·R2·R6)는 재현율 1.0, 안 내는 코드(R5·R7)는 재현율 0이라 Micro-F1(0.5379)이 Macro-F1(0.3308)보다 높다 | score_baseline_freq.json |
 | 지적 추출 Micro-F1 (리뷰 단위) | Neumann (astra) | 측정 전 | — | — | — | — | 입력 없음 |
 | 지적 추출 Micro-F1 (리뷰 단위) | Neumann 비상 규칙 | 측정 전 | — | — | — | — | 입력 없음 |
 | 근거 연결률 (링크 단위) | Neumann (astra) | 측정 전 | — | — | — | — | 입력 없음 |
