@@ -30,6 +30,25 @@ def test_confirmed_text_gets_the_same_serving_caps_as_plan_text(tmp_path, monkey
     assert srv.budget.used == 1  # only the bundle's own revise run spent budget; both refused requests were refunded
 
 
+def test_decided_path_and_legacy_alias_share_gate_cache_and_generator(tmp_path, monkeypatch):
+    srv, app = setup(tmp_path, monkeypatch)
+    calls = []
+    monkeypatch.setattr(finalize, "finalize_plan", engine(calls))
+    assert finalize.FINALIZE_PATH == "/premortem/finalize"
+    assert srv.kind_for(finalize.FINALIZE_PATH) == "analysis" and srv.kind_for(finalize.LEGACY_FINALIZE_PATH) == "analysis"
+    async def go():
+        async with client(app) as c:
+            bundle = await _bundle(c)
+            body = {"plan_text": PLAN, "revision": bundle, "submission_id": "path_alias_1"}
+            new = await c.post(finalize.FINALIZE_PATH, json=body)
+            old = await c.post(finalize.LEGACY_FINALIZE_PATH, json=body)
+            assert new.status_code == old.status_code == 200 and new.json() == old.json() and len(calls) == 1
+            assert new.json()["generator"] == "mock" or new.json()["generator"] is None  # 결과별 생성 방식이 최상위에도 있다
+            assert "generator" in new.json() and new.json()["generator"] == new.json()["finalization"].get("generator")
+    run(go())
+    assert srv.gate.active == srv.gate.waiting == 0
+
+
 def test_preflight_runs_off_the_event_loop(tmp_path, monkeypatch):
     srv, app = setup(tmp_path, monkeypatch)
     monkeypatch.setattr(finalize, "finalize_plan", engine([]))

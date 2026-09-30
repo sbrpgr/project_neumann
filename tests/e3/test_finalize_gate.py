@@ -47,12 +47,46 @@ def test_words_and_numbers_from_other_issue_lines_and_tool_sources_are_now_allow
     assert out["tool_checks_after"][0]["check_id"] == "c1"  # 고친 줄의 검사만 1회 재검사
 
 
-def test_tool_computed_value_only_inside_placeholder():
-    ok = run("합계 최대 6이다. [확인 필요: 항목 합 7이 상한 6을 넘음]")
+def _with_computed(monkeypatch, value):
+    """도구 결과 details.computed를 흉내 낸다(실제 Z3 판정은 그대로). 엔진은 이 값 말고는 어떤 계산도 하지 않는다."""
+    from neumann.analyze import final_tools
+    real = final_tools.run_tool_checks
+
+    def run(text, checks, event=None):
+        rows = real(text, checks, event)
+        for row in rows:
+            if row["status"] in ("passed", "failed"):
+                row["details"] = {**row.get("details", {}), "computed": value}
+        return rows
+    monkeypatch.setattr(final_tools, "run_tool_checks", run)
+
+
+def test_tool_computed_value_only_inside_placeholder(monkeypatch):
+    engine_only = run("합계 최대 6이다. [확인 필요: 항목 합계 7 상한 6 초과]")
+    assert engine_only["corrections"][0]["reason"] == "unsupported_number"  # 엔진은 3+4를 스스로 계산하지 않는다(E-1)
+    _with_computed(monkeypatch, 7)
+    ok = run("합계 최대 6이다. [확인 필요: 항목 합계 7 상한 6 초과]")
     assert ok["corrections"][0]["applied"], ok["corrections"][0]["reason"]
     assert ok["issues"][0]["status"] == "unresolved"  # 자리표시는 표시일 뿐, 도구 재검사는 여전히 실패
     bad = run("합계 최대 7이다.")  # 계산값을 본문 사실로 단정 → 거절
     assert bad["corrections"][0]["reason"] == "unsupported_number" and bad["final_text"] == bad["input_text"]
+    other = run("합계 최대 6이다. [확인 필요: 항목 합계 8 상한 6 초과]")  # 도구가 내지 않은 수치
+    assert other["corrections"][0]["reason"] == "unsupported_number"
+
+
+def test_placeholder_body_is_not_a_free_text_channel():
+    cases = [("합계 최대 6이다. [확인 필요: https://evil.example/x]", "placeholder_unsafe"),
+             ("합계 최대 6이다. [확인 필요: www.example.com 참조]", "placeholder_unsafe"),
+             ("합계 최대 6이다. [확인 필요: 문의 admin@example.com]", "placeholder_unsafe"),
+             ("합계 최대 6이다. [확인 필요: 링크](x)", "placeholder_unsafe"),
+             ("합계 최대 6이다. [확인 필요: 신약 임상 결과가 우수함]", "placeholder_vocabulary"),
+             ("합계 최대 6이다. [확인 필요 항목 합계]", "placeholder_malformed")]
+    for after, reason in cases:
+        out = run(after)
+        assert out["corrections"][0]["reason"] == reason, (after, out["corrections"][0]["reason"])
+        assert out["final_text"] == out["input_text"]
+    ok = run("합계 최대 6이다. [확인 필요: 항목 합계 상한 대조 — 연구자 확인]")  # 고정 사유 어휘 + 범위 낱말만
+    assert ok["corrections"][0]["applied"]
 
 
 def test_fabrication_is_still_rejected_and_never_serialized():

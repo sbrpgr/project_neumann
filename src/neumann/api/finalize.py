@@ -16,7 +16,8 @@ from pydantic import Field, ValidationError
 
 from neumann.api import revise, serving
 
-FINALIZE_PATH = "/premortem/revise/finalize"
+FINALIZE_PATH = "/premortem/finalize"            # 결정된 경로(PM). 엔진·UI·문서 기준
+LEGACY_FINALIZE_PATH = "/premortem/revise/finalize"  # 이전 경로: 같은 핸들러(계약 추가만, 제거 없음)
 router = APIRouter()
 
 
@@ -130,6 +131,7 @@ def run_finalization(req: FinalizeRequest, cancelled: threading.Event) -> dict[s
         notices.append("입력 분석 결과와 수정 권고의 결속(세션·카드·근거)을 확인하지 못해 서버 서명을 붙이지 않는다.")
     out = serving.scrub_ok_payload({"version": "finalization@v1", "assembled": assembled,
         "finalization": final, "final_text": final["final_text"],
+        "generator": final.get("generator"), "model": final.get("model"),  # 결과별 생성 방식(UI 머리 문구용, F-9)
         "origin": "server_signed" if verified else "client_submitted_unverified",
         "text_source": "researcher_confirmed" if researcher else "server_assembled",
         "provenance": {"inputs_signed": signed, "coupled": coupled, "coupling": coupling, "researcher_text": researcher}})
@@ -155,7 +157,16 @@ def _preflight(req: FinalizeRequest) -> None:
 
 @router.post(FINALIZE_PATH)
 async def finalization(request: Request):
-    gate = revise._Gate(request, FINALIZE_PATH)
+    return await _finalization(request, FINALIZE_PATH)
+
+
+@router.post(LEGACY_FINALIZE_PATH)
+async def finalization_legacy(request: Request):
+    return await _finalization(request, LEGACY_FINALIZE_PATH)
+
+
+async def _finalization(request: Request, path: str):
+    gate = revise._Gate(request, path)
     refused = gate.refusal_response()
     if refused is not None:
         return refused
@@ -238,6 +249,7 @@ def install(app: Any) -> bool:
     if srv is None:
         return False
     srv.protect(FINALIZE_PATH, "analysis")
+    srv.protect(LEGACY_FINALIZE_PATH, "analysis")
     app.state.finalization_cache = _Cache()
     app.include_router(router)
     return True

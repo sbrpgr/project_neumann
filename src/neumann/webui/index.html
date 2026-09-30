@@ -1820,7 +1820,7 @@
     if (!st.finalSubmission || st.finalSubmission.payload !== payload) st.finalSubmission = { payload: payload, id: (window.crypto && crypto.randomUUID ? crypto.randomUUID() : 'final_' + Date.now() + '_' + Math.random().toString(36).slice(2)) };
     body.submission_id = st.finalSubmission.id;
     var stamp = st.finalStamp || 0, gen = st.gen; st.finalBusy = true; st.finalMsg = '수정 확정·검증 중 · 실제 검사와 의미 검토'; st.finalCtrl = new AbortController(); paintViewerBar();
-    fetch('premortem/revise/finalize', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: st.finalCtrl.signal }).then(asJson).then(function (x) {
+    fetch('premortem/finalize', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: st.finalCtrl.signal }).then(asJson).then(function (x) {
       if (!x.ok) throw new RevError(serverMsg(x.body, x.code), x.code);
       if (state().gen !== gen || (st.finalStamp || 0) !== stamp) return;
       st.finalization = x.body; st.finalMsg = '수정 확정·검증 결과 · ' + T((x.body.finalization || {}).status) + ' · ' + originText(x.body);

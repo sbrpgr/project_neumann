@@ -28,6 +28,7 @@ VOLATILE = {"generated_at", "elapsed_s", "server_elapsed_s", "decided_at", "sess
 
 def build() -> dict[str, Any]:
     os.environ.setdefault("NEUMANN_LLM_PROVIDER", "mock")
+    os.environ["NEUMANN_DEMO_SCRIPT"] = "1"  # 시연 대본 mock은 이 플래그로만 켜진다(운영 기본 꺼짐)
     from neumann.analyze.finalize_demo import DEMO_ID, DEMO_PLAN, DEMO_TITLE
     from neumann.analyze.revise import revise_result
     from neumann.api import finalize as finalize_api

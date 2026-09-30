@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import copy
 import json
-import math
 import re
 from typing import Any
 
@@ -26,10 +25,34 @@ CORRECTION_TASK = "final_correction"
 MAX_PLAN_CHARS = 200_000  # engine-level cap before any model call (HTTP caps are separate and smaller)
 
 _WORD_RE = re.compile(r"[A-Za-z][A-Za-z0-9._-]+|[가-힣]{2,}")
-_KO_SUFFIX_RE = re.compile(r"(?:으로써|으로|에서는|에서|에게|께서|이다|입니다|한다|합니다|된다|됩니다|하며|하고|하도록|하는|하여|해서|하면|했다|되어|"
-                           r"이며|이고|이라|라는|다는|보다|처럼|까지|부터|마다|조차|밖에|과|와|의|를|을|는|은|이|가|에|도|로|만|고|며|서)$")
+_KO_SUFFIX_RE = re.compile(r"(?:으로써|으로|에서는|에서|에게|께서|이다|입니다|한다는|한다|합니다|된다|됩니다|하므로|이므로|므로|하며|하고|하도록|"
+                           r"하는데|하는|하여|해서|하면|하지|했다|되어|되는|이며|이고|이라|라는|다는|보다|처럼|까지|부터|마다|조차|밖에|"
+                           r"과|와|의|를|을|는|은|이|가|에|도|로|만|고|며|서)$")
 _STYLE_WORDS = frozenset({"다듬음", "제안", "이러한", "해당", "또한", "그리고", "따라서", "명확히", "자연스럽게", "위한", "위해서", "이다", "있다"})
 _NEGATION_RE = re.compile(r"(?<![가-힣])(?:안|못)\s+(?=[가-힣])|않|없|아니|불가|금지|제외|\b(?:not|no|never|without|cannot)\b", re.I)
+# [확인 필요: …] 본문은 자유 문장 통로가 아니다(audit C-4): 링크·마크업·주소를 거절하고, 낱말은 근거 범위(쟁점 줄·도구 발췌)와
+# 아래 고정 사유 어휘 안에서만 허용한다. 수치는 _text_problem이 따로 본다(원문·도구 계산값만).
+_PLACEHOLDER_UNSAFE_RE = re.compile(r"://|www\.|\]\(|@|[<>]|https?|mailto|\\", re.I)
+_PLACEHOLDER_VOCAB = frozenset({
+    "확인", "필요", "값", "수치", "단위", "차원", "합계", "총계", "항목", "상한", "하한", "불일치", "일치", "초과", "미만", "미달", "넘음",
+    "순서", "순환", "선행", "후행", "방향", "모순", "가설", "방법", "데이터", "평가", "지표", "일정", "예산", "기대", "성과", "정정", "조정",
+    "확정", "정의", "근거", "출처", "인용", "참조", "누락", "미기재", "재확인", "연구자", "결정", "세부", "기준", "절차", "증가", "감소",
+    "이상", "이하", "같음", "다름", "또는", "및", "대비", "대조", "검산", "결과", "계산", "범위", "조건", "명시", "보완", "추가", "삭제",
+    "작성", "제시", "설명", "줄", "line", "sum", "unit", "order", "cycle", "limit", "value", "confirm", "todo",
+})
+
+
+def _placeholder_problem(text: str, scope_words: set[str]) -> str:
+    """Reason code when a [확인 필요: …] body carries links, markup or vocabulary outside the grounded scope."""
+    for body in PLACEHOLDER_RE.findall(text):
+        inner = body[len("[확인 필요:"):-1]
+        if _PLACEHOLDER_UNSAFE_RE.search(inner):
+            return "placeholder_unsafe"
+        if _grounded_words(inner) - _PLACEHOLDER_VOCAB - scope_words:
+            return "placeholder_vocabulary"
+    if "[확인 필요" in PLACEHOLDER_RE.sub("", text):
+        return "placeholder_malformed"
+    return ""
 
 
 def _grounded_words(text: str) -> set[str]:
@@ -172,8 +195,9 @@ def _text_problem(text: str, source: str, tool_numbers: frozenset[str] | set[str
 
 
 def _computed_numbers(check: dict, row: dict) -> set[str]:
-    """Numbers a completed tool check (passed/failed) established from grounded facts: term/limit values, their
-    stated operation result, and numeric leaves of the tool ``details``. Unchecked rows contribute nothing."""
+    """Numbers a completed tool check (passed/failed) established: the grounded term/limit values it verified and
+    the numeric leaves of the tool ``details`` (e.g. ``computed``). The engine never does arithmetic itself
+    (audit E-1); unchecked rows contribute nothing."""
     if row.get("status") not in ("pass", "passed", "ok", "fail", "failed"):
         return set()
     values: list[str] = []
@@ -186,9 +210,6 @@ def _computed_numbers(check: dict, row: dict) -> set[str]:
     terms = [t.get("value") for t in params.get("terms", []) if isinstance(t, dict) and number(t.get("value"))]
     others = [params[k].get("value") for k in ("limit", "left", "right") if isinstance(params.get(k), dict) and number(params[k].get("value"))]
     values += [str(v) for v in terms + others]
-    if terms and params.get("operation") in ("sum", "product"):
-        total = sum(terms) if params["operation"] == "sum" else math.prod(terms)
-        values.append(str(int(total)) if float(total).is_integer() else str(total))
 
     def leaves(obj: Any) -> None:
         if isinstance(obj, bool):
@@ -372,6 +393,8 @@ def finalize_plan(plan_text: str, *, result=None, provider=None, checks=None,
                 reason = "line_outside_issue"
             else:
                 reason = _text_problem(replacement, scope, tool_numbers)
+                if not reason:  # [확인 필요: …] 본문: 링크·마크업 거절, 고정 사유 어휘 + 범위 낱말만(audit C-4)
+                    reason = _placeholder_problem(replacement, _grounded_words(scope))
                 # Grounded-vocabulary gate: a correction may only use words the issue's own lines and the
                 # tool-checked source quotes already contain ("fix the text with facts the text states").
                 # New scientific content, numbers, entities or achieved results are still rejected; unknown

@@ -1,33 +1,35 @@
-"""FIN-ENGINE ↔ FIN-TOOLS 도구 인터페이스(공유 계약). 실제 계산은 ``neumann.analyze.final_tools``(Z3·Pint·NetworkX)가 한다.
+"""FIN-ENGINE ↔ FIN-TOOLS 도구 인터페이스(공유 계약).
 
-    from neumann.finalize.tools import ToolCall, ToolResult, run_tool, tool_for
+    from neumann.finalize.tools import ToolCall, ToolResult, run_tool, run_check, tool_for
 
-    call   = ToolCall(name="z3", args={"plan_text": text, "check": check})   # check = final_tools 검사 1건(원문 발췌 앵커)
+    call   = ToolCall(name="z3", args={"plan_text": text, "check": check})   # final_tools 검사 1건(원문 발췌 앵커)
     result = run_tool(call)                                                # → ToolResult(ok, output, evidence)
     result.verdict                                                         # "pass" | "fail" | "unchecked"
 
 원칙(대표 원칙·AGENTS.md)
-- **도구 선택은 코드가 한다.** 점검 유형(check kind) → 도구 이름은 `TOOL_FOR_CHECK` 표 하나로 고정한다(constraint→z3,
-  units→pint, dependency→networkx). LLM은 "어느 줄의 어떤 종류의 조건을 검사하라"(줄 번호·값)만 가리키고 도구 이름·인용문을
-  정하지 않는다. 인용문은 코드가 원문 줄에서 붙인다(`finalize._bind_sources`).
+- **도구 선택은 코드가 한다.** 점검 유형(check kind) → 도구 이름은 `TOOL_FOR_CHECK` 표 하나로 고정한다. LLM은 "어느 줄의 어떤
+  종류의 조건을 검사하라"(줄 번호·값)만 가리키고 도구 이름·인용문을 정하지 않는다. 인용문은 코드가 원문 줄에서 붙인다.
 - **수치·단위·합계 판정은 도구 결과로만 한다.** `ToolResult.ok=False`는 "검사하지 못함(unchecked)"이지 통과가 아니다. 도구가
-  없거나(ImportError) 인자가 어긋나거나 시간·취소가 걸리면 `unchecked`로 남고, 엔진은 그 항목을 판단 보류로 둔다.
+  없거나(ImportError) 인자가 어긋나거나 시간 상한(`ToolSpec.timeout_s`, 실제로 강제)·취소가 걸리면 `unchecked`로 남는다.
 - **근거 정직성.** `ToolResult.evidence`는 {tool, version, input, output, verdict, reason, elapsed_ms}다. 예외 원문·경로·
   비밀값은 evidence에 넣지 않는다(종류만). 모델이 만든 코드는 어떤 도구도 실행하지 않는다.
 
-도구 이름과 인자(모두 `args = {"plan_text": str, "check": dict}`; check 형식은 `docs/reports/FINAL-TOOLS.md`)
-| name | kind | 검사 | output |
-|---|---|---|---|
-| z3       | constraint | 원문에 명시된 합/곱 제약(≤·≥·=) | final_tools 결과 행(status·message·details) + verdict |
-| pint     | units      | 명시 단위의 차원 호환·변환 | 〃 |
-| networkx | dependency | 명시된 필수 선행 관계의 순환 | 〃 |
+두 계열의 점검 유형이 한 표에 있다(둘 다 코드가 정한다):
+| kind | tool | 구현 |
+|---|---|---|
+| constraint / units / dependency | z3 / pint / networkx | `analyze/final_tools.run_tool_checks` 어댑터(엔진 `analyze/finalize.py`의 checks 형식) |
+| arithmetic / sum / unit / structure / reference / citation / exec | calculator / arithmetic_sum / unit_dimension / structure / citation_lookup / restricted_exec | FIN-TOOLS(`neumann.finalize.tools.*`)가 `ToolSpec`으로 등록(규칙 추출기 `extract.py`의 출력) |
 
-FIN-TOOLS는 같은 이름으로 `ToolSpec`을 등록(replace=True)해 구현을 바꿀 수 있다. 등록이 없으면 `final_tools` 어댑터가 쓰인다.
+레지스트리는 도구 이름을 목록에 묶지 않는다: 소문자 식별자면 어떤 구현이든 등록할 수 있고(replace=True로 교체), 등록되지 않은
+이름을 부르면 `tool_unavailable`이다. `ensure_builtin()`(FIN-TOOLS `builtin`/`fin_tools` 등록)과 `ensure_adapters()`(final_tools
+어댑터)는 이미 등록된 이름을 건드리지 않는다.
 """
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
+import re
 import threading
 import time
 from collections.abc import Callable, Mapping
@@ -36,14 +38,21 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-INTERFACE_VERSION = "finalize-tools@v2"
+INTERFACE_VERSION = "finalize-tools@v3"
 VERDICTS = ("pass", "fail", "unchecked")
 
 # 점검 유형 → 도구 이름. 코드가 정한다(LLM이 고르지 않는다). 유형을 더할 때는 여기만 늘린다(계약 추가만).
-TOOL_FOR_CHECK: dict[str, str] = {"constraint": "z3", "units": "pint", "dependency": "networkx"}
+TOOL_FOR_CHECK: dict[str, str] = {
+    "constraint": "z3", "units": "pint", "dependency": "networkx",                      # analyze/final_tools 검사
+    "arithmetic": "calculator", "sum": "arithmetic_sum", "unit": "unit_dimension",      # FIN-TOOLS 규칙 추출 검사
+    "structure": "structure", "reference": "structure", "citation": "citation_lookup", "exec": "restricted_exec",
+}
 CHECK_KINDS: tuple[str, ...] = tuple(TOOL_FOR_CHECK)
-TOOL_NAMES: tuple[str, ...] = tuple(dict.fromkeys(TOOL_FOR_CHECK.values()))
+TOOL_NAMES: tuple[str, ...] = tuple(dict.fromkeys(TOOL_FOR_CHECK.values()))  # 알려진 이름(참고). 등록은 이 목록에 묶이지 않는다
+_NAME_RE = re.compile(r"[a-z][a-z0-9_]{0,31}")
 _STATUS_VERDICT = {"passed": "pass", "pass": "pass", "ok": "pass", "failed": "fail", "fail": "fail"}
+DEFAULT_TIMEOUT_S = 5.0
+MAX_TIMEOUT_S = 60.0
 
 
 def tool_for(check_kind: str) -> str:
@@ -90,26 +99,31 @@ ToolFn = Callable[[dict[str, Any]], dict[str, Any]]
 
 @dataclass(frozen=True)
 class ToolSpec:
-    """도구 등록 단위. ``run(args) -> output``(verdict 포함). ``args_schema``는 JSON Schema(없으면 검사 생략)."""
+    """도구 등록 단위. ``run(args) -> output``(verdict 포함). ``args_schema``는 JSON Schema(없으면 검사 생략).
+
+    ``timeout_s``는 레지스트리가 실제로 강제한다(작업 스레드에서 실행, 넘기면 unchecked/timeout)."""
 
     name: str
     description: str
     run: ToolFn
     version: str = "0"
     args_schema: Mapping[str, Any] | None = None
-    timeout_s: float = 5.0
+    timeout_s: float = DEFAULT_TIMEOUT_S
+
+
+_EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="neumann-tool")
 
 
 class ToolRegistry:
-    """이름 → ToolSpec. 실행은 항상 이 층을 거쳐 evidence를 남긴다."""
+    """이름 → ToolSpec. 실행은 항상 이 층을 거쳐 evidence를 남기고 시간 상한을 건다."""
 
     def __init__(self) -> None:
         self._specs: dict[str, ToolSpec] = {}
         self._lock = threading.Lock()
 
     def register(self, spec: ToolSpec, *, replace: bool = False) -> None:
-        if spec.name not in TOOL_NAMES:
-            raise ValueError(f"unknown tool name: {spec.name!r} (allowed: {TOOL_NAMES})")
+        if not isinstance(spec.name, str) or not _NAME_RE.fullmatch(spec.name):
+            raise ValueError(f"tool name must be a lowercase identifier (up to 32 chars): {spec.name!r}")
         with self._lock:
             if spec.name in self._specs and not replace:
                 raise ValueError(f"tool already registered: {spec.name!r}")
@@ -128,7 +142,7 @@ class ToolRegistry:
     def run(self, call: ToolCall, *, cancel_event: threading.Event | None = None) -> ToolResult:
         """도구를 돌리고 evidence를 붙인다. 어떤 실패도 예외 대신 ok=False(unchecked)로 돌아온다."""
         t0 = time.perf_counter()
-        spec = self.get(call.name)
+        spec = self.get(call.name) if isinstance(call.name, str) else None
         base = {"tool": call.name, "version": spec.version if spec else None, "interface": INTERFACE_VERSION,
                 "input": _jsonable(dict(call.args)) if isinstance(call.args, Mapping) else None, "check_id": call.check_id}
 
@@ -137,8 +151,8 @@ class ToolRegistry:
                   "elapsed_ms": round((time.perf_counter() - t0) * 1000, 2)}
             return ToolResult(ok=False, output={"verdict": "unchecked", "reason": reason}, evidence=ev, error=error)
 
-        if call.name not in TOOL_NAMES:
-            return fail("unknown_tool", "invalid_args")
+        if not isinstance(call.name, str) or not _NAME_RE.fullmatch(call.name):
+            return fail("invalid_tool_name", "invalid_args")
         if spec is None:
             return fail("tool_not_registered", "tool_unavailable")
         if cancel_event is not None and cancel_event.is_set():
@@ -149,8 +163,14 @@ class ToolRegistry:
             problem = _schema_problem(spec.args_schema, dict(call.args))
             if problem:
                 return fail(f"invalid_args: {problem}", "invalid_args")
+        limit = min(max(float(spec.timeout_s or DEFAULT_TIMEOUT_S), 0.01), MAX_TIMEOUT_S)
         try:
-            output = spec.run(dict(call.args))
+            future = _EXECUTOR.submit(spec.run, dict(call.args))
+            output = future.result(timeout=limit)
+        except concurrent.futures.TimeoutError:
+            # The worker thread cannot be killed; the result is discarded and the check stays unchecked.
+            log.warning("tool %s exceeded %.2fs", call.name, limit)
+            return fail(f"timeout: {limit:g}s", "timeout")
         except ImportError:
             return fail("tool_unavailable", "tool_unavailable")
         except TimeoutError:
@@ -196,7 +216,7 @@ def _jsonable(value: Any) -> Any:
         return str(value)[:500]
 
 
-# ── final_tools 어댑터(기본 구현) ────────────────────────────────────────
+# ── final_tools 어댑터(constraint·units·dependency) ─────────────────────
 
 _ARGS_SCHEMA = {"type": "object", "required": ["plan_text", "check"], "additionalProperties": False,
                 "properties": {"plan_text": {"type": "string", "maxLength": 200_000}, "check": {"type": "object"}}}
@@ -219,15 +239,15 @@ def _adapter(tool: str, kind: str) -> ToolFn:
 
 
 ADAPTERS: tuple[ToolSpec, ...] = tuple(
-    ToolSpec(tool, f"final_tools {kind} 검사 어댑터", _adapter(tool, kind), "final_tools@v1", _ARGS_SCHEMA)
-    for kind, tool in TOOL_FOR_CHECK.items()
+    ToolSpec(tool, f"final_tools {kind} 검사 어댑터", _adapter(tool, kind), "final_tools@v1", _ARGS_SCHEMA, 10.0)
+    for kind, tool in TOOL_FOR_CHECK.items() if tool in ("z3", "pint", "networkx")
 )
 
 registry = ToolRegistry()
 
 
 def ensure_adapters(reg: ToolRegistry | None = None) -> list[str]:
-    """등록되지 않은 이름에 final_tools 어댑터를 붙인다(FIN-TOOLS 구현이 먼저 있으면 유지). 반환: 이번에 붙인 이름."""
+    """등록되지 않은 이름에 final_tools 어댑터를 붙인다(기존 등록은 유지). 반환: 이번에 붙인 이름."""
     reg = reg or registry
     added = []
     for spec in ADAPTERS:
@@ -237,14 +257,34 @@ def ensure_adapters(reg: ToolRegistry | None = None) -> list[str]:
     return added
 
 
+def ensure_builtin(reg: ToolRegistry | None = None) -> list[str]:
+    """FIN-TOOLS 구현 모듈(`builtin` 또는 `fin_tools`의 `register_all`)이 있으면 기본 레지스트리에 붙인다(기존 등록 유지)."""
+    reg = reg or registry
+    before = set(reg.names())
+    for module_name in ("neumann.finalize.tools.builtin", "neumann.finalize.tools.fin_tools"):
+        try:
+            module = __import__(module_name, fromlist=["register_all"])
+        except ImportError:
+            continue
+        register_all = getattr(module, "register_all", None)
+        if callable(register_all):
+            try:
+                register_all(reg)
+            except Exception as exc:  # noqa: BLE001 — 한 구현의 등록 실패가 다른 도구를 막지 않는다
+                log.warning("tool registration failed module=%s kind=%s", module_name, type(exc).__name__)
+    return sorted(set(reg.names()) - before)
+
+
 def register(spec: ToolSpec, *, replace: bool = False) -> None:
     registry.register(spec, replace=replace)
 
 
 def run_tool(call: ToolCall, *, cancel_event: threading.Event | None = None,
              reg: ToolRegistry | None = None) -> ToolResult:
-    """기본 레지스트리로 도구 1건 실행. 등록된 구현이 없으면 final_tools 어댑터를 쓴다."""
+    """도구 1건 실행. 기본 레지스트리면 FIN-TOOLS 구현과 final_tools 어댑터를 먼저 붙인다(이미 있으면 유지)."""
     reg = reg or registry
+    if reg is registry:
+        ensure_builtin(reg)
     ensure_adapters(reg)
     return reg.run(call, cancel_event=cancel_event)
 
@@ -266,6 +306,7 @@ def run_check(plan_text: str, check: Mapping[str, Any], *, cancel_event: threadi
 __all__ = [
     "ADAPTERS",
     "CHECK_KINDS",
+    "DEFAULT_TIMEOUT_S",
     "INTERFACE_VERSION",
     "TOOL_FOR_CHECK",
     "TOOL_NAMES",
@@ -276,6 +317,7 @@ __all__ = [
     "ToolResult",
     "ToolSpec",
     "ensure_adapters",
+    "ensure_builtin",
     "register",
     "registry",
     "run_check",

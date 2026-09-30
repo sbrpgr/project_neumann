@@ -3,8 +3,10 @@
     from neumann.analyze.finalize_demo import DEMO_PLAN, mock_assessment, mock_correction
 
 동작
+- **``NEUMANN_DEMO_SCRIPT=1``일 때만** 대본이 켜진다(운영 기본은 정직한 기본 mock). ``scripts/finalize_demo.py``가 켠다.
 - ``mock_assessment``: payload의 계획서 줄에서 아래 **오류 패턴**이 보이면 그 줄을 앵커로 결정적 issue·checks를 낸다.
   패턴이 하나도 없으면 기존 정직한 기본 mock(``finalize.mock_assessment``: "의미 검토 미검증" 1건, checks 0)으로 돌아간다.
+- 교정의 계산값(예산 항목 합)은 도구 결과 ``details.computed``가 있을 때만 자리표시에 넣는다(엔진·mock은 더하지 않는다).
 - ``mock_correction``: payload의 issues 가운데 ``demo-`` 접두 항목에 대해 원문 줄을 그대로 앵커로 쓰는 교정을 낸다.
   교정은 엔진의 근거 게이트(원문 낱말·수치만, 새 사실은 ``[확인 필요: …]`` 안에서만)를 통과하도록 쓴다. 통과 여부는 엔진이 판정한다.
 - 도구 판정은 여기서 하지 않는다. checks는 ``final_tools``(Z3·Pint·NetworkX)가 원문 발췌로 실제 계산한다.
@@ -20,6 +22,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from typing import Any
 
@@ -155,35 +158,44 @@ def demo_correction(call: LLMCall) -> dict[str, Any] | None:
         no = issues["demo-budget"]["plan_lines"][0]
         m = _BUDGET.search(text_of.get(no, ""))
         row = rows.get("demo-budget", {})
-        if m and row.get("status") == "failed":
-            total = sum(int(m.group(i)) for i in (1, 2, 3))
-            anchored("demo-budget", no, f"[확인 필요: 항목 합 {total}만원이 상한 {m.group(4)}만원을 넘음 — 항목 또는 상한 조정]")
+        computed = row.get("details", {}).get("computed") if isinstance(row.get("details"), dict) else None
+        if m and row.get("status") == "failed" and isinstance(computed, (int, float)) and not isinstance(computed, bool):
+            # 계산값은 도구 details.computed에서만 온다(엔진·mock이 더하지 않는다).
+            total = int(computed) if float(computed).is_integer() else computed
+            anchored("demo-budget", no, f"[확인 필요: 항목 합계 {total}만원 상한 {m.group(4)}만원 초과 — 항목 또는 상한 조정]")
+        elif m and row.get("status") == "failed":
+            anchored("demo-budget", no, "[확인 필요: 항목 합계 상한 초과 — 항목 또는 상한 조정]")
         elif m:
-            anchored("demo-budget", no, "[확인 필요: 예산 항목 합과 상한 대조 미검사]")
+            anchored("demo-budget", no, "[확인 필요: 예산 항목 합계 상한 대조 미검사]")
     if "demo-units" in issues:
         no = issues["demo-units"]["plan_lines"][0]
         if rows.get("demo-units", {}).get("status") == "failed":
-            anchored("demo-units", no, "[확인 필요: mS는 컨덕턴스 단위라 전도도 S/cm 와 차원이 다름 — 단위 정정]")
+            anchored("demo-units", no, "[확인 필요: mS 와 S/cm 단위 차원 불일치 — 단위 정정]")
         else:
-            anchored("demo-units", no, "[확인 필요: 두 값의 단위 차원 대조 미검사]")
+            anchored("demo-units", no, "[확인 필요: 단위 차원 대조 미검사]")
     if "demo-order" in issues:
         target = issues["demo-order"]["plan_lines"][-1]
         if rows.get("demo-order", {}).get("status") == "failed":
-            anchored("demo-order", target, "[확인 필요: 데이터 정제와 모델 학습의 선행 순서가 순환함 — 순서 확정]")
+            anchored("demo-order", target, "[확인 필요: 데이터 정제 모델 학습 선행 순서 순환 — 순서 확정]")
     if "demo-contra" in issues:
         target = issues["demo-contra"]["plan_lines"][-1]
         current = text_of.get(target, "")
         if "증가한다는" in current:
-            anchored("demo-contra", target, "", replace=("증가한다는", "[확인 필요: 가설 2(반비례)와 방향이 어긋남 — 증가/감소 확정]"))
+            anchored("demo-contra", target, "", replace=("증가한다는", "[확인 필요: 가설 2 반비례 방향 불일치 — 증가 또는 감소 확정]"))
     return {"edits": edits[:8]} if edits else None
 
 
+def demo_enabled() -> bool:
+    """시연 대본은 명시적 플래그(NEUMANN_DEMO_SCRIPT=1)일 때만 켠다(audit E-2). 운영 기본은 정직한 기본 mock."""
+    return os.environ.get("NEUMANN_DEMO_SCRIPT", "").strip() == "1"
+
+
 def mock_assessment(call: LLMCall) -> dict[str, Any]:
-    return demo_assessment(call) or _engine.mock_assessment(call)
+    return (demo_assessment(call) if demo_enabled() else None) or _engine.mock_assessment(call)
 
 
 def mock_correction(call: LLMCall) -> dict[str, Any]:
-    return demo_correction(call) or _engine.mock_correction(call)
+    return (demo_correction(call) if demo_enabled() else None) or _engine.mock_correction(call)
 
 
 __all__ = ["DEMO_ID", "DEMO_PLAN", "DEMO_TITLE", "demo_assessment", "demo_correction", "mock_assessment", "mock_correction"]

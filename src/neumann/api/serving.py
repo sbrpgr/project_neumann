@@ -1222,7 +1222,7 @@ class Serving:
 
     def kind_for(self, path: str) -> str | None:
         key = path.rstrip("/") or "/"
-        if key == "/premortem/revise/finalize":
+        if key in ("/premortem/finalize", "/premortem/revise/finalize"):
             return "analysis"  # mandatory even when configured protected paths omit it
         return self.extra_protected.get(key) or self.config.protected.get(key)
 
