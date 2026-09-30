@@ -14,6 +14,14 @@
 - 느슨한 조건부 테스트를 `status=none`, 빈 items, 저자 답변 없음 문구 필수로 바꿨다. 결정만·메타리뷰만·거절 기록 혼합·심사평 혼합·다른 채택 논문 혼합 5개 회귀를 추가했다.
 - 명령: `python -m pytest tests/e3/test_revise.py tests/e4/test_revise_api.py -p no:cacheprovider --basetemp <허용된 임시 경로> -q` → **35 passed in 1.98s**. 환경은 수정 1과 같고 실제 API 0회.
 
+## Codex 인수 수정 3 — F3 증폭 상한·협력 취소 (2026-09-30)
+
+- API 명시 카드 목록과 선택 결과 모두 요청당 최대 8장이다. 미지정 9장·명시 9장 요청은 LLM 실행 없이 422 및 예약·예산 환불. 순수 동기 함수도 9장을 거절한다. 정확히 8장은 8회 호출로 검증했다.
+- 504·요청 취소 시 threading.Event를 세운다. 카드 조회·카드 실행·provider 호출 직전·응답 조립에서 확인한다. worker Task는 shield로 유지하고 완료 콜백에서만 관문을 반납한다. docx 생성도 같은 worker·상한 안에서 실행한다.
+- 시간 초과 시험: 8장/병렬 3에서 실행 중 1~3호출만 허용, 504 직후 active=1, 진행 중 호출을 풀어준 뒤 active=0, 대기 카드 호출 증가 0. 대기 시간 초과는 waiting=0·예산=0 확인.
+- 한계: Python 스레드·진행 중 provider 호출을 강제로 중단하지 못한다. 최대 3개의 진행 중 호출은 provider 자체 timeout까지 남을 수 있으며 그동안 관문 자리도 남는다. 후속 카드 호출은 중단한다.
+- 명령: `python -m pytest tests/e3/test_revise.py tests/e3/test_assemble.py tests/e4/test_revise_api.py tests/e4/test_export_revision.py -p no:cacheprovider --basetemp <허용된 임시 경로> -q` → **64 passed in 2.42s**. 환경은 수정 1과 같고 실제 API 0회.
+
 - 빌더: Claude Fable 5.1 · 브랜치 `task/E3-L2r`(main `03503d6` 기준) · 2026-09-30
 - 모든 명령은 `NEUMANN_LLM_PROVIDER=mock`, `NEUMANN_LIVE_LLM_OK=0`으로 돌렸다. **OpenAI 호출 0회.** 라이브 확인은 대표 승인 뒤 구축 세션(§9).
 

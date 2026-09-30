@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -164,6 +165,88 @@ def test_revise_timeout_is_user_message(tmp_path, monkeypatch):
             assert "0초" in r.json()["message"] and "Traceback" not in r.text
     run(go())
     assert srv.gate.active == 0
+
+
+def many_cards(count: int) -> dict[str, Any]:
+    import copy
+
+    out = result_json()
+    source = out["risk_cards"][0]
+    out["risk_cards"] = [{**copy.deepcopy(source), "card_id": f"card-limit-{i}"} for i in range(count)]
+    return out
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+def test_revise_card_amplification_refused_and_refunded(tmp_path, monkeypatch, explicit):
+    srv, app = make(tmp_path, monkeypatch)
+    calls = []
+    monkeypatch.setattr(revise_api, "run_revision", lambda *a, **k: calls.append(1))
+    result = many_cards(9)
+    body = {"result": result, "plan_text": PLAN}
+    if explicit:
+        body["card_ids"] = [r["card_id"] for r in result["risk_cards"]]
+
+    async def go():
+        async with client(app) as c:
+            response = await c.post("/premortem/revise", json=body)
+            assert response.status_code == 422
+            assert srv.gate.active == srv.gate.waiting == srv.budget.used == 0
+            assert calls == []
+    run(go())
+
+
+def test_timeout_cancels_queued_cards_and_holds_slot_until_threads_finish(tmp_path, monkeypatch):
+    from tests.e3.revise_fixtures import FakeCall
+
+    srv, app = make(tmp_path, monkeypatch, max_concurrent=1)
+    monkeypatch.setenv("NEUMANN_REVISE_TIMEOUT_S", "0.2")
+    release = threading.Event()
+    started = []
+
+    def respond(schema, text):
+        started.append(1)
+        assert release.wait(3), "test must release its workers"
+        return {"interpretation": [], "precedents": [], "edits": [], "questions": []}
+
+    def call_for(*args):
+        return FakeCall(respond, generator="mock"), {"effort": "medium"}, None
+
+    monkeypatch.setattr(revise_mod, "_llm_call_for", call_for)
+
+    async def go():
+        try:
+            async with client(app) as c:
+                response = await c.post("/premortem/revise", json={"result": many_cards(8), "plan_text": PLAN})
+                assert response.status_code == 504
+                assert 1 <= len(started) <= 3
+                count = len(started)
+                assert srv.gate.active == 1 and srv.gate.waiting == 0
+                release.set()
+                for _ in range(100):
+                    if srv.gate.active == 0:
+                        break
+                    await asyncio.sleep(0.01)
+                assert srv.gate.active == srv.gate.waiting == 0
+                assert len(started) == count  # 다섯 대기 카드는 호출하지 않는다.
+        finally:
+            release.set()
+    run(go())
+
+
+def test_queue_timeout_refunds_unstarted_work(tmp_path, monkeypatch):
+    srv, app = make(tmp_path, monkeypatch, max_concurrent=1)
+    monkeypatch.setenv("NEUMANN_REVISE_TIMEOUT_S", "0.05")
+
+    async def go():
+        occupied = srv.gate.reserve("test-occupancy", "unrelated-plan")
+        try:
+            async with client(app) as c:
+                response = await c.post("/premortem/revise", json={"result": result_json(), "plan_text": PLAN})
+                assert response.status_code == 504
+                assert srv.gate.active == 1 and srv.gate.waiting == srv.budget.used == 0
+        finally:
+            srv.gate.cancel(occupied)
+    run(go())
 
 
 def test_revise_internal_error_is_user_message(tmp_path, monkeypatch):

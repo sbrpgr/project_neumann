@@ -32,6 +32,7 @@ import json
 import logging
 import math
 import re
+import threading
 import time
 from collections.abc import Callable, Mapping
 from typing import Any, Literal
@@ -47,7 +48,7 @@ log = logging.getLogger("neumann.revise")
 REVISE_PATH = "/premortem/revise"
 ASSEMBLE_PATH = "/premortem/revise/assemble"
 MAX_PLAN_CHARS = 200_000
-MAX_CARD_IDS = 16
+MAX_CARD_IDS = 8
 MAX_DECISIONS = 200
 DEFAULT_TIMEOUT_S = 90.0
 DOCX_MEDIA = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -156,25 +157,30 @@ def plan_id_of(plan_text: str) -> str:
     return PlanDocument.from_text(masked, "revise").plan_id
 
 
-def run_revision(req: ReviseRequest, *, provider: str | None = None) -> dict[str, Any]:
+def run_revision(req: ReviseRequest, *, provider: str | None = None,
+                 cancel_event: threading.Event | None = None) -> dict[str, Any]:
     """카드별 수정 권고(순수 동기). API·작업 방식 공용."""
     from neumann.analyze.revise import revise_result
 
-    out = revise_result(req.result, card_ids=req.card_ids, plan_text=req.plan_text, provider=provider)
+    out = revise_result(req.result, card_ids=req.card_ids, plan_text=req.plan_text, provider=provider, cancel_event=cancel_event)
     out["revision_sig"] = sign_payload("revision", out)
     return out
 
 
-def run_assembly(req: AssembleRequest, *, provider: str | None = None, timeout_s: float | None = None) -> dict[str, Any]:
+def run_assembly(req: AssembleRequest, *, provider: str | None = None, timeout_s: float | None = None,
+                 cancel_event: threading.Event | None = None) -> dict[str, Any]:
     """통합(+선택 다듬기) + 마크다운 3판(순수 동기)."""
     from neumann.analyze import assemble as asm
     from neumann.analyze.review import provider_llm_call
     from neumann.llm import make_llm, provider_generator, task_options
+    from neumann.analyze.revise import check_cancelled
 
+    check_cancelled(cancel_event)
     out = asm.assemble_revised_plan(req.plan_text, req.revision, req.decisions)
     generator: str | None = None
     model: str | None = None
     if req.polish:
+        check_cancelled(cancel_event)
         llm = make_llm(None, provider)
         opts = task_options(asm.POLISH_TASK, None)
         try:
@@ -186,6 +192,7 @@ def run_assembly(req: AssembleRequest, *, provider: str | None = None, timeout_s
         out = asm.polish_revised_plan(out, call, effort=opts["effort"])
         generator, model = out["polish"].get("generator"), out["polish"].get("model")
     rev_model = req.revision.get("model") if isinstance(req.revision, Mapping) else None
+    check_cancelled(cancel_event)
     rev_gen = req.revision.get("generator") if isinstance(req.revision, Mapping) else None
     ev = asm.evidence_lookup(req.result, req.revision)
     label_model = model or (rev_model if isinstance(rev_model, str) else None)
@@ -257,7 +264,7 @@ class _Gate:
             self.ticket.plan_id = f"revise:{ctx.plan_id[:12]}"  # 작업(jobs) 상태 조회가 분석 자리로 오인하지 않게
         return None
 
-    async def run(self, fn: Callable[[], Any], timeout_s: float) -> Any:
+    async def run(self, fn: Callable[[threading.Event], Any], timeout_s: float) -> Any:
         assert self.srv is not None and self.ctx is not None
         t = self.ticket
         gate = self.srv.gate
@@ -269,14 +276,25 @@ class _Gate:
                 self.srv._drop_reservation(self.ctx)
                 raise serving.AnalysisTimeout("queue wait") from None
         self.ctx.reservation, self.ctx.budget_spent = None, False
+        cancel_event = threading.Event()
+        worker = asyncio.create_task(asyncio.to_thread(fn, cancel_event))
+
+        def finished(task: asyncio.Task[Any]) -> None:
+            if t is not None:
+                gate.release(t, None)  # 스레드가 끝날 때까지 자리를 유지한다.
+            if not task.cancelled():
+                task.exception()  # 504 뒤 협력 취소 예외를 회수한다.
+
+        worker.add_done_callback(finished)
         try:
             remaining = max(timeout_s - (time.monotonic() - started), 0.01)
-            return await asyncio.wait_for(asyncio.to_thread(fn), timeout=remaining)
+            return await asyncio.wait_for(asyncio.shield(worker), timeout=remaining)
         except asyncio.TimeoutError:
+            cancel_event.set()
             raise serving.AnalysisTimeout("revise time limit") from None
-        finally:
-            if t is not None:
-                gate.release(t, None)  # 분석 평균 시간(ETA)에는 섞지 않는다
+        except BaseException:
+            cancel_event.set()
+            raise
 
 
 def _timeout_response(ctx: serving.RequestCtx | None, limit: float) -> JSONResponse:
@@ -314,9 +332,15 @@ async def premortem_revise(request: Request) -> Response:
         return _json(serving._err("invalid_request", MESSAGES["result_invalid"], ticket, fields=_errors(exc)[:20]), 422)
     if plan_id_of(req.plan_text) != result.plan_id:
         return _json(serving._err("plan_mismatch", MESSAGES["plan_mismatch"], ticket), 422)
+    from neumann.analyze.revise import select_cards
+
+    try:
+        select_cards(result, req.card_ids)
+    except ValueError:
+        return _json(serving._err("too_many_cards", "수정 권고는 요청당 최대 8개 카드만 가능합니다. 카드 id를 선택해 주세요.", ticket), 422)
     limit = _timeout_s()
     try:
-        out = await gate.run(lambda: run_revision(req), limit)
+        out = await gate.run(lambda cancelled: run_revision(req, cancel_event=cancelled), limit)
     except serving.AnalysisTimeout:
         return _timeout_response(ctx, limit)
     except Exception as exc:  # noqa: BLE001
@@ -355,10 +379,17 @@ async def premortem_revise_assemble(request: Request) -> Response:
         if res.plan_id != rev_pid:
             return _json(serving._err("plan_mismatch", MESSAGES["plan_mismatch"], ticket), 422)
     limit = _timeout_s()
+
+    def assemble_output(cancelled: threading.Event) -> tuple[dict[str, Any], bytes | None]:
+        from neumann.analyze.revise import check_cancelled
+
+        out = run_assembly(req, timeout_s=limit, cancel_event=cancelled)
+        check_cancelled(cancelled)
+        data = build_docx_bytes(req, out) if req.format == "docx" else None
+        return out, data
+
     try:
-        out = await gate.run(lambda: run_assembly(req, timeout_s=limit), limit)
-        if req.format == "docx":
-            data = await asyncio.to_thread(build_docx_bytes, req, out)
+        out, data = await gate.run(assemble_output, limit)
     except serving.AnalysisTimeout:
         return _timeout_response(ctx, limit)
     except Exception as exc:  # noqa: BLE001

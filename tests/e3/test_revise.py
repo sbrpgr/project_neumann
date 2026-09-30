@@ -357,3 +357,24 @@ def test_select_cards_skips_r0_and_unknown(result):
     assert [c.card_id for c in cards] == [LEAK] and skipped[0]["card_id"] == "card-nope"
     cards, skipped = revise.select_cards(result, None)
     assert [c.card_id for c in cards] == [LEAK, SEED] and skipped == []
+
+
+def test_direct_revision_rejects_more_than_eight_cards(result, store, mock_llm):
+    source = result.risk_cards[0]
+    result.risk_cards = [source.model_copy(update={"card_id": f"card-cap-{i}"}) for i in range(9)]
+    with pytest.raises(ValueError, match="8"):
+        revise.revise_result(result, store=store, llm=mock_llm)
+    out = revise.revise_result(result, card_ids=[c.card_id for c in result.risk_cards[:8]], store=store, llm=mock_llm)
+    assert len(out["revisions"]) == out["cost"]["llm_calls"] == 8
+
+
+def test_cancelled_revision_does_not_start_provider(result, store, monkeypatch):
+    import threading
+
+    cancelled = threading.Event()
+    cancelled.set()
+    calls = []
+    monkeypatch.setattr(revise, "make_llm", lambda *a: calls.append(1))
+    with pytest.raises(revise.RevisionCancelled):
+        revise.revise_result(result, store=store, cancel_event=cancelled)
+    assert calls == []

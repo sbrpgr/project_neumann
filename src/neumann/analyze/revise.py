@@ -24,6 +24,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
@@ -79,6 +80,7 @@ MAX_PLAN_CHARS = 12000
 MAX_PROPOSED_CHARS = 600
 MAX_QUESTION_CHARS = 300
 MAX_PARALLEL = 3
+MAX_CARDS = 8
 EST_CHARS_PER_TOKEN = 3          # 한국어·영어 혼합 입력의 어림값(보고서에 적는다)
 EST_OUTPUT_TOKENS_PER_CALL = 700  # 카드 한 장 응답의 어림값
 
@@ -92,6 +94,15 @@ NO_EVIDENCE_REASONS: tuple[str, ...] = tuple(
 
 _TITLE_STRIP = str.maketrans("", "", "\"“”「」『』《》«»＂'‘’")
 _GEN_RANK = {Generator.rule.value: 0, Generator.mock.value: 1, Generator.astra.value: 2}
+
+
+class RevisionCancelled(Exception):
+    """요청 시간 상한·연결 취소 뒤 새 카드 작업을 시작하지 않는다."""
+
+
+def check_cancelled(cancel_event: threading.Event | None) -> None:
+    if cancel_event is not None and cancel_event.is_set():
+        raise RevisionCancelled("revision cancelled")
 
 INSTRUCTIONS = """\
 You revise a research plan before the research starts, using what actually happened to similar published work in peer review.
@@ -559,7 +570,9 @@ class _CardRun:
 
 
 def _run_card(card: RiskCard, result: PremortemResult, plan: PlanDocument | None, records: CardRecords,
-              index: RevisionIndex, llm: LLMProvider | None, settings: Any, effort: str | None) -> _CardRun:
+              index: RevisionIndex, llm: LLMProvider | None, settings: Any, effort: str | None,
+              cancel_event: threading.Event | None = None) -> _CardRun:
+    check_cancelled(cancel_event)
     t0 = time.perf_counter()
     call, opts, why = _llm_call_for(llm, settings)
     eff = effort or opts["effort"]
@@ -569,6 +582,7 @@ def _run_card(card: RiskCard, result: PremortemResult, plan: PlanDocument | None
         rev = rule_card_revision(card, index, why or "llm_unavailable", elapsed_s=time.perf_counter() - t0, llm_calls=0)
         return _CardRun(rev, records, prompt_chars, {}, True)
     schema = build_card_schema(prompt)
+    check_cancelled(cancel_event)
     try:
         data = call(schema, INSTRUCTIONS, prompt.input_text, effort=eff)
         error = None
@@ -661,6 +675,8 @@ def select_cards(result: PremortemResult, card_ids: list[str] | None) -> tuple[l
             skipped.append({"card_id": cid, "reason": "카드 근거가 결과 evidence에 없다"})
         else:
             cards.append(card)
+    if len(cards) > MAX_CARDS:
+        raise ValueError(f"수정 권고는 요청당 최대 {MAX_CARDS}개 카드만 가능하다")
     return cards, skipped
 
 
@@ -702,9 +718,11 @@ def revise_result(
     store: RecordStore | None = None,
     effort: str | None = None,
     parallel: int = MAX_PARALLEL,
+    cancel_event: threading.Event | None = None,
 ) -> dict[str, Any]:
     """카드 묶음의 수정 권고(계약 `contracts/revision.schema.json`). 예외로 죽지 않는다(카드 단위로 규칙 경로)."""
     t0 = time.perf_counter()
+    check_cancelled(cancel_event)
     if not isinstance(result, PremortemResult):
         result = PremortemResult.model_validate(result)
     notices: list[str] = []
@@ -728,6 +746,7 @@ def revise_result(
     known = {e.excerpt_id for e in result.evidence}
     per_card: dict[str, CardRecords] = {}
     for card in cards:
+        check_cancelled(cancel_event)
         if store is None:
             per_card[card.card_id] = CardRecords(card_id=card.card_id)
             continue
@@ -745,8 +764,11 @@ def revise_result(
     index = RevisionIndex(result, records, pools)
 
     def run(card: RiskCard) -> _CardRun:
+        check_cancelled(cancel_event)
         try:
-            return _run_card(card, result, plan, per_card[card.card_id], index, llm, settings, effort)
+            return _run_card(card, result, plan, per_card[card.card_id], index, llm, settings, effort, cancel_event)
+        except RevisionCancelled:
+            raise
         except Exception as exc:  # noqa: BLE001 — 카드 하나의 내부 오류
             log.warning("수정 권고 내부 오류 card=%s kind=%s", card.card_id, type(exc).__name__)
             rev = rule_card_revision(card, index, f"internal_error: {type(exc).__name__}", elapsed_s=0.0, llm_calls=0)
@@ -757,6 +779,7 @@ def revise_result(
             runs = list(pool.map(run, cards))
     else:
         runs = [run(c) for c in cards]
+    check_cancelled(cancel_event)
 
     revisions = [r.revision for r in runs]
     used_ids = {x for rev in revisions for s in rev["interpretation"] for x in s["excerpt_ids"]}
