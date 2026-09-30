@@ -1669,7 +1669,7 @@
     else it.dec[eid] = { d: d, text: d === 'edit' ? ((cur && cur.d === 'edit' && cur.text) || e.after) : (d === 'adopt' ? e.after : ''), at: new Date().toISOString() };
     var b = $('rvd-' + rank + '-' + eid); if (b) fillDec(b, it, e);
     if (d === 'edit' && b) { var ta = b.querySelector('textarea'); if (ta) ta.focus(); }
-    persist(); paintSummary(); paintHub(); state().asm = null; if (viewerOpen()) { paintViewer(); invalidateAsm(); }
+    invalidateFinalization(); persist(); paintSummary(); paintHub(); state().asm = null; if (viewerOpen()) { paintViewer(); invalidateAsm(); }
   }
   function decisionsLog() {
     var st = state(), out = [];
@@ -1809,7 +1809,36 @@
     asm.notes = notes; asm.counts.overlay = n; asm.counts.edited = me; asm.counts.changed += n; return asm;
   }
   function currentAsm() { var st = state(); return overlay(st.asm && st.asm.source === 'server' ? JSON.parse(JSON.stringify(st.asm)) : assembleLocal()); }
-  function invalidateAsm() { var st = state(); st.asm = null; st.asmStamp++; if (viewerOpen()) refreshServerAsm(); }
+  function invalidateFinalization() { var st = state(); st.finalization = null; st.finalSubmission = null; st.finalStamp = (st.finalStamp || 0) + 1; if (st.finalCtrl) st.finalCtrl.abort(); st.finalBusy = false; st.finalMsg = ''; }
+  function invalidateAsm() { var st = state(); invalidateFinalization(); st.asm = null; st.asmStamp++; if (viewerOpen()) refreshServerAsm(); }
+  function requestFinalization() {
+    var st = state(); if (st.finalBusy) return;
+    if (MOCK || !mergedRevision()) { st.finalMsg = '수정 확정은 실제 서버 수정 권고가 있어야 실행할 수 있습니다.'; paintViewer(); return; }
+    var body = assembleBody('json'); body.polish = false;
+    if (Object.keys(st.pedit).length) { if (!st.asm || !st.asm.raw || !st.asm.raw.revised_plan_id) { st.finalMsg = '서버 통합본 조립이 끝난 뒤 수정 확정을 실행해 주세요.'; paintViewer(); return; } body.confirmed_text = currentAsm().paras.filter(function (p) { return p.kind !== 'deleted'; }).map(function (p) { return finalText(p); }).join('\n'); body.confirmed_base_id = st.asm.raw.revised_plan_id; }
+    var payload = JSON.stringify(body);
+    if (!st.finalSubmission || st.finalSubmission.payload !== payload) st.finalSubmission = { payload: payload, id: (window.crypto && crypto.randomUUID ? crypto.randomUUID() : 'final_' + Date.now() + '_' + Math.random().toString(36).slice(2)) };
+    body.submission_id = st.finalSubmission.id;
+    var stamp = st.finalStamp || 0, gen = st.gen; st.finalBusy = true; st.finalMsg = '수정 확정·검증 중 · 실제 검사와 의미 검토'; st.finalCtrl = new AbortController(); paintViewerBar();
+    fetch('premortem/revise/finalize', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: st.finalCtrl.signal }).then(asJson).then(function (x) {
+      if (!x.ok) throw new RevError(serverMsg(x.body, x.code), x.code);
+      if (state().gen !== gen || (st.finalStamp || 0) !== stamp) return;
+      st.finalization = x.body; st.finalMsg = '수정 확정·검증 결과 · ' + T((x.body.finalization || {}).status) + ' · ' + originText(x.body);
+    }).catch(function (e) {
+      if (state().gen !== gen || (st.finalStamp || 0) !== stamp) return;
+      st.finalMsg = e && e.name === 'AbortError' ? '수정 확정 요청 취소됨' : '수정 확정 실패 · ' + (e && e.message ? e.message : '서버 연결 실패');
+    }).then(function () { if (state().gen !== gen || (st.finalStamp || 0) !== stamp) return; st.finalBusy = false; st.finalCtrl = null; paintViewer(); });
+  }
+  function finalizationPanel(st) {
+    var panel = el('section', 'card'); panel.id = 'rvFinalization'; panel.style.cssText = 'padding:20px; margin:20px 0;';
+    var out = st.finalization, result = out.finalization || {};
+    add(panel, el('h2', null, '최종 수정 초안 · ' + T(result.status)), el('p', 'sm muted', originText(out)));
+    var draft = el('pre', null, T(out.final_text)); draft.style.cssText = 'white-space:pre-wrap; font:inherit;'; add(panel, draft);
+    [['변경 목록', result.corrections], ['잔여 쟁점', result.issues], ['도구 검사 · 수정 전', result.tool_checks_before], ['도구 검사 · 수정 후', result.tool_checks_after]].forEach(function (row) {
+      var det = el('details'); add(det, el('summary', null, row[0])); var content = el('pre', null, JSON.stringify(row[1] || [], null, 2)); content.style.cssText = 'white-space:pre-wrap; overflow-wrap:anywhere;'; add(det, content); add(panel, det);
+    });
+    L(result.notices).forEach(function (notice) { add(panel, el('p', 'sm muted', T(notice))); }); return panel;
+  }
   /* 서버 assemble(POST /premortem/revise/assemble, format json). 없으면(404·405·501) 화면 조립. 결정이 바뀔 때마다 다시 받는다 */
   function refreshServerAsm() {
     var st = state(), gen = st.gen, stamp = ++st.asmStamp;
@@ -1826,7 +1855,7 @@
     }).catch(function (e) { if (state().gen !== gen || st.asmStamp !== stamp) return; st.asm = null; var msg = e && e.message ? String(e.message) : '서버 연결 실패'; st.asmMsg = msg + (msg.indexOf('화면 조립') >= 0 ? '' : ' → 화면 조립'); paintViewer(); });
   }
   function saveBlob(blob, name) { var u = URL.createObjectURL(blob), a = document.createElement('a'); a.href = u; a.download = name; a.style.display = 'none'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(u); }, 5000); }
-  function downloadMd() { var asm = currentAsm(); if (!asm.counts.adopted) U.toast('채택한 수정안이 없어 수정본이 원본과 같음'); var name = asm.source === 'server' && asm.rid ? 'neumann_revised_plan_' + asm.rid.slice(0, 12) + '.md' : mdName('md'); saveBlob(new Blob([mdText(asm)], { type: 'text/markdown;charset=utf-8' }), name); U.toast('수정본 내려받음 · ' + name + (asm.source === 'server' ? ' · 서버 각주 판+이력' : ' · 화면 조립')); }
+  function downloadMd() { var final = state().finalization; if (final) { var result = final.finalization || {}; var text = '> 수정 확정·검증 · ' + T(result.status) + ' · ' + originText(final) + '\n\n' + T(final.final_text) + '\n\n## 변경 목록\n\n' + JSON.stringify(result.corrections || [], null, 2) + '\n\n## 잔여 쟁점\n\n' + JSON.stringify(result.issues || [], null, 2); saveBlob(new Blob([text], { type: 'text/markdown;charset=utf-8' }), 'neumann_final_plan.md'); U.toast('최종 수정 초안 내려받음'); return; } var asm = currentAsm(); if (!asm.counts.adopted) U.toast('채택한 수정안이 없어 수정본이 원본과 같음'); var name = asm.source === 'server' && asm.rid ? 'neumann_revised_plan_' + asm.rid.slice(0, 12) + '.md' : mdName('md'); saveBlob(new Blob([mdText(asm)], { type: 'text/markdown;charset=utf-8' }), name); U.toast('수정본 내려받음 · ' + name + (asm.source === 'server' ? ' · 서버 각주 판+이력' : ' · 화면 조립')); }
   function docxMsg(m, err) { var st = state(); st.docxMsg = m; var e = $('rvDocxMsg'); if (e) { e.textContent = m; e.classList.toggle('inerr', !!err); } }
   function fileNameOf(cd, fallback) { var m = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(cd || ''); var n = m ? decodeURIComponent(m[1]).replace(/[^0-9A-Za-z가-힣_.-]/g, '') : ''; return n || fallback; }
   /* .docx는 서버가 만든다(assemble format=docx: 본문 + 미주 + 수정 이력 표 + 근거 부록) */
@@ -2090,8 +2119,10 @@
     [['clean', '깨끗한 원고'], ['marks', '변경 표시'], ['notes', '각주 판']].forEach(function (v) { var b = btn(st.view === v[0] ? 'on' : '', v[1]); b.dataset.rvview = v[0]; b.setAttribute('aria-pressed', st.view === v[0] ? 'true' : 'false'); add(seg, b); });
     add(bar, seg);
     var acts = el('div', 'acts');
+    var finalize = btn('btn sm dark', st.finalBusy ? '수정 확정·검증 중' : '수정 확정·검증', 'rvFinalize'); finalize.disabled = !!st.finalBusy; add(acts, finalize);
+    if (st.finalMsg) add(bar, el('div', 'sm muted', st.finalMsg));
     var pol = el('label', 'opt' + (st.polish ? ' on' : '')); var pc = el('input'); pc.type = 'checkbox'; pc.checked = st.polish; pc.id = 'rvPolish'; pc.disabled = st.asmAvail === false; pc.style.cssText = 'accent-color:var(--red); margin:0;'; add(pol, pc, el('span', null, '문장 흐름 다듬기(새 내용 추가 없음)')); pol.title = '기본 끔 · 서버 조립(assemble)에 polish로 요청 · 코드 게이트(수치·자리표시·미변경 줄·길이)가 거부하면 미적용으로 표시'; add(acts, pol);
-    var md = btn('btn sm', '원고 내려받기(.md)'); md.dataset.rvdl = 'md'; var dx = btn('btn sm', '.docx', 'rvDocx'); dx.title = '서버가 만든 Word 문서'; var dm = el('span', 'sm muted', st.docxMsg || ''); dm.id = 'rvDocxMsg';
+    var md = btn('btn sm', st.finalization ? '최종 초안 내려받기(.md)' : '원고 내려받기(.md)'); md.dataset.rvdl = 'md'; var dx = btn('btn sm', st.finalization ? '.docx (통합본)' : '.docx', 'rvDocx'); dx.title = '서버가 만든 통합본 Word 문서 · 최종 확정 초안은 .md로 내려받기'; var dm = el('span', 'sm muted', st.docxMsg || ''); dm.id = 'rvDocxMsg';
     var pr = btn('btn sm', '인쇄/PDF 저장', 'rvPrint'); var cl = btn('btn sm', '닫기 ✕', 'rvVClose'); cl.setAttribute('aria-label', '뷰어 닫기');
     add(acts, md, dx, dm, pr, cl); add(bar, acts);
   }
@@ -2099,6 +2130,7 @@
   function paintViewerBody() {
     var body = $('rvVBody'); if (!body) return; clear(body); hideTip();
     var d = D(), st = state(), asm = currentAsm(), n = asm.counts, paper = el('div', 'rvpaper'); paper.id = 'rvPaper';
+    if (st.finalization) add(paper, finalizationPanel(st));
     var same = asm.conflicts.filter(function (c) { return !c.kind || c.kind === 'same_line'; }), stale = asm.conflicts.filter(function (c) { return c.kind && c.kind !== 'same_line'; });
     if (same.length) { var bn = el('div', 'notice'); bn.id = 'rvConfBanner'; var bb = btn('btn sm', '선택 필요 ' + same.length + '건'); bb.dataset.rvjumpconf = '1'; add(bn, el('b', null, '미해결 충돌'), '같은 문단을 두 수정안이 고침 · 하나를 고르면 결정 로그에 기록 ', bb); add(paper, bn); }
     if (stale.length) { var sn = el('div', 'notice'); sn.id = 'rvStaleBanner'; add(sn, el('b', null, '적용 못 한 수정안 ' + stale.length + '건'), stale.map(function (c) { return c.n + '행 · ' + c.kind + (c.detail ? ' · ' + c.detail : ''); }).join(' / ')); add(paper, sn); }
@@ -2258,6 +2290,7 @@
     if (ev.target.closest('#rvVClose')) { closeViewer(); return; }
     if ((t = ev.target.closest('#rvViewer')) && ev.target === t) { closeViewer(); return; }
     if (ev.target.closest('#rvPrint')) { window.print(); return; }
+    if (ev.target.closest('#rvFinalize')) { requestFinalization(); return; }
     if ((t = ev.target.closest('[data-rvdl]'))) { downloadMd(); return; }
     if (ev.target.closest('#rvDocx')) { downloadDocx(); return; }
     if ((t = ev.target.closest('[data-rvview]'))) { state().view = t.dataset.rvview; state().pin = null; persist(); paintViewer(); var vb = document.querySelector('[data-rvview="' + t.dataset.rvview + '"]'); if (vb) vb.focus(); return; }
@@ -2276,7 +2309,7 @@
     if (t && t.id === 'rvPolish') { var s = state(); s.polish = t.checked; s.asm = null; invalidateAsm(); }
   });
   var editTimer = null;
-  document.addEventListener('input', function (ev) { var t = ev.target; if (!t || !t.dataset || t.dataset.rvedit == null) return; var it = item(+t.dataset.rank), dc = it.dec[t.dataset.rvedit]; if (!dc) return; dc.text = t.value; dc.at = new Date().toISOString(); state().asm = null; clearTimeout(editTimer); editTimer = setTimeout(function () { persist(); paintSummary(); if (viewerOpen()) { paintViewer(); invalidateAsm(); } }, 250); });
+  document.addEventListener('input', function (ev) { var t = ev.target; if (!t || !t.dataset || t.dataset.rvedit == null) return; var it = item(+t.dataset.rank), dc = it.dec[t.dataset.rvedit]; if (!dc) return; invalidateFinalization(); dc.text = t.value; dc.at = new Date().toISOString(); state().asm = null; clearTimeout(editTimer); editTimer = setTimeout(function () { persist(); paintSummary(); if (viewerOpen()) { paintViewer(); invalidateAsm(); } }, 250); });
   document.addEventListener('keydown', function (ev) {
     if (!viewerOpen()) return;
     var st = state(), inEd = ev.target && ev.target.classList && ev.target.classList.contains('rvpta');
