@@ -106,9 +106,12 @@ plan_document_from_text(text: str, session_id: str) -> tuple[PlanDocument, dict[
     # PlanDocument.from_text 대신 쓰면 전화·주민번호까지 가려진다(plan_id = 가린 본문의 sha256)
 
 # neumann.analyze.fitness
-assess_fitness(plan: PlanDocument, llm_call, *, generator="astra", model="gpt-6-astra",
+assess_fitness(plan: PlanDocument, llm_call, *, generator=None, model=None,
                effort="low", max_chars=12000) -> dict
     # llm_call(schema: dict, instructions: str, input: str, *, effort: str) -> dict | None
+    # 생성 주체: generator= 인자 > llm_call.generator 속성, 둘 다 없으면 호출 전 ValueError(추정 금지)
+    # 모델 id: model= 인자 > llm_call.model 속성 > None. input은 JSON 문자열({"plan": "번호: 본문\n…", …})
+resolve_generator(llm_call, explicit) -> str
 fitness_stage(result: dict) -> StageStatus                   # PremortemResult.stages에 넣는다
 rule_fitness(plan) -> dict / detect_language(text) -> dict   # 규칙 신호(비상 경로·교차 확인)
 FITNESS_SCHEMA, INSTRUCTIONS
@@ -120,7 +123,7 @@ FITNESS_SCHEMA, INSTRUCTIONS
 
 ```python
 plan, pii_counts = plan_document_from_text(plan_text, session_id)
-fit = assess_fitness(plan, llm_call, generator=<provider의 generator>, model=<모델 id>)
+fit = assess_fitness(plan, provider_llm_call(make_llm(settings), task="input_fitness"))  # review.py 어댑터
 result.stages.append(fitness_stage(fit))
 result.plan_checks["fitness"] = fit          # 자유 형식 칸
 result.plan_checks["pii_masked"] = pii_counts
@@ -131,15 +134,9 @@ if fit["verdict"] == "uncertain":
     result.notices.append(fit["notice"])
 ```
 
-E3-L0 `llm.py`(task/E3-L0 브랜치 기준 `provider.complete_json(LLMCall) -> LLMResult`)를 이 시그니처로 감싸는 예:
-
-```python
-def llm_call(schema, instructions, input, *, effort):
-    r = provider.complete_json(LLMCall(task="fitness", instructions=instructions, payload={"plan": input},
-                                       schema=schema, schema_name="input_fitness", effort=effort, timeout_s=30))
-    return r.data if r.ok else None
-# generator=r.generator 에 맞춰 assess_fitness(..., generator="astra" | "mock")
-```
+provider 연결은 main의 `neumann.analyze.review.provider_llm_call`(E3-L1a)을 그대로 쓴다. 이 어댑터는 `generator`·`model`
+속성을 달고 `input`을 JSON payload로 읽는다. 적합성 입력을 JSON 문자열로 바꿔 호환시켰고, 가짜 provider로 통합 테스트
+(`test_works_with_provider_llm_call_adapter`)를 넣었다. 호출이 실패하면 어댑터의 `last_error`가 `degraded_reason`에 들어간다.
 
 ## 결정 (스펙이 모호해서 고른 것)
 
@@ -148,7 +145,7 @@ def llm_call(schema, instructions, input, *, effort):
 - **언어는 코드가 잰다**(모델에 묻지 않음): 결정적이고 호출 비용이 없다. 한글 1자 = 로마자 2자 가중, 한글 비중 ≥0.6 ko, ≤0.25 en, 그 사이 mixed. 데모 3건은 0.665·0.821·0.759로 ko.
 - **짧은 입력(공백 제외 40자 미만)은 호출하지 않는다.** 규칙 판정이지만 실패로 인한 강등이 아니라서 `status="ok"`, `decided_by="precheck"`, `generator="rule"`.
 - **분야는 모델 값 우선, 없으면 규칙 추정.** 규칙 분야 사전은 8개 대분류뿐이다(비상 경로용).
-- **`generator`·`model`은 호출부가 넘긴다.** `llm_call`은 dict만 돌려주므로 mock provider일 때 `generator="mock"`을 넘겨야 정직 표기가 된다. 모르는 값은 `ValueError`(models.Generator 값만 허용).
+- **생성 주체는 추정하지 않는다(검증 뒤 정정).** `generator=` 인자나 `llm_call.generator` 속성에서만 읽고, 둘 다 없으면 호출 전에 `ValueError`(E3-L1a `review._resolve_generator`와 같은 규칙). 모델 id도 인자나 속성에서만, 없으면 None. 틀린 값도 `ValueError`.
 - **대표번호(15xx·16xx·18xx)와 7~8자리 번호는 단서가 있을 때만 가린다.** 단서 없는 `1588-1234`는 남는다(연도 범위 `1600-1700` 오탐과 맞바꿈). 영문자에 바로 붙은 번호(`Tel010-…`)도 경계 가드 때문에 남는다.
 - **URL·DOI 안의 숫자열은 전화번호로 보지 않는다.** 이메일·ORCID는 URL 안이어도 가린다(`models.redact_pii`와 같은 동작).
 - 커밋 메시지는 저장소 관례(끝줄 `verify 통과` / `builder: claude-opus-5.5`)를 따랐다.
@@ -166,3 +163,29 @@ def llm_call(schema, instructions, input, *, effort):
 - E4: `plan_checks.fitness.verdict`가 `unfit`이면 결과 화면 대신 사유를, `uncertain`이면 상단 안내와 보완 질문을 보여 준다. `generator`·`status`로 비상 경로 표기.
 - E4-L2a(내보내기 ZIP)·E1 수집기: 내보내는 문자열·수집 본문에 `mask_pii`를 한 번 더 걸 수 있다(멱등).
 - 계약 제안(PM): `PremortemResult`에 `fitness` 칸을 따로 두면 `plan_checks` 자유 칸보다 명확하다(지금은 `plan_checks["fitness"]`로 우회).
+
+## 검증 뒤 정정 (Sonnet PASS-조건부 2건)
+
+1. **generator 기본값 제거.** 이전에는 `generator="astra"`, `model="gpt-6-astra"`가 기본값이라 어떤 callable을 넘겨도 astra로 표기됐다. 이제 인자·속성이 없으면 호출 전에 거부한다.
+   - 테스트 `test_bare_callable_without_generator_is_rejected_before_call`: `NEUMANN_LLM_PROVIDER=openai`를 monkeypatch한 상태에서 속성 없는 함수 → `ValueError`, 호출 0회. 짧은 입력 경로도 같은 규칙. `generator="bogus"` 속성도 거부.
+   - `test_generator_and_model_from_attributes`, `test_works_with_provider_llm_call_adapter`(가짜 provider `mock` → `generator=mock`, 실패 provider → `degraded`, 사유에 `timeout`).
+   - 가짜 llm_call(`FakeLLM`)은 `generator="mock"`을 달고, 결과도 `mock`으로 확인한다. 라이브 테스트의 OpenAI 직접 호출 callable은 `generator="astra"`, `model=gpt-6-astra` 속성을 단다.
+   - 곁들여: 규칙 신호가 모델 판정을 바꾸면 `fitness_stage`의 `detail`에 "model not_research_plan → uncertain"을 적고 `counts.overrides`에 건수를 넣는다(검증 권고).
+2. **PII 탐지 선형화(서비스 거부 방지).**
+   - 전화번호 후보는 사슬 안에서 숫자 묶음 `MAX_GROUPS=7`개 창으로만 본다(실제 번호는 묶음 6개 이하). 단서 검색도 앞 24자로 한정.
+   - 이메일은 `@`마다 앞 64자·뒤 255자만 걸어 `models.EMAIL_RE.match`를 부른다(본문 전체 `finditer`는 `a.a.a…` 긴 토큰에서 제곱 시간: 40KB 1.2초). 결과는 local-part 64자 이하에서 `finditer`와 같다.
+   - 보호 구간·겹침 검사는 이분 탐색. `plan_document_from_text`는 이미 가린 본문에 `models.redact_pii`를 다시 돌리지 않는다(`redact=False`, 같은 정규식으로 이미 가림).
+   - 측정(`mask_pii_counts`): 공백으로 이은 숫자 3,000개 0.08~0.12초(검증 측정 이전 800개 33.2초), 20,000개 0.85초, `"0.1 " * 3000` 0.1초, 하이픈 숫자 20,000개 0.89초, `"a." * 20000 + "@b.com"` 0.004초, `"010-1234-5678 " * 2000` 0.07초(2,000건 마스킹). `plan_document_from_text("a." * 20000)` 1.22초 → 0.003초.
+   - 테스트: `test_long_line_of_space_joined_numbers_is_fast`(3,000개 1초 안), `test_adversarial_inputs_are_fast` 6종, `test_many_phones_masked_quickly`, `test_phone_found_inside_long_number_chain`(창 상한을 둬도 긴 사슬 가운데 번호를 잡음), `test_plan_document_from_adversarial_text_is_fast`, `test_long_local_part_email_still_masked`.
+
+```
+$ python -m pytest -q tests/e3
+231 passed, 8 skipped in 1.88s
+
+PS> $env:NEUMANN_LIVE_TESTS='1'; python -m pytest -q -s tests/e3/test_fitness_live.py   # JSON 입력으로 바꾼 뒤 재실행
+4 passed in 19.93s   # plan.md·neuro·medimaging fit, 조리법 unfit, 모두 generator=astra status=ok, 지연 4.1~5.3s
+
+$ python scripts/verify.py        # main 병합 뒤
+771 passed, 29 skipped in 41.87s
+verify 통과
+```
