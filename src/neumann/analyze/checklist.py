@@ -167,13 +167,25 @@ def call_llm(
     return data, None
 
 
+GENERATOR_LABELS = frozenset({"astra", "mock", "rule"})  # models.Generator 값
+
+
 def llm_label(llm_call: LLMCall | None, generator: str | None, model: str | None) -> tuple[str, str | None]:
-    """LLM 결과의 정직 표기. 인자 > llm_call의 속성(generator, model) > 기본값(astra)."""
-    gen = generator or getattr(llm_call, "generator", None) or "astra"
+    """LLM 결과의 정직 표기. 명시 인자 > llm_call의 속성(generator, model). **추정하지 않는다**(SEC-1 S-05b).
+
+    - llm_call이 없으면 LLM 결과가 생길 수 없다 → ("none", None). 결과는 모두 규칙 경로로 표기된다.
+    - llm_call이 있는데 생성 주체를 알 수 없으면 ValueError(astra 기본값 금지).
+    """
+    if llm_call is None and generator is None:
+        return "none", None
+    gen = generator or getattr(llm_call, "generator", None)
+    if not gen:
+        raise ValueError("생성 주체를 알 수 없다: generator 인자나 llm_call.generator 속성을 넘긴다(기본값 추정 금지)")
+    gen = str(getattr(gen, "value", gen))
+    if gen not in GENERATOR_LABELS:
+        raise ValueError(f"알 수 없는 생성 주체 {gen!r} (허용: {sorted(GENERATOR_LABELS)})")
     mdl = model if model is not None else getattr(llm_call, "model", None)
-    if mdl is None and gen == "astra":
-        mdl = "gpt-6-astra"
-    return str(gen), mdl
+    return gen, mdl
 
 
 def run_batches(fn: Callable[[list[Any]], Any], batches: list[list[Any]]) -> list[Any]:
@@ -366,7 +378,8 @@ def build_checklist(
     """카드마다 예방 행동 1~3개. 반환 항목은 `PremortemResult.checklist`에 그대로 넣는다.
 
     - `llm_call`이 None이거나 실패하면 그 묶음의 카드는 규칙 문구(`generator="rule"`)로 대신한다.
-    - `generator`·`model`: LLM 결과의 표기(기본 astra/gpt-6-astra, mock provider면 "mock"을 넘긴다).
+    - `generator`·`model`: LLM 결과의 표기. 인자가 없으면 `llm_call.generator`·`.model` 속성을 쓴다.
+      둘 다 없으면 ValueError(기본값으로 astra라고 쓰지 않는다). provider에서는 `llm.generator_for(name)`을 넘긴다.
     - `stats`: 넘기면 호출·폐기 통계를 채운다(단계 기록용).
     """
     gen, mdl = llm_label(llm_call, generator, model)

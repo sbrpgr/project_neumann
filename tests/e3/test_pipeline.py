@@ -12,7 +12,7 @@ from neumann.analyze.backend import FixtureBackend
 from neumann.llm import MockProvider
 from neumann.analyze.mock_responders import default_responders
 from neumann.models import ReviewEvent
-from neumann.pipeline import mask_extra_pii, run_premortem
+from neumann.pipeline import MOCK_NOTICE, mask_extra_pii, run_premortem, safe_text
 from tests.e3.corpus import PLAN_BATTERY, PLAN_IMAGING, RECIPE, build, build_backend
 
 CONTRACT = json.loads(
@@ -46,7 +46,8 @@ def _state(result, name):
 def test_mock_end_to_end_cards_and_contract():
     be = build_backend()
     r = _run(PLAN_BATTERY, backend=be)
-    assert r.status == "ok"
+    # mock 결과는 단계가 모두 ok여도 status를 ok로 두지 않는다(SEC-1 S-05)
+    assert r.status == "degraded" and MOCK_NOTICE in r.notices
     assert [s.stage for s in r.stages] == STAGES
     assert all(s.state == "ok" for s in r.stages)
     assert len(r.risk_cards) >= 1
@@ -167,7 +168,9 @@ def test_search_failure_does_not_crash():
     works, reviews = build()
     r = _run(PLAN_BATTERY, backend=Broken(works, reviews))
     assert r.risk_cards == [] and r.status == "degraded"
-    assert _state(r, "search").state == "error" and "index corrupted" in _state(r, "search").detail
+    st = _state(r, "search")
+    assert st.state == "error" and "RuntimeError" in st.detail
+    assert "index corrupted" not in st.detail  # 예외 원문은 응답에 싣지 않는다(SEC-1 S-04)
     assert r.risk_synthesis["no_card_reason"]
 
 
@@ -235,7 +238,8 @@ def test_llm_never_writes_quotes():
 def test_result_status_reflects_stages(plan):
     r = _run(plan)
     bad = [s for s in r.stages if s.state in ("degraded", "error")]
-    assert (r.status == "degraded") == bool(bad)
+    mock = any(c.generator.value == "mock" for c in r.risk_cards) or r.manifest["llm_provider"] == "mock"
+    assert (r.status == "degraded") == (bool(bad) or mock)
 
 
 def test_shared_fixtures_demo_plan_and_negative_control():

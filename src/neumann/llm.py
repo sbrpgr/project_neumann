@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -39,7 +40,9 @@ TASK_DEFAULTS: dict[str, dict[str, Any]] = {
     "synthesize_cards": {"effort": "medium", "timeout_s": 120.0},
 }
 
-# 실패 분류. 호출부는 이 값을 StageStatus.detail에 그대로 옮긴다.
+# 실패 분류. 호출부는 reason()을 StageStatus.detail에 옮긴다.
+# detail에는 분류·HTTP 코드·상한 같은 짧은 사실만 둔다. 예외 원문·API 오류 문구(키 조각이 들어갈 수 있다)·
+# 경로·요청 정보는 결과에도 로그에도 싣지 않는다(SEC-1 S-04).
 FAIL_TIMEOUT = "timeout"
 FAIL_API = "api_error"
 FAIL_JSON = "json_invalid"
@@ -48,6 +51,17 @@ FAIL_EMPTY = "empty_output"
 FAIL_INCOMPLETE = "incomplete"
 FAIL_DISABLED = "disabled"
 FAIL_CONFIG = "config_error"
+
+FAIL_LABELS: dict[str, str] = {
+    FAIL_TIMEOUT: "시간 초과",
+    FAIL_API: "API 오류",
+    FAIL_JSON: "응답 JSON 깨짐",
+    FAIL_SCHEMA: "응답 스키마 위반",
+    FAIL_EMPTY: "빈 응답",
+    FAIL_INCOMPLETE: "응답 미완료",
+    FAIL_DISABLED: "LLM 꺼짐",
+    FAIL_CONFIG: "설정 오류",
+}
 
 
 @dataclass(frozen=True)
@@ -87,10 +101,12 @@ class LLMResult:
         return generator_for(self.provider)
 
     def reason(self) -> str:
-        """StageStatus.detail용 한 줄. 비밀값 없음."""
+        """StageStatus.detail용 사용자 문구 한 줄. 분류 코드와 짧은 사실만(예외 원문·API 문구 없음)."""
         if self.ok:
             return f"{self.provider}:{self.model} ok {self.latency_s:.1f}s"
-        return f"{self.provider}:{self.model} {self.error}" + (f" ({self.detail})" if self.detail else "")
+        label = FAIL_LABELS.get(self.error or "", "호출 실패")
+        extra = f", {self.detail}" if self.detail else ""
+        return f"{self.provider}:{self.model} 호출 실패({label}{extra}) [{self.error}]"
 
 
 def generator_for(provider: str) -> str:
@@ -114,15 +130,16 @@ def validate_output(text: str | None, schema: dict[str, Any]) -> tuple[dict[str,
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
-        return None, FAIL_JSON, f"JSON 파싱 실패: {exc.msg} @ {exc.pos}"
+        return None, FAIL_JSON, f"위치 {exc.pos}"
     if not isinstance(data, dict):
         return None, FAIL_SCHEMA, "최상위가 객체가 아니다"
     validator = jsonschema.Draft202012Validator(schema)
     errors = sorted(validator.iter_errors(data), key=lambda e: list(e.absolute_path))
     if errors:
+        # 오류 메시지는 모델 출력 값을 담으므로 싣지 않는다. 위치(스키마 경로)와 규칙 이름만.
         first = errors[0]
         path = "/".join(str(p) for p in first.absolute_path) or "(root)"
-        return None, FAIL_SCHEMA, f"{len(errors)}건, 첫 오류 {path}: {first.message[:160]}"
+        return None, FAIL_SCHEMA, f"{len(errors)}건, 첫 오류 {path} ({first.validator})"
     return data, None, None
 
 
@@ -213,26 +230,26 @@ class OpenAIProvider:
                 resp = self._client.with_options(timeout=max(1.0, remaining)).responses.create(**kwargs)
                 break
             except openai.APITimeoutError:
-                return self._fail(base, t0, attempts, FAIL_TIMEOUT, f"{timeout:.0f}s 상한 초과")
+                return self._fail(base, t0, attempts, FAIL_TIMEOUT, f"{timeout:.0f}s 상한")
             except (openai.RateLimitError, openai.InternalServerError, openai.APIConnectionError) as exc:
                 elapsed = time.perf_counter() - t0
                 if attempts < self.max_attempts and elapsed < timeout / 2:
                     time.sleep(min(2.0 * attempts, 5.0))
                     continue
-                code = getattr(exc, "status_code", None)
-                return self._fail(base, t0, attempts, FAIL_API, f"{type(exc).__name__}" + (f" HTTP {code}" if code else ""))
+                return self._fail(base, t0, attempts, FAIL_API, _api_error_facts(exc), exc)
             except openai.APIStatusError as exc:
-                return self._fail(base, t0, attempts, FAIL_API, f"HTTP {exc.status_code} {_short_api_message(exc)}")
+                return self._fail(base, t0, attempts, FAIL_API, _api_error_facts(exc), exc)
             except Exception as exc:  # noqa: BLE001 — 어떤 실패든 비상 경로로 넘긴다
-                return self._fail(base, t0, attempts, FAIL_API, type(exc).__name__)
+                return self._fail(base, t0, attempts, FAIL_API, type(exc).__name__, exc)
 
         latency = time.perf_counter() - t0
         usage = _usage(resp)
         status = getattr(resp, "status", None)
         if status and status != "completed":
             why = getattr(getattr(resp, "incomplete_details", None), "reason", None)
+            facts = f"status={_safe_token(status)}" + (f" {_safe_token(why)}" if why else "")
             return LLMResult(
-                ok=False, data=None, error=FAIL_INCOMPLETE, detail=f"status={status} {why or ''}".strip(),
+                ok=False, data=None, error=FAIL_INCOMPLETE, detail=facts,
                 latency_s=latency, usage=usage, attempts=attempts, **base,
             )
         data, err, detail = validate_output(getattr(resp, "output_text", None), call.schema)
@@ -240,9 +257,16 @@ class OpenAIProvider:
             return LLMResult(ok=False, data=None, error=err, detail=detail, latency_s=latency, usage=usage, attempts=attempts, **base)
         return LLMResult(ok=True, data=data, latency_s=latency, usage=usage, attempts=attempts, **base)
 
-    def _fail(self, base: dict[str, Any], t0: float, attempts: int, error: str, detail: str) -> LLMResult:
+    def _fail(
+        self, base: dict[str, Any], t0: float, attempts: int, error: str, detail: str, exc: BaseException | None = None
+    ) -> LLMResult:
         latency = time.perf_counter() - t0
-        log.warning("LLM 호출 실패 task=%s error=%s detail=%s", base["task"], error, detail)
+        # 로그에도 API 오류 문구(키 조각이 들어갈 수 있다)·요청 본문은 남기지 않는다. 분류·코드·요청 id만.
+        request_id = _safe_token(getattr(exc, "request_id", None)) if exc is not None else None
+        log.warning(
+            "LLM 호출 실패 task=%s error=%s detail=%s exc=%s request_id=%s",
+            base["task"], error, detail, type(exc).__name__ if exc is not None else None, request_id,
+        )
         return LLMResult(ok=False, data=None, error=error, detail=detail, latency_s=latency, attempts=attempts, **base)
 
 
@@ -253,15 +277,31 @@ def _secret_value(value: Any) -> str:
     return getter() if callable(getter) else str(value)
 
 
-def _short_api_message(exc: Any) -> str:
-    """API 오류 본문에서 message만 짧게. 헤더·요청은 담지 않는다."""
+_TOKEN_RE = re.compile(r"^[A-Za-z0-9_.\-]{1,64}$")
+
+
+def _safe_token(value: Any) -> str | None:
+    """짧은 식별자(오류 코드·상태·요청 id)만 통과시킨다. 문장·경로·키 모양은 버린다."""
+    if value is None:
+        return None
+    s = str(value)
+    if not _TOKEN_RE.match(s) or s.lower().startswith(("sk-", "sk_")):
+        return "?"
+    return s
+
+
+def _api_error_facts(exc: Any) -> str:
+    """API 오류의 공개해도 되는 사실: 예외 종류, HTTP 코드, 오류 코드(예 invalid_api_key). 메시지 원문은 버린다."""
+    parts = [type(exc).__name__]
+    code = getattr(exc, "status_code", None)
+    if isinstance(code, int):
+        parts.append(f"HTTP {code}")
     body = getattr(exc, "body", None)
-    msg = ""
-    if isinstance(body, dict):
-        err = body.get("error", body)
-        if isinstance(err, dict):
-            msg = str(err.get("message", ""))
-    return msg[:160]
+    err = body.get("error", body) if isinstance(body, dict) else None
+    err_code = err.get("code") if isinstance(err, dict) else None
+    if err_code:
+        parts.append(str(_safe_token(err_code)))
+    return " ".join(parts)
 
 
 def _usage(resp: Any) -> dict[str, int]:
