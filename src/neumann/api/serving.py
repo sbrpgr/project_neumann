@@ -173,6 +173,7 @@ class ServingConfig:
     queue_max: int = 20
     sync_queue_max: int = 0             # 동기 경로(/premortem, /view) 입장 때 대기 수 상한(0이면 queue_max). 작업 경로는 queue_max
     rate_per_min: int = 0
+    preparse_per_min: int = 0           # 본문을 읽기 전 IP(/64)별 분석 경로 POST 상한(아주 넉넉히, 공개 60, 0이면 끔)
     rate_window_s: float = 60.0
     max_plan_chars: int = 50_000
     max_token_chars: int = 20_000       # 공백 없이 이어진 토큰 하나의 글자 상한(E4-L2d 재작업: 정규식 O(n²) 방어 겹)
@@ -236,6 +237,7 @@ class ServingConfig:
             queue_max=int(_env_num("NEUMANN_QUEUE_MAX", 30 if public else 20, 0, 10_000)),
             sync_queue_max=int(_env_num("NEUMANN_SYNC_QUEUE_MAX", 4 if public else 0, 0, 10_000)),
             rate_per_min=int(_env_num("NEUMANN_RATE_PER_MIN", 6 if public else 0, 0, 100_000)),
+            preparse_per_min=int(_env_num("NEUMANN_PREPARSE_PER_MIN", 60 if public else 0, 0, 1_000_000)),
             max_plan_chars=int(_env_num("NEUMANN_MAX_PLAN_CHARS", 50_000, 1, 10_000_000)),
             max_token_chars=int(_env_num("NEUMANN_MAX_TOKEN_CHARS", 20_000, 64, 10_000_000)),
             max_body_bytes=int(_env_num("NEUMANN_MAX_BODY_BYTES", 0, 0, 1 << 31)),
@@ -940,6 +942,7 @@ class Serving:
         self.gate = Gate(c.max_concurrent, c.queue_max, c.avg_run_s, "analysis")
         self.aux_gate = Gate(c.aux_concurrent, c.aux_queue_max, min(c.aux_timeout_s, 10.0), "aux")
         self.limiter = RateLimiter(c.rate_per_min, c.rate_window_s)
+        self.preparse_limiter = RateLimiter(c.preparse_per_min, c.rate_window_s)  # 본문 파싱·해시 전 값싼 검사
         self.aux_limiter = RateLimiter(c.aux_rate_per_min, c.rate_window_s)
         self.upload_limiter = RateLimiter(c.upload_rate_per_min, c.rate_window_s)
         self.upload_active: dict[str, int] = {}  # IP(/64)별 처리 중인 업로드 수
@@ -1349,6 +1352,13 @@ class ServingMiddleware:
                 await reply(refusal[0], _err("invalid_request", refusal[1], ticket))
                 return
 
+        # 0') 분석 경로: 본문을 읽고 해시(plan_key, 정규식)하기 전에 IP별 아주 넉넉한 사전 속도 검사(E4-L2d 재작업 2)
+        if kind == "analysis":
+            ok, retry = srv.preparse_limiter.hit(ip_key(ctx.ip))
+            if not ok:
+                await reply(*self._rate_reply(ctx, retry, cfg.preparse_per_min))
+                return
+
         # 1) 바이트 상한: Content-Length 먼저, 그다음 스트리밍 누적(파싱 전)
         clen = _header(scope, "content-length")
         if clen and clen.strip().isdigit() and int(clen) > limit:
@@ -1572,7 +1582,8 @@ class ServingMiddleware:
                 data.update({"message": msg, "error_code": kind, "request_id": ctx.ticket, "ticket": ctx.ticket})
             else:  # 4xx: 하위 앱의 사용자 문구(예: 업로드 형식 안내)는 두고 내부 정보만 지운다
                 data = _walk_strings(data, lambda s: _sanitize_error_str(s, msg))
-                data.setdefault("request_id", ctx.ticket)
+                if ctx.kind != "upload":  # 업로드 4xx는 앱 본문 모양 그대로(요청 번호는 X-Neumann-Ticket 헤더로 나간다)
+                    data.setdefault("request_id", ctx.ticket)
         elif isinstance(data, (dict, list)) and ctx.mode == "analysis":
             data = _walk_diag(data, _scrub_ok_str)
         if isinstance(data, dict) and isinstance(data.get("_status"), dict):
