@@ -25,13 +25,17 @@
   카드 범례·체크리스트 줄을 표시 이름으로, 알림·단계 사유에 `display_text`. JSON 파일(risk_cards·evidence_pack·manifest)은
   그대로. README와 ai_context에 JSON 설명 한 줄 `JSON_GENERATOR_NOTE`:
   "JSON 값 `generator: "astra"`는 계약 이름(제품 LLM)이고 모델명이 아니다. 실제 모델은 `model`(카드·예상 심사평·체크리스트)에 있다."
-  리포트의 예상 심사평 JSON 블록 앞에는 `생성: LLM (모델명)`과, 블록에 astra 값이 있으면 같은 설명 한 줄.
+  리포트의 예상 심사평 JSON 블록 앞에는 `생성: LLM (모델명)`만 적는다(설명 한 줄은 README·ai_context에만).
+  LLM 카드가 0장이면 요약에 모델명을 붙이지 않는다("LLM 0장").
 - `eval/report_card.py`: 시스템 이름 `"Neumann (astra)"` → `"Neumann (LLM)"`, generator 개수 dict 표기 → `LLM 8 · 비상 규칙 2`,
   한계 문구의 "astra 카드" → "LLM 카드", 표 칸(`_cell`: 조건·한계·입력)에 `display_text`(입력 JSON 문구도 표시에서만 바꿈).
 - 테스트
-  - 새 `tests/e4/test_display_generator.py`(15건 + 스크린샷 1건 선택): 표시 함수, 화면 뷰에 astra 없음(계약 값 `gen`·원결과
-    `result`·dict 키 제외), 모델 대비(manifest), 규칙≠LLM, mock 표시, 실제 astra 모델만 예외, ZIP 사람용 문서 5개에 astra
-    없음(```json 블록과 설명 한 줄 제외), JSON 값 그대로, index.html 표·호출, 입력(저장 JSON) 불변.
+  - 새 `tests/e4/test_display_generator.py`(17건 + 스크린샷 1건 선택): 표시 함수(조사 포함), 화면 뷰에 astra 없음(계약 값 `gen`·
+    원결과 `result`·dict 키 제외), 모델 대비(manifest), 규칙≠LLM, mock 표시, 실제 astra 모델만 예외, ZIP 사람용 문서 5개에 astra
+    없음(```json 블록과, README·ai_context의 설명 한 줄만 허용), LLM 0장이면 모델명 없음, JSON 값 그대로, 입력(저장 JSON) 불변.
+  - 새 `tests/e4/test_webui_gen_labels.py`(2건, 정적·기본 pytest): index.html의 문자열 리터럴·마크업 텍스트·한 줄 주석에 astra
+    표시 문자열 없음(비교용 키 `'astra'`만 허용), `GEN`·`FITGEN` 값에 astra·"mock provider" 없음, `genLabel` 호출은 모두
+    `x.gen, x.genl`, 집계는 `D._status.generator_labels`·`genName`. DISP-1 이전 index.html(6dea51e)에서는 두 건 모두 실패함을 확인.
   - 새 `tests/e5/test_report_card_display.py`(3건): 리포트 카드에 astra 없음, 실제 모델명·입력 파일 이름은 그대로, 규칙·mock 행.
   - 기존 테스트 새 문구로: `tests/e4/test_export.py`, `tests/e5/test_report_card.py`, `tests/e2e/e2e_checks.py`(카드 배지를
     서버 `genl`과 비교, 대비 표 `GEN_LABEL` 새 이름), `tests/e2e/test_e2e_checks.py`(카드 0장 사유는 화면 문구 기준).
@@ -101,14 +105,31 @@ E5-L2d 보고서(`docs/reports/E5-L2d.md`)는 아직 없어서 직접 확인했�
    "모의(mock)"을, rule은 "비상 규칙"을 골랐다("규칙"을 포함하고, AGENTS.md "비상 경로로 돌면 화면에 표시"를 배지에서도 지키려고).
    바꾸려면 `view.GENERATOR_DISPLAY` 한 줄만 고치면 된다(테스트 몇 줄 같이).
 2. **JSON 설명 한 줄의 astra.** 과제 파일이 "JSON 문서 설명에 'astra는 계약 이름, 실제 모델은 model'을 한 줄 적는다"라고 해서
-   README·ai_context(와 리포트의 예상 심사평 JSON 블록 앞)에 `JSON_GENERATOR_NOTE`를 둔다. 사람용 문서에서 astra 글자는 이 줄과
-   ```json 블록에만 나온다(테스트가 그것만 허용).
+   README·ai_context에만 `JSON_GENERATOR_NOTE`를 둔다(검증 지적으로 리포트에서는 뺐다). 사람용 문서에서 astra 글자는 이 줄과
+   리포트의 ```json 블록(결과 값 그대로)에만 나온다(테스트가 그것만 허용).
 3. **자유 문구 변환.** 파이프라인(E3 소유) 문구의 astra를 고치지 않고 표시 단계(`display_text`)에서 바꿨다. 경계 규칙으로 모델명·파일
-   이름은 보존한다. 예: "astra 판단" → "LLM 판단"(조사 "가"는 어색할 수 있음: "LLM가").
+   이름은 보존한다. 바로 붙은 조사는 받침에 맞게 바꾼다: "astra가" → "LLM이", "astra는/를/와/로/라/나/랑" →
+   "LLM은/을/과/으로/이라/이나/이랑". 예: "astra 판단" → "LLM 판단", "astra가 앞서 만든" → "LLM이 앞서 만든".
 4. **모델 대비.** 카드에 `model`이 없는 LLM 카드는 결과 manifest의 `llm_model`(없으면 `model_id`·`model`)로 표시한다. 둘 다 없으면
    "LLM"만(지어내지 않음).
 5. **리포트 카드 입력 문구.** 다른 과제가 만든 지표 JSON의 조건·한계 문구(예: `generator {'astra': 13}`)도 표 칸 출력에서만
    `{'LLM': 13}`으로 보인다. 입력 파일은 그대로이고, 실제 모델명(`평가 모델 gpt-6-astra`)은 그대로 보인다.
+
+## 검증 뒤 수정(PASS-조건부, 20211eb 이후)
+
+1. `neumann_report.md`의 JSON 설명 한 줄 제거(README·ai_context만). 테스트가 문서별 허용 여부를 검사한다.
+2. LLM 카드가 0장이면 요약·생성 방식 목록에 모델명을 붙이지 않는다(`export._gen_name`: "LLM 0장"). 테스트 추가.
+3. 조사: `display_text`가 astra 뒤에 붙은 조사를 받침에 맞게 바꾼다("LLM가" → "LLM이"). 쓰이지 않던
+   `GENERATOR_DISPLAY["astra"]` 항목 삭제(astra는 모델명을 붙여 `display_generator`가 만든다). 적합성 훅 `FITGEN.mock`
+   "mock provider" → "모의(mock)"(`tests/e4/test_templates_ui.py`는 "mock" 포함만 보므로 주석만 고침).
+4. 기본 pytest 정적 회귀 테스트 `tests/e4/test_webui_gen_labels.py` 추가(위 테스트 목록). 예전 정적 검사 1건은 여기로 옮겼다.
+
+검증 뒤 수정 반영 후 다시 잰 값(같은 환경):
+
+```
+python -m pytest tests/e4 tests/e5 -q   → 422 passed, 9 skipped in 45.84s
+python scripts/verify.py                → 1230 passed, 28 skipped in 294.47s · 보안: 파일 413개 · 계약: 2개 · 테스트: 통과 · verify 통과
+```
 
 ## 다른 브랜치와 겹칠 수 있는 파일·헝크
 
