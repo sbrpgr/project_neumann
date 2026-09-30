@@ -1,0 +1,256 @@
+{
+  "$defs": {
+    "StageReport": {
+      "description": "한 단계(또는 한 도구)의 실행 기록. 모든 출력에 그대로 실린다.",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "phase": {
+          "title": "Phase",
+          "type": "string"
+        },
+        "status": {
+          "default": "ok",
+          "enum": [
+            "ok",
+            "degraded",
+            "empty",
+            "unavailable",
+            "error",
+            "skipped"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "impl": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "실제로 호출된 module:attr 또는 fallback:*",
+          "title": "Impl"
+        },
+        "degraded": {
+          "default": false,
+          "title": "Degraded",
+          "type": "boolean"
+        },
+        "elapsed_s": {
+          "default": 0.0,
+          "title": "Elapsed S",
+          "type": "number"
+        },
+        "counts": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Counts",
+          "type": "object"
+        },
+        "details": {
+          "additionalProperties": true,
+          "title": "Details",
+          "type": "object"
+        }
+      },
+      "required": [
+        "name",
+        "phase"
+      ],
+      "title": "StageReport",
+      "type": "object"
+    }
+  },
+  "description": "``run_premortem`` 의 반환형. FastAPI 응답 스키마이기도 하다.",
+  "properties": {
+    "status": {
+      "default": "ok",
+      "enum": [
+        "ok",
+        "degraded",
+        "error"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "session_id": {
+      "title": "Session Id",
+      "type": "string"
+    },
+    "plan_id": {
+      "title": "Plan Id",
+      "type": "string"
+    },
+    "pipeline_version": {
+      "default": "0.4.2-quality-recovery",
+      "title": "Pipeline Version",
+      "type": "string"
+    },
+    "generated_at": {
+      "title": "Generated At",
+      "type": "string"
+    },
+    "plan_stats": {
+      "additionalProperties": true,
+      "title": "Plan Stats",
+      "type": "object"
+    },
+    "axes": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Axes",
+      "type": "object"
+    },
+    "domain": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Domain"
+    },
+    "claims": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Claims",
+      "type": "array"
+    },
+    "similar_works": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Similar Works",
+      "type": "array"
+    },
+    "evidence": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Evidence",
+      "type": "array"
+    },
+    "post_status": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Post Status",
+      "type": "array"
+    },
+    "field_prior": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Field Prior"
+    },
+    "risk_cards": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Risk Cards",
+      "type": "array"
+    },
+    "plan_checks": {
+      "additionalProperties": true,
+      "title": "Plan Checks",
+      "type": "object"
+    },
+    "research_questions": {
+      "additionalProperties": true,
+      "title": "Research Questions",
+      "type": "object"
+    },
+    "plan_side_candidates": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Plan Side Candidates",
+      "type": "array"
+    },
+    "expected_review": {
+      "additionalProperties": true,
+      "title": "Expected Review",
+      "type": "object"
+    },
+    "verification": {
+      "additionalProperties": true,
+      "title": "Verification",
+      "type": "object"
+    },
+    "checklist": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Checklist",
+      "type": "array"
+    },
+    "risk_synthesis": {
+      "additionalProperties": true,
+      "title": "Risk Synthesis",
+      "type": "object"
+    },
+    "manifest": {
+      "additionalProperties": true,
+      "title": "Manifest",
+      "type": "object"
+    },
+    "stages": {
+      "items": {
+        "$ref": "#/$defs/StageReport"
+      },
+      "title": "Stages",
+      "type": "array"
+    },
+    "notices": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Notices",
+      "type": "array"
+    }
+  },
+  "required": [
+    "session_id",
+    "plan_id",
+    "generated_at"
+  ],
+  "title": "PremortemResult",
+  "type": "object"
+}

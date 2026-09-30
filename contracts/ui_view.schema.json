@@ -1,0 +1,168 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Neumann UI View (mockup DATA contract)",
+  "type": "object",
+  "required": ["plan_id", "session_id", "plan", "pipeline", "works", "fams", "corpus", "ev", "cards", "others", "review", "checklist"],
+  "properties": {
+    "plan_id": {"type": "string"},
+    "session_id": {"type": "string"},
+    "plan": {
+      "type": "object",
+      "required": ["file", "size", "meta", "lines"],
+      "properties": {
+        "file": {"type": "string"},
+        "size": {"type": "string"},
+        "meta": {"type": "string"},
+        "title": {
+          "type": "string",
+          "description": "T-24g add-only — 계획서 정규화(plan_normalize) 첫 비어있지 않은 줄(마스킹 후). 없으면 빈 문자열(지어내지 않음). 구버전 클라이언트는 이 필드가 없어도 기존 계약이 그대로 유효하다(required 아님)."
+        },
+        "lines": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["n", "t"],
+            "properties": {
+              "n": {"type": "integer", "minimum": 1},
+              "t": {"type": "string"},
+              "h": {"type": "string", "enum": ["h", "title"]},
+              "f": {"type": "boolean"}
+            }
+          }
+        }
+      }
+    },
+    "pipeline": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["k", "ms", "m", "log"],
+        "properties": {
+          "k": {"type": "string"},
+          "ms": {"type": "integer", "minimum": 0},
+          "m": {"type": "string"},
+          "log": {
+            "type": "array",
+            "items": {
+              "type": "array", "minItems": 2, "maxItems": 2,
+              "items": [{"type": "string", "enum": ["k", "ok", "w"]}, {"type": "string"}]
+            }
+          }
+        }
+      }
+    },
+    "works": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["n", "t", "s", "d", "r", "id", "f"],
+        "properties": {
+          "n": {"type": "integer"}, "t": {"type": "string"}, "s": {"type": "string"},
+          "d": {"type": "string"}, "r": {"type": "string"}, "id": {"type": "string"},
+          "f": {"type": "array", "items": {"type": "integer", "enum": [0, 1]}}
+        }
+      }
+    },
+    "fams": {
+      "type": "array",
+      "items": {
+        "type": "object", "required": ["k", "n", "col"],
+        "properties": {"k": {"type": "string"}, "n": {"type": "string"}, "col": {"type": "string"}}
+      }
+    },
+    "corpus": {"type": "array", "items": {"type": ["string", "null"]}},
+    "ev": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["fam", "q", "p", "v", "d", "rt", "rv", "id"],
+        "properties": {
+          "fam": {"type": "integer"}, "x": {"type": "boolean"}, "q": {"type": "string"},
+          "p": {"type": "string"}, "v": {"type": "string"}, "d": {"type": "string"},
+          "rt": {"type": "string"}, "rv": {"type": "string"}, "id": {"type": "string"},
+          "ln": {"type": ["integer", "null"]}, "map": {"type": "integer"}
+        }
+      }
+    },
+    "cards": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["rank", "fam", "sev", "score", "comp", "src", "desc", "lines", "freq", "ev", "acts"],
+        "properties": {
+          "rank": {"type": "integer"}, "fam": {"type": "integer"},
+          "sev": {"type": "integer", "minimum": 1, "maximum": 5},
+          "score": {"type": "string"},
+          "comp": {"type": "array", "items": {"type": "array", "minItems": 2, "maxItems": 2,
+                    "items": [{"type": "string"}, {"type": "number"}]}},
+          "src": {"type": "string"}, "desc": {"type": "string"},
+          "lines": {"type": "array", "items": {"type": "integer"}},
+          "freq": {"type": "string"},
+          "ev": {"type": "array", "items": {"type": ["integer", "string"]}},
+          "acts": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "others": {
+      "type": "array",
+      "items": {
+        "type": "object", "required": ["fam", "freq", "line", "ev", "score", "q"],
+        "properties": {
+          "fam": {"type": "integer"}, "freq": {"type": "string"}, "line": {"type": "integer"},
+          "ev": {"type": ["integer", "string"]}, "score": {"type": "string"}, "q": {"type": "string"}
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "required": ["strength", "weakness", "request", "audit"],
+      "properties": {
+        "strength": {"type": "array", "items": {"$ref": "#/definitions/reviewSentence"}},
+        "weakness": {"type": "array", "items": {"$ref": "#/definitions/reviewSentence"}},
+        "request": {"type": "array", "items": {"$ref": "#/definitions/reviewSentence"}},
+        "audit": {
+          "type": "object", "required": ["gen", "pass", "drop", "dropped"],
+          "properties": {
+            "gen": {"type": "integer"}, "pass": {"type": "integer"}, "drop": {"type": "integer"},
+            "dropped": {"type": "array", "items": {"type": "array", "minItems": 2, "maxItems": 2,
+                        "items": [{"type": "string"}, {"type": "string"}]}}
+          }
+        }
+      }
+    },
+    "checklist": {
+      "type": "array",
+      "items": {
+        "type": "object", "required": ["id", "t", "r", "s", "m"],
+        "properties": {
+          "id": {"type": "string"}, "t": {"type": "string"}, "r": {"type": "string"},
+          "s": {"type": "string", "enum": ["채택", "보류", "기각"]}, "m": {"type": "string"}
+        }
+      }
+    },
+    "kpi": {
+      "description": "T-24e(ID-77) add-only — 리포트 헤드라인 KPI·감사 카드·추적 섹션을 실측값으로 렌더하기 위한 서버 계산값. 구버전 클라이언트는 이 필드가 없어도 기존 계약이 그대로 유효하다(required 아님).",
+      "type": "object",
+      "properties": {
+        "n_works": {"type": "integer"},
+        "n_reject": {"type": "integer"},
+        "n_accept": {"type": "integer"},
+        "n_evidence": {"type": "integer"},
+        "n_cards_total": {"type": "integer"},
+        "review_count": {"type": "integer"},
+        "model_id": {"type": ["string", "null"]},
+        "model_provider": {"type": ["string", "null"]},
+        "elapsed_s": {
+          "type": ["number", "null"],
+          "description": "T-24h(F4) add-only — 파이프라인 stage report 소요시간 합(초). 계산 불가(파이프라인 비어있음)면 null — 프런트는 숨긴다."
+        }
+      }
+    }
+  },
+  "definitions": {
+    "reviewSentence": {
+      "type": "object", "required": ["t", "c"],
+      "properties": {"t": {"type": "string"}, "c": {"type": "array", "items": {"type": ["integer", "string"]}}}
+    }
+  }
+}
