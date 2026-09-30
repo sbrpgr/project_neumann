@@ -24,7 +24,11 @@ CODEX="$(powershell -NoProfile -Command "(Get-ChildItem \"\$env:LOCALAPPDATA\Ope
 WT="$WT_ROOT/$TASK"
 case "$MODE" in
   build)
-    if [ ! -d "$WT" ]; then
+    # 브랜치가 이미 다른 worktree(예: 끊긴 Claude 빌더)에 걸려 있으면 그 worktree에서 이어서 한다
+    EXIST="$(git -C "$REPO" worktree list --porcelain | awk -v b="refs/heads/task/$TASK" '/^worktree /{w=substr($0,10)} $0=="branch "b{print w}')"
+    if [ -n "$EXIST" ]; then
+      WT="$EXIST"
+    elif [ ! -d "$WT" ]; then
       git -C "$REPO" worktree add -q "$WT" -b "task/$TASK" main 2>/dev/null || git -C "$REPO" worktree add -q "$WT" "task/$TASK"
     fi
     PROMPT="당신은 Project Neumann의 빌더다(Codex gpt-6-astra, Claude 한도 소진으로 인계받음). 과제 ID: $TASK.
@@ -38,7 +42,7 @@ case "$MODE" in
     echo "끝: $TASK (브랜치 task/$TASK, 마지막 답 $LOGS/codex_build_$TASK.last.md)"
     ;;
   verify)
-    [ -d "$WT" ] || WT="$(git -C "$REPO" worktree list --porcelain | awk -v b="refs/heads/task/$TASK" '/^worktree /{w=$2} $0=="branch "b{print w}')"
+    [ -d "$WT" ] || WT="$(git -C "$REPO" worktree list --porcelain | awk -v b="refs/heads/task/$TASK" '/^worktree /{w=substr($0,10)} $0=="branch "b{print w}')"
     [ -d "$WT" ] || { echo "빌더 worktree를 찾지 못했다: task/$TASK"; exit 1; }
     PROMPT="당신은 Project Neumann의 검증자다(Codex gpt-6-sol, 빌더와 다른 모델). 과제 ID: $TASK. 코드를 고치지 않는다.
 $REPO/docs/tasks/_VERIFY.md 를 그대로 따르라. 지시문: docs/tasks/$TASK.md, 빌더 보고서: docs/reports/$TASK.md.

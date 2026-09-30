@@ -89,3 +89,60 @@
 2. 택소노미 설명문은 "비어 있지 않음"만 검사한다. R3 설명을 통째로 바꿔도 통과한다(변이 생존). 심각도·경로·소분류는 문서 값으로 고정돼 있어 이 공백은 설명문에만 해당한다. 수동 대조 결과는 위 4번 표.
 3. 색인이 `degraded=true`여도 `status`는 `ok`로 남고(`index.degraded`·`degraded_reason` 필드로만 드러난다), 색인 매니페스트의 `input.fallback`(jsonl 직접 읽기 대체 사실)은 응답에 나오지 않는다. 현재 실데이터는 `degraded:false`라 문제 없다. 화면이 `/api`를 쓸 때 `degraded`를 표시하면 된다.
 4. E3-L0 병합 뒤 `/config/weights`는 최상위 `weights`(0.3/0.3/0.3/0.1, "기본값")와 `pipeline.matches=false`를 함께 준다. 화면은 `pipeline.note`를 반드시 보여야 하고, 가중합/곱 중 어느 쪽이 제품 공식인지 PM이 `docs/decisions.md`에 정해야 한다(빌더 보고서 "제안"과 같은 사항).
+
+
+## 재검증 (d0af6eb)
+
+**PASS**
+
+검증자: Claude Sonnet 5.5 (빌더 Opus와 다른 모델). 대상: PM 결정 `docs/decisions.md` 2026-09-30 19:15(위험점수 = 곱, 가중치 없음) 반영 후속 변경 2커밋(`fd777bc`, `d0af6eb`). 브랜치 `task/E4-L1d`, worktree `.claude/worktrees/s2-E4-L1d`. 코드 수정·git 쓰기·.env 열기·OpenAI 호출·8010 사용 없음.
+
+### 1. `GET /config/weights` 실응답 (router만 붙인 앱 + TestClient)
+
+| 항목 | 실제 값 | 판정 |
+|---|---|---|
+| 상태·공식 | 200, `formula:"product"`, `formula_expr:"similarity * frequency * severity * confidence"`, `formula_ko:"위험점수 = 유사도 × 빈도 × 심각도 × 신뢰도 (곱, 가중치 없음)"` | O |
+| 현재 값 자리 | `weighted:false`, `weights:null`, `display:"곱 · 가중치 없음"` | O |
+| 옛 값(0.3/0.3/0.3/0.1) | 현재 값 필드에는 없음. `legacy_design_weights`에만 있고 `status:"제품에서 쓰지 않는 옛 설계값"`, `used_in_product:false`. `decision.summary`에 "설계·목업의 가중합(0.3/0.3/0.3/0.1)은 쓰지 않는다"가 PM 결정 문구 그대로 들어 있다(부정문 인용, 현재 값 아님) | O |
+| 옛 표시 잔재 | 최상위에 `source`·`is_default`·`label`·`config_error`·`reason` 없음. "기본값"·"설정값" 문자열 응답 전체에 없음 | O |
+| 결정 출처 | `decision.source:"docs/decisions.md 2026-09-30 19:15 (PM)"`. main `docs/decisions.md`에 같은 시각 항목과 "곱" 문구가 실제로 있음을 확인 | O |
+| 응답 변형 방지 | 응답을 바꿔도 다음 호출에 영향 없음(테스트 `..._not_mutated_between_calls`) | O |
+
+### 2. E3 점수 모듈 대조(`pipeline.matches`) - 가짜 모듈(`neumann.analyze.cards`를 `sys.modules`에 주입, 실제 `pipeline_scoring`→`pipeline_matches` 경로)
+
+| 입력 | 기대 | 실제 |
+|---|---|---|
+| `product_v1…` + 가중치 전부 1.0 (E3-L0 `cards.py`와 같은 모양) | true | true |
+| `product_v1…`, `SCORE_WEIGHTS` 없음 | true | true |
+| `product_v1…` + 0.3/0.3/0.3/0.1 | false | false ("1.0이 아닌 가중치") |
+| `weighted_sum_v1…` + 0.3/0.3/0.3/0.1 | false | false ("곱이 아니다") |
+| `weighted_sum_v1…`, 가중치 없음 | false | false |
+| 곱 + 가중치 3항목 / 0.99 하나 / 추가 키 `bias` / 전부 2.0 | false | 전부 false |
+| 공식 속성 없음 + 0.3… / 공식 속성 없음 + 전부 1.0 | false / true | false / true |
+| 합(sum) 공식 + 가중치 전부 1.0 | false | false |
+| 공식·가중치 둘 다 None | null | null |
+
+13/13 기대와 같음. 모듈 없음(실제 main 상태)은 `state:"missing"`, `matches:null`. `task/E3-L0:src/neumann/analyze/cards.py`의 `SCORE_FORMULA="product_v1: …"`, `SCORE_WEIGHTS` 전부 1.0을 직접 확인했으므로 병합 뒤 `matches:true`가 나온다(위 첫 행과 같은 모양). 항상 통과하는 검사가 아님: 곱·가중치 있음/합 공식을 넣으면 false로 뒤집힌다.
+
+### 3. 명령
+
+| 명령 | 결과 |
+|---|---|
+| `pytest tests/e4 -q -k meta` (worktree) | `18 passed, 1 skipped, 94 deselected` (skip = `neumann.analyze.cards` 미병합 시 실모듈 검사) |
+| `python scripts/verify.py` (worktree) | `396 passed, 5 skipped`, 보안 파일 183개, 계약 2개, `verify 통과` |
+
+### 4. 범위·병합 커밋
+
+| 항목 | 확인 | 결과 |
+|---|---|---|
+| `git diff main...task/E4-L1d --stat` | 3파일: `docs/reports/E4-L1d.md`, `src/neumann/api/meta.py`, `tests/e4/test_meta.py`(+195/-168). 전부 소유 경로. (main에는 병합 기준점 `4a010a1`까지가 이미 있어 이 diff가 후속 변경분이다) | 준수 |
+| `contracts/`·`models.py`·`config.py`·`.env.example`·`api/main.py` 변경 | 해당 경로 diff 0건. 설정 키(`risk_weights`)를 추가하지 않고 오히려 제안을 철회함 | 없음 |
+| 병합 커밋 `4a010a1` (main `2b0d50d` → 브랜치) | `git show --cc`(양쪽 부모와 모두 다른 파일) 출력 0바이트 = 충돌 해결로 바뀐 파일 없음. 병합 결과와 main쪽 부모의 차이는 E4-L1d 자기 3파일뿐. 트리에 충돌 표식 없음 | 남의 파일 변경 없음 |
+| 비밀값·데이터 | 트리에 `.env`·parquet·npy 없음. diff의 키 패턴 검색 일치는 보고서 본문의 `.env.example` 언급(철회된 제안)뿐 | 없음 |
+| 정리 | worktree의 `.pytest_cache`·`__pycache__`(gitignore 대상) 삭제, 추적·미추적 변경 없음 | 정리함 |
+
+### 병합 막지 않는 권고
+
+1. `pipeline_matches`의 "곱" 판정은 `SCORE_FORMULA` 문자열에 "product"가 들어 있는지만 본다. 조작 입력에서 `"weighted_sum_no_product"`(가중치 없음)가 true가 됐다. E3-L0의 실제 값(`product_v1: …`)에서는 문제없고, 이름을 일부러 꼬아야 뚫린다.
+2. `SCORE_WEIGHTS`가 숫자 아닌 값(`{"similarity":"0.3",…}`)이거나 매핑이 아니면(리스트) 가중치가 조용히 무시되어(`weights:null`) 공식이 곱이면 `matches:true`가 된다. 값 형식이 틀린 모듈이 "일치"로 보일 수 있다. E3-L0은 전부 float 1.0이라 영향 없음.
+3. `decision.summary` 문장에는 "0.3/0.3/0.3/0.1"이 부정문으로 남아 있다. 화면에서 `decision.summary`를 통째로 보이면 옛 값이 글자로는 보이지만 "쓰지 않는다"는 문맥이다. 화면은 `display`·`formula_ko`를 현재 값으로, `decision.source`를 출처로 쓰면 된다.
