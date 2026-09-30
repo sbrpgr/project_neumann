@@ -23,6 +23,7 @@ import hashlib
 import json
 import math
 import re
+import sys
 import uuid
 from collections.abc import Iterable, Mapping
 from functools import lru_cache
@@ -50,6 +51,16 @@ TAXONOMY: dict[str, tuple[str, str]] = {
 }
 
 GENERATORS = {"astra", "rule", "mock", "sample"}
+# DecisionOutcome(models.py) → 화면 라벨. 원문 문자열(outcome_raw)보다 먼저 본다.
+OUTCOME_LABEL = {
+    "accept_oral": "Oral", "accept_spotlight": "Spotlight", "accept_poster": "Poster", "accept": "채택",
+    "major_revision": "대폭 수정", "minor_revision": "소폭 수정",
+    "reject_resubmit": "거절", "reject": "거절", "desk_reject": "거절",
+    "withdrawn": "철회", "no_binary_decision": "미정", "unknown": "미정",
+}
+ACCEPT_LABELS = {"채택", "Oral", "Spotlight", "Poster"}
+REVISION_LABELS = {"대폭 수정", "소폭 수정"}
+RATING_NUM = re.compile(r"^\s*(\d+(?:\.\d+)?)")
 STAGE_STATUS_KO = {
     "ok": "정상", "degraded": "강등", "empty": "결과 없음", "unavailable": "미연결",
     "error": "오류", "skipped": "건너뜀",
@@ -152,10 +163,14 @@ def decision_label(raw: Any) -> str:
         return "미정"
     if s in {REJECT_LABEL, "채택", "미정", "철회"}:
         return s
+    if low in OUTCOME_LABEL:
+        return OUTCOME_LABEL[low]
     if "withdraw" in low:
         return "철회"
     if "reject" in low or "desk" in low:
         return REJECT_LABEL
+    if "revision" in low:
+        return "소폭 수정" if "minor" in low else "대폭 수정"
     for key, label in (("oral", "Oral"), ("spotlight", "Spotlight"), ("poster", "Poster")):
         if key in low:
             return label
@@ -183,13 +198,169 @@ def _size_label(n_bytes: int) -> str:
     return f"{n_bytes / 1024:.1f} KB" if n_bytes >= 1024 else f"{n_bytes} B"
 
 
+def rating_value(v: Any) -> float | None:
+    """평점 원문('6: marginally above …', '5', 6.0) → 앞의 숫자. 숫자가 없으면 None."""
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        return float(v) if math.isfinite(float(v)) else None
+    m = RATING_NUM.match(_text(v))
+    return float(m.group(1)) if m else None
+
+
+# ───────────────────────── 코퍼스 기록 조회(결정·평점) ─────────────────────────
+
+
+@dataclasses.dataclass
+class RecordLookup:
+    """분석 결과에 없는 논문 결정·심사평 평점을 코퍼스 기록(Work·ReviewEvent·Decision)에서 찾는다.
+
+    ``PremortemResult.similar_works``·``Excerpt``에는 결정·평점·논문 id가 없다(계약). 화면은 이것을 지어내지 않고
+    기록에서 **원문 그대로** 가져온다. 결과에 값이 있으면 결과가 이긴다. 못 찾으면 비워 둔다("미정", "–").
+    """
+
+    decisions: dict[str, tuple[str, str]] = dataclasses.field(default_factory=dict)  # work_id → (라벨, 원문)
+    ratings: dict[str, list[float]] = dataclasses.field(default_factory=dict)  # work_id → 공식 심사평 평점
+    reviews: dict[str, tuple[str, str]] = dataclasses.field(default_factory=dict)  # review_id → (work_id, 평점 원문)
+    decision_work: dict[str, str] = dataclasses.field(default_factory=dict)  # decision_id → work_id
+    works: dict[str, dict[str, str]] = dataclasses.field(default_factory=dict)  # work_id → title·url·venue
+    source: str = "records"
+
+    @classmethod
+    def from_records(cls, works: Iterable[Any] = (), reviews: Iterable[Any] = (), decisions: Iterable[Any] = (),
+                     *, source: str = "records") -> RecordLookup:
+        """Work·ReviewEvent·Decision(모델 또는 dict) 목록으로 만든다."""
+        lk = cls(source=source)
+        for raw in works:
+            w = _as_dict(raw)
+            wid = _text(w.get("work_id"))
+            if wid:
+                lk.works[wid] = {"title": _text(w.get("title")), "url": _text(w.get("url")),
+                                 "venue": _text(w.get("venue"))}
+        for raw in reviews:
+            lk.add_review(_as_dict(raw))
+        for raw in decisions:
+            lk.add_decision(_as_dict(raw))
+        return lk
+
+    def add_review(self, r: Mapping[str, Any]) -> None:
+        rid, wid = _text(r.get("review_id")), _text(r.get("work_id"))
+        if not rid or not wid:
+            return
+        kind = _text(r.get("kind")) or "official_review"
+        raw = _text(r.get("rating"))
+        self.reviews[rid] = (wid, raw)
+        v = rating_value(raw)
+        if kind == "official_review" and v is not None:
+            self.ratings.setdefault(wid, []).append(v)
+
+    def add_decision(self, d: Mapping[str, Any]) -> None:
+        wid = _text(d.get("work_id"))
+        if not wid:
+            return
+        outcome, raw = _text(d.get("outcome")).lower(), _text(d.get("outcome_raw"))
+        label = OUTCOME_LABEL.get(outcome) or decision_label(raw)
+        self.decisions[wid] = (label, raw)
+        did = _text(d.get("decision_id"))
+        if did:
+            self.decision_work[did] = wid
+
+    def __bool__(self) -> bool:
+        return bool(self.decisions or self.reviews or self.works)
+
+    def work_of_source(self, source_id: str) -> str:
+        if source_id in self.reviews:
+            return self.reviews[source_id][0]
+        return self.decision_work.get(source_id, "")
+
+    def review_rating(self, source_id: str) -> str:
+        return self.reviews.get(source_id, ("", ""))[1]
+
+
+AUTO: Any = object()  # build_ui_view(records=AUTO): 공유 데이터 폴더의 기록을 쓴다(샘플이면 쓰지 않는다)
+_RECORD_FILES = ("processed/decisions.jsonl", "processed/elife_decisions.jsonl", "processed_l3/decisions.jsonl")
+
+
+def _iter_json_lines(path: Path) -> Iterable[dict[str, Any]]:
+    with path.open(encoding="utf-8") as fh:
+        for line in fh:
+            if line.strip():
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(row, dict):
+                    yield row
+
+
+def _data_dir() -> Path | None:
+    try:
+        from neumann.config import get_settings
+
+        return Path(get_settings().data_dir)
+    except Exception:  # noqa: BLE001 - 설정을 못 읽으면 조회 없이 간다
+        return None
+
+
+@lru_cache(maxsize=2)
+def _load_records(data_dir: str, stamp: tuple[float, ...]) -> RecordLookup | None:  # noqa: ARG001 - stamp는 캐시 키
+    """공유 데이터 폴더 → RecordLookup. 이미 메모리에 올라온 색인(neumann.index.store)이 있으면 그것을 쓴다."""
+    base = Path(data_dir)
+    lk = RecordLookup(source="corpus_records")
+    store = getattr(sys.modules.get("neumann.index.store"), "_STORE", None)
+    if store is not None and getattr(store, "works", None):
+        for wid, w in store.works.items():
+            lk.works[wid] = {"title": _text(getattr(w, "title", "")), "url": _text(getattr(w, "url", "")),
+                             "venue": _text(getattr(w, "venue", ""))}
+        for revs in store.reviews.values():
+            for r in revs:
+                lk.add_review(_as_dict(r))
+    else:
+        for name in ("works.jsonl", "reviews.jsonl"):
+            p = base / "index" / name
+            if not p.is_file():
+                continue
+            for row in _iter_json_lines(p):
+                if name == "works.jsonl":
+                    wid = _text(row.get("work_id"))
+                    if wid:
+                        lk.works[wid] = {"title": _text(row.get("title")), "url": _text(row.get("url")),
+                                         "venue": _text(row.get("venue"))}
+                else:
+                    lk.add_review(row)
+    for rel in _RECORD_FILES:
+        p = base / rel
+        if p.is_file():
+            for row in _iter_json_lines(p):
+                lk.add_decision(row)
+    return lk or None
+
+
+def default_records() -> RecordLookup | None:
+    """공유 데이터 폴더의 결정·평점 기록. 폴더·파일이 없으면 None(화면은 '미정'·'–'로 둔다)."""
+    base = _data_dir()
+    if base is None or not base.is_dir():
+        return None
+    paths = [base / "index" / "works.jsonl", base / "index" / "reviews.jsonl", *(base / r for r in _RECORD_FILES)]
+    stamp = tuple(p.stat().st_mtime if p.is_file() else 0.0 for p in paths)
+    if not any(stamp):
+        return None
+    try:
+        return _load_records(str(base), stamp)
+    except Exception:  # noqa: BLE001 - 조회 실패는 화면을 막지 않는다
+        return None
+
+
 # ───────────────────────── 섹션별 조립 ─────────────────────────
 
 
 class _Ctx:
     """섹션 사이에 공유하는 조회표와 기록."""
 
-    def __init__(self) -> None:
+    def __init__(self, records: RecordLookup | None = None) -> None:
+        self.records = records
+        self.enriched: dict[str, int] = {}  # 기록에서 채운 값의 개수(추적용)
+        self.ev_lines: dict[str, list[int]] = {}  # 발췌 id → 그 발췌를 인용한 카드들의 계획서 줄(순서 유지)
+        self.ev_cards: dict[str, list[int]] = {}  # 발췌 id → 인용한 카드 순위
+        self.card_rank: dict[str, int] = {}  # card_id → 화면 순위
         self.works_by_id: dict[str, dict[str, Any]] = {}
         self.work_n: dict[str, int] = {}
         self.evidence: dict[str, dict[str, Any]] = {}
@@ -204,6 +375,9 @@ class _Ctx:
 
     def drop(self, what: str, n: int = 1) -> None:
         self.dropped[what] = self.dropped.get(what, 0) + n
+
+    def enrich(self, what: str) -> None:
+        self.enriched[what] = self.enriched.get(what, 0) + 1
 
     def fam_for(self, code: str, sub: str = "", title: str = "") -> int:
         code = code or _code(sub) or "R?"
@@ -283,20 +457,39 @@ def _build_works(res: Mapping[str, Any], ctx: _Ctx) -> list[dict[str, Any]]:
             ctx.drop("works")
             continue
         n = len(works) + 1
-        title = title or wid
+        rec = ctx.records
+        known = (rec.works.get(wid) if rec else None) or {}
+        title = title or known.get("title", "") or wid
         prov = _as_dict(w.get("provenance"))
-        url = _text(_get(w, "url", "forum_url", "source_url")) or _text(prov.get("source_url"))
+        url = _text(_get(w, "url", "forum_url", "source_url")) or _text(prov.get("source_url")) or known.get("url", "")
+        raw_dec = _get(w, "decision", "decision_label", "d")
+        dec, d_raw, d_src = decision_label(raw_dec), _text(raw_dec), "result" if raw_dec is not None else ""
+        if raw_dec is None and rec and wid in rec.decisions:
+            dec, d_raw = rec.decisions[wid]
+            d_src = rec.source
+            ctx.enrich("works_decision")
+        raw_rt = _get(w, "rating", "avg_rating", "mean_rating", "r")
+        rs = [round(v, 2) for v in (rec.ratings.get(wid, []) if rec else [])]
+        if raw_rt is None and rs:
+            raw_rt = sum(rs) / len(rs)
+            ctx.enrich("works_rating")
         item = {
             "n": n,
             "t": title,
             "s": _text(_get(w, "short_title", "s")) or _short_title(title),
-            "d": decision_label(_get(w, "decision", "decision_label", "d")),
-            "r": _rating(_get(w, "rating", "avg_rating", "mean_rating", "r")) or "–",
+            "d": dec,
+            "r": _rating(raw_rt) or "–",
             "id": wid,
             "f": [],
             "u": url,
-            "venue": _text(_get(w, "venue")),
+            "venue": _text(_get(w, "venue")) or known.get("venue", ""),
         }
+        if d_raw:
+            item["draw"] = d_raw[:80]  # 결정 원문 문자열(라벨을 만든 근거)
+        if d_src:
+            item["dsrc"] = d_src
+        if rs:
+            item["rs"] = rs  # 공식 심사평 평점 하나하나(평가 분포)
         sim = _num(_get(w, "similarity", "score"))
         if sim is not None:
             item["sim"] = round(sim, 4)
@@ -351,6 +544,10 @@ def _resolve_work(e: Mapping[str, Any], ctx: _Ctx) -> str:
     wid = _text(_get(e, "work_id", "paper_id", "forum_id"))
     if wid:
         return wid
+    if ctx.records:  # 발췌의 원문(source_id = review_id·decision_id) → 그 기록의 논문
+        wid = ctx.records.work_of_source(_text(e.get("source_id")))
+        if wid:
+            return wid
     url = _text(_get(e, "source_url", "url"))
     for w in ctx.works_by_id.values():
         if _same_page(url, w.get("u", "")):
@@ -438,6 +635,9 @@ def _build_cards(res: Mapping[str, Any], works: list[dict[str, Any]], ctx: _Ctx)
                 ctx.ev_work[e] = wid
             if lines and e not in ctx.ev_line:
                 ctx.ev_line[e] = lines[0]
+            ev_ls = ctx.ev_lines.setdefault(e, [])
+            ev_ls.extend(n for n in lines if n not in ev_ls)
+            ctx.ev_cards.setdefault(e, []).append(len(cards) + 1)
         card_works = set(listed_works) | {ctx.ev_work[e] for e in eids}
         card_works.discard("")
         in_similar = card_works & set(ctx.work_n)
@@ -459,6 +659,9 @@ def _build_cards(res: Mapping[str, Any], works: list[dict[str, Any]], ctx: _Ctx)
             t = _text(a) or _text(_get(_as_dict(a), "text", "action", "t"))
             if t:
                 acts.append(t)
+        cid = _text(_get(c, "card_id", "id"))
+        if cid:
+            ctx.card_rank.setdefault(cid, len(cards) + 1)
         cards.append({
             "rank": len(cards) + 1,
             "fam": fam,
@@ -493,19 +696,42 @@ def _build_ev(ctx: _Ctx, card_fam_of: dict[str, int]) -> dict[str, dict[str, Any
         section = _text(_get(e, "section"))
         v = " · ".join(x for x in (venue, kind, section) if x)
         rv = _text(_get(e, "reviewer_pseudonym"))
+        rec = ctx.records
+        known = (rec.works.get(wid) if rec and wid else None) or {}
+        raw_dec = _get(e, "work_decision", "decision")
+        dec = (w or {}).get("d") or decision_label(raw_dec)
+        if w is None and raw_dec is None and rec and wid in rec.decisions:
+            dec = rec.decisions[wid][0]  # 유사 연구 목록 밖 논문(확장 검색)도 기록에 결정이 있으면 쓴다
+            ctx.enrich("evidence_decision")
+        raw_rt = _get(e, "rating", "rt")
+        if raw_rt is None and rec:
+            raw_rt = rec.review_rating(_text(e.get("source_id"))) or None
+            if raw_rt is not None:
+                ctx.enrich("evidence_rating")
+        rt_num = rating_value(raw_rt)
         item: dict[str, Any] = {
             "fam": fam,
             "q": _text(_get(e, "text", "quote", "q")),
-            "p": (w or {}).get("t") or _text(_get(e, "work_title", "paper_title", "p")) or wid,
-            "v": v,
-            "d": (w or {}).get("d") or decision_label(_get(e, "work_decision", "decision")),
-            "rt": _rating(_get(e, "rating", "rt")),
+            "p": (w or {}).get("t") or _text(_get(e, "work_title", "paper_title", "p")) or known.get("title", "") or wid,
+            "v": v or known.get("venue", ""),
+            "d": dec,
+            "rt": _rating(rt_num) if rt_num is not None else _rating(raw_rt),
             "rv": rv if PSEUDONYM.match(rv) else "",
             "id": wid,
             "ln": _int(_get(e, "plan_line", "ln")) or ctx.ev_line.get(eid),
-            "u": _text(_get(e, "source_url", "url")) or (w or {}).get("u", ""),
+            "u": _text(_get(e, "source_url", "url")) or (w or {}).get("u", "") or known.get("url", ""),
             "eid": eid,
         }
+        if raw_rt is not None and _text(raw_rt) != item["rt"]:
+            item["rtraw"] = _text(raw_rt)[:80]  # 평점 원문('6: marginally above …')
+        lns = [n for n in ctx.ev_lines.get(eid, []) if n in ctx.plan_line_ns]
+        if item["ln"] is not None and item["ln"] in ctx.plan_line_ns and item["ln"] not in lns:
+            lns.insert(0, item["ln"])
+        item["lns"] = lns
+        item["cards"] = list(dict.fromkeys(ctx.ev_cards.get(eid, [])))
+        sk = _text(_get(e, "source_kind", "kind")).lower()
+        if sk:
+            item["kind"] = sk
         if not item["p"]:
             item["p"] = "논문 미상"
         if item["ln"] is not None and item["ln"] not in ctx.plan_line_ns:
@@ -554,7 +780,14 @@ def _build_review(res: Mapping[str, Any], ctx: _Ctx, has_works: bool) -> dict[st
                 dropped.append(["no_evidence_in_view", t[:200]])
                 continue
             kept += 1
-            sents.append({"t": t, "c": cites})
+            sent: dict[str, Any] = {"t": t, "c": cites}
+            lns = [n for v in _list(_get(s, "plan_lines", "lines", "ln")) if (n := _int(v)) in ctx.plan_line_ns]
+            if lns:
+                sent["ln"] = list(dict.fromkeys(lns))
+            ranks = [ctx.card_rank[cid] for cid in (_text(x) for x in _list(s.get("cards"))) if cid in ctx.card_rank]
+            if ranks:
+                sent["cards"] = list(dict.fromkeys(ranks))
+            sents.append(sent)
         out[key] = sents
     audit = _as_dict(er.get("audit"))
     gate_dropped: list[list[str]] = []
@@ -570,10 +803,26 @@ def _build_review(res: Mapping[str, Any], ctx: _Ctx, has_works: bool) -> dict[st
         ctx.drop("review_sentences_without_evidence", dropped_n)
     # pass = 화면에 실제로 나가는 문장 수. 게이트가 뺀 것과 화면이 뺀 것이 모두 drop에 들어간다.
     out["audit"] = {"gen": gen, "pass": kept, "drop": max(0, gen - kept), "dropped": dropped}
+    gate = _text(audit.get("gate"))
+    if gate:
+        out["audit"]["gate"] = gate
+    # 생성 방식·상태를 그대로 싣는다(규칙 합성을 LLM 생성으로 보이게 하지 않는다). 결과에 없으면 싣지 않는다.
+    gen_raw = _text(_get(er, "generator", "gen")).lower()
+    if gen_raw:
+        out["gen"] = gen_raw if gen_raw in GENERATORS else gen_raw[:16]
+    for key, aliases in (("st", ("status",)), ("why", ("reason",)), ("model", ("model",))):
+        v = _text(_get(er, *aliases))
+        if v:
+            out[key] = v[:300]
     return out
 
 
-def _build_checklist(res: Mapping[str, Any]) -> list[dict[str, str]]:
+def _build_checklist(res: Mapping[str, Any], ctx: _Ctx | None = None) -> list[dict[str, Any]]:
+    """체크리스트(E3-L1b 항목) → 목업 ``{id, t, r, s, m}`` + 화면용 추가 키.
+
+    추가 키: ``ln``(계획서 줄), ``ev``(화면 근거 번호), ``card``(카드 순위), ``v``(확인 조건), ``gen``(생성 방식),
+    ``why``(규칙 대체 사유), ``cv``(카드 2차 검증 판정), ``set``(연구자가 결정을 골랐는지 — 아니면 ``s``는 기본값 보류).
+    """
     table = {"채택": "채택", "보류": "보류", "기각": "기각", "adopt": "채택", "accept": "채택", "adopted": "채택",
              "defer": "보류", "hold": "보류", "pending": "보류", "reject": "기각", "rejected": "기각"}
     out = []
@@ -582,9 +831,25 @@ def _build_checklist(res: Mapping[str, Any]) -> list[dict[str, str]]:
         t = _text(_get(it, "action", "t", "text", "title"))
         if not t:
             continue
-        s = table.get(_text(_get(it, "decision", "s", "choice")).strip().lower(), "보류")
-        out.append({"id": _text(_get(it, "id", "item_id")) or f"C{i}", "t": t,
-                    "r": _text(_get(it, "risk_code", "r", "risk")), "s": s, "m": _text(_get(it, "note", "m", "memo"))})
+        chosen = table.get(_text(_get(it, "decision", "s", "choice")).strip().lower())
+        item: dict[str, Any] = {"id": _text(_get(it, "id", "item_id")) or f"C{i}", "t": t,
+                                "r": _text(_get(it, "risk_code", "r", "risk")), "s": chosen or "보류",
+                                "m": _text(_get(it, "note", "m", "memo")), "set": chosen is not None}
+        if ctx is not None:
+            lns = [n for v in _list(_get(it, "plan_lines", "lines")) if (n := _int(v)) in ctx.plan_line_ns]
+            item["ln"] = list(dict.fromkeys(lns))
+            evs = [ctx.ev_num[e] for e in (_text(x) for x in _list(_get(it, "evidence", "evidence_ids")))
+                   if e in ctx.ev_num]
+            item["ev"] = list(dict.fromkeys(evs))
+            rank = ctx.card_rank.get(_text(it.get("card_id")))
+            if rank is not None:
+                item["card"] = rank
+        for key, aliases in (("v", ("verify",)), ("gen", ("generator",)), ("why", ("fallback_reason",)),
+                             ("cv", ("card_verdict",))):
+            v = _text(_get(it, *aliases))
+            if v:
+                item[key] = v[:300]
+        out.append(item)
     return out
 
 
@@ -657,16 +922,22 @@ def build_ui_view(
     error: str | None = None,
     input_info: Mapping[str, Any] | None = None,
     extra_notices: Iterable[str] = (),
+    records: Any = AUTO,
 ) -> dict[str, Any]:
     """분석 결과 → ui_view dict. 절대 예외를 던지지 않는다.
 
     - ``sample``: 파이프라인이 없어 샘플을 쓴 경우. 화면이 ``_status.label``을 띄운다.
+    - ``records``: 결정·평점 조회(``RecordLookup``). 기본 ``AUTO``는 공유 데이터 폴더의 기록을 쓰되 샘플이면 쓰지 않는다
+      (가짜 fixture에 실제 기록을 섞지 않는다). ``None``이면 조회하지 않는다.
     - ``pipeline_state``: connected | unavailable | error
     - ``error``: 파이프라인이 실패한 사유(사람이 읽는 한 줄, 비밀값 금지).
     """
     try:
+        if records is AUTO:
+            records = None if sample else default_records()
         return _build(result, filename=filename, sample=sample, pipeline_state=pipeline_state, error=error,
-                      input_info=input_info, extra_notices=list(extra_notices))
+                      input_info=input_info, extra_notices=list(extra_notices),
+                      records=records if isinstance(records, RecordLookup) else None)
     except Exception as exc:  # noqa: BLE001 - 마지막 방어선: 빈 뷰 + 오류 상태
         view = empty_view()
         view["_status"] = _status_block(
@@ -703,9 +974,10 @@ def _status_block(*, sample: bool, pipeline_state: str, result_status: str | Non
 
 
 def _build(result: Any, *, filename: str | None, sample: bool, pipeline_state: str, error: str | None,
-           input_info: Mapping[str, Any] | None, extra_notices: list[str]) -> dict[str, Any]:
+           input_info: Mapping[str, Any] | None, extra_notices: list[str],
+           records: RecordLookup | None = None) -> dict[str, Any]:
     res = _as_dict(result)
-    ctx = _Ctx()
+    ctx = _Ctx(records)
     view = empty_view()
 
     def section(name: str, fn, default):
@@ -728,7 +1000,7 @@ def _build(result: Any, *, filename: str | None, sample: bool, pipeline_state: s
     ev = section("ev", lambda: _build_ev(ctx, card_fam_of), {})
     section("works_flags", lambda: _fill_work_flags(works, cards, ctx), None)
     pipeline, not_ok, elapsed = section("pipeline", lambda: _build_pipeline(res), ([], [], None))
-    checklist = section("checklist", lambda: _build_checklist(res), [])
+    checklist = section("checklist", lambda: _build_checklist(res, ctx), [])
 
     flagged = {n for cd in cards for n in cd["lines"]}
     for line in view["plan"]["lines"]:
@@ -748,13 +1020,13 @@ def _build(result: Any, *, filename: str | None, sample: bool, pipeline_state: s
 
     manifest = _as_dict(res.get("manifest"))
     n_reject = sum(1 for w in works if w["d"] == REJECT_LABEL)
-    n_accept = sum(1 for w in works if w["d"] != REJECT_LABEL and w["d"] not in NEUTRAL_DECISIONS)
+    n_accept = sum(1 for w in works if w["d"] in ACCEPT_LABELS)
     review_count = sum(len(review.get(k, [])) for k in ("strength", "weakness", "request"))
     view["kpi"] = {
         "n_works": len(works), "n_reject": n_reject, "n_accept": n_accept, "n_evidence": len(ev),
         "n_cards_total": len(cards), "review_count": review_count,
-        "model_id": _text(_get(manifest, "model_id", "model")) or _text(res.get("model_id")) or None,
-        "model_provider": _text(_get(manifest, "model_provider", "provider")) or _text(res.get("model_provider")) or None,
+        "model_id": _text(_get(manifest, "model_id", "model", "llm_model")) or _text(res.get("model_id")) or None,
+        "model_provider": _text(_get(manifest, "model_provider", "provider", "llm_provider")) or _text(res.get("model_provider")) or None,
         "elapsed_s": elapsed,
     }
 
@@ -782,6 +1054,15 @@ def _build(result: Any, *, filename: str | None, sample: bool, pipeline_state: s
     status["section_errors"] = ctx.section_errors
     status["generated_at"] = _text(res.get("generated_at")) or None
     status["pipeline_version"] = _text(res.get("pipeline_version")) or None
+    # 결정·평점을 결과가 아니라 코퍼스 기록에서 채웠으면 그 사실과 개수를 남긴다(추적 섹션이 표시).
+    status["records"] = {"source": records.source, "filled": dict(ctx.enriched)} if records else None
+    ver = _as_dict(res.get("verification"))
+    vstage = next((s for s in _list(res.get("stages")) if _text(_as_dict(s).get("name")) == "verify_evidence"), None)
+    total, ok = _int(ver.get("quotes_total")), _int(ver.get("quotes_verified"))
+    status["verification"] = {
+        "total": total, "verified": ok,
+        "stage": _text(_as_dict(vstage).get("status")) or None if vstage is not None else None,
+    } if (total is not None or vstage is not None) else None
     view["_status"] = status
 
     errors = validate_ui_view(view)
