@@ -6,13 +6,18 @@
 - 기본 pytest(verify)에서는 건너뛴다(브라우저·서버 필요). ``NEUMANN_UI_TESTS=1``일 때만 돈다.
 - 서버는 하위 프로세스(uvicorn, 기본 8150번)로 띄우고 끝나면(실패해도) 끈다. 8010·8020은 쓰지 않는다.
   서버에는 ``NEUMANN_LLM_PROVIDER=mock``을 주고 ``OPENAI_API_KEY``를 넘기지 않는다(실제 API 호출 없음).
-- 리포트 데이터: ``/premortem/view`` 응답을 가로채 fixture 기반 풍부한 뷰(test_view_shots.rich_view: 지도·카드·
-  예상 심사평·체크리스트가 모두 있는 샘플)를 넣는다. 대기 화면은 응답을 붙잡아 둔 채 잰다.
+- 리포트 데이터: 작업 API(``POST /premortem/jobs`` → ``GET /premortem/jobs/{id}``) 응답을 가로채 대기(queued → running ·
+  SEARCH 단계)를 보여 준 뒤, 결과로 fixture 기반 풍부한 뷰(test_view_shots.rich_view: 지도·카드·예상 심사평·체크리스트가
+  모두 있는 샘플)를 넣는다. 서버 파이프라인은 돌지 않는다. 대기 화면은 running 단계에서 잰다.
 - 화면마다 잰다: 가로 넘침(``document.documentElement.scrollWidth <= innerWidth``), 화면 밖으로 나간 요소
   (가로 스크롤 상자 안은 제외), 좌우 여백(390·768은 16px), 글자가 상자를 넘치는 버튼·라벨, 형제 요소 겹침,
   근거 패널 여닫기(좁은 화면 = 서랍, 1440 = 오른쪽 상시 패널), 실행 버튼이 전송 고지에 가리지 않는지.
+- 좁은 화면 추가(검증 지적): 601·616px(추적 해시 넘침 경계), 터치 대상 44px(서랍 탭·닫기·떠 있는 버튼, ≤600에서 결정·단계 탭·
+  근거 번호 누르는 자리), 서랍 초점(열면 서랍 안, Tab·Shift+Tab이 서랍 밖으로 안 나감, 닫기·Esc 뒤 연 요소로 복귀),
+  ≤600 입력칸 16px(iOS 확대 방지), 맨 아래에서 떠 있는 버튼이 푸터 글자를 가리지 않는지. 1440은 초점이 패널로 옮겨가지 않는지.
 - 콘솔 오류·페이지 오류·실패 요청·외부 도메인 요청이 하나라도 있으면 실패.
 - 스크린샷: ``{prefix}_{390,768,1440}_{input,report}.png``(전체 페이지), ``{prefix}_{390,768}_{job,panel}.png``.
+  601·616은 재기만 하고 찍지 않는다.
 """
 
 from __future__ import annotations
@@ -32,8 +37,11 @@ sys.path[:0] = [str(ROOT / "src"), str(ROOT)]
 PREFIX = "E4-L3m"
 DEFAULT_PORT = 8150
 FORBIDDEN_PORTS = {8010, 8020}
-VIEWPORTS = [(390, 844), (768, 1024), (1440, 900)]
-GUTTER = 16  # 390·768 좌우 여백(px)
+VIEWPORTS = [(390, 844), (601, 900), (616, 900), (768, 1024), (1440, 900)]
+SHOT_WIDTHS = {390, 768, 1440}
+GUTTER = 16  # 900 이하 좌우 여백(px)
+TOUCH = 44  # 터치 대상 최소 높이(px)
+JOB_ID = "job_e4l3m"
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "[::1]", "::1"}
 REPORT_READY = ("document.body.dataset.view === 'report' && document.body.dataset.ready === '1' && "
                 "!!(document.querySelector('#s-cards .rc') || document.querySelector('#noCards'))")
@@ -60,7 +68,9 @@ LAYOUT = r"""(arg) => {
   document.querySelectorAll(FIX).forEach(el => {
     if (!shown(el) || el.clientWidth === 0) return;
     // 세로는 글리프가 line-height 밖으로 몇 px 나오는 것을 봐준다(4px). 높이 고정 버튼이 두 줄로 접히면 걸린다
-    if (el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 4) clipped.push(desc(el) + ' ' + el.scrollWidth + '/' + el.clientWidth + 'x' + el.scrollHeight + '/' + el.clientHeight);
+    // 근거·행 번호는 ≤600에서 누르는 자리(::after)를 위아래로 넓혀 scrollHeight가 커진다: 가로만 본다
+    const vert = !el.matches('.cite, .lref') && el.scrollHeight > el.clientHeight + 4;
+    if (el.scrollWidth > el.clientWidth + 1 || vert) clipped.push(desc(el) + ' ' + el.scrollWidth + '/' + el.clientWidth + 'x' + el.scrollHeight + '/' + el.clientHeight);
   });
   // 3) 형제 겹침: 플렉스·그리드 상자의 직계 자식끼리
   const BOXES = ['.top', '#steps', '.top .r', '.scope', '.seg', '#tplList', '#exList', '.tplmeta', '#inCard > div:last-child', '.sendnote summary', '.file', '.drop',
@@ -98,6 +108,7 @@ LAYOUT = r"""(arg) => {
 PANEL = r"""() => {
   const vw = window.innerWidth, p = document.querySelector('.panel'), r = p.getBoundingClientRect();
   const cs = getComputedStyle(p), pb = document.getElementById('pbody');
+  const hgt = s => { const e = document.querySelector(s); return e ? Math.round(e.getBoundingClientRect().height) : null; };
   const vis = el => { if (!el) return false; const c = getComputedStyle(el); const b = el.getBoundingClientRect(); return c.display !== 'none' && c.visibility !== 'hidden' && b.width > 0 && b.height > 0; };
   const inView = r.left >= -0.5 && r.right <= vw + 0.5 && r.width > 0;
   return {
@@ -106,6 +117,10 @@ PANEL = r"""() => {
     in_view: inView, visibility: cs.visibility,
     pbody_overflow_x: pb ? pb.scrollWidth > pb.clientWidth + 1 : null,
     pclose_shown: vis(document.querySelector('.pclose')), pfab_shown: vis(document.querySelector('.pfab')),
+    pclose_h: hgt('.pclose'), tab_h: hgt('.ptabs button'), pfab_h: hgt('.pfab'),
+    focus_in_panel: p.contains(document.activeElement),
+    active: (() => { const a = document.activeElement; return a ? a.tagName.toLowerCase() + '.' + (a.className || '') + (a.dataset && a.dataset.ev ? '#' + a.dataset.ev : '') : ''; })(),
+    role: p.getAttribute('role'), modal: p.getAttribute('aria-modal'),
     quote: (document.getElementById('evQuote') || {}).textContent || '',
   };
 }"""
@@ -117,6 +132,44 @@ BTN_FREE = r"""() => {
   return {btn_on_top: !!(top && (top === b || b.contains(top))), btn_h: Math.round(r.height), btn_w: Math.round(r.width),
           note_h: Math.round(document.getElementById('sendNote').getBoundingClientRect().height)};
 }"""
+
+
+# ≤600 터치 대상: 결정 버튼·단계 탭 높이, 근거 번호는 위아래 10px 바깥을 눌러도 그 번호가 잡히는지
+TOUCH_JS = r"""() => {
+  const h = el => el ? Math.round(el.getBoundingClientRect().height) : null;
+  const cite = document.querySelector('#s-cards .ev .cite');
+  cite.scrollIntoView({block: 'center'});
+  const r = cite.getBoundingClientRect(), cx = r.left + r.width / 2;
+  const at = y => { const e = document.elementFromPoint(cx, y); return !!(e && (e === cite || cite.contains(e))); };
+  return {
+    dec_h: Math.min(...Array.from(document.querySelectorAll('#s-check .dec')).map(h)),
+    stp_h: Math.min(...Array.from(document.querySelectorAll('#steps .stp')).map(h)),
+    cite_h: h(cite), cite_hit_above: at(r.top - 10), cite_hit_below: at(r.bottom + 10),
+  };
+}"""
+
+# 맨 아래로 내렸을 때 떠 있는 버튼과 푸터 글자가 겹치는 넓이(px²)
+FOOT_JS = r"""() => {
+  window.scrollTo(0, document.documentElement.scrollHeight);
+  const f = document.querySelector('.pfab').getBoundingClientRect();
+  let area = 0;
+  document.querySelectorAll('.foot .sc, .foot .by').forEach(el => {
+    for (const b of el.getClientRects()) {
+      const w = Math.min(f.right, b.right) - Math.max(f.left, b.left), hh = Math.min(f.bottom, b.bottom) - Math.max(f.top, b.top);
+      if (w > 0 && hh > 0) area += w * hh;
+    }
+  });
+  return {overlap_px2: Math.round(area), fab_top: Math.round(f.top), foot_pad_bottom: getComputedStyle(document.querySelector('.foot')).paddingBottom};
+}"""
+
+
+def tab_trap(page, n: int, shift: bool = False) -> bool:
+    """서랍 안에서 Tab(또는 Shift+Tab)을 n번 누르는 동안 초점이 늘 서랍 안에 있었는지."""
+    inside = True
+    for _ in range(n):
+        page.keyboard.press("Shift+Tab" if shift else "Tab")
+        inside = inside and page.evaluate("document.querySelector('.panel').contains(document.activeElement)")
+    return inside
 
 
 def _port_free(port: int) -> bool:
@@ -156,6 +209,8 @@ def shoot(base: str, out: Path, prefix: str = PREFIX, html: Path | None = None) 
             log = lambda msg: print(f"[{w}] {msg}", file=sys.stderr, flush=True)  # noqa: E731
 
             def snap(name: str, full: bool = False, tall: bool = False) -> None:
+                if w not in SHOT_WIDTHS:
+                    return
                 page.wait_for_timeout(200)
                 path = out / f"{prefix}_{w}_{name}.png"
                 if tall:  # sticky 고지가 제자리에 보이게 창을 문서 높이로 늘려 찍고 되돌린다(가로 폭은 그대로)
@@ -180,6 +235,7 @@ def shoot(base: str, out: Path, prefix: str = PREFIX, html: Path | None = None) 
             r["input"] = page.evaluate(LAYOUT, {"main": "#inCard"})
             log("input")
             r["tpl_cols"] = page.evaluate("getComputedStyle(document.getElementById('tplList')).gridTemplateColumns.split(' ').length")
+            r["ta_font"] = page.evaluate("getComputedStyle(document.getElementById('ta')).fontSize")
             snap("input", tall=True)
             r["run_btn"] = page.evaluate(BTN_FREE)
             page.evaluate("window.scrollTo(0, 0)")
@@ -191,27 +247,31 @@ def shoot(base: str, out: Path, prefix: str = PREFIX, html: Path | None = None) 
             page.wait_for_selector("#ta")
             page.fill("#ta", text)
 
-            # 2 대기: 응답을 붙잡아 둔 채 잰다
-            held: list = []
-            page.route("**/premortem/view", lambda route, _req: held.append(route))
+            # 2 대기: 작업 API를 가로챈다. 등록(queued) → running · SEARCH 단계에서 재고, 풀어 주면 결과(풍부한 뷰)
+            job = {"release": False, "polls": 0}
+            queued = json.dumps({"job_id": JOB_ID, "status": "queued", "position": 2, "eta_s": 30, "poll_after_s": 1})
+            running = json.dumps({"job_id": JOB_ID, "status": "running", "stage": "search", "stage_label": "유사 연구 검색",
+                                  "eta_s": 20, "poll_after_s": 1})
+            done = '{"job_id": "%s", "status": "done", "result": %s}' % (JOB_ID, body)
+
+            def job_status(route, _req, job=job, running=running, done=done):
+                job["polls"] += 1
+                route.fulfill(status=200, content_type="application/json", body=done if job["release"] else running)
+
+            page.route("**/premortem/jobs", lambda route, _req, q=queued: route.fulfill(status=202, content_type="application/json", body=q))
+            page.route(f"**/premortem/jobs/{JOB_ID}", job_status)
+            page.route("**/premortem/view", lambda route, _req: route.fulfill(status=200, content_type="application/json", body=body))
             page.click("#btnStart")
             page.wait_for_selector('body[data-view="job"][data-ready="1"]')
-            page.wait_for_function("document.querySelector('.tn.run') !== null")
+            page.wait_for_function("(() => { const n = document.querySelector('.tn.run .nm'); return !!n && n.textContent === 'SEARCH'; })()",
+                                   timeout=15_000)
             page.wait_for_timeout(150)
             r["job"] = page.evaluate(LAYOUT, {"main": "#app .col"})
             log("job")
-            if narrow:
-                snap("job")
-            for _ in range(50):  # route 콜백은 Playwright 호출 사이에 돈다: 최대 5초 기다린다
-                if held:
-                    break
-                page.wait_for_timeout(100)
-            assert held, "/premortem/view 요청을 붙잡지 못했다"
-            log(f"held {len(held)}")
-            held[0].fulfill(status=200, content_type="application/json", body=body)
-            log("fulfilled")
-            page.wait_for_function(REPORT_READY, timeout=60_000)
-            log("report ready")  # unroute는 하지 않는다(가끔 멈춘다). 이 페이지는 더 요청하지 않고 곧 닫는다
+            snap("job")
+            job["release"] = True
+            page.wait_for_function(REPORT_READY, timeout=30_000)
+            log(f"report ready (polls {job['polls']})")
             page.evaluate("document.fonts.ready.then(() => true)")
             page.wait_for_load_state("networkidle")
             page.evaluate("window.scrollTo(0, 0)")
@@ -223,14 +283,23 @@ def shoot(base: str, out: Path, prefix: str = PREFIX, html: Path | None = None) 
             r["sections"] = page.evaluate("Array.from(document.querySelectorAll('.doc section')).filter(s => s.offsetParent).map(s => s.id)")
             snap("report", full=True)
             r["panel_closed"] = page.evaluate(PANEL)
-            if narrow and page.locator(".pfab").count() and page.locator(".pclose").count():
-                # 떠 있는 버튼으로 열고 닫기 → 근거 번호로 열기
+            if narrow:
+                r["foot"] = page.evaluate(FOOT_JS)
+                if w <= 600:
+                    r["touch"] = page.evaluate(TOUCH_JS)
+                page.evaluate("window.scrollTo(0, 0)")
+                # 떠 있는 버튼으로 열기 → 초점은 서랍 안 → Tab·Shift+Tab 가두기 → 닫기 버튼 → 초점은 떠 있는 버튼으로
                 page.click(".pfab")
                 page.wait_for_timeout(350)
                 r["panel_fab"] = page.evaluate(PANEL)
+                n_focus = page.evaluate("document.querySelectorAll('.panel button:not([disabled]), .panel a[href]').length")
+                r["trap_tab"] = tab_trap(page, n_focus + 3)
+                r["trap_shift_tab"] = tab_trap(page, n_focus + 3, shift=True)
                 page.click(".pclose")
                 page.wait_for_timeout(350)
                 r["panel_after_close"] = page.evaluate(PANEL)
+                r["focus_after_close"] = page.evaluate("document.activeElement === document.querySelector('.pfab')")
+                # 근거 번호로 열기 → Esc로 닫기 → 초점은 그 근거 번호로
                 page.evaluate("document.getElementById('s-cards').scrollIntoView({block: 'start'})")
                 page.click("#s-cards .ev .cite >> nth=0")
                 page.wait_for_selector("#pbody #evQuote")
@@ -238,9 +307,10 @@ def shoot(base: str, out: Path, prefix: str = PREFIX, html: Path | None = None) 
                 r["panel_cite"] = page.evaluate(PANEL)
                 r["panel_layout"] = page.evaluate(LAYOUT, {"main": ".panel"})
                 snap("panel")
-                page.click(".pclose")
+                page.keyboard.press("Escape")
                 page.wait_for_timeout(350)
                 r["panel_after_close2"] = page.evaluate(PANEL)
+                r["focus_after_esc"] = page.evaluate("document.activeElement === document.querySelector('#s-cards .ev .cite')")
             else:
                 page.click("#s-cards .ev .cite >> nth=0")
                 page.wait_for_selector("#pbody #evQuote")
@@ -277,7 +347,7 @@ def check(res: dict) -> list[str]:
                 bad.append(f"{w} {scr}: 글자 넘침 {m['clipped_n']}개 {m['clipped'][:3]}")
             if m["overlaps_n"]:
                 bad.append(f"{w} {scr}: 겹침 {m['overlaps_n']}개 {m['overlaps'][:3]}")
-            if int(w) <= 768 and scr != "panel_layout":
+            if int(w) <= 900 and scr != "panel_layout":
                 if m["wrap_pad"] != [GUTTER, GUTTER]:
                     bad.append(f"{w} {scr}: 좌우 여백 {m['wrap_pad']} != {GUTTER}px")
                 if m["main_lr"] and min(m["main_lr"]) < GUTTER - 0.5:
@@ -305,6 +375,24 @@ def check(res: dict) -> list[str]:
                 v = r.get(k)
                 if not v or v["open_class"] or (v["in_view"] and v["visibility"] != "hidden"):
                     bad.append(f"{w}: {k} 닫기 버튼으로 안 닫힘 {v}")
+            v = r.get("panel_fab") or {}
+            if (v.get("pclose_h") or 0) < TOUCH or (v.get("tab_h") or 0) < TOUCH or (r["panel_closed"].get("pfab_h") or 0) < TOUCH:
+                bad.append(f"{w}: 서랍 탭·닫기·떠 있는 버튼 높이 < {TOUCH}px {v.get('tab_h')}/{v.get('pclose_h')}/{r['panel_closed'].get('pfab_h')}")
+            if not v.get("focus_in_panel") or v.get("role") != "dialog" or v.get("modal") != "true":
+                bad.append(f"{w}: 서랍을 열어도 초점이 서랍 안에 없음·dialog 표시 없음 {v.get('active')} {v.get('role')}")
+            if not r.get("trap_tab") or not r.get("trap_shift_tab"):
+                bad.append(f"{w}: 서랍이 열린 동안 Tab으로 서랍 밖에 나감 tab {r.get('trap_tab')} shift {r.get('trap_shift_tab')}")
+            if not r.get("focus_after_close") or not r.get("focus_after_esc"):
+                bad.append(f"{w}: 닫은 뒤 초점이 연 요소로 안 돌아감 닫기 {r.get('focus_after_close')} Esc {r.get('focus_after_esc')}")
+            ft = r.get("foot") or {}
+            if ft.get("overlap_px2", 1):
+                bad.append(f"{w}: 맨 아래에서 떠 있는 버튼이 푸터 글자를 가림 {ft}")
+            if int(w) <= 600:
+                t = r.get("touch") or {}
+                if (t.get("dec_h") or 0) < TOUCH or (t.get("stp_h") or 0) < TOUCH or not (t.get("cite_hit_above") and t.get("cite_hit_below")):
+                    bad.append(f"{w}: ≤600 터치 대상 부족 {t}")
+                if r["ta_font"] != "16px":
+                    bad.append(f"{w}: 입력칸 글자 {r['ta_font']} (iOS 확대 방지 16px 필요)")
             if r["tpl_cols"] > 3 and int(w) < 600:
                 bad.append(f"{w}: 템플릿 선택기 {r['tpl_cols']}열(휴대폰에서 너무 좁음)")
             if int(w) < 600 and r["strip_cols"] > 10:
@@ -312,6 +400,8 @@ def check(res: dict) -> list[str]:
         else:
             if r["panel_closed"]["position"] != "sticky" or r["panel_closed"]["pfab_shown"] or r["panel_closed"]["pclose_shown"]:
                 bad.append(f"{w}: 데스크톱 상시 패널이 바뀜 {r['panel_closed']}")
+            if r["panel_cite"]["focus_in_panel"] or r["panel_cite"]["role"]:
+                bad.append(f"{w}: 데스크톱에서 근거 번호를 눌렀는데 초점이 패널로 옮겨감·dialog 표시 {r['panel_cite']}")
             m = r["report"]
             if m["wrap_pad"] != [36, 36] or m["top_h"] != 60:
                 bad.append(f"{w}: 데스크톱 여백·상단바 바뀜 pad {m['wrap_pad']} top {m['top_h']}")
