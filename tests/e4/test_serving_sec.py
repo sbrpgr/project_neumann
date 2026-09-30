@@ -547,9 +547,11 @@ def test_run_rechecks_admission_when_middleware_did_not_reserve(tmp_path):
 # ───────────────────────── FAIL 대응 2: IPv6 /64, 공개 프로필 XFF 무시 ─────────────────────────
 
 
-def test_ipv6_addresses_in_same_64_share_one_rate_limit(tmp_path, monkeypatch):
-    assert serving.ip_key("2001:db8:1:2:aaaa::1") == serving.ip_key("2001:db8:1:2:ffff:1:2:3") == "2001:db8:1:2::/64"
-    assert serving.ip_key("2001:db8:1:3::1") != serving.ip_key("2001:db8:1:2::1")
+def test_ipv6_addresses_in_same_56_share_one_rate_limit(tmp_path, monkeypatch):
+    # SEC-7: 묶음이 /64 → /56. 같은 /64는 물론 같은 /56 안의 다른 /64도 한 통, 다른 /56은 다른 통
+    assert serving.ip_key("2001:db8:1:2:aaaa::1") == serving.ip_key("2001:db8:1:2:ffff:1:2:3") == "2001:db8:1::/56"
+    assert serving.ip_key("2001:db8:1:3::1") == serving.ip_key("2001:db8:1:2::1") == serving.ip_key("2001:db8:1:ff::1")
+    assert serving.ip_key("2001:db8:1:100::1") != serving.ip_key("2001:db8:1:2::1")
     assert serving.ip_key("::ffff:198.51.100.7") == "198.51.100.7" and serving.ip_key("198.51.100.7") == "198.51.100.7"
     srv, app = make(tmp_path, monkeypatch, lambda t: fake_result(t), rate_per_min=3)
 
