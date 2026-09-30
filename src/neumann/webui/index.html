@@ -885,7 +885,8 @@
   var order = ['채택', '보류', '기각'];
 
   /* ---------- E4-L2f 내보내기: POST /premortem/package → ZIP 9파일(결정은 decision_log.json) ----------
-     원결과는 화면 응답(/premortem/view, jobs 화면 결과)의 result(PremortemResult 계약 필드만)를 그대로 쓴다. 재분석하지 않는다.
+     원결과는 화면 응답(/premortem/view, jobs 화면 결과)의 result와 서버 서명 result_sig를 그대로 보낸다. 재분석하지 않는다.
+     서버가 서명을 확인하면 ZIP에 server_signed, 못 하면(서버 재기동 등) client_submitted_unverified와 경고가 적힌다.
      result가 없으면(샘플·오류·옛 서버) 버튼을 끄고 사유를 보인다. 결정은 연구자가 고른 항목만(결정 전 기본값 보류는 싣지 않음). */
   var EXP_FILES = ['README.md', 'manifest.json', 'risk_cards.json', 'evidence_pack.json', 'similar_works.csv', 'plan_annotated.md', 'neumann_report.md', 'ai_context.md', 'decision_log.json'];
   var EXP_DEC = { '채택': 'adopt', '보류': 'hold', '기각': 'reject' };
@@ -923,7 +924,8 @@
     dd.forEach(function (it) { c[it.s] = (c[it.s] || 0) + 1; });
     return '결정 로그에 싣는 결정 ' + dd.length + '건 · 채택 ' + c['채택'] + ' · 보류 ' + c['보류'] + ' · 기각 ' + c['기각'] + (rest > 0 ? ' · 결정 전 ' + rest + '건은 싣지 않음(화면 기본값 보류)' : '');
   }
-  function expSrcText() { return '원결과: 화면 응답에 함께 실린 분석 결과 JSON(계약 필드만)을 그대로 보냅니다. 재분석하지 않습니다.'; }
+  var EXP_ORIGIN = { server_signed: '서버 서명 확인됨', client_submitted_unverified: '서버 서명 확인 안 됨(서버 재기동 등) · ZIP에 경고가 적힘' };
+  function expSrcText() { return '원결과: 화면 응답에 함께 실린 분석 결과와 서버 서명을 그대로 보냅니다(재분석 없음). ' + (D && D.result_sig ? '서버가 서명을 확인하면 ZIP에 server_signed로 적힙니다.' : '이 결과에는 서버 서명이 없어 ZIP에 "서버가 서명한 결과 아님" 경고가 적힙니다.'); }
   function expHtml() {
     var e = expState(), why = expBlock();
     return '<section id="s-export"><div class="sec"><span class="num">VI</span><h2>내보내기</h2><span class="d">ZIP 9파일 · 체크리스트 결정은 decision_log.json</span></div><div class="card expbox">' +
@@ -964,10 +966,10 @@
     e.busy = true; expPaint();
     var raw = expInline(d), decisions = expDecisions(d), n = decisions.length;
     expMsg('ZIP 만드는 중 · POST /premortem/package · 결정 ' + n + '건');
-    fetch('premortem/package', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ result: raw, decisions: decisions }) }).then(function (r) {
+    fetch('premortem/package', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ result: raw, result_sig: d.result_sig || null, decisions: decisions }) }).then(function (r) {
       if (!r.ok) return expJson(r);
-      var name = expFileName(r.headers.get('Content-Disposition'));
-      return r.blob().then(function (b) { if (EXP.d !== d) return; expSave(b, name); e.busy = false; expMsg('내려받음 · ' + name + ' · ' + upSize(b.size) + ' · 결정 ' + n + '건'); });
+      var name = expFileName(r.headers.get('Content-Disposition')), origin = r.headers.get('X-Neumann-Result-Origin') || '';
+      return r.blob().then(function (b) { if (EXP.d !== d) return; expSave(b, name); e.busy = false; expMsg('내려받음 · ' + name + ' · ' + upSize(b.size) + ' · 결정 ' + n + '건' + (origin ? ' · ' + (EXP_ORIGIN[origin] || origin) : ''), origin === 'client_submitted_unverified'); });
     }).catch(function (err) {
       if (EXP.d !== d) return;
       e.busy = false; expMsg('내보내기 실패 · ' + (err && err.message ? err.message : '서버 응답 없음'), true);
