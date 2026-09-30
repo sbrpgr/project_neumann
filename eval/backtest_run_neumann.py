@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from eval.backtest_common import data_dir, eval_dir, read_json, read_jsonl, utf8_stdio, write_jsonl
-from eval.backtest_leakage import evidence_leaks
+from eval.backtest_leakage import IndexCatalog, evidence_leaks, stale_exclusions
 from eval.backtest_riskset import riskset_from_premortem
 
 
@@ -110,6 +110,11 @@ def main(argv: list[str] | None = None) -> int:
     sample = read_json(eval_dir() / "backtest_sample.json")
     plans = {r["work_id"]: r for r in read_jsonl(eval_dir() / "backtest_plans.jsonl")}
     excl = read_json(eval_dir() / "backtest_exclusions.json")
+    stale = stale_exclusions(excl, IndexCatalog.load(base / "index"))
+    if stale:
+        print(f"[중단] 제외 목록이 지금 색인과 맞지 않는다({len(stale)}건, 예 {stale[:3]}). "
+              "`python -m eval.backtest_leakage --probe-search`를 다시 돌린다")
+        return 2
     view = load_corpus_view(base)
     lookup = source_lookup(Path(view.processed_dir))
 

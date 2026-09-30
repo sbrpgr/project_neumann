@@ -245,6 +245,16 @@ def build_exclusions(sample: dict[str, Any], view: Any, catalog: IndexCatalog) -
     }
 
 
+def stale_exclusions(excl: dict[str, Any], catalog: IndexCatalog) -> list[str]:
+    """제외 목록 중 지금 색인에 없는 work_id. 색인이 다시 만들어져 id가 바뀌면 E2 완전 일치 필터가 조용히 무시하므로,
+    생성 전에 이것이 비어 있어야 한다(아니면 `python -m eval.backtest_leakage`를 다시 돌린다)."""
+    ids = {w for t in excl["targets"] for w in t["exclude_work_ids"]}
+    ids |= {w for s in excl.get("shuffle", []) for w in s["exclude_work_ids"]}
+    missing = sorted(ids - set(catalog.works))
+    missing += [f"(대상 {t['work_id']} 제외 목록 비어 있음)" for t in excl["targets"] if not t["exclude_work_ids"]]
+    return missing
+
+
 def probe_search(sample: dict[str, Any], plans: dict[str, str], excl: dict[str, Any], catalog: IndexCatalog,
                  search_fn: Callable[..., list[Any]], k: int = 10) -> dict[str, Any]:
     """계획서로 실제 검색: 제외 없이 자기 논문이 몇 번 나오는지, 제외하면 0인지."""

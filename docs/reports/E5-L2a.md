@@ -18,7 +18,7 @@
 | `eval/judge_envelope.py` | 판정 봉투·답 형식(JSON, 모델 무관), 블라인드 검사, 짝 표 분리, 사람 판정 꾸러미(MD·CSV) |
 | `eval/judge_run.py` | 판정 실행기: `build` / `briefs`(Claude) / `codex`(비상, 기본 dry-run) / `validate` / `aggregate` |
 | `eval/backtest_metrics.py` | precision@3·hit@3·오탐률·특이성·근거율, n + 95% 부트스트랩, 짝지은 차이, 사람 대 AI 일치율·κ |
-| `tests/e5/test_backtest_*.py`, `tests/e5/test_judge_*.py` | 9개 파일 50개 테스트(+ 건너뜀 2: 실제 API, E2 검색 미병합) |
+| `tests/e5/test_backtest_*.py`, `tests/e5/test_judge_*.py` | 9개 파일 52개 테스트 통과 + 건너뜀 2(실제 API `NEUMANN_LIVE_TESTS=1`, 실색인 `NEUMANN_REAL_DATA_TESTS=1`) |
 
 ## 완료 기준별 측정
 
@@ -62,16 +62,18 @@ plans_sha256 88f52c52ff75cf3c4f419bb66a4054203816f62b33653408107001dee6952e06 �
 
 ### 2. 누출 회귀: 자기 논문 주입 → 0건
 
-E2 검색은 main에 없다. 그래서 두 가지로 쟀다.
+처음에는 E2 검색이 main에 없어 fixture 검색과 E2 브랜치 코드로 쟀고, 작업 중 E2-L0이 main에 들어와(`git merge main`) main 코드로 다시 쟀다. 결과는 같다.
 
-(a) 테스트(`tests/e5/test_backtest_leakage.py`): fixture 논문 6편을 색인 표기(`researcharcade_hf:<id>`)로 넣고 fixture 검색(E2와 같은 약속: exclude는 완전 일치)으로, 표본 쪽 표기(접두어 없음)의 자기 id를 주입.
+(a) 테스트(`tests/e5/test_backtest_leakage.py`): fixture 논문 6편을 색인 표기(`researcharcade_hf:<id>`)로 넣고, 표본 쪽 표기(접두어 없음)의 자기 id를 주입. fixture 검색(E2와 같은 약속: exclude는 완전 일치)과 **main의 실제 E2 `search(..., store=...)`** 둘 다로 돈다.
 - 제외 없음: 자기 논문 1위(검사가 의미 있음을 먼저 확인)
 - 옛 방식(접두어 없는 id 그대로 완전 일치 제외): 자기 논문 1건 남음 → B-10 재현
 - 정규화 제외: 자기 논문 0건, 다른 논문은 그대로 나옴
 - 제목만 같은 사본·공백만 다른 심사평 사본도 잡힘
-- E2가 main에 들어오면 `test_e2_search_self_injection_zero`가 실제 `search(..., store=...)`로 같은 검사를 한다(지금은 건너뜀)
+- `test_e2_search_self_injection_zero`: 실제 E2 search로 제외 전 자기 논문 있음 → 접두어 없는 id는 조용히 무시돼 새어 나옴(PM이 E2-L0 검증에서 짚은 함정) → 넘기는 값이 `researcharcade_hf:<id>` 형식임을 확인 → 제외 후 0
+- `test_stale_exclusions_detects_ids_not_in_index`: 색인을 다시 만들어 id가 바뀌면 제외가 조용히 무시되므로, `backtest_run_neumann`은 생성 전에 제외 목록의 모든 id가 지금 색인에 있는지 검사하고 아니면 멈춘다
+- `test_real_index_self_injection_zero`(`NEUMANN_REAL_DATA_TESTS=1`일 때만, 공유 데이터 폴더·약 20초): 실색인에 30편 → 제외 전 > 0, 접두어 없는 id > 0, 제외 후 0, 제외 id 전부 `researcharcade_hf:` 형식. 실행 결과 `8 passed in 22.04s`
 
-(b) 실데이터 실측: E2 브랜치 코드(`task/E2-L0`의 `src/neumann`)를 scratch에 풀어 PYTHONPATH로만 얹고, 실색인(`data/index`, 1128편, hybrid bge-m3+BM25)에 30편 계획서를 질의로 넣었다(저장소에는 아무것도 가져오지 않음).
+(b) 실데이터 실측: 실색인(`data/index`, 1128편, hybrid bge-m3+BM25)에 30편 계획서를 질의로 넣었다(main의 E2 코드. 병합 전에는 E2 브랜치 코드를 scratch에 풀어 같은 결과를 얻었다).
 
 `python -m eval.backtest_leakage --probe-search`
 
@@ -92,7 +94,7 @@ sha256 f37504ec46f7127e844d1250671c0a5657c75de1621494d410e95339dd0e2abe → data
 - 블라인드: `tests/e5/test_judge_envelope.py` — 봉투 JSON(계획서·심사평 제외)에 neumann/baseline/astra/gpt/shuffle/condition/system/evidence/원 id/링크/발췌 id가 없음, 위험이 시스템별로 몰려 있지 않음, 시스템 이름·카드 번호·위험 코드·메타 키를 넣으면 검사기가 잡음, 짝 표를 봉투 폴더에 두면 거부.
 - 실데이터 스모크(scratch, 커밋 안 함): 실제 astra 기준선 3편으로 봉투를 만들어 블라인드 위반 0, 심사평 4건씩(8.6~10k자), Claude 지시문 3개, Codex dry-run 명령 9개 확인.
 
-`python -m pytest tests/e5 -q -k "backtest or judge"` → `50 passed, 2 skipped`
+`python -m pytest tests/e5 -q -k "backtest or judge"` → `52 passed, 2 skipped`
 
 ### 4. 일반 LLM 기준선 실제 astra 3편
 
@@ -114,7 +116,7 @@ sha256 62c334bbd976297d37b86e901b26b9676f6189f42fa2aeb869d3540a102673b1 → data
 
 ### 5. verify
 
-`python scripts/verify.py` → `270 passed, 8 skipped` · `보안: 파일 151개` · `verify 통과`. 데이터 파일은 커밋하지 않았고 프롬프트 원문(`eval/prompts/baseline_llm.txt`)은 커밋했다.
+`python scripts/verify.py`(main 병합 뒤) → `418 passed, 18 skipped` · `보안: 파일 201개` · `계약: 2개` · `verify 통과`. 데이터 파일은 커밋하지 않았고 프롬프트 원문(`eval/prompts/baseline_llm.txt`)은 커밋했다.
 
 ## 판정 봉투 형식
 
@@ -198,12 +200,12 @@ python -m eval.judge_run aggregate --work-ids reduced           # 1차 컷라인
 
 - **400자 미만 계획서 7건(23%)의 수동 복구**: 표시만 했다. 코퍼스에 초록만 있어 §4.2의 "Introduction에서 목적·방법 복원"을 할 원문이 없다. PM 결정 필요: 그대로 쓸지(짧은 계획서임을 리포트 카드에 표기), 사람이 복원할지.
 - **2인 수동 검증(§4.2 3단)**: 하지 않았다(자동 1·2단만). 리포트 카드에 적어야 한다.
-- **E2 검색이 main에 없어** 저장소 테스트의 실제 search 회귀는 건너뜀 상태다(E2 병합 후 자동으로 돈다). 실데이터 실측은 E2 브랜치 코드로 scratch에서 돌렸다(위 2-b).
+- 실색인 회귀 테스트는 기본 verify에서 건너뛴다(`NEUMANN_REAL_DATA_TESTS=1`로 켬, 공유 데이터 폴더에 의존·약 20초). 기본 verify에서는 fixture 색인 + 실제 E2 search로 같은 회귀가 돈다.
 - Neumann 위험 묶음 실행기(`backtest_run_neumann`)는 fake 파이프라인으로만 테스트했다. E3 `run_premortem`이 main에 없어 실제로 돌리지 않았다.
 - 기준선 전체 30편, 판정자 실제 실행: 지시대로 하지 않았다.
 
 ## 다음 과제에 넘길 것
 
-- E2·E3가 main에 들어오면: `backtest_leakage --probe-search` 재실행(색인이 다시 만들어졌으면 제외 목록 갱신), `backtest_run_neumann --limit 1`로 한 편 확인 뒤 전체.
+- 색인을 다시 만들면 `backtest_leakage --probe-search` 재실행(제외 목록 갱신, 실행기가 어긋나면 멈춘다). E3가 main에 들어오면 `backtest_run_neumann --limit 1`로 한 편 확인 뒤 전체.
 - 판정자 지시문의 봉투 경로에 `project_neumann`이라는 폴더 이름이 보인다. 어느 위험이 어느 시스템인지는 드러나지 않지만, 더 가리려면 봉투 폴더를 중립 이름의 경로로 옮겨 `paths()`를 바꾸면 된다.
 - 리포트 카드(E5-L3)에 적을 조건: 강한 층 765편 모집단, 계획서 23%가 400자 미만, 3단 사람 검증 미실시, 판정자 구성(Claude Sonnet 3명 또는 Codex sol), 사람 판정 10편.

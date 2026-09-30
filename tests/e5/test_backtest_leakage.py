@@ -6,6 +6,7 @@ E2가 들어오면 마지막 테스트가 실제 `search(..., exclude_work_ids=.
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
 
@@ -116,6 +117,18 @@ def test_shuffle_exclusion_is_union(index_env):
     assert ex["shuffle"][0]["exclude_work_ids"] == sorted({re_id[fx.works[0].work_id], re_id[fx.works[1].work_id]})
 
 
+def test_stale_exclusions_detects_ids_not_in_index(index_env):
+    """색인이 다시 만들어져 id가 바뀌면 완전 일치 필터가 조용히 무시한다 → 생성 전에 잡는다."""
+    fx, re_id, catalog, _ = index_env
+    good = re_id[fx.works[0].work_id]
+    excl = {"targets": [{"work_id": "t1", "exclude_work_ids": [good]}], "shuffle": []}
+    assert bl.stale_exclusions(excl, catalog) == []
+    excl["targets"].append({"work_id": "t2", "exclude_work_ids": [fx.works[1].work_id.split(":", 1)[1]]})  # 접두어 없음
+    excl["targets"].append({"work_id": "t3", "exclude_work_ids": []})
+    stale = bl.stale_exclusions(excl, catalog)
+    assert fx.works[1].work_id.split(":", 1)[1] in stale and any("t3" in s for s in stale)
+
+
 def test_e2_search_self_injection_zero(index_env):
     """E2 검색이 있으면 실제 search()로 같은 회귀를 돈다(어휘 검색만, 임베딩 없음)."""
     search_mod = pytest.importorskip("neumann.index.search")
@@ -130,6 +143,33 @@ def test_e2_search_self_injection_zero(index_env):
         excl = set(bl.resolve_exclusions([keys], catalog)[bare]["exclude_work_ids"])
         q = [f"{w.title} {w.abstract}"]
         before = search_mod.search(q, k=10, store=store)
+        naive = search_mod.search(q, k=10, exclude_work_ids={bare}, store=store)
         after = search_mod.search(q, k=10, exclude_work_ids=excl, store=store)
         assert bl.self_hits([h.work_id for h in before], keys, catalog)
+        # E2 search는 완전 일치라 접두어 없는 id는 조용히 무시된다(PM이 E2-L0 검증에서 확인한 함정)
+        assert bl.self_hits([h.work_id for h in naive], keys, catalog)
+        assert excl == {re_id[w.work_id]}  # 넘기는 값은 색인의 work_id 형식(researcharcade_hf:<id>)
         assert bl.self_hits([h.work_id for h in after], keys, catalog) == []
+
+
+REAL = os.environ.get("NEUMANN_REAL_DATA_TESTS") == "1"
+
+
+@pytest.mark.skipif(not REAL, reason="실색인 회귀는 NEUMANN_REAL_DATA_TESTS=1일 때만(공유 데이터 폴더 필요, 수 초~수십 초)")
+def test_real_index_self_injection_zero():
+    """실색인(data/index)에 표본 30편의 계획서를 넣어 자기 논문 top-10: 제외 전 > 0, 정규화 제외 후 0, 접두어 없는 id는 새어 나옴."""
+    search_mod = pytest.importorskip("neumann.index.search")
+    from eval.backtest_common import data_dir, eval_dir, read_json, read_jsonl
+
+    sample = read_json(eval_dir() / "backtest_sample.json")
+    plans = {r["work_id"]: r["plan_text"] for r in read_jsonl(eval_dir() / "backtest_plans.jsonl")}
+    catalog = bl.IndexCatalog.load(data_dir() / "index")
+    from eval.backtest_common import load_corpus_view
+
+    excl = bl.build_exclusions(sample, load_corpus_view(), catalog)
+    probe = bl.probe_search(sample, plans, excl, catalog, search_mod.search, k=10)
+    assert probe["n"] == 30
+    assert probe["self_hits_without_exclusion"] > 0
+    assert probe["self_hits_naive_bare_id"] > 0
+    assert probe["self_hits_with_exclusion"] == 0
+    assert all(w.startswith("researcharcade_hf:") for t in excl["targets"] for w in t["exclude_work_ids"])
