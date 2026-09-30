@@ -34,6 +34,9 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+from neumann.analyze.gate import EvidenceLinkIndex, review_evidence_problem
+from neumann.models import redact_pii
+
 SCHEMA_PATH = Path(__file__).resolve().parents[3] / "contracts" / "ui_view.schema.json"
 
 SAMPLE_LABEL = "분석 파이프라인 미연결(샘플 데이터)"
@@ -800,10 +803,11 @@ def _build_ev(ctx: _Ctx, card_fam_of: dict[str, int]) -> dict[str, dict[str, Any
 def _build_review(res: Mapping[str, Any], ctx: _Ctx, has_works: bool) -> dict[str, Any]:
     """예상 심사평. 화면에서 근거 번호로 풀리지 않는 문장은 내보내지 않는다.
 
-    ``"map"`` 인용(평가이력 지도 참조)은 유사 연구 목록이 있을 때만 근거로 인정한다.
+    모든 발췌·카드 id를 공용 근거 검사로 확인한다. 일부만 유효한 문장은 통째로 제외한다.
     """
     er = _as_dict(_get(res, "expected_review", "review"))
     out: dict[str, Any] = {}
+    links = EvidenceLinkIndex(set(ctx.evidence), ctx.card_ev)
     kept = dropped_n = 0
     dropped: list[list[str]] = []
     for key, aliases in (("strength", ("strength", "strengths")), ("weakness", ("weakness", "weaknesses")),
@@ -812,26 +816,27 @@ def _build_review(res: Mapping[str, Any], ctx: _Ctx, has_works: bool) -> dict[st
         for raw in _list(_get(er, *aliases)):
             s = _as_dict(raw) if not isinstance(raw, str) else {"text": raw}
             t = _text(_get(s, "text", "t", "sentence"))
+            reason, _detail = review_evidence_problem(s, links)
+            if not t or reason is not None:
+                dropped_n += 1
+                dropped.append([reason or "malformed", redact_pii(t)[:200]])
+                continue
             cites: list[int | str] = []
             for ref in _list(_get(s, "evidence", "excerpt_ids", "c", "citations", "cites")):
-                if ref == "map":
-                    if has_works and "map" not in cites:
-                        cites.append("map")
-                    continue
                 eid = _text(ref) if not isinstance(ref, Mapping) else _text(_get(ref, "excerpt_id", "id"))
                 n = _number_ev(eid, ctx) if eid else None
                 if n is not None and n not in cites:
                     cites.append(n)
             if not t or not cites:
                 dropped_n += 1
-                dropped.append(["no_evidence_in_view", t[:200]])
+                dropped.append(["no_evidence_in_view", redact_pii(t)[:200]])
                 continue
             kept += 1
             sent: dict[str, Any] = {"t": t, "c": cites}
             lns = [n for v in _list(_get(s, "plan_lines", "lines", "ln")) if (n := _int(v)) in ctx.plan_line_ns]
             if lns:
                 sent["ln"] = list(dict.fromkeys(lns))
-            ranks = [ctx.card_rank[cid] for cid in (_text(x) for x in _list(s.get("cards"))) if cid in ctx.card_rank]
+            ranks = [ctx.card_rank[cid] for cid in (_text(x) for x in _list(_get(s, "cards", "card_ids"))) if cid in ctx.card_rank]
             if ranks:
                 sent["cards"] = list(dict.fromkeys(ranks))
             sents.append(sent)

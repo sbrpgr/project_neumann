@@ -135,6 +135,76 @@ def test_export_report_carries_reason_codes_not_dropped_sentences() -> None:
     assert "무작위 분할은 누출 위험이 있다" in report  # 통과 문장은 그대로
 
 
+@pytest.mark.parametrize("shape", ["ghost", "mixed", "wrong_card", "ghost_card", "malformed", "pii_drop"])
+def test_review_view_rejects_entire_sentence_with_invalid_link(shape: str) -> None:
+    res = _result()
+    good = {"t": "정상 근거 문장은 유지한다.", "c": _card_ev(res, LEAK)[:1], "cards": [LEAK]}
+    bad = {**good, "t": "ADVERSARIAL_UNSUPPORTED_SENTENCE"}
+    if shape == "ghost":
+        bad["c"] = ["ghost_ex"]
+    elif shape == "mixed":
+        bad["c"] = [*good["c"], "ghost_ex"]
+    elif shape == "wrong_card":
+        bad["c"] = _card_ev(res, SEED)[:1]
+    elif shape == "ghost_card":
+        bad["cards"] = ["ghost_card"]
+    elif shape == "pii_drop":
+        bad.update({"c": [], "t": "audit-leak@example.org"})
+    else:
+        bad["c"] = "not-a-list"
+    er = {"strength": [], "weakness": [good, bad], "request": []}
+    res = res.model_copy(update={"expected_review": er})
+    v = view_mod.build_ui_view(res, records=None)
+    assert view_mod.validate_ui_view(v) == []
+    assert [s["t"] for s in v["review"]["weakness"]] == [good["t"]]
+    assert v["review"]["audit"]["pass"] == 1
+    assert v["review"]["audit"]["no_evidence"] == 1
+    assert v["_status"]["dropped"]["review_sentences_without_evidence"] == 1
+    assert bad["t"] not in json.dumps(v["review"]["weakness"], ensure_ascii=False)
+    if shape == "pii_drop":
+        assert bad["t"] not in json.dumps(v["review"]["audit"], ensure_ascii=False)
+
+
+@pytest.mark.parametrize("shape", ["ghost", "mixed", "wrong_card", "ghost_card", "mixed_checklist"])
+def test_export_regates_stored_result_for_every_package_file(shape: str) -> None:
+    from neumann.api.export import build_package_files
+    from neumann.models import PremortemResult
+
+    res = _result()
+    assert res.plan is not None
+    res = attach_checklist(res, res.plan, FakeLLM(_good))
+    good_review = {"t": "NORMAL_SUPPORTED_REVIEW", "c": _card_ev(res, LEAK)[:1], "cards": [LEAK]}
+    invalid = [*good_review["c"], "ghost_ex"] if shape == "mixed" else ["ghost_ex"]
+    bad_review = {"text": "ADVERSARIAL_UNSUPPORTED_REVIEW", "excerpt_ids": invalid, "card_ids": []}
+    bad_item = {**res.checklist[0], "item_id": "X_bad", "action": "ADVERSARIAL_UNSUPPORTED_ACTION", "evidence": []}
+    if shape == "wrong_card":
+        bad_review.update({"excerpt_ids": _card_ev(res, SEED)[:1], "card_ids": [LEAK]})
+    elif shape == "ghost_card":
+        bad_review.update({"excerpt_ids": good_review["c"], "card_ids": ["ghost_card"]})
+    elif shape == "mixed_checklist":
+        bad_item["evidence"] = [*res.checklist[0]["evidence"], "ghost_ex"]
+    er = {"strength": [], "weakness": [good_review, bad_review], "request": [], "generator": "mock"}
+    raw = res.model_copy(update={"expected_review": er, "checklist": [*res.checklist, bad_item]})
+    stored = PremortemResult.model_validate(raw.model_dump(mode="json"))
+    before = stored.model_dump(mode="json")
+    files = build_package_files(stored, decisions=[{"item_id": "X_bad", "decision": "hold", "note": "ADVERSARIAL_DROPPED_DECISION"}])
+    for name, data in files.items():
+        text = data.decode("utf-8-sig")
+        assert "ADVERSARIAL_UNSUPPORTED_REVIEW" not in text, name
+        assert "ADVERSARIAL_UNSUPPORTED_ACTION" not in text, name
+        assert "ADVERSARIAL_DROPPED_DECISION" not in text, name
+    report = files["neumann_report.md"].decode("utf-8")
+    assert good_review["t"] in report and res.checklist[0]["action"] in report
+    review_reason = {"wrong_card": g.EXCERPT_CARD_MISMATCH, "ghost_card": g.UNKNOWN_CARD}.get(shape, g.UNKNOWN_EXCERPT)
+    item_reason = g.UNKNOWN_EXCERPT if shape == "mixed_checklist" else g.MISSING_CITATION
+    assert review_reason in report and item_reason in report
+    assert '"generator": "mock"' in report
+    assert '"gen": 2' in report and '"pass": 1' in report and '"drop": 1' in report
+    assert "내보내기 근거 게이트" in report and "내보내기 근거 게이트" in files["ai_context.md"].decode("utf-8")
+    assert "X_bad" not in json.loads(files["decision_log.json"])["checklist_item_ids"]
+    assert stored.model_dump(mode="json") == before  # 입력 감사 기록과 원본은 수정하지 않는다
+
+
 # ── 브라우저(선택): NEUMANN_UI_TESTS=1일 때만 ──────────────────────────
 
 

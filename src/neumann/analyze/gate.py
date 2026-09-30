@@ -261,6 +261,21 @@ def _coerce(item: Any) -> tuple[Draft | None, str]:
 # ── 근거 색인 ─────────────────────────────────────────────────────────────
 
 
+@dataclass
+class EvidenceLinkIndex:
+    """화면처럼 부분 결과를 읽는 경계용 근거 연결 색인. 문장·인용문을 생성하지 않는다."""
+
+    excerpts: set[str]
+    card_evidence: dict[str, set[str]]
+    card_of_excerpt: dict[str, set[str]] = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.card_of_excerpt = {}
+        for cid, ids in self.card_evidence.items():
+            for eid in ids:
+                self.card_of_excerpt.setdefault(eid, set()).add(cid)
+
+
 class EvidenceIndex:
     """결과 하나에서 게이트가 참조하는 것: 근거 원문, 카드, 계획서 줄, 집계값."""
 
@@ -268,6 +283,7 @@ class EvidenceIndex:
         self.result = result
         self.excerpts = {ex.excerpt_id: ex for ex in result.evidence}
         self.cards = {c.card_id: c for c in result.risk_cards}
+        self.card_evidence = {c.card_id: set(c.evidence) for c in result.risk_cards}
         self.card_of_excerpt: dict[str, set[str]] = {}
         for c in result.risk_cards:
             for x in c.evidence:
@@ -338,7 +354,7 @@ class GateReport:
 
 
 def evidence_link_problem(
-    excerpt_ids: Iterable[Any], card_ids: Iterable[Any], index: EvidenceIndex
+    excerpt_ids: Iterable[Any], card_ids: Iterable[Any], index: EvidenceIndex | EvidenceLinkIndex
 ) -> tuple[str | None, str]:
     """근거 연결 검사(E3-L1e: 심사평 문장·체크리스트 항목·2차 검증이 같이 쓴다). 통과면 (None, "").
 
@@ -354,11 +370,11 @@ def evidence_link_problem(
     missing = [x for x in ex if not isinstance(x, str) or x not in index.excerpts]
     if missing:
         return UNKNOWN_EXCERPT, f"결과에 없는 excerpt id {missing[:3]}"
-    missing = [c for c in cards if not isinstance(c, str) or c not in index.cards]
+    missing = [c for c in cards if not isinstance(c, str) or c not in index.card_evidence]
     if missing:
         return UNKNOWN_CARD, f"결과에 없는 카드 id {missing[:3]}"
     if cards:
-        pool = {x for c in cards for x in index.cards[c].evidence}
+        pool = {x for c in cards for x in index.card_evidence[c]}
         stray = [x for x in ex if x not in pool]
         if stray:
             return EXCERPT_CARD_MISMATCH, f"인용 카드의 근거가 아니다 {stray[:3]}"
@@ -367,6 +383,20 @@ def evidence_link_problem(
         if stray:
             return EXCERPT_CARD_MISMATCH, f"어느 위험카드의 근거도 아니다 {stray[:3]}"
     return None, ""
+
+
+def review_evidence_problem(
+    sentence: Mapping[str, Any], index: EvidenceIndex | EvidenceLinkIndex
+) -> tuple[str | None, str]:
+    """조립/저장된 심사평의 별칭 필드를 읽어 공용 연결 검사를 한다. 일부 id만 남기는 보정은 하지 않는다."""
+    refs = next((sentence[k] for k in ("evidence", "excerpt_ids", "c", "citations", "cites")
+                 if k in sentence and sentence[k] is not None), [])
+    cards = next((sentence[k] for k in ("cards", "card_ids")
+                  if k in sentence and sentence[k] is not None), [])
+    if not isinstance(refs, (list, tuple)) or not isinstance(cards, (list, tuple)):
+        return MALFORMED, "근거·카드 id가 목록이 아니다"
+    ids = [r.get("excerpt_id", r.get("id")) if isinstance(r, Mapping) else r for r in refs]
+    return evidence_link_problem(ids, cards, index)
 
 
 def check_sentence(d: Draft, index: EvidenceIndex) -> tuple[str | None, str, list[dict[str, Any]]]:
@@ -487,6 +517,7 @@ __all__ = [
     "Draft",
     "Drop",
     "EvidenceIndex",
+    "EvidenceLinkIndex",
     "GATE_VERSION",
     "GateReport",
     "MIN_QUOTE_LEN",
@@ -501,5 +532,6 @@ __all__ = [
     "gate_sentences",
     "match_quote",
     "plan_fact_numbers",
+    "review_evidence_problem",
     "verify_expected_review",
 ]
