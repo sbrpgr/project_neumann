@@ -2,7 +2,7 @@
 
 PM이 병합할 때마다 갱신한다. Claude 한도가 다 되면 이 문서를 Codex에 주고 PM 역할을 넘긴다.
 
-## ★ Codex 즉시 인수 (21:2x, 대표 지시: Claude 구독 소진 → Codex, 21:40 리셋 뒤 Claude가 되받음)
+## ★ Codex 즉시 인수 (취소 — Claude 계속, 대표 21:3x) · 아래 표는 21:2x 상태 기록
 
 **main `5ed9b45` (push됨)**: v0 태그 뒤 E2-L1·E4-L1a·E3-L1w(v1 파이프라인)·E1-L1c(코드)·E4-L1e·E4-L1f·E6-docs·E3-L1x·E4-L2e·SEC-3(실제 호출 잠금+astra 금지)·SEC-4(ReDoS) 병합.
 
