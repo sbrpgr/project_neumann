@@ -230,12 +230,13 @@ def search(
     relevance = np.maximum(dense, combined)  # 하한을 거는 값: BM25는 더할 수만 있다
     ok = (relevance >= floor) & col_ok[None, :]  # (Q, N) 하한을 넘은 (질의, 논문) 쌍
 
-    # 질의별 순위: 하한을 넘은 논문만, 점수 내림차순, 같으면 work_id 순
+    # 질의별 순위: 하한을 넘고 관련도가 0보다 큰 논문만, 점수 내림차순, 같으면 work_id 순
+    # (하한 0일 때 관련도 0인 쌍은 결과에는 남지만 순위 융합·할당에는 기여하지 않는다)
     wid_rank = np.empty(n, dtype=np.int64)
     wid_rank[np.array(sorted(range(n), key=lambda i: store.work_order[i]), dtype=np.int64)] = np.arange(n)
     per_q_order: list[np.ndarray] = []
     for qi in range(len(qs)):
-        idx = np.flatnonzero(ok[qi])
+        idx = np.flatnonzero(ok[qi] & (relevance[qi] > 0.0))
         per_q_order.append(idx[np.lexsort((wid_rank[idx], -combined[qi, idx]))])
 
     masked = np.where(ok, combined, -1.0)
