@@ -136,7 +136,8 @@ EXPECTED_DETAIL: tuple[tuple[str, str], ...] = (
 
 # 백테스트 표본 한계(PM 결정 2026-09-30, E5-L3b 전달): 대표 결정으로 n=5, 사유는 비용.
 BACKTEST_LIMIT = (
-    "백테스트는 n=5(대표 결정, 비용 사유; real 대 기준선, 셔플 없음, sol)다. 표본이 작아 95% 구간이 매우 넓다. "
+    "백테스트는 n=5(대표 결정, 비용 사유; real 대 기준선, 셔플 없음, sol)다(docs/decisions.md 정정 main `a9f28e1`: "
+    "real만, 셔플 미실행). 표본이 작아 95% 구간이 매우 넓다. "
     "유의성을 주장하지 않고 점추정·구간·차이의 방향만 말한다. 셔플이 없어 특이성(진짜 − 셔플)은 재지 않는다."
 )
 
@@ -174,6 +175,7 @@ class Metric:
     source: str = ""  # 입력 파일 이름
     computed: bool = False  # 여러 입력을 합쳐 이 생성기가 계산한 값
     promise_note: str = ""  # 약속 표 판정 칸에 같이 적을 말(예: 비상 규칙 카드 수)
+    model: str | None = None  # 입력 파일에 기록된 모델(없으면 None → "(모델 기록 없음)")
 
     @property
     def label(self) -> str:
@@ -245,9 +247,41 @@ def _macro_system(obj: dict) -> str:
     return "mixed"
 
 
+def _pred_file_model(obj: dict, where: str) -> str | None:
+    """채점한 예측 파일의 행별 `model` 기록. 파일이 없으면 None(기록 없음).
+    파일이 채점 때(`pred_sha256`)와 다르면 어느 모델의 예측인지 알 수 없어 멈춘다."""
+    pf = obj.get("pred_file")
+    path = Path(str(pf)) if pf else None
+    if path is None or not path.is_file():
+        return None
+    raw = path.read_bytes()
+    want = obj.get("pred_sha256")
+    if want and hashlib.sha256(raw).hexdigest() != want:
+        raise InputError(f"{where}: 예측 파일 {path.name}이 채점 때와 다르다(sha256). 어느 모델의 예측인지 확인할 수 없다")
+    models: set[str] = set()
+    total = missing = 0
+    for line in raw.decode("utf-8").splitlines():
+        if not line.strip():
+            continue
+        total += 1
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise InputError(f"{where}: 예측 파일 {path.name} JSON 파싱 실패({exc})") from exc
+        mdl = row.get("model") if isinstance(row, dict) else None
+        if mdl:
+            models.add(str(mdl))
+        else:
+            missing += 1
+    if not models:
+        return None
+    return "·".join(sorted(models)) + (f" (기록 없음 {missing}/{total}행)" if missing else "")
+
+
 def _read_macro_f1(obj: dict, name: str, col: Collected) -> None:
     where = name
     system = _macro_system(obj)
+    model = _pred_file_model(obj, where)
     n = _int_or_none(obj.get("n"), f"{where}.n")
     boot = obj.get("bootstrap") or {}
     gens = (obj.get("predictions") or {}).get("generator_counts") or {}
@@ -271,7 +305,7 @@ def _read_macro_f1(obj: dict, name: str, col: Collected) -> None:
             raise InputError(f"{where}: {mid}가 없다")
         lo, hi = _ci(obj.get(f"{mid}_ci95"), f"{where}.{mid}")
         col.metrics.append(
-            Metric(mid, system, _num(obj[mid], f"{where}.{mid}"), n, lo, hi, "", cond, lim, name)
+            Metric(mid, system, _num(obj[mid], f"{where}.{mid}"), n, lo, hi, "", cond, lim, name, model=model)
         )
     col.excluded_classes[system] = excluded
     col.scored_classes[system] = scored
@@ -317,6 +351,9 @@ def _read_generic(obj: dict, name: str, col: Collected) -> None:
         if "value" not in m:
             raise InputError(f"{where}: value가 없다(측정 전이면 null)")
         lo, hi = _ci(m.get("ci95"), where)
+        model = m.get("model")
+        if model is not None and (not isinstance(model, str) or not model.strip()):
+            raise InputError(f"{where}: model은 비지 않은 문자열이거나 없어야 한다({model!r})")
         cond = str(m.get("conditions") or "")
         if src and not cond:
             cond = f"출처 {src}"
@@ -332,6 +369,7 @@ def _read_generic(obj: dict, name: str, col: Collected) -> None:
                 cond,
                 str(m.get("limits") or ""),
                 name,
+                model=model,
             )
         )
 
@@ -543,7 +581,14 @@ def _order(verdict: str) -> int:
     return 2
 
 
-def render(col: Collected, *, now: str, commit: str, command: str, eval_model: str | None = None) -> str:
+def _model_cell(m: Metric | None) -> str:
+    """모델 칸: 값이 있는 행만 입력에 기록된 모델을 적는다. 측정 전 행은 비운다."""
+    if m is None or m.value is None:
+        return "—"
+    return _cell(m.model) if m.model else "(모델 기록 없음)"
+
+
+def render(col: Collected, *, now: str, commit: str, command: str) -> str:
     by = {(m.id, m.system): m for m in col.metrics}
     L: list[str] = []
     add = L.append
@@ -553,8 +598,8 @@ def render(col: Collected, *, now: str, commit: str, command: str, eval_model: s
     add(f"- 생성: {now} · 코드 커밋: `{commit}` · 생성 명령: `{command}`")
     add("- 규칙(04_평가_명세 §7): 참조선 먼저 · 미달 먼저 · 모든 숫자에 n과 95% 구간 · 없는 지표는 \"측정 전\"(추정 금지)")
     add("- 값은 입력 JSON의 숫자를 그대로 옮겼다. 합쳐서 계산한 값은 '계산'으로 표시했다.")
-    if eval_model:
-        add(f"- Neumann 행의 평가 모델: `{eval_model}` (명령행 `--eval-model` 값. 입력 JSON에는 모델 기록이 없다)")
+    add("- 모델 칸: 행마다 입력 파일에 기록된 모델(Macro-F1은 채점한 예측 파일의 행별 `model`, 일반 지표는 행의 `model`). "
+        "기록이 없으면 \"(모델 기록 없음)\", 측정 전 행은 비운다.")
     add("")
 
     # 1. 참조선
@@ -593,18 +638,16 @@ def render(col: Collected, *, now: str, commit: str, command: str, eval_model: s
     add(f"- **목표 미달 {len(miss)}건:** {', '.join(miss) if miss else '없음'}")
     add(f"- **측정 전 {len(todo)}건:** {', '.join(todo) if todo else '없음'}")
     add("")
-    add("| # | 약속 (신청서) | 목표 | 측정값 | 95% 구간 | n | 판정 | 입력 |")
-    add("|---|---|---|---|---|---|---|---|")
+    add("| # | 약속 (신청서) | 목표 | 측정값 | 95% 구간 | n | 판정 | 입력 | 모델 |")
+    add("|---|---|---|---|---|---|---|---|---|")
     for p, m, v in rows:
         val = fmt_value(m.value if m else None)
         if m and m.detail and m.value is not None:
             val += f" ({m.detail})"
-        if eval_model and p.system == "neumann" and m and m.value is not None:
-            val += f" ({eval_model})"
         verdict = f"**{v}**" + (f" · {m.promise_note}" if m and m.promise_note and m.value is not None else "")
         add(
             f"| {p.key} | {p.label} | {p.target_text} | {val} | {fmt_ci(m)} | {fmt_n(m)} | {verdict} "
-            f"| {_cell(m.source) if m else '—'} |"
+            f"| {_cell(m.source) if m else '—'} | {_model_cell(m)} |"
         )
     add("")
     add("판정은 점추정과 목표를 비교한다. 구간 하한이 목표 아래면 그렇게 적는다. "
@@ -614,8 +657,8 @@ def render(col: Collected, *, now: str, commit: str, command: str, eval_model: s
     # 3. 지표별 상세
     add("## 3. 지표별 값·n·95% 구간·조건·한계")
     add("")
-    add("| 지표 | 시스템 | 값 | 95% 구간 | n | 조건 | 한계 | 입력 |")
-    add("|---|---|---|---|---|---|---|---|")
+    add("| 지표 | 시스템 | 값 | 95% 구간 | n | 조건 | 한계 | 입력 | 모델 |")
+    add("|---|---|---|---|---|---|---|---|---|")
     order_ids = list(METRIC_LABELS)
     seen = set()
     detail_keys = list(dict.fromkeys([*[(m.id, m.system) for m in col.metrics], *EXPECTED_DETAIL]))
@@ -628,7 +671,7 @@ def render(col: Collected, *, now: str, commit: str, command: str, eval_model: s
         mid, system = key
         label = METRIC_LABELS.get(mid, (f"(기타) {mid}", ""))[0]
         if m is None:
-            add(f"| {label} | {_sys(system)} | {NOT_MEASURED} | — | — | — | — | 입력 없음 |")
+            add(f"| {label} | {_sys(system)} | {NOT_MEASURED} | — | — | — | — | 입력 없음 | — |")
             continue
         val = fmt_value(m.value)
         if m.detail:
@@ -637,7 +680,7 @@ def render(col: Collected, *, now: str, commit: str, command: str, eval_model: s
             val += " 계산"
         add(
             f"| {label} | {_sys(system)} | {val} | {fmt_ci(m)} | {fmt_n(m)} | {_cell(m.conditions) or '—'} "
-            f"| {_cell(m.limits) or '—'} | {_cell(m.source)} |"
+            f"| {_cell(m.limits) or '—'} | {_cell(m.source)} | {_model_cell(m)} |"
         )
     add("")
 
@@ -722,13 +765,12 @@ def _git_commit() -> str:
         return "알 수 없음"
 
 
-def build(paths: list[Path], *, now: str | None = None, commit: str | None = None, command: str | None = None,
-          eval_model: str | None = None) -> str:
+def build(paths: list[Path], *, now: str | None = None, commit: str | None = None, command: str | None = None) -> str:
     col = collect(paths)
     now = now or datetime.now().astimezone().isoformat(timespec="seconds")
     commit = commit or _git_commit()
     command = command or "python -m eval.report_card --inputs " + " ".join(str(p) for p in paths)
-    return render(col, now=now, commit=commit, command=command, eval_model=eval_model)
+    return render(col, now=now, commit=commit, command=command)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -738,15 +780,11 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m eval.report_card", description="리포트 카드 생성(E5-L3a)")
     ap.add_argument("--inputs", nargs="*", type=Path, default=[], help="지표 JSON 파일들(없으면 전부 측정 전)")
     ap.add_argument("--out", type=Path, required=True, help="리포트 카드 Markdown 경로")
-    ap.add_argument("--eval-model", default=None,
-                    help="Neumann 행을 잰 LLM 모델(입력 JSON에 기록이 없을 때). 약속 표 Neumann 행 측정값 옆과 머리에 적는다")
     args = ap.parse_args(argv)
     command = "python -m eval.report_card --inputs " + " ".join(p.as_posix() for p in args.inputs)
     command += f" --out {args.out.as_posix()}"
-    if args.eval_model:
-        command += f" --eval-model {args.eval_model}"
     try:
-        text = build(args.inputs, command=command, eval_model=args.eval_model)
+        text = build(args.inputs, command=command)
     except (InputError, OSError) as exc:
         print(f"오류: {exc}", file=sys.stderr)
         return 2
