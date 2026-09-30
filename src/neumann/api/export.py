@@ -66,6 +66,23 @@ MAX_PLAN_CHARS = 1_000_000
 MAX_PACKAGE_CARDS = 100
 MAX_PACKAGE_CARD_LINES = 200
 MAX_PACKAGE_DECISIONS = 1_000
+# B2: 요청 JSON 중첩 상한. 정상 결과·수정 권고는 10단 안팎이다. 더 깊으면 조립·렌더링 전에 422로 거절한다
+# (깊은 중첩이 JSON 직렬화의 RecursionError → 500이 되지 않게).
+MAX_PACKAGE_JSON_DEPTH = 64
+
+# B2: 예상 심사평 audit 필드 형태. 알려진 필드만 형태를 확인해 싣는다. 형태가 틀리거나 모르는 필드는
+# 값을 버리고 이름만 audit.dropped_keys에 남긴다(500·원문 유출 없이 내보내기는 계속한다).
+AUDIT_MAX_COUNT = 1_000_000_000
+AUDIT_MAX_TEXT_CHARS = 500
+AUDIT_MAX_CODES = 64
+AUDIT_MAX_CODE_CHARS = 64
+AUDIT_MAX_DROPPED_KEYS = 32
+_AUDIT_COUNT_KEYS = frozenset({"gen", "pass", "drop", "no_evidence", "generated", "passed"})
+_AUDIT_TEXT_KEYS = frozenset({"gate", "note", "dropped_text"})
+_AUDIT_CODE_MAPS = frozenset({"dropped_reasons", "reasons"})
+_AUDIT_CODE_LISTS = frozenset({"no_evidence_reasons", "dropped_keys"})
+_AUDIT_STRIPPED = frozenset({"dropped", "dropped_detail"})  # 뺀 문장 원문: 리포트에 싣지 않는다(사유 코드·개수만)
+_AUDIT_CODE_RE = re.compile(r"[A-Za-z0-9_.:@-]{1,%d}" % AUDIT_MAX_CODE_CHARS)
 
 FILE_NAMES: tuple[str, ...] = (
     "README.md",
@@ -195,24 +212,95 @@ def _checklist_ids(checklist: Sequence[Mapping[str, Any]]) -> set[str]:
     return {str(item[k]) for item in checklist for k in CHECKLIST_ID_KEYS if item.get(k) is not None}
 
 
-def _review_for_report(er: Mapping[str, Any]) -> dict[str, Any]:
-    """리포트에 싣는 예상 심사평(E3-L1e): 게이트가 뺀 문장 원문(audit.dropped·dropped_detail)은 빼고 사유 코드·개수만 남긴다.
-    뺀 문장은 분석 결과가 아니므로 라벨 없이 문서에 나가지 않게 한다. 결과 JSON 원본은 바꾸지 않는다."""
-    out = dict(er)
-    raw_audit = out.get("audit")
+def _audit_count(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= AUDIT_MAX_COUNT
+
+
+def _audit_code(value: Any) -> bool:
+    return isinstance(value, str) and _AUDIT_CODE_RE.fullmatch(value) is not None
+
+
+def _audit_value_ok(key: str, value: Any) -> bool:
+    """알려진 audit 필드의 형태. 모르는 필드는 False(값을 싣지 않는다)."""
+    if key in _AUDIT_COUNT_KEYS:
+        return _audit_count(value)
+    if key in _AUDIT_TEXT_KEYS:
+        return isinstance(value, str) and len(value) <= AUDIT_MAX_TEXT_CHARS
+    if key in _AUDIT_CODE_MAPS:
+        return (isinstance(value, Mapping) and len(value) <= AUDIT_MAX_CODES
+                and all(_audit_code(k) and _audit_count(n) for k, n in value.items()))
+    if key in _AUDIT_CODE_LISTS:
+        limit = AUDIT_MAX_DROPPED_KEYS if key == "dropped_keys" else AUDIT_MAX_CODES
+        return isinstance(value, list) and len(value) <= limit and all(_audit_code(x) for x in value)
+    if key == "linked_rate":
+        return value is None or (isinstance(value, (int, float)) and not isinstance(value, bool)
+                                 and 0 <= value <= 1)  # NaN·inf는 비교가 거짓이라 걸러진다
+    return False
+
+
+def _audit_key_name(key: Any) -> str:
+    """버린 필드의 이름만(값 없음). 코드 모양이 아니면 개인정보 가림 뒤 코드 글자만 남긴다."""
+    name = key if isinstance(key, str) else type(key).__name__
+    if not _audit_code(name):
+        name = re.sub(r"[^A-Za-z0-9_.:@-]+", "_", redact_pii(name))[:AUDIT_MAX_CODE_CHARS].strip("_") or "_"
+    return name
+
+
+def _sanitize_audit(raw_audit: Any) -> tuple[dict[str, Any], list[str]]:
+    """B2: audit 필드마다 형태를 확인한다 → (실을 audit, 새로 버린 필드 이름).
+
+    audit 자체가 객체가 아니면 ValueError(→ 422). 뺀 문장 원문(dropped·dropped_detail)은 싣지 않고,
+    dropped의 [사유 코드, 문장] 쌍에서 사유 코드 개수만 센다. 그 밖의 형태 오류·모르는 필드는 이름만 남긴다.
+    """
     if raw_audit is not None and not isinstance(raw_audit, Mapping):
         raise ValueError("expected_review.audit는 JSON 객체여야 합니다.")
-    audit = dict(raw_audit or {})
-    drops = [d for d in (audit.pop("dropped", None) or []) if isinstance(d, (list, tuple)) and d]
-    audit.pop("dropped_detail", None)
+    audit: dict[str, Any] = {}
+    bad: set[str] = set()
+    drops: list[str] = []
+    for key, value in (raw_audit or {}).items():
+        if key == "dropped":
+            items = value if isinstance(value, list) else None
+            if items is None and value is not None:
+                bad.add("dropped")
+            for d in items or ():
+                if isinstance(d, (list, tuple)) and d and _audit_code(d[0]):
+                    drops.append(d[0])
+                elif d:  # 코드 모양이 아닌 항목은 세지 않는다(값은 싣지 않는다)
+                    bad.add("dropped")
+        elif key == "dropped_detail":
+            continue  # 원문 기록: 형태와 관계없이 싣지 않는다
+        elif isinstance(key, str) and _audit_value_ok(key, value):
+            audit[key] = dict(value) if isinstance(value, Mapping) else (list(value) if isinstance(value, list) else value)
+        else:
+            bad.add(_audit_key_name(key))
     if drops or "drop" in audit:
-        codes: dict[str, int] = dict(audit.get("dropped_reasons") or {})
-        for d in drops:
-            codes[str(d[0])] = codes.get(str(d[0]), 0) + 1
-        audit["dropped_reasons"] = codes
+        codes: Counter[str] = Counter(audit.get("dropped_reasons") or {})
+        codes.update(drops)
+        if len(codes) <= AUDIT_MAX_CODES and all(_audit_count(n) for n in codes.values()):
+            audit["dropped_reasons"] = dict(codes)
+        else:
+            audit.pop("dropped_reasons", None)
+            bad.add("dropped_reasons")
         audit["dropped_text"] = "제외한 문장 원문은 싣지 않음(분석 결과 아님) — 사유 코드·개수만"
+    new = sorted(bad)
+    if new:
+        merged = sorted(set(audit.get("dropped_keys") or ()) | set(new))
+        audit["dropped_keys"] = merged[:AUDIT_MAX_DROPPED_KEYS]
+    return audit, new
+
+
+def _review_for_report_with_drops(er: Mapping[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    out = dict(er)
+    audit, dropped_keys = _sanitize_audit(out.get("audit"))
     out["audit"] = audit
-    return out
+    return out, dropped_keys
+
+
+def _review_for_report(er: Mapping[str, Any]) -> dict[str, Any]:
+    """리포트에 싣는 예상 심사평(E3-L1e): 게이트가 뺀 문장 원문(audit.dropped·dropped_detail)은 빼고 사유 코드·개수만 남긴다.
+    뺀 문장은 분석 결과가 아니므로 라벨 없이 문서에 나가지 않게 한다. 결과 JSON 원본은 바꾸지 않는다.
+    B2: audit 필드는 형태를 확인한 것만 싣고, 틀린 형태·모르는 필드는 이름만 audit.dropped_keys에 남긴다."""
+    return _review_for_report_with_drops(er)[0]
 
 
 def _checklist_line(item: Mapping[str, Any]) -> str:
@@ -317,7 +405,8 @@ def _gate_export_result(result: PremortemResult) -> tuple[PremortemResult, list[
     """공용 조립 문맥 전에 저장 결과를 다시 검사한다. 원본 수정·규칙 대체 없이 사유 코드와 수만 남긴다."""
     index = EvidenceIndex(result)
     items, item_drops = gate_checklist_items(result.checklist, result, index=index, where="export")
-    review = _review_for_report(result.expected_review) if result.expected_review else {}
+    review, audit_dropped_keys = (_review_for_report_with_drops(result.expected_review) if result.expected_review
+                                  else ({}, []))
     reasons: Counter[str] = Counter()
     shown = 0
     for section in SECTIONS:
@@ -352,6 +441,9 @@ def _gate_export_result(result: PremortemResult) -> tuple[PremortemResult, list[
         codes.update(reasons)
         warnings.append(f"내보내기 근거 게이트: 심사평 {sum(reasons.values())}문장·체크리스트 {len(item_drops)}항목 제외 "
                         f"(분석 결과 아님). 사유 코드·개수: {json.dumps(dict(sorted(codes.items())), ensure_ascii=False)}")
+    if audit_dropped_keys:
+        warnings.append(f"예상 심사평 audit: 형식이 맞지 않거나 알 수 없는 필드 {len(audit_dropped_keys)}개를 값 없이 제외 "
+                        "(이름만 audit.dropped_keys에 기록).")
     return result.model_copy(update={"expected_review": review, "checklist": items}), warnings
 
 
@@ -1166,6 +1258,23 @@ router = APIRouter()
 RESULT_REQUIRED_MESSAGE = "내보내기에는 분석 결과가 필요합니다. 먼저 분석을 실행한 뒤 결과 화면에서 내보내 주세요."
 
 
+def json_depth_exceeds(obj: Any, limit: int = MAX_PACKAGE_JSON_DEPTH) -> bool:
+    """B2: dict·list 중첩이 limit단을 넘는지(재귀 없이 센다. 깊은 입력으로 이 검사 자체가 넘치지 않게)."""
+    stack: list[tuple[Any, int]] = [(obj, 1)]
+    while stack:
+        node, depth = stack.pop()
+        if isinstance(node, Mapping):
+            children: Any = node.values()
+        elif isinstance(node, (list, tuple)):
+            children = node
+        else:
+            continue
+        if depth > limit:
+            return True
+        stack.extend((child, depth + 1) for child in children if isinstance(child, (Mapping, list, tuple)))
+    return False
+
+
 def package_limit_refusal(
     payload: dict[str, Any], *, max_plan_lines: int = 5_000, max_plan_chars: int = 50_000,
 ) -> tuple[int, str, str] | None:
@@ -1190,6 +1299,8 @@ def package_limit_refusal(
     decisions = payload.get("decisions")
     if isinstance(decisions, list) and len(decisions) > MAX_PACKAGE_DECISIONS:
         return 422, "package_limits", f"결정 기록이 너무 많습니다(최대 {MAX_PACKAGE_DECISIONS:,}건)."
+    if json_depth_exceeds(payload, MAX_PACKAGE_JSON_DEPTH):
+        return 422, "package_limits", f"요청 JSON 중첩이 너무 깊습니다(최대 {MAX_PACKAGE_JSON_DEPTH}단)."
     result = payload.get("result", payload)
     if not isinstance(result, dict):
         return None
