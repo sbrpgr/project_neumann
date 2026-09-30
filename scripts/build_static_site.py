@@ -48,6 +48,7 @@ PLANS_DIR = ROOT / "tests" / "fixtures" / "plans"
 DEMO_PLANS = ("plan.md", "plan_elife_neuro.md", "plan_medimaging.md")
 FIXTURE_PLAN = "plan.md"  # 공용 fixture 결과가 기준으로 삼은 계획서
 MANIFEST_NAMES = ("manifest.json", "index.json", "_manifest.json")
+SUBSTITUTE_ORIGINS = ("fixture", "sample", "mock", "fallback")
 BUILD_MARK = "build.json"
 KST = timezone(timedelta(hours=9), "KST")
 
@@ -78,6 +79,11 @@ class Demo:
     reason: str = ""
     manifest_sha_ok: bool | None = None
     notices: list[str] = field(default_factory=list)
+
+    @property
+    def substitute(self) -> bool:
+        """실제 분석이 아닌 결과(공용 fixture 폴백, 또는 사전 계산본 자체가 fixture·mock 대체)."""
+        return self.kind != "precomputed" or any(s in self.origin.lower() for s in SUBSTITUTE_ORIGINS)
 
 
 def _sha256_bytes(data: bytes) -> str:
@@ -136,7 +142,7 @@ def _first(d: Mapping[str, Any], *keys: str) -> Any:
 
 def _entry_for(entries: list[dict[str, Any]], demo: Demo) -> dict[str, Any] | None:
     for e in entries:
-        keys = {str(e.get(k, "")) for k in ("plan_id", "_key", "id", "demo_id", "plan", "file", "path", "filename",
+        keys = {str(e.get(k, "")) for k in ("plan_id", "_key", "id", "demo", "demo_id", "plan", "file", "path", "filename",
                                              "plan_file", "name")}
         keys |= {Path(k).stem for k in list(keys) if k}
         if demo.plan_id in keys or demo.demo_id in keys or demo.file in keys:
@@ -158,14 +164,16 @@ def _fmt_time(value: Any) -> str:
 
 def _model_of(result: Mapping[str, Any], entry: Mapping[str, Any] | None) -> str:
     man = result.get("manifest") or {}
-    model = _first(man, "model_id", "model") or _first(entry or {}, "model_id", "model")
+    models = (entry or {}).get("models")
+    model = (_first(man, "model_id", "model") or _first(entry or {}, "model_id", "model")
+             or (", ".join(map(str, models)) if isinstance(models, list) and models else None))
     provider = _first(man, "model_provider", "provider") or _first(entry or {}, "model_provider", "provider")
     if model:
         return f"{model}" + (f" ({provider})" if provider and str(provider) not in str(model) else "")
     gens = sorted({str(c.get("generator", "")) for c in result.get("risk_cards", []) if c.get("generator")})
     if gens == ["mock"]:
         return "mock provider"
-    return "모델 미기록" + (f" · 생성 방식 {'/'.join(gens)}" if gens else "")
+    return "미기록" + (f"(생성 방식 {'/'.join(gens)})" if gens else "")
 
 
 def _attach_plan(result: dict[str, Any], demo: Demo) -> None:
@@ -253,8 +261,8 @@ def resolve_demo(demo: Demo, pre_dir: Path | None, fixture_path: Path = FIXTURE_
             demo.notices.append(f"사전 계산본 sha256이 매니페스트({entry.get('_manifest')})와 같다.")
         else:
             demo.notices.append("사전 계산본 매니페스트에 sha256이 없어 변조 여부를 확인하지 못했다.")
-        if "fixture" in demo.origin.lower() or "sample" in demo.origin.lower() or "mock" in demo.origin.lower():
-            demo.notices.append(f"이 사전 계산본은 실제 분석이 아니라 대체 결과다(생성 방식 표기: {demo.origin}).")
+        if demo.substitute:
+            demo.notices.append(f"이 사전 계산본은 실제 분석이 아니라 대체 결과다(저장본 표기: {demo.origin}).")
         return demo
     data = json.loads(fixture_path.read_text(encoding="utf-8"))
     demo.kind = "fixture"
@@ -271,15 +279,19 @@ def resolve_demo(demo: Demo, pre_dir: Path | None, fixture_path: Path = FIXTURE_
 
 def demo_label(demo: Demo) -> str:
     when = _fmt_time(demo.generated_at) or "생성 시각 미기록"
-    if demo.kind == "precomputed":
+    if demo.kind == "precomputed" and not demo.substitute:
         return f"사전 계산본(생성 {when} · 모델 {demo.model}) — {LIVE_NOTE}"
+    if demo.kind == "precomputed":
+        return f"사전 계산본({demo.origin} 대체 · 가짜 데이터 · 생성 {when} · 모델 {demo.model}) — {LIVE_NOTE}"
     return f"샘플(공용 fixture · 가짜 데이터 · 생성 {when} · 모델 {demo.model}) — 사전 계산본 없음 · {LIVE_NOTE}"
 
 
 def demo_badge(demo: Demo) -> str:
     when = _fmt_time(demo.generated_at) or "시각 미기록"
-    if demo.kind == "precomputed":
+    if demo.kind == "precomputed" and not demo.substitute:
         return f"사전 계산본 · {when} · {demo.model}"
+    if demo.kind == "precomputed":
+        return f"사전 계산본({demo.origin} 대체 · 가짜 데이터) · {when}"
     return "샘플(가짜 데이터) · 사전 계산본 없음"
 
 
@@ -293,7 +305,7 @@ def _default_view_tools() -> tuple[ViewBuilder, Validator]:
 
 
 def make_view(demo: Demo, build_view: ViewBuilder, validate: Validator | None, built_at: str) -> dict[str, Any]:
-    sample = demo.kind == "fixture" or any(s in demo.origin.lower() for s in ("fixture", "sample", "mock"))
+    sample = demo.substitute
     input_info = {"chars": len(demo.plan_text), "lines": sum(1 for ln in demo.plan_text.splitlines() if ln.strip()),
                   "filename": demo.file}
     view = build_view(demo.result, filename=demo.file, sample=sample, pipeline_state="precomputed",
@@ -301,7 +313,8 @@ def make_view(demo: Demo, build_view: ViewBuilder, validate: Validator | None, b
     st = view.setdefault("_status", {})
     st["label"] = demo_label(demo)
     st["static"] = {
-        "kind": demo.kind, "demo_id": demo.demo_id, "file": demo.file, "origin": demo.origin,
+        "kind": demo.kind, "substitute": demo.substitute, "demo_id": demo.demo_id, "file": demo.file,
+        "origin": demo.origin,
         "generated_at": demo.generated_at, "generated_kst": _fmt_time(demo.generated_at), "model": demo.model,
         "reason": demo.reason, "manifest_sha256_ok": demo.manifest_sha_ok, "built_at": built_at, "live": False,
     }
@@ -390,7 +403,7 @@ STATIC_INPUT_JS = r"""
     var picker = document.createElement('div');
     picker.className = 'sdemos'; picker.id = 'demoPicker'; picker.setAttribute('role', 'group'); picker.setAttribute('aria-label', '데모 계획서');
     picker.innerHTML = ST.demos.map(function (d, i) {
-      return '<button type="button" class="sdemo" data-demo="' + i + '" aria-pressed="false"><span class="n">DEMO ' + (i + 1) + ' · ' + esc(d.file) + '</span><span class="t">' + esc(d.title) + '</span><span class="m' + (d.kind === 'precomputed' ? '' : ' fx') + '">' + esc(d.badge) + '</span></button>';
+      return '<button type="button" class="sdemo" data-demo="' + i + '" aria-pressed="false"><span class="n">DEMO ' + (i + 1) + ' · ' + esc(d.file) + '</span><span class="t">' + esc(d.title) + '</span><span class="m' + (d.substitute ? ' fx' : '') + '">' + esc(d.badge) + '</span></button>';
     }).join('');
     var seg = document.querySelector('#app .seg');
     if (seg && seg.parentNode) seg.parentNode.replaceChild(picker, seg); else ta.parentNode.insertBefore(picker, ta);
@@ -434,21 +447,24 @@ def inject_static(index_html: str, static: Mapping[str, Any], banner_html: str) 
 
 
 def site_label(demos: list[Demo]) -> str:
-    n_pre = sum(1 for d in demos if d.kind == "precomputed")
-    if n_pre == len(demos):
+    n_real = sum(1 for d in demos if not d.substitute)
+    if n_real == len(demos):
         return f"정적 판 · 사전 계산본 — {LIVE_NOTE}"
-    if n_pre == 0:
-        return f"정적 판 · 샘플(가짜 데이터) — {LIVE_NOTE}"
-    return f"정적 판 · 사전 계산본 {n_pre}/{len(demos)} · 나머지 샘플 — {LIVE_NOTE}"
+    if n_real == 0:
+        pre = all(d.kind == "precomputed" for d in demos)
+        return f"정적 판 · {'사전 계산본(fixture 대체)' if pre else '샘플(가짜 데이터)'} — {LIVE_NOTE}"
+    return f"정적 판 · 사전 계산본 {n_real}/{len(demos)} · 나머지 가짜 데이터 — {LIVE_NOTE}"
 
 
 def banner_html(demos: list[Demo]) -> str:
-    parts = []
-    for i, d in enumerate(demos, 1):
-        parts.append(f"데모 {i}: " + (f"사전 계산본 {_fmt_time(d.generated_at) or '시각 미기록'} · {d.model}"
-                                      if d.kind == "precomputed" else "샘플(가짜 데이터)"))
+    n_real = sum(1 for d in demos if not d.substitute)
+    n_sub = sum(1 for d in demos if d.substitute and d.kind == "precomputed")
+    n_fix = sum(1 for d in demos if d.kind != "precomputed")
+    parts = [p for p in (f"사전 계산본 {n_real}건" if n_real else "",
+                         f"사전 계산본 {n_sub}건(대체 결과 · 가짜 데이터)" if n_sub else "",
+                         f"샘플 {n_fix}건(공용 fixture · 가짜 데이터)" if n_fix else "") if p]
     text = (f"<b>정적 판</b>미리 계산해 둔 결과만 보여 줍니다 — {LIVE_NOTE}. "
-            f"<span>{html.escape(' / '.join(parts))}</span>")
+            f"<span>데모 {len(demos)}건: {html.escape(' · '.join(parts))} · 생성 시각·모델은 데모마다 표시</span>")
     return f'<div class="sbanner" id="staticBanner" role="note">{text}</div>'
 
 
@@ -503,7 +519,8 @@ def build_site(
             (tmp / rel).write_bytes(raw)
             entries.append({
                 "n": i, "id": d.demo_id, "file": d.file, "title": d.title, "plan_text": d.plan_text,
-                "plan_id": d.plan_id, "json": rel, "sha256": _sha256_bytes(raw), "kind": d.kind, "origin": d.origin,
+                "plan_id": d.plan_id, "json": rel, "sha256": _sha256_bytes(raw), "kind": d.kind,
+                "substitute": d.substitute, "origin": d.origin,
                 "generated_at": d.generated_at, "generated_kst": _fmt_time(d.generated_at), "model": d.model,
                 "label": demo_label(d), "badge": demo_badge(d), "reason": d.reason,
                 "cards": len(view.get("cards", [])), "works": len(view.get("works", [])),
@@ -532,7 +549,7 @@ def build_site(
         summary = {
             "built_at": built_at, "neumann_version": _neumann_version(), "git_commit": _git_commit(),
             "webui_index_sha256": _sha256_bytes(src_bytes), "label": label,
-            "demos": [{k: e[k] for k in ("id", "file", "kind", "origin", "generated_at", "model", "sha256", "cards",
+            "demos": [{k: e[k] for k in ("id", "file", "kind", "substitute", "origin", "generated_at", "model", "sha256", "cards",
                                           "works", "reason")} for e in entries],
         }
         (tmp / BUILD_MARK).write_text(json.dumps(summary, ensure_ascii=False, indent=1), encoding="utf-8")

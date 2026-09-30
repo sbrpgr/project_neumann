@@ -163,7 +163,7 @@ def test_precomputed_is_used_and_labelled(tmp_path: Path, webui: Path) -> None:
 
     kinds = {d["id"]: d["kind"] for d in summary["demos"]}
     assert kinds == {"plan": "precomputed", "plan_elife_neuro": "fixture", "plan_medimaging": "fixture"}
-    assert summary["label"] == "정적 판 · 사전 계산본 1/3 · 나머지 샘플 — 라이브 분석 아님"
+    assert summary["label"] == "정적 판 · 사전 계산본 1/3 · 나머지 가짜 데이터 — 라이브 분석 아님"
     view = json.loads((site / "demo" / "plan.json").read_text(encoding="utf-8"))
     st = view["_status"]
     assert st["label"] == "사전 계산본(생성 2026-09-30 19:12 KST · 모델 gpt-6-astra (openai)) — 라이브 분석 아님"
@@ -171,6 +171,33 @@ def test_precomputed_is_used_and_labelled(tmp_path: Path, webui: Path) -> None:
     assert st["static"]["origin"] == "pipeline"
     assert any("sha256이 매니페스트" in n for n in st["notices"])
     assert bss.check_site(site)[0] == []
+
+
+def test_precomputed_fixture_substitute_is_not_called_real(tmp_path: Path, webui: Path) -> None:
+    """E6-L2a 매니페스트 모양(entries[].demo·source·impl·models) — 저장본이 fixture 대체라고 밝히면 그렇게 표시한다."""
+    pre = tmp_path / "pre"
+    path = write_precomputed(pre)
+    entry = {"plan_id": plan_id("plan.md"), "demo": "plan", "file": path.name,
+             "sha256": bss._sha256_bytes(path.read_bytes()), "source": "fixture", "impl": "fallback:fixture",
+             "models": []}
+    (pre / "manifest.json").write_text(json.dumps({"kind": "neumann.precomputed", "source": "fixture",
+                                                   "entries": [entry]}), encoding="utf-8")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["manifest"] = {}
+    path.write_text(json.dumps(data), encoding="utf-8")
+    entry["sha256"] = bss._sha256_bytes(path.read_bytes())
+    (pre / "manifest.json").write_text(json.dumps({"entries": [entry]}), encoding="utf-8")
+
+    site, summary = build(tmp_path, webui, pre=pre)
+    plan = next(d for d in summary["demos"] if d["id"] == "plan")
+    assert plan["kind"] == "precomputed" and plan["substitute"] is True and plan["origin"] == "fixture"
+    st = json.loads((site / "demo" / "plan.json").read_text(encoding="utf-8"))["_status"]
+    assert st["label"].startswith("사전 계산본(fixture 대체 · 가짜 데이터 · 생성 ") and "라이브 분석 아님" in st["label"]
+    assert st["source"] == "sample" and st["static"]["substitute"] is True
+    assert any("실제 분석이 아니라 대체 결과" in n for n in st["notices"])
+    assert summary["label"] == "정적 판 · 샘플(가짜 데이터) — 라이브 분석 아님"
+    blob = static_blob(site)
+    assert blob["demos"][0]["substitute"] is True and "fixture 대체" in blob["demos"][0]["badge"]
 
 
 def test_precomputed_without_plan_body_gets_public_demo_plan(tmp_path: Path, webui: Path) -> None:
