@@ -62,6 +62,8 @@ def test_signed_inspection_zip_contents_and_summary(chain, payload):
     assert all(text in sent.readme for text in ("## 최종 점검", "자동 수정 목록", "도구별 결과", "미해결 항목",
                                                 "physical-1", "unresolved", "failed", "unchecked", "mock 테스트 결과"))
     assert "finalization_sig" not in final
+    for exported in (sent.readme, sent.files["final_draft.md"].decode()):
+        assert "모델: mock" in exported and "최종 점검 완료: 아니오" in exported
     entries = {x["path"]: x for x in sent.manifest["files"]}
     for name in ("final_draft.md", "finalization.json"):
         assert entries[name]["origin"] == "server_signed"
@@ -82,6 +84,20 @@ def test_actual_finalize_response_can_be_exported(chain):
     assert sent.status == 200, sent.detail
     assert sent.headers["x-neumann-finalization-origin"] == "server_signed"
     assert out["finalization"]["status"] in sent.readme
+
+
+@pytest.mark.parametrize("status,completed", [("completed", "예"), ("partial", "아니오"), ("incomplete", "아니오")])
+def test_completion_and_model_come_from_inspection(chain, payload, status, completed):
+    envelope = payload["finalization"]
+    envelope["finalization"].update(status=status, model="mock-deterministic-v1")
+    sign(envelope)
+    payload["finalization_sig"] = envelope["finalization_sig"]
+    sent = chain.send(payload)
+    assert sent.status == 200, sent.detail
+    for exported in (sent.readme, sent.files["final_draft.md"].decode()):
+        assert f"최종 점검 완료: {completed}" in exported
+        assert "모의(mock)" in exported and "모델: mock-deterministic-v1" in exported
+        assert "mock 테스트 결과" in exported
 
 
 @pytest.mark.parametrize("mode", ["missing", "tampered", "other_domain", "result_unsigned", "assembly_unsigned"])
@@ -106,6 +122,8 @@ def test_unverified_signature_chain_is_explicit(chain, payload, mode):
     assert json.loads(sent.files["finalization.json"])["origin"] == "client_submitted_unverified"
     assert "client_submitted_unverified" in sent.files["final_draft.md"].decode()
     assert sent.manifest["finalization"]["origin"] == "client_submitted_unverified"
+    assert "모의(mock)" in sent.readme and "모델: mock" in sent.readme
+    assert "요청자 표기이며 서버 확인 안 됨" in sent.readme
 
 
 @pytest.mark.parametrize("mode", ["output_alias", "hash", "correction_anchor", "correction_missing", "input_assembly",

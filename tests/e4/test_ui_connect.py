@@ -31,19 +31,32 @@ def _server(tmp_path: Path):
     corpus = tmp_path / "fixture-corpus.json"
     corpus.write_text(json.dumps({"works": [w.model_dump(mode="json", by_alias=True) for w in backend.works.values()],
                                  "reviews": [r.model_dump(mode="json", by_alias=True) for rs in backend.reviews.values() for r in rs]}), encoding="utf-8")
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        port = sock.getsockname()[1]
-    assert port not in {8010, 8020, 8099}
+    for port in range(8140, 8170):
+        with socket.socket() as sock:
+            try:
+                sock.bind(("127.0.0.1", port))
+                break
+            except OSError:
+                continue
+    else:
+        raise AssertionError("No free 81xx test port")
     env = dict(os.environ)
-    for key in ("OPENAI_API_KEY", "NEUMANN_LIVE_LLM_OK", "NEUMANN_RESULT_HMAC_KEY"):
+    for key in ("OPENAI_API_KEY", "NEUMANN_PSEUDONYM_SALT", "NEUMANN_LIVE_LLM_OK", "NEUMANN_RESULT_HMAC_KEY"):
         env.pop(key, None)
     env.update(NEUMANN_LLM_PROVIDER="mock", NEUMANN_LIVE_TESTS="0", NEUMANN_EVIDENCE_BACKEND="fixture",
                NEUMANN_FIXTURE_CORPUS=str(corpus), NEUMANN_DATA_DIR=str(tmp_path / "data"),
                NEUMANN_RESULT_CACHE="0", NEUMANN_EXTRACT_CACHE="0", HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1",
                PYTHONPATH=os.pathsep.join([str(ROOT / "src"), str(ROOT)]), PYTHONUTF8="1", OPENBLAS_NUM_THREADS="1")
-    proc = subprocess.Popen([sys.executable, "-m", "uvicorn", "neumann.api.main:app", "--host", "127.0.0.1", "--port", str(port),
-                             "--log-level", "warning", "--no-access-log"], cwd=ROOT, env=env)
+    # A subprocess must disable dotenv independently of pytest's parent settings.
+    server_code = """import sys
+import neumann.config as config
+config.Settings.model_config['env_file'] = None
+import neumann.index.settings as index_config
+index_config.IndexSettings.model_config['env_file'] = None
+import uvicorn
+uvicorn.run('neumann.api.main:app', host='127.0.0.1', port=int(sys.argv[1]), log_level='warning', access_log=False)
+"""
+    proc = subprocess.Popen([sys.executable, "-c", server_code, str(port)], cwd=ROOT, env=env)
     base = f"http://127.0.0.1:{port}"
     try:
         deadline = time.monotonic() + 35
