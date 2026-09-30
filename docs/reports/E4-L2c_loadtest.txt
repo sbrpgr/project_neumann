@@ -86,7 +86,7 @@
 [+ 37.41s] 판정: PASS
 [+ 41.05s] 서버 종료 확인(포트 8122 닫힘)
 [+ 41.05s] -- 감시 스크립트 로그(serve.log)
-   [serve] 2026-09-30T19:21:17 감시 시작 health=http://127.0.0.1:8122/health 주기=1.0s 연속실패=2회 시작유예=60.0s 공개=아니오 로그=C:\Users\User\AppData\Local\Temp\neumann_e4l2c_p9opxfh8\serve.log
+   [serve] 2026-09-30T19:21:17 감시 시작 health=http://127.0.0.1:8122/health 주기=1.0s 연속실패=2회 시작유예=60.0s 공개=아니오 로그=<임시폴더>\serve.log
    [serve] 2026-09-30T19:21:17 시작 pid=28320 app=scripts.serve_fake_app:app host=127.0.0.1 port=8122 재시작 누적=0
    [serve] 2026-09-30T19:21:18 health 정상 (뜨는 데 1.1s)
    [serve] 2026-09-30T19:21:50 재시작 #1 이유: 프로세스 종료(code=3)
