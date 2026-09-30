@@ -290,3 +290,66 @@ def test_ten_users_four_run_six_wait_all_get_results_and_no_ip_monopoly(tmp_path
             assert all(d["result"]["cards"] for d in done)
 
     asyncio.run(go())
+
+
+# ───────────────────────── 재작업 2(E4-L2c 재검증 대응) ─────────────────────────
+
+
+def test_upload_4xx_body_is_the_apps_own_shape(tmp_path, monkeypatch):
+    """서빙 층을 붙여도 업로드 4xx 본문은 앱 모양 그대로(요청 번호는 헤더). E4-L1f 화면 계약({"detail": 문구})."""
+    from neumann.api.upload import HWP_MESSAGE
+    from tests.e4.test_upload import HWP5_BYTES
+
+    srv, app, store = make(tmp_path, monkeypatch, slow(0.01), jobs.JobsConfig(per_ip=0, rate_per_min=0))
+
+    async def go() -> None:
+        async with client(app) as c:
+            r = await c.post("/upload/plan", files={"file": ("계획서.hwp", HWP5_BYTES)})
+            assert r.status_code == 415 and r.json() == {"detail": HWP_MESSAGE}
+            assert r.headers.get("x-neumann-ticket")
+            j = await c.post("/premortem/jobs", json={"plan_text": " "})
+            assert j.status_code == 422 and "request_id" in j.json()   # 분석 경로 4xx는 요청 번호를 본문에도
+
+    asyncio.run(go())
+
+
+def test_preparse_rate_limit_runs_before_body_parse_and_hash(tmp_path, monkeypatch):
+    calls = {"n": 0}
+    real = serving.plan_key
+
+    def counting(text: str) -> str:
+        calls["n"] += 1
+        return real(text)
+
+    monkeypatch.setattr(serving, "plan_key", counting)
+    srv, app, store = make(tmp_path, monkeypatch, slow(0.01), jobs.JobsConfig(per_ip=0, rate_per_min=0),
+                           preparse_per_min=3)
+
+    async def go() -> None:
+        async with client(app) as c:
+            codes = [(await c.post("/premortem/jobs", json={"plan_text": plan(f"pp{i}")}, headers=ip(77))).status_code
+                     for i in range(3)]
+            assert codes == [202, 202, 202] and calls["n"] == 3
+            r = await c.post("/premortem/view", content=b"{not json" + b"a" * 40_000, headers={**JSON_H, **ip(77)})
+            assert r.status_code == 429 and r.json()["error_code"] == "rate_limited" and calls["n"] == 3
+            assert (await c.post("/premortem/jobs", json={"plan_text": plan("other")}, headers=ip(78))).status_code == 202
+
+    asyncio.run(go())
+    assert serving.ServingConfig().preparse_per_min == 0   # 개발 기본은 끔, 공개 60(from_env)
+
+
+def test_serve_py_survives_cp949_redirected_stdout(tmp_path):
+    """한국어 Windows에서 출력을 파일로 돌려도 첫 로그 줄('—')에서 죽지 않는다(serve.py --public --dry-run)."""
+    import os
+    import subprocess
+    import sys
+
+    env = {k: v for k, v in os.environ.items() if k not in {"PYTHONIOENCODING", "PYTHONUTF8"}}
+    env.update(NEUMANN_LLM_PROVIDER="mock", PYTHONUTF8="0", PYTHONIOENCODING="cp949")
+    out = tmp_path / "serve_out.txt"
+    with out.open("wb") as fh:
+        rc = subprocess.run([sys.executable, str(ROOT / "scripts" / "serve.py"), "--public", "--dry-run"],
+                            stdout=fh, stderr=subprocess.STDOUT, env=env, cwd=ROOT, timeout=60).returncode
+    text = out.read_bytes().decode("utf-8", errors="replace")
+    assert rc == 2, text   # mock provider → 공개 기동 거부(정상 종료 코드 2), UnicodeEncodeError(1) 아님
+    assert "UnicodeEncodeError" not in text and "provider" in text
