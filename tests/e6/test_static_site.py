@@ -481,3 +481,19 @@ def test_real_webui_build_with_live_results(tmp_path: Path) -> None:
         assert bool(view["cards"]) == (d != "negative_recipe")
     problems, stats = bss.check_site(out)
     assert problems == [] and stats["demos"] == 4
+
+
+def test_rehearsal_import_badge_says_not_live_server(tmp_path: Path, webui: Path) -> None:
+    from tests.e6.e6_support import load_script, write_live_results
+
+    pd = load_script()
+    res = write_live_results(tmp_path / "r", list(pd.DEMO_PLANS), provider="mock", model="mock-deterministic-v1")
+    pd.import_live(pd.demo_specs(), res, tmp_path / "pre", server_port=0, log=lambda _m: None)
+    site, summary = build(tmp_path, webui, pre=tmp_path / "pre")
+    badge = summary["demos"][0]["badge"]
+    assert badge == ("사전 계산본(로컬 리허설 · 라이브 서버 아님, mock-deterministic-v1, 2026-09-30 21:20 KST)"
+                     " · mock 결과 · 가짜 데이터")
+    st = json.loads((site / "demo" / "plan.json").read_text(encoding="utf-8"))["_status"]
+    assert any(n.startswith("로컬 리허설(라이브 서버 아님)에서 mock-deterministic-v1로") for n in st["notices"])
+    assert not any("라이브 서버(" in n for n in st["notices"])
+    assert bss.check_site(site)[0] == []

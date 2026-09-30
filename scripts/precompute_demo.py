@@ -6,7 +6,8 @@
     python scripts/precompute_demo.py --out DIR            출력 폴더(기본 <NEUMANN_DATA_DIR>/precomputed)
     python scripts/precompute_demo.py --allow-empty        파이프라인 결과가 카드 0장이어도 exit 0
     python scripts/precompute_demo.py --from-results DIR   (E6-L3d) 라이브 E2E 결과(PremortemResult JSON)를 가져온다.
-        새 분석을 돌리지 않는다(파이프라인·LLM import 없음). --run-commit SHA(서버 실행 커밋), --server-port 8020,
+        새 분석을 돌리지 않는다(파이프라인·LLM import 없음). --run-commit SHA(서버 실행 커밋), --server-port 8020
+        (0이면 "로컬 리허설(라이브 서버 아님)" — mock 결과로 절차만 확인할 때),
         --allow-partial(일부 계획서 결과가 없어도 있는 것만 쓴다). 자세한 규칙은 아래 "라이브 결과 가져오기".
 
 데모 계획서(DEMO_PLANS, 대표 지시로 AI4S 3건 + 범위 밖 1건. 옛 fMRI·의료영상 예시는 뺐다):
@@ -91,6 +92,12 @@ LIVE_IMPL = "import:live_e2e"
 LIVE_SOURCE = "live_e2e"
 LIVE_TASK = "E5-L1e2e"
 DEFAULT_SERVER_PORT = 8020
+REHEARSAL_LABEL = "로컬 리허설(라이브 서버 아님)"
+
+
+def server_label(port: int) -> str:
+    """0이면 로컬 리허설(라이브 서버 결과가 아님을 화면까지 그대로 남긴다)."""
+    return f"라이브 서버({port})" if port > 0 else REHEARSAL_LABEL
 
 Runner = Callable[..., Any]
 
@@ -666,6 +673,7 @@ def import_live(
             "live": {
                 "task": LIVE_TASK,
                 "server_port": server_port,
+                "server_label": server_label(server_port),
                 "results_file": cand.file,
                 "results_pointer": cand.pointer,
                 "results_file_sha256": cand.file_sha256,
@@ -691,7 +699,7 @@ def import_live(
         "live_run": {
             "task": LIVE_TASK,
             "server_port": server_port,
-            "server_label": f"라이브 서버({server_port})",
+            "server_label": server_label(server_port),
             "run_commit": commit,
             "run_commit_source": commit_src,
             "import_commit": _git_head(),
@@ -736,7 +744,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--from-results", type=Path, default=None, metavar="DIR",
                         help="라이브 E2E 결과(PremortemResult JSON) 폴더·파일을 가져온다(새 분석 없음)")
     parser.add_argument("--run-commit", default=None, help="라이브 서버가 돈 커밋(결과에 없으면 이 값을 적는다)")
-    parser.add_argument("--server-port", type=int, default=DEFAULT_SERVER_PORT, help="라이브 서버 포트 표기(기본 8020)")
+    parser.add_argument("--server-port", type=int, default=DEFAULT_SERVER_PORT,
+                        help="라이브 서버 포트 표기(기본 8020, 0이면 로컬 리허설 — 라이브 서버 결과 아님)")
     parser.add_argument("--allow-partial", action="store_true", help="가져오기: 결과가 없는 계획서가 있어도 있는 것만 쓴다")
     args = parser.parse_args(argv)
 

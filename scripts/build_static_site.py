@@ -92,6 +92,7 @@ class Demo:
     generated_at: str = ""
     model: str = ""
     provider: str = ""  # 결과 manifest.llm_provider(있을 때)
+    server_port: int | None = None  # 라이브 결과를 받은 서버 포트(0이면 로컬 리허설 — 라이브 서버 아님)
     origin: str = ""
     reason: str = ""
     manifest_sha_ok: bool | None = None
@@ -105,8 +106,12 @@ class Demo:
 
     @property
     def live(self) -> bool:
-        """라이브 서버 결과를 가져온 사전 계산본(E6-L3d)."""
+        """라이브 E2E 결과를 가져온 사전 계산본(E6-L3d). 로컬 리허설(포트 0)도 여기 들지만 배지에 그렇게 적는다."""
         return self.kind == "precomputed" and self.origin == LIVE_ORIGIN
+
+    @property
+    def where(self) -> str:
+        return "로컬 리허설 · 라이브 서버 아님" if self.server_port == 0 else "라이브 서버"
 
     @property
     def llm_model(self) -> str:
@@ -302,7 +307,9 @@ def resolve_demo(demo: Demo, pre_dir: Path | None, fixture_path: Path = FIXTURE_
         demo.provider = _provider_of(result)
         if demo.live:
             port = ((entry or {}).get("live") or {}).get("server_port")
-            demo.notices.append(f"라이브 서버{f'({port})' if port else ''}에서 {demo.llm_model}로 분석한 결과를 "
+            demo.server_port = port if isinstance(port, int) else None
+            where = "로컬 리허설(라이브 서버 아님)" if port == 0 else f"라이브 서버{f'({port})' if port else ''}"
+            demo.notices.append(f"{where}에서 {demo.llm_model}로 분석한 결과를 "
                                 f"{_fmt_time(demo.generated_at) or '시각 미기록'}에 저장해 둔 사전 계산본이다. "
                                 "이 화면은 서버에 다시 묻지 않는다.")
             if demo.rule_cards:
@@ -336,7 +343,7 @@ def live_badge(demo: Demo) -> str:
         extra.append("mock 결과 · 가짜 데이터")
     if demo.rule_cards:
         extra.append(f"규칙 대체 {demo.rule_cards}장")
-    return f"사전 계산본(라이브 서버, {demo.llm_model}, {when})" + (f" · {' · '.join(extra)}" if extra else "")
+    return f"사전 계산본({demo.where}, {demo.llm_model}, {when})" + (f" · {' · '.join(extra)}" if extra else "")
 
 
 def demo_label(demo: Demo) -> str:
@@ -543,7 +550,8 @@ def _live_summary(demos: list[Demo]) -> str:
         return ""
     models = sorted({d.llm_model for d in live})
     when = _fmt_time(max(d.generated_at for d in live)) or "시각 미기록"
-    return f"라이브 서버, {', '.join(models)}, {when}"
+    where = " · ".join(sorted({d.where for d in live}))
+    return f"{where}, {', '.join(models)}, {when}"
 
 
 def site_label(demos: list[Demo]) -> str:

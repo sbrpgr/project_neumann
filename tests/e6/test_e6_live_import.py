@@ -218,3 +218,15 @@ def test_import_does_not_load_pipeline_llm_or_network():
     proc = subprocess.run([sys.executable, "-c", code], cwd=ROOT, env=env, capture_output=True, timeout=120)
     assert proc.returncode == 0, proc.stderr.decode("utf-8", "replace")
     assert json.loads(proc.stdout.decode().strip().splitlines()[-1]) == {"n": 4, "fail": [], "bad": []}
+
+
+def test_rehearsal_port_zero_is_not_called_live_server(tmp_path, capsys):
+    """mock 결과로 절차만 확인할 때(--server-port 0): 라이브 서버 결과라고 적지 않는다."""
+    res = _results(tmp_path, provider="mock", model="mock-deterministic-v1")
+    out = tmp_path / "pre"
+    assert pd.main(["--from-results", str(res), "--out", str(out), "--server-port", "0"]) == 0
+    assert "로컬 리허설(라이브 서버 아님)" in capsys.readouterr().out
+    manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["live_run"]["server_label"] == "로컬 리허설(라이브 서버 아님)"
+    assert {e["live"]["server_label"] for e in manifest["entries"]} == {"로컬 리허설(라이브 서버 아님)"}
+    assert "라이브 서버(" not in json.dumps(manifest, ensure_ascii=False)
