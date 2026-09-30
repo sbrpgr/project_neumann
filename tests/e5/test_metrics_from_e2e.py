@@ -219,8 +219,19 @@ def test_recorded_card_generators_decide_linkage_system(link_gens, system, note,
     assert p6 in next(ln for ln in md if ln.startswith("| P6 |"))
 
 
+def test_generator_model_keys_accepted_and_model_checked():
+    """tests/e2e card_generators() 형식("generator:model")도 받는다. 모델이 --model과 다르면 멈춘다."""
+    s = _summary(**{n: _plan(link_gens={"astra:gpt-6.1-sol": 2, "rule:-": 1}) for n in ("a.md", "b.md", "c.md")})
+    by = _by(mfe.convert(s, model="gpt-6.1-sol"))
+    assert "비상 규칙 카드 3/9장 포함" in by[("linkage_rate", "neumann")]["detail"]
+    assert by[("demo_e2e", "all")]["value"] == 3
+    with pytest.raises(mfe.InputError, match="카드 모델"):
+        mfe.convert(s, model="gpt-6-astra")
+
+
 def test_mock_or_malformed_card_generators_refused():
-    for bad, msg in (({"astra": 2, "mock": 1}, "mock"), ({"astra": -1}, "0 이상 정수"), (["astra"], "0 이상 정수")):
+    for bad, msg in (({"astra": 2, "mock": 1}, "mock"), ({"astra:m": 2, "mock:-": 1}, "mock"),
+                     ({"astra": -1}, "0 이상 정수"), (["astra"], "0 이상 정수")):
         s = _summary(**{"a.md": _plan(link_gens=bad)})
         with pytest.raises(mfe.InputError, match=msg):
             mfe.convert(s, model="m")

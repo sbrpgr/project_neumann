@@ -15,7 +15,9 @@
                                  검사가 들어 있어, 연결 시스템이 미기록(참고)이면 이것도 참고 행으로 간다
 - `--product-model`을 주면, 그 모델로는 재지 않은 헤드라인 지표를 값 null(= 측정 전) 행으로 적는다.
 
-<연결 시스템>은 연결 검사 실행의 카드 generator(`plans[*].linkage.card_generators`)로 정한다.
+<연결 시스템>은 연결 검사 실행의 카드 generator(`plans[*].linkage.card_generators`)로 정한다. 키는 generator만
+("astra") 또는 generator:model("astra:gpt-6.1-sol")이다. 모델이 붙어 있으면 `--model`과 다를 때 멈춘다.
+계획서 단위 `card_generators`·`models.card_generators`는 읽지 않는다(약속 판정 입력은 `linkage` 한 곳).
 `eval.report_card`의 연결 보고서 규칙과 같다.
 - 한 계획서라도 기록이 없으면 → UNRECORDED_SYSTEM(참고 행, 약속 P2 판정에 안 씀. PM 결정 2026-09-30)
 - 전부 astra(계약 이름 "제품 LLM") 또는 astra+rule → neumann(규칙 카드 수를 detail에 병기)
@@ -122,10 +124,22 @@ def _plan_linkage(name: str, entry: dict[str, Any]) -> dict[str, Any] | None:
             not isinstance(g, str) or isinstance(c, bool) or not isinstance(c, int) or c < 0 for g, c in gens.items()
         ):
             raise InputError(f"{where}.card_generators: {{generator: 0 이상 정수}}여야 한다({gens!r})")
-        gens = {g: c for g, c in gens.items() if c}
+    card_models: set[str] = set()
+    if gens is not None:
+        # 키는 generator만("astra") 또는 generator:model("astra:gpt-6.1-sol", tests/e2e card_generators() 형식) 둘 다 받는다.
+        merged: dict[str, int] = {}
+        for g, c in gens.items():
+            if not c:
+                continue
+            gen, _, mdl = g.partition(":")
+            merged[gen] = merged.get(gen, 0) + c
+            if mdl and mdl != "-":
+                card_models.add(mdl)
+        gens = merged
         if not gens and cards[1]:
             gens = None  # 카드가 있는데 generator가 비어 있으면 기록 없음과 같다(eval.report_card의 unknown_generator)
-    return {"links": links, "cards": cards, "drop": drop, "verdict": lk.get("verdict"), "gens": gens}
+    return {"links": links, "cards": cards, "drop": drop, "verdict": lk.get("verdict"), "gens": gens,
+            "card_models": card_models}
 
 
 def model_source(demo: dict[str, Any], model: str) -> str:
@@ -203,6 +217,9 @@ def convert(summary: dict[str, Any], *, model: str, product_model: str | None = 
         if got is None:
             unmeasured.append(name)
         else:
+            other = got["card_models"] - {model}
+            if other:
+                raise InputError(f"plans[{name}].linkage.card_generators의 카드 모델 {sorted(other)}이 --model {model!r}과 다르다")
             measured[name] = got
 
     metrics: list[dict[str, Any]] = []
