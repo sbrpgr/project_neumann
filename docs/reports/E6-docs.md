@@ -373,15 +373,20 @@ $ python -m pytest -q -rs     (588da63 병합 상태, NEUMANN_RAW_DIR·NEUMANN_D
 - 이 문서를 병합한 뒤에도 main이 움직이면 기준 커밋을 확인한다. 특히 E3-L1w(적합성·예상 심사평·체크리스트를 파이프라인에 연결)가 들어오면 "있음(모듈만)" 표기(ARCHITECTURE §1·§2·§4·§5, API `/health` 설명)를 "있음"으로 바꾼다. E4-L1a(업로드)가 들어오면 API 목록·예정 절을 고친다.
 - 첫 제출 "다음 과제에 넘길 것" 1(샘플 → package 422)·5(가중치)·7(EVIDENCE 모듈 이름)은 main에서 해결됐다. 6(`plan_text` 패키지 경로 제거, 결정 19:20)은 588da63에서도 아직 200이다. 2(`/docs` CDN)·4(`NEUMANN_API_HOST/PORT` 미사용)는 그대로다.
 
-## 최종 verify
+## 최종 verify (재작업 후)
 
-이 worktree(`task/E6-docs`, 보고서 스테이징 상태)에서 실행. worktree는 `481e11c` 기준이라 테스트 수가 main 사본보다 적다.
+worktree(`task/E6-docs`, main `2c37557` 병합 상태)에서 실행. `verify`는 공개자료·공유 데이터 폴더 환경변수 없이 돌려 원본·실데이터 테스트가 더 많이 건너뛰었다(위 재측정 `908 passed, 22 skipped`는 두 폴더를 준 값).
 
 ```
 $ python scripts/verify.py
-183 passed, 2 skipped in 1.73s
-보안: 파일 126개
+897 passed, 41 skipped in 49.10s
+보안: 파일 327개
 계약: 2개
 테스트: 통과
 verify 통과
+```
+
+```
+$ grep -n "파이프라인이 없\|OpenAI를 부르지 않\|샘플만\|5e14b1c\|ed1d1a0\|82146f9" docs/ARCHITECTURE.md docs/RUNNING.md docs/API.md
+(출력 없음, exit 1)
 ```
