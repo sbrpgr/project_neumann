@@ -403,8 +403,22 @@ def _make_ctx(
 # ── 서식 헬퍼 ─────────────────────────────────────────────────────────────
 
 
+def _utc_date(dt: datetime) -> datetime:
+    try:
+        return dt.astimezone(UTC)
+    except (OverflowError, ValueError):
+        raise ValueError("날짜를 UTC로 표현할 수 없어 내보낼 수 없습니다.") from None
+
+
+def _zip_date(dt: datetime) -> tuple[int, int, int, int, int, int]:
+    ts = _utc_date(dt)
+    if not 1980 <= ts.year <= 2107:
+        raise ValueError("ZIP 날짜는 UTC 기준 1980년부터 2107년까지 지원합니다.")
+    return ts.year, ts.month, ts.day, ts.hour, ts.minute, ts.second
+
+
 def _iso(dt: datetime) -> str:
-    return dt.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    return _utc_date(dt).isoformat().replace("+00:00", "Z")
 
 
 def _md_escape(text: str) -> str:
@@ -1076,7 +1090,8 @@ def build_package_files(
     c = _make_ctx(result, plan_text, decisions, result_origin)
     extras = export_revision.extra_files(result, revision, revision_decisions, revised_plan, revision_sig, result_sig)
     c.extra_files = list(extras)
-    c.extra_summary = export_revision.summary_lines(revision, revision_decisions, revised_plan)
+    c.extra_summary = export_revision.summary_lines(revision, revision_decisions, revised_plan,
+                                                  result=result, revision_sig=revision_sig, result_sig=result_sig)
     files: dict[str, bytes] = {
         "README.md": _readme(c),
         "risk_cards.json": _risk_cards_json(c),
@@ -1116,10 +1131,9 @@ def build_package(
     """
     if not isinstance(result, PremortemResult):
         result = PremortemResult.model_validate(result)
+    date_time = _zip_date(result.generated_at)  # reject unsupported dates before rendering; never substitute a date
     files = build_package_files(result, plan_text=plan_text, decisions=decisions, created_at=created_at,
                                 result_origin=result_origin, **extras)
-    ts = result.generated_at.astimezone(UTC)
-    date_time = max((ts.year, ts.month, ts.day, ts.hour, ts.minute, ts.second), (1980, 1, 1, 0, 0, 0))
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for name in files:  # FILE_NAMES 순서 + 덧붙인 파일
