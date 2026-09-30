@@ -806,6 +806,55 @@
     body[data-view="final"] .finpaper .fix, body[data-view="final"] .finpaper .chg, body[data-view="final"] .finpaper .ins { background: none !important; }
     body[data-view="final"] .finpaper .fix::before, body[data-view="final"] .finpaper .chg::before, body[data-view="final"] .finpaper .ins::before { display: none !important; }
   }
+  /* ⑤ 단계 표의 오른쪽 칸(도구 n · 불일치 m)이 nowrap으로 768폭에서 넘치던 것 */
+  .fin-stages .tn { grid-template-columns: 120px minmax(0, 1fr) 112px; }
+  .fin-stages .tn .tm { white-space: normal; }
+  /* 상단바·단계 표시 반응형: E4-L3m(d08640a) 전역 규칙과 같은 값(E4-L4r은 revise 화면에만 복제했고 이 브랜치·main에는 E4-L3m이 없다).
+     입력·리포트·최종 초안 화면에서 768폭 단계 버튼(I~VI)이 한 줄로 넘치던 것. 통합 시 E4-L3m 규칙과 겹치면 하나만 남기면 된다 */
+  @media (max-width: 1180px) {
+    .wrap { z-index: auto; }
+    .panel { height: auto; visibility: hidden; transition: transform .25s, visibility 0s linear .25s; }
+    body.popen .panel { visibility: visible; transition: transform .25s; }
+    .ptabs { align-items: center; }
+    .ptabs button { height: 44px; }
+    .trace { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .trace .mono { word-break: break-all; }
+  }
+  @media (max-width: 900px) {
+    .top { height: auto; min-height: 60px; flex-wrap: wrap; gap: 4px 18px; padding: 8px 16px; }
+    .steps { order: 3; width: 100%; margin-left: 0; flex-wrap: wrap; gap: 2px 20px; }
+    .wrap { padding: 20px 16px 72px 16px; }
+    .doc section { scroll-margin-top: 110px; }
+    .hero .title { font-size: 40px; }
+    .hero h1 { font-size: 24px; }
+    .idx { flex-wrap: wrap; row-gap: 4px; }
+    .foot { padding: 24px 16px 36px 16px; }
+  }
+  @media (max-width: 600px) {
+    .top { position: relative; gap: 2px 12px; }
+    .wordmark .w { font-size: 30px; }
+    .wordmark .ws { display: none; }
+    .top .r { margin-left: auto; gap: 10px; }
+    .top .r > * + * { padding-left: 10px; }
+    .steps { gap: 2px 14px; }
+    .stp { font-size: 12.5px; letter-spacing: .03em; padding: 12px 0; }
+    .doc section { scroll-margin-top: 12px; }
+    .wrap { padding: 16px 16px 72px 16px; }
+    .hero { margin: 16px 0 20px 0; }
+    .hero .title { font-size: 30px; }
+    .hero h1 { font-size: 19px; margin-top: 16px; }
+    #inCard { padding: 16px 14px 18px 14px !important; }
+    .tprow { flex-direction: column; align-items: stretch; gap: 2px; }
+    .tprow .optl { width: auto; }
+    .exs { flex-direction: column; align-items: flex-start; gap: 6px; }
+    textarea.ta { min-height: 240px; padding: 12px; font-size: 16px; }
+    .drop { padding: 16px 14px; }
+    body[data-view="job"] .hero h1 { font-size: 24px !important; flex-wrap: wrap; row-gap: 4px; }
+    body[data-view="job"] .tn { grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; }
+    body[data-view="job"] .tn .msg { grid-column: 1 / -1; grid-row: 2; }
+    .log { padding: 12px; font-size: 12px; }
+    .finsamples .grid { grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body data-view="boot">
