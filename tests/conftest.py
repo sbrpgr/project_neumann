@@ -21,6 +21,24 @@ if os.getenv("NEUMANN_LIVE_TESTS") != "1":
     os.environ["NEUMANN_LLM_PROVIDER"] = "mock"
     # SEC-3: 실제 호출 허용 플래그를 명시적으로 닫는다
     os.environ["NEUMANN_LIVE_LLM_OK"] = "0"
+    # 비밀값 차단(2026-10-01 사고: 테스트 실패 메시지에 실제 키가 찍힘). 기본 테스트는 실제 키·솔트를 볼 이유가 없다.
+    # 프로세스 환경변수에서 지우고, 저장소 .env도 읽지 않게 한다(worktree에는 .env가 없고 테스트는 그곳에서도 통과한다).
+    for _secret in ("OPENAI_API_KEY", "NEUMANN_PSEUDONYM_SALT"):
+        os.environ.pop(_secret, None)
+    try:
+        import neumann.config as _cfg
+
+        _cfg.Settings.model_config["env_file"] = None
+        _cfg.get_settings.cache_clear()
+    except Exception:  # noqa: BLE001 - 설정 모듈을 못 읽으면 막을 것도 없다
+        pass
+    try:
+        import neumann.index.settings as _ixs
+
+        _ixs.IndexSettings.model_config["env_file"] = None
+        _ixs.get_index_settings.cache_clear()
+    except Exception:  # noqa: BLE001
+        pass
 elif "astra" in os.getenv("NEUMANN_LLM_MODEL", "").lower() and os.getenv("NEUMANN_ALLOW_ASTRA", "").strip().lower() not in _TRUE:
     # astra 금지(대표 지시): 옛 프로세스 환경에 astra가 남아 있어도 라이브 테스트는 sol로 돈다
     os.environ["NEUMANN_LLM_MODEL"] = "gpt-6.1-sol"

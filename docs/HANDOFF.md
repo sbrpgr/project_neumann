@@ -34,6 +34,22 @@ PM이 병합할 때마다 갱신한다. Claude 한도가 다 되면 이 문서�
 - root는 위 최종 관문 PASS를 조건으로 main Git 반영을 승인했다. 현재 기존 root 제품 디스크를 보존하고 승인 뒤만 root를동일17c8058 내용으로detach, `out/codex/main-approved`에서main을작업한다. 실제 서비스 기동 코드 HEAD는 미확인이다. Git 성과는8020 배포가 아니다. 8010/8020/8099 재시작·종료·핫패치·tag·push·공개는 수행하지 않았다.
 - UI 후보ff7e474는 실제 mock HTTP UI 빌더d230073과 core894 결합이다. 병합 충돌0, 빌더의87 통과·3 건너뜀·1 deselect/반응형1은병합전범위이며 독립 UI/A11Y/QA/UXC 확인 대기다. E5 metrics 후보는최신core→P6c0 의미충돌을원owner가해결후 L3c41을다음합친다. public 후보는core기준준비만했고 SEC7/PERF/L2g/OPS 최종독립판정과원owner변경을기다린다.
 - 개발6.1-sol/독립6-sol, 실제 effort·실행·대기와확대편성은 대시보드 현재registry를 따른다. 과제 편성이 모두 실행 중이라는 뜻은 아니다. 최종 마감은 02:35 KST다. 대표 최신 지시로 개발은 02:25까지 계속하고, 02:25 새 기능 동결·작업자 체크포인트, 02:30 최종 Git·문서 점검, 02:35 docs/inbox/커밋 인수 종료를 완료한다. 안정된 핵심 수정과 좁은 독립 PASS가 확인되면 전체 세 번째 검사를 시작하며 뒤늦은 변경은 별도 후보로 분리한다.
+## ★ 07:00 완성 기준과 시간표 (대표 확정 03:3x, WBS: out/dashboard/plan_wbs.json) — 가장 최신
+1. main에 1·2·3단계 전체 흐름(입력 → 분석 → 재탄생 → 수정 확정·검증 → 최종 초안) 병합, 전체 verify + FIN-E2E 통과
+2. 실제 모델(gpt-6.1-sol)로 시연 샘플 2~3편 전체 흐름 성공
+3. 시연: 최종 형태 목업(8172) + 실제 서비스(8020) + 정적 판 폴백 + 녹화 러너
+4. 발표자료 최종 형태 → 07:00 동결 → 07:30 녹화 → 09:00 제출
+5. 공개 터널은 선택(PUB-A·B·C, SEC-8 필수 항목 통과 시)
+| 시각 | 할 일 |
+|---|---|
+| 03:00~04:15 | B1(서명 결합)·B2B3(dropped_reasons 500, baseline) |
+| 04:00~04:30 | VER-CORE·VER-FIN 판정 → **core-final(f54ef1d) + finalization(b629789) main 병합**(PM 예행: 2344 passed, 0 failed) |
+| ~05:15 | FIN-ENGINE·FIN-TOOLS·FIN-UI·WAIT-UX 완성 |
+| 04:30~06:00 | B1·B2B3 → INTEG-2 → FIN-* → WAIT-UX·E4-L1g 병합, 전체 verify |
+| 06:00 | 8020 재기동(main 최신, `OPENBLAS_NUM_THREADS=1 NEUMANN_LIVE_LLM_OK=1 NEUMANN_LLM_PROVIDER=openai NEUMANN_LLM_MODEL=gpt-6.1-sol`) |
+| 06:00~06:30 | 라이브 시연 샘플 2~3편 전체 흐름 |
+| 06:30~06:50 | 샘플 선별·사전 계산본·정적 판 |
+| 06:45~07:00 | 동결(REL-FIN 시트) |
 
 ## ★ Codex PM 작업 중 (2026-09-30 23:5x KST, 대표 즉시 착수 지시)
 
