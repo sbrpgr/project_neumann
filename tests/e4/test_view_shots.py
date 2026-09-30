@@ -5,6 +5,8 @@
 
 - 기본 pytest에서는 건너뛴다(브라우저·서버가 필요). ``NEUMANN_UI_SHOTS=1``일 때만 돈다.
 - 서버(uvicorn)는 하위 프로세스로 띄우고 끝나면 반드시 끈다. 포트 기본 8132(8010 금지).
+  서버에는 ``NEUMANN_LLM_PROVIDER=mock``을 주고 ``OPENAI_API_KEY``를 넘기지 않는다(실제 API 호출 없음).
+  파이프라인이 연결돼 있으면 서버 기본 흐름은 mock provider로 실제 색인을 돌고, 없으면 샘플을 돌려준다.
 - 화면 데이터: 공용 fixture 결과(가짜) + E3 규칙 경로로 만든 예상 심사평·체크리스트(LLM 호출 없음) +
   fixture 기록(works·reviews·decisions)으로 채운 결정. ``sample=True``라 화면에 샘플 표시가 남는다.
   이 뷰는 ``/premortem/view`` 응답을 가로채 넣는다(서버의 기본 샘플 흐름도 따로 한 번 찍는다).
@@ -97,7 +99,7 @@ def shoot(base: str, out: Path, prefix: str = "E4-L1c") -> dict:
                     status=200, content_type="application/json", body=body))
             page.fill("#ta", plan_text())
             page.click("#btnStart")
-            page.wait_for_function(REPORT_READY, timeout=60_000)
+            page.wait_for_function(REPORT_READY, timeout=300_000)
             page.evaluate("document.fonts.ready.then(() => true)")
             page.wait_for_load_state("networkidle")
             if view is not None:
@@ -112,11 +114,24 @@ def shoot(base: str, out: Path, prefix: str = "E4-L1c") -> dict:
         # 1) 서버 기본 흐름(샘플 응답 그대로)
         run_report(None)
         server_dom = page.evaluate("""() => ({
+          header: document.getElementById('hdrState').innerText,
           notice: (document.getElementById('statusNotice') || {}).innerText || '',
           map_rows: document.querySelectorAll('#s-map tbody tr:not(.tf)').length,
-          dist: !!document.getElementById('mapDist'),
+          dist: (document.querySelector('#mapDist .distl') || {}).innerText || '',
+          rows: Array.from(document.querySelectorAll('#s-map tbody tr:not(.tf)')).slice(0, 6).map(tr => tr.innerText.replace(/\\s+/g, ' ').trim()),
+          cards: document.querySelectorAll('#s-cards .rc').length,
+          card_gens: Array.from(document.querySelectorAll('#s-cards .rc .gen')).map(g => g.innerText),
+          records: (document.getElementById('traceRecords') || {}).innerText || '',
         })""")
-        snap("server_sample")
+        snap("server_default")
+        if server_dom["cards"]:
+            page.evaluate("document.getElementById('s-map').scrollIntoView({block: 'start'})")
+            snap("server_map")
+            page.click("#s-cards .ev .q >> nth=0")
+            page.wait_for_selector("#pbody #evQuote")
+            page.evaluate("document.getElementById('s-cards').scrollIntoView({block: 'start'})")
+            server_dom["panel"] = page.inner_text("#pbody")
+            snap("server_evidence")
 
         # 2) 풍부한 뷰: 평가이력 지도
         run_report(rich)
@@ -191,7 +206,7 @@ def shoot(base: str, out: Path, prefix: str = "E4-L1c") -> dict:
         "failed_requests": failed,
         "external_requests": external,
         "requests_total": len(requests),
-        "server_sample": server_dom,
+        "server_default": server_dom,
         "map": map_dom,
         "evidence": ev_dom,
         "evidence_next": next_k,
@@ -208,8 +223,12 @@ def check(r: dict) -> list[str]:
     for key in ("console_errors", "page_errors", "failed_requests", "external_requests"):
         if r[key]:
             bad.append(f"{key}: {r[key][:3]}")
-    if "샘플" not in r["server_sample"]["notice"]:
-        bad.append("서버 샘플 응답에 샘플 표시 없음")
+    sd = r["server_default"]
+    if "샘플" not in sd["notice"]:  # 파이프라인 연결: 카드마다 생성 방식, mock이면 패널에 표시
+        if len(sd["card_gens"]) != sd["cards"]:
+            bad.append("서버 응답 카드에 생성 방식 표시 없음")
+        if any("mock" in g for g in sd["card_gens"]) and "mock" not in sd.get("panel", ""):
+            bad.append("mock 결과인데 근거 패널에 표시 없음")
     ev = r["evidence"]
     if ev["quote"] != r["rich_ev1_quote"]:
         bad.append("패널 인용이 결과 원문과 다름")
@@ -240,7 +259,14 @@ def _run(port: int, out: Path) -> dict:
     from tests.e4.ui_shots import start_server, stop_server
 
     out.mkdir(parents=True, exist_ok=True)
-    proc = start_server(port)
+    saved = dict(os.environ)
+    os.environ.pop("OPENAI_API_KEY", None)  # 서버 하위 프로세스에 키를 넘기지 않는다
+    os.environ.update({"NEUMANN_LLM_PROVIDER": "mock", "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"})
+    try:
+        proc = start_server(port)
+    finally:
+        os.environ.clear()
+        os.environ.update(saved)
     try:
         return shoot(f"http://127.0.0.1:{port}", out)
     finally:

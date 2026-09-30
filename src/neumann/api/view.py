@@ -691,13 +691,13 @@ def _build_ev(ctx: _Ctx, card_fam_of: dict[str, int]) -> dict[str, dict[str, Any
         fam = card_fam_of.get(eid)
         if fam is None:
             fam = ctx.fam_for_code(code or "R?")
-        venue = _text(_get(e, "venue")) or (w or {}).get("venue", "")
+        rec = ctx.records
+        known = (rec.works.get(wid) if rec and wid else None) or {}
+        venue = _text(_get(e, "venue")) or (w or {}).get("venue", "") or known.get("venue", "")
         kind = SOURCE_KIND_KO.get(_text(_get(e, "source_kind", "kind")).lower(), "심사평")
         section = _text(_get(e, "section"))
         v = " · ".join(x for x in (venue, kind, section) if x)
         rv = _text(_get(e, "reviewer_pseudonym"))
-        rec = ctx.records
-        known = (rec.works.get(wid) if rec and wid else None) or {}
         raw_dec = _get(e, "work_decision", "decision")
         dec = (w or {}).get("d") or decision_label(raw_dec)
         if w is None and raw_dec is None and rec and wid in rec.decisions:
@@ -713,7 +713,7 @@ def _build_ev(ctx: _Ctx, card_fam_of: dict[str, int]) -> dict[str, dict[str, Any
             "fam": fam,
             "q": _text(_get(e, "text", "quote", "q")),
             "p": (w or {}).get("t") or _text(_get(e, "work_title", "paper_title", "p")) or known.get("title", "") or wid,
-            "v": v or known.get("venue", ""),
+            "v": v,
             "d": dec,
             "rt": _rating(rt_num) if rt_num is not None else _rating(raw_rt),
             "rv": rv if PSEUDONYM.match(rv) else "",
