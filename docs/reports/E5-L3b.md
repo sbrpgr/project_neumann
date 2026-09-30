@@ -6,6 +6,7 @@
   1. "즉시 마무리" → 짧은 보고서(`28a1472`)로 마감
   2. 철회 → 원래 과제를 끝까지
   3. PM 결정 → P2는 측정 전, 카드 한계 문구 백테스트 n=5, `e2e_cards` 이름표, 정식 보고서
+  4. PM 결정 → P6 시연도 P2와 같은 규칙. 약속 칸은 측정 전, 3/3은 "generator 미기록 실행" 참고 행(`5d59a82`)
 - `eval/report_card.py`는 처음 지시에서 수정 금지였다. 3번 PM 지시로 두 곳(한계 문구·이름표)만 고쳤다(`e9bcdbd`).
 
 ## 무엇을 했나
@@ -14,13 +15,13 @@
    - 지표:
      - 근거 연결률 `linkage_rate`, 카드 통과율 `card_pass_rate`, 폐기율 `drop_rate`(연결 요약 문자열의 `폐기율 a/b`)
      - 화면 카드 수 `e2e_cards`
-     - 실패 0으로 통과한 데모 수 `demo_e2e`(약속 P6)
+     - 실패 0으로 통과한 데모 수 `demo_e2e`(약속 P6). 통과 조건에 근거 연결 검사가 들어 있다. 그래서 연결 시스템이 미기록(참고)이면 이것도 참고 행으로 간다. detail은 "3/3; generator 미기록 실행"이다
    - 모델: `--model`은 필수다(요약에 모델 이름이 없다). 이번에는 `gpt-6-astra`로 적었다. `--product-model gpt-6.1-sol`을 주면 이 모델로 재지 않은 헤드라인 지표 4개를 값 null(= 측정 전) 행으로 적는다.
    - **연결 지표 3개의 시스템**은 연결 검사 실행의 카드 generator(`plans[*].linkage.card_generators`)로 정한다. `eval.report_card`의 연결 보고서 규칙과 같다.
 
      | generator 기록 | 시스템 | 약속 P2 |
      |---|---|---|
-     | 한 계획서라도 없음 | `Neumann 참고(검사 실행 generator 미기록, 약속 판정 제외)` | 측정 전(PM 결정) |
+     | 한 계획서라도 없음 | `Neumann 참고(검사 실행 generator 미기록, 약속 판정 제외)` | 측정 전(PM 결정). 시연 P6도 측정 전 |
      | astra만 | `neumann` | 채움 |
      | astra + rule | `neumann`(규칙 카드 수 병기) | 채움 |
      | rule만 | `neumann_rule` | 측정 전 |
@@ -63,7 +64,7 @@
 | P3 | 백테스트 Top-3 적중(hit@3) | ≥ 0.50 | 측정 전 | — | — | **측정 전** | — |
 | P4 | 표본 연결 | ≥ 300편 | 측정 전 | — | — | **측정 전** | — |
 | P5 | 원문 링크 | 100% | 측정 전 | — | — | **측정 전** | — |
-| P6 | 대표 계획 end-to-end 시연 | 3건 | 3 (3/3) | 없음 | 3 | **달성** | E5-L3b_metrics_e2e.json |
+| P6 | 대표 계획 end-to-end 시연 | 3건 | 측정 전 | — | — | **측정 전** | — |
 
 - 참조선:
   - 사람 간 상한 0.725 [0.669, 0.772]
@@ -72,6 +73,7 @@
   - 근거 연결률 1.0 (43/43; 10/10 · 13/13 · 20/20)
   - 카드 통과 1.0 (12/12)
   - 폐기율 0.0034 (7/2033; 1/643 · 2/701 · 4/689)
+  - 대표 계획 시연 3 (3/3; generator 미기록 실행)
 - 같은 지표의 `Neumann (astra)` 행은 "측정 전 · 입력 없음"이다.
 - 평가 모델과 제품 모델:
   - `Neumann (astra)`의 astra는 평가 모델 gpt-6-astra다.
@@ -91,7 +93,7 @@ linkage_rate    Neumann 참고(검사 실행 generator 미기록, 약속 판정 
 card_pass_rate  Neumann 참고(검사 실행 generator 미기록, 약속 판정 제외) 1.0      12/12; plan.md 3/3 · plan_elife_neuro.md 4/4 · plan_medimaging.md 5/5
 drop_rate       Neumann 참고(검사 실행 generator 미기록, 약속 판정 제외) 0.0034   7/2033; plan.md 1/643 · plan_elife_neuro.md 2/701 · plan_medimaging.md 4/689
 e2e_cards       neumann                                  13       plan.md 5 · plan_elife_neuro.md 3 · plan_medimaging.md 5
-demo_e2e        all                                      3        3/3
+demo_e2e        Neumann 참고(검사 실행 generator 미기록, 약속 판정 제외) 3        3/3; generator 미기록 실행
 macro_f1        Neumann 제품 기본 모델(gpt-6.1-sol)            None
 linkage_rate    Neumann 제품 기본 모델(gpt-6.1-sol)            None
 drop_rate       Neumann 제품 기본 모델(gpt-6.1-sol)            None
@@ -127,17 +129,20 @@ $ python -m pytest tests/e5/test_metrics_from_e2e.py tests/e5/test_report_card.p
 | mock 허용 | 1 failed |
 | rule만인데 neumann으로 | 1 failed |
 | 일부만 미기록이면 무시 | 1 failed |
+| (P6) 미기록인데 시연을 `all`로 | 5 failed |
+| (P6) 기록됐는데 시연을 참고로 | 7 failed |
+| (P6) "generator 미기록 실행" 표기 빠짐 | 3 failed |
 
 ### ② 리포트 카드 재생성
 
 ```
 $ python -m eval.report_card --inputs $D/score_baseline_freq.json $D/score_astra.json $D/score_rule.json docs/reports/E5-L3b_metrics_e2e.json --out docs/reports/report_card.md
 - 목표 미달 1건: P1 지적 추출 Macro-F1
-- 측정 전 4건: P2 근거 연결률 (폐기율 병기), P3 백테스트 Top-3 적중(hit@3), P4 표본 연결, P5 원문 링크
+- 측정 전 5건: P2 근거 연결률 (폐기율 병기), P3 백테스트 Top-3 적중(hit@3), P4 표본 연결, P5 원문 링크, P6 대표 계획 end-to-end 시연
 리포트 카드: docs\reports\report_card.md
 ```
 
-- 카드 머리: 코드 커밋 `24b122a`(변환기·카드 코드 최종판).
+- 카드 머리: 코드 커밋 `5d59a82`(변환기·카드 코드 최종판). 카드에 "달성" 판정은 0건이다.
 - 카드 7절에 적힌 입력 sha256:
 
   | 파일 | sha256 |
@@ -145,7 +150,7 @@ $ python -m eval.report_card --inputs $D/score_baseline_freq.json $D/score_astra
   | `score_baseline_freq.json` | `e9b7e44c…` |
   | `score_astra.json` | `c409bed9…` |
   | `score_rule.json` | `b6d90596…` |
-  | `E5-L3b_metrics_e2e.json` | `68ac15ea…` |
+  | `E5-L3b_metrics_e2e.json` | `ed6e204a…` |
 
   `sha256sum`으로 잰 값과 같다.
 - 한계 4번은 n=5 문구다. 상세 표에 "(기타)"가 없다. `라이브 E2E 화면 위험카드 수 (데모 계획서 합) | Neumann (astra) | 13 (…)`이다.
@@ -163,13 +168,13 @@ $ python -m eval.report_card --inputs $D/score_baseline_freq.json $D/score_astra
 ### ③ 한 장 요약
 
 - `docs/reports/metrics_summary.md`에 있는 소수는 모두 score JSON 3개, 라이브 요약, 참조선 0.725 [0.669, 0.772], 목표값에서 온다. 스크립트로 대조했고, 남은 것은 절 번호 `§1.2`·`§2.2`뿐이다.
-- PM 결정 반영: P2는 "측정 전" 행에 있다. 43/43·12/12·7/2033은 3절 "참고"에 있다. README 블록도 "근거 연결률: 측정 전(참고: …)"이다. 백테스트는 "계획 n=5"로 적었다.
+- PM 결정 반영: P2·P6은 "측정 전" 행에 있다. 43/43·12/12·7/2033과 시연 3/3(generator 미기록 실행)은 3절 "참고"에 있다. README 블록도 둘 다 "측정 전(참고: …)"이다. 백테스트는 "계획 n=5"로 적었다.
 
 ### verify
 
 ```
 $ python scripts/verify.py        # _COMMON.md 환경변수 + NEUMANN_LLM_PROVIDER=mock
-1202 passed, 27 skipped in 102.84s (0:01:42)
+1202 passed, 27 skipped in 109.23s (0:01:49)      (P6 반영 뒤 재실행)
 보안: 파일 406개
 계약: 2개
 테스트: 통과
@@ -194,8 +199,12 @@ verify 통과
    - 연결 검사는 화면 실행과 별도로 같은 계획서를 `/premortem`으로 다시 돌린 결과에서 쟀다(E5-L0e2e 결정 1). 요약에 그 실행의 카드 generator가 없다.
    - 처음에는 Neumann 칸에 넣고 "generator 미기록"을 병기했다(`ef60c99`). PM 결정에 따라 참고 행으로 옮겼다(`24b122a`).
    - 규칙은 연결 보고서 경로의 `unknown_generator`와 같은 원칙이다. 한 계획서라도 기록이 없으면 합계 전체를 참고로 둔다. 일부만 약속 칸에 넣지 않는다.
-   - v1 라이브(E5-L1e2e)가 `linkage.card_generators`를 기록하면 같은 변환기로 P2가 채워진다(테스트로 고정).
-2. **P6은 그대로 달성.** 시연 통과 조건에 근거 연결 1.0 검사가 들어 있고, 그 검사 실행의 generator는 미기록이다. PM 결정은 P2만 측정 전이라, P6은 E2E 테스트 통과 수로 두었다. 카드 P6 조건 칸에는 통과 조건에 "근거 연결 1.0 검사"가 들어 있다고 적혀 있다. generator 미기록 사실은 요약 4절 4번에 적었다. PM이 P6도 같은 원칙으로 보려면 알려 주면 된다.
+   - v1 라이브(E5-L1e2e)가 `linkage.card_generators`를 기록하면 같은 변환기로 P2·P6이 채워진다(테스트로 고정).
+2. **P6 시연도 측정 전(PM 결정, 두 번째).**
+   - 처음에는 E2E 테스트 통과 수로 달성에 두고 PM 판단을 요청했다(`22f3b2c`까지).
+   - PM이 P2와 같은 규칙으로 정해 `5d59a82`에서 바꿨다.
+   - 연결 시스템이 참고(미기록)면 `demo_e2e`도 참고 행으로 간다. detail은 "3/3; generator 미기록 실행"이고, 한계 칸 머리에 "generator 미기록 실행: … 약속 P6 판정에 쓰지 않는 참고값"을 적는다.
+   - generator가 기록된 결과는 `all`로 P6을 채운다. rule만 있거나 mixed여도 시연 수는 채운다. 시연은 끝까지 도는지를 재는 지표이고, generator 구성은 P2 쪽에서 드러나기 때문이다.
 3. **근거 연결률은 합계 한 행 + 계획서별 detail.** 카드는 (지표, 시스템)당 한 행이다. 발표에는 계획서별 값을 "참고"로 쓰라고 적었다(E6-pres2 검증 권고와 같다).
 4. **제품 모델 행.** 카드 코드에 모델 칸이 없다. 그래서 `system` 문자열 "Neumann 제품 기본 모델(gpt-6.1-sol)"로 null 행을 두어 구분했다. 숫자는 만들지 않았다. 참고 행도 같은 방식이다(system 문자열).
 5. **`card_generators` 키 이름.** v1 요약 형식이 아직 없다. 그래서 `eval.linkage.LinkageReport`의 필드 이름(`card_generators`)을 `plans[*].linkage` 아래에서 읽는다고 정했다. E5-L1e2e가 다른 이름을 쓰면 변환기 한 줄을 고치면 된다.
@@ -213,13 +222,13 @@ verify 통과
 
 - **E5-L1e2e(v1 라이브, sol):**
   - `tests/e2e` 요약의 `plans[*].linkage`에 `card_generators`(와 `result_status`)를 기록할 것.
-  - 그다음 아래 명령을 돌리면 P2가 채워진다.
+  - 그다음 아래 명령을 돌리면 P2·P6이 채워진다.
     - `python scripts/metrics_from_e2e.py --summary <v1 요약> --model gpt-6.1-sol --out <json>`
     - `python -m eval.report_card …`
   - 이때 `--product-model`은 주지 않는다. 평가 모델이 곧 제품 모델이기 때문이다.
 - **E5 백테스트:** n=5 결과를 `neumann.metrics/1`(`bt_*`)로 내면 카드에 바로 들어간다. 셔플이 없으므로 `bt_specificity`는 null로 둔다.
 - **E5 `eval/report_card.py`(선택):** generic 입력에 `model`·`promise_note`를 받는 길을 두고, 재현 절에 generic 입력의 생성 명령(`source`)을 싣는 것.
-- **E6 발표 12쪽:** 근거 연결 칸은 "측정 전"으로 둔다. 쓰려면 "참고 10/10 · 13/13 · 20/20, 폐기율 0.34%"로 적는다. 모델 표기는 요약 4절 5번을 따른다.
+- **E6 발표 12쪽:** 근거 연결·시연 칸은 "측정 전"으로 둔다. 쓰려면 "참고 10/10 · 13/13 · 20/20, 폐기율 0.34%", "참고 시연 3/3(generator 미기록 실행)"으로 적는다. 모델 표기는 요약 4절 5번을 따른다.
 
 ## 커밋
 
@@ -237,4 +246,7 @@ verify 통과
 | `24b122a` | P2: generator 미기록이면 참고 행(PM 결정) + 테스트 26개 + 변환 결과 재생성 |
 | `5436be9` | 카드 재생성(P2 측정 전) |
 | `49f64fc` | 한 장 요약 갱신 |
-| (이 커밋) | 이 보고서 |
+| `22f3b2c` | 정식 보고서(P2 결정 반영판) |
+| `5d59a82` | P6도 같은 규칙: generator 미기록이면 참고 행(PM 결정) + 테스트·변환 결과 |
+| `9fbff73` | 카드 재생성(P6 측정 전, 달성 0) |
+| (이 커밋) | 한 장 요약·이 보고서 갱신(P6) |
