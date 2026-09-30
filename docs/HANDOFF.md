@@ -11,6 +11,20 @@ PM이 병합할 때마다 갱신한다. Claude 한도가 다 되면 이 문서�
 | ~08:30 | 발표자료(키트 `발표자료/본선_발표자료.pptx`) 빈칸 10·11·12·13쪽 + 주소·영상 채우기 |
 | 09:00 전 | PDF 저장과 제출 |
 
+## Codex PM이 20:00에 이어받으면 할 일 (순서대로)
+
+1. `docs/tasks/QUEUE.md` 최신 현황 요약을 읽는다. 검증 보고서(`docs/reports/<ID>.verify.md`)가 PASS인데 main에 없는 브랜치를 병합한다(`git merge --no-ff task/<ID>`, 검증 보고서도 커밋). PASS-조건부는 조건이 해소된 커밋이 있을 때만
+2. **E3-L0**(v0 핵심): SEC-1 S-04·S-05 수정 커밋이 있고 검증 PASS면 병합. 검증이 없으면 `bash scripts/codex_task.sh verify E3-L0`(sol)
+3. **v0 통합**: main에서 ① 파이프라인에 적합성(E3-L1c `assess_fitness`, 부적합이면 카드 0장·사유)·예상 심사평(E3-L1a `attach_expected_review(result, provider_llm_call(...))`)·체크리스트·2차 검증(E3-L1b `attach_checklist`·`attach_validation`) 연결(E3 소유 `pipeline.py`) ② `python scripts/verify.py` ③ 8010 서버를 main 체크아웃에서 재시작(지금은 `C:/Users/User/Desktop/pn_integ` 통합 worktree에서 떠 있음) ④ 데모 3건 실제 실행 + `eval.linkage.check_result` ⑤ 태그 `v0`(연결분까지 되면 `v1`) + push
+4. 사전 계산본을 실제 파이프라인으로 재생성: `python scripts/precompute_demo.py --source pipeline` → 정적 폴백 재빌드(`scripts/build_static_site.py`)
+5. Claude 빌더가 끊겨 미완인 브랜치는 `bash scripts/codex_task.sh build <ID>`로 이어서(기존 worktree를 자동으로 찾는다), 끝나면 `verify <ID>`(sol)
+6. **하지 않는 것**: 평가 판정(21:40 뒤 Claude), 터널 공개(E4-L2c 비용 방어선 병합·확인 전 금지), 키트 원본 수정
+
+## 21:40 이후: Claude·Codex 두 레인 동시 (대표 결정)
+
+- 병합은 PM 한 명(21:40 뒤 Claude PM). 검증은 빌더와 다른 모델(Codex 빌드 → Claude Sonnet 검증 가능)
+- 레인 나누기(소유 경로가 겹치지 않게): **Claude 레인** = E3 파이프라인·예상 심사평 연결, E4 화면, 백테스트 판정(Claude 전용), 발표자료. **Codex 레인** = E1-L1c(eLife 코퍼스 합치기 제안 반영), E2-L1·E2-L3(색인), 사전 계산본·정적 판·시연 영상(E6), 문서(E6-docs)
+
 ## 교대 일정 (대표 지시 2026-09-30)
 
 - **20:00 Claude → Codex 교대.** Codex PM(`gpt-6-astra`)이 21:40까지 진행한다. **21:40 Claude 5시간 창 초기화 뒤 Claude가 되받는다.** 되받을 때도 이 문서와 `docs/tasks/QUEUE.md`로 한다.
