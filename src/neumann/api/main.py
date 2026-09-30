@@ -39,6 +39,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
 import neumann
+from neumann.api.plan_limits import PlanLimitError, check_plan_text
 from neumann.api.view import SAMPLE_LABEL, build_ui_view
 
 log = logging.getLogger("neumann.api")
@@ -309,6 +310,10 @@ def _llm_state() -> dict[str, Any]:
 
 @app.post("/premortem")
 async def premortem(req: PremortemRequest) -> JSONResponse:
+    try:
+        check_plan_text(req.plan_text)
+    except PlanLimitError as exc:
+        return JSONResponse(exc.detail, status_code=exc.status_code)
     fn, state, reason = _load_pipeline()
     if fn is None and state == "unavailable":
         return JSONResponse(_sample_result(reason))
@@ -325,6 +330,10 @@ async def premortem(req: PremortemRequest) -> JSONResponse:
 
 @app.post("/premortem/view")
 async def premortem_view(req: PremortemRequest) -> JSONResponse:
+    try:
+        check_plan_text(req.plan_text)
+    except PlanLimitError as exc:
+        return JSONResponse(exc.detail, status_code=exc.status_code)
     t0 = time.perf_counter()
     info = _input_info(req)
     fn, state, reason = _load_pipeline()

@@ -36,6 +36,7 @@ from fastapi import APIRouter, Body, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from neumann.api.view import display_generator, display_text
+from neumann.api.plan_limits import PlanLimitError, check_embedded_plan, check_payload_plan, check_plan_text
 from neumann.models import (
     SCHEMA_VERSION,
     Excerpt,
@@ -217,6 +218,10 @@ def _make_ctx(
     plan_text: str | None,
     decisions: Sequence[DecisionEntry | Mapping[str, Any]] | None,
 ) -> _Ctx:
+    if result.plan is not None:
+        check_embedded_plan(result.plan.lines)
+    if plan_text is not None:
+        check_plan_text(plan_text)
     warnings: list[str] = []
     plan: PlanDocument | None
     if result.plan is not None:
@@ -834,6 +839,7 @@ def build_package_files(
 ) -> dict[str, bytes]:
     """9개 파일 {이름: 바이트}(FILE_NAMES 순서). 입력이 계약을 어기면 ValueError(ValidationError 포함)."""
     if not isinstance(result, PremortemResult):
+        check_payload_plan({"result": result, "plan_text": plan_text})
         result = PremortemResult.model_validate(result)
     c = _make_ctx(result, plan_text, decisions)
     files: dict[str, bytes] = {
@@ -865,6 +871,7 @@ def build_package(
     - created_at: 패키지 생성 시각(manifest). 없으면 지금. 넘기면 출력 전체가 결정적이다.
     """
     if not isinstance(result, PremortemResult):
+        check_payload_plan({"result": result, "plan_text": plan_text})
         result = PremortemResult.model_validate(result)
     files = build_package_files(result, plan_text=plan_text, decisions=decisions, created_at=created_at)
     ts = result.generated_at.astimezone(UTC)
@@ -895,6 +902,11 @@ def package_limit_refusal(
     감싼 결과와 bare result 모두 검사한다. 잘못된 자료형은 기존 스키마 검증에 맡기고 입력은 되돌려 주지 않는다.
     """
     from neumann.api.serving import count_lines, user_message
+
+    try:
+        check_payload_plan(payload, max_lines=max_plan_lines)
+    except PlanLimitError as exc:
+        return exc.status_code, exc.detail["error_code"], exc.message
 
     def plan_refusal(chars: int, lines: int) -> tuple[int, str, str] | None:
         if chars > max_plan_chars:

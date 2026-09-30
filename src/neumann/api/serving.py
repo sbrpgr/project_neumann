@@ -60,6 +60,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from neumann.api.plan_limits import PlanLimitError, check_payload_plan
+
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
@@ -1717,6 +1719,7 @@ class ServingMiddleware:
                     return
         if ctx.mode == "analysis":
             plan_text: str | None = None
+            payload = None
             try:
                 payload = json.loads(body) if body else None
                 if isinstance(payload, dict) and isinstance(payload.get("plan_text"), str):
@@ -1728,6 +1731,11 @@ class ServingMiddleware:
                 srv.counters["too_large_413"] += 1
                 await reply(413, _err("too_large", user_message("too_large", limit=cfg.max_plan_chars, chars=ctx.chars),
                                       ticket))
+                return
+            try:
+                check_payload_plan(payload, max_lines=cfg.max_plan_lines)
+            except PlanLimitError as exc:
+                await reply(exc.status_code, _err(exc.detail["error_code"], exc.message, ticket))
                 return
             # 공백 없는 긴 토큰은 plan_key(이메일 정규식이 O(n²))·파이프라인을 부르기 전에 거절한다(E4-L2d 재작업).
             # 검사는 str.split(선형)뿐이고, plan_key(해시·정규식)는 이벤트 루프 밖(스레드)에서 계산한다.

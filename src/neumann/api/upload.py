@@ -44,6 +44,7 @@ from python_multipart.multipart import MultipartParser, parse_options_header
 from starlette.concurrency import run_in_threadpool
 
 from neumann.models import normalize_text
+from neumann.api.plan_limits import PlanLimitError, prepare_upload_text
 
 PlanKind = Literal["txt", "md", "pdf", "docx"]
 
@@ -505,6 +506,10 @@ def _clean(text: str, *, collapse_blank: bool) -> str:
 
     pdf·docx는 연속 빈 줄을 하나로 줄인다. txt·md는 사용자가 쓴 줄 구조를 그대로 둔다.
     """
+    try:
+        text = prepare_upload_text(text, collapse_blank=collapse_blank)
+    except PlanLimitError as exc:
+        raise UploadRejected(exc.status_code, exc.message) from None
     text = normalize_text(text).translate(_CONTROL_TO_NEWLINE)
     text = _CONTROL_RE.sub("", text)
     text = "\n".join(line.rstrip() for line in text.split("\n"))

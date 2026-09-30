@@ -55,6 +55,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
 from neumann.api import serving
+from neumann.api.plan_limits import PlanLimitError, check_plan_text
 from neumann.api.view import build_ui_view
 
 log = logging.getLogger("neumann.jobs")
@@ -310,6 +311,10 @@ class JobStore:
         """
         cfg = self.srv.config
         text = req.plan_text
+        try:
+            check_plan_text(text, max_lines=cfg.max_plan_lines)
+        except PlanLimitError as exc:
+            return _json(serving._err(exc.detail["error_code"], exc.message, ctx.ticket), exc.status_code)
         if len(text) > cfg.max_plan_chars:  # serving과 이중: 파서 차이 등으로 미들웨어가 못 봤어도 여기서 막는다
             self.srv.counters["too_large_413"] += 1
             return _json(serving._err("too_large", serving.user_message("too_large", limit=cfg.max_plan_chars,
