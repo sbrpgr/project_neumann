@@ -10,6 +10,7 @@ import json
 from typing import Any
 
 from neumann.analyze.gate import extract_numbers
+from neumann.analyze.assemble import _content_words
 from neumann.analyze.pii import mask_pii
 from neumann.analyze.revise import (
     CONTROL_RE, UNSAFE_MARKUP_RE, contains_identity, unsupported_facts, written_numbers,
@@ -239,6 +240,11 @@ def finalize_plan(plan_text: str, *, result=None, provider=None, checks=None,
             reason = "invalid_line"
         else:
             reason = _text_problem(replacement, lines[no - 1])
+            # Existing conservative polish vocabulary gate: do not introduce new scientific
+            # content merely because it escaped numeric/entity regular expressions. Unknown
+            # researcher facts can be expressed only inside explicit confirmation placeholders.
+            if not reason and _content_words(replacement) - _content_words(lines[no - 1]):
+                reason = "unsupported_content"
         touched.add(no)
         applied = not reason and replacement != lines[no - 1]
         output["corrections"].append({"line": no, "before": lines[no - 1],

@@ -9,7 +9,9 @@ and at most one targeted local recheck. No retrieval or iterative semantic calls
 assessment/correction stops subsequent work and returns incomplete with the accepted source retained.
 Rejected edits retain the original line and report reason. New line-local numbers, existing unsupported-fact
 patterns, identity, PII, unsafe markup and control characters are rejected. Source quotations are attached
-from source lines by code; the assessment model emits source IDs only. `result` is accepted for API
+from source lines by code. The existing conservative polish content-word gate also blocks newly
+introduced scientific content; unknown commitments require explicit confirmation placeholders.
+The assessment model emits source IDs only. `result` is accepted for API
 compatibility but is not treated as authority for new scientific or numeric commitments.
 
 The return carries finalization@v1, PlanDocument-compatible input/output hashes, source/final text,

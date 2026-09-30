@@ -48,6 +48,7 @@ def test_safe_edit_preserves_line_ids_and_semantic_residual():
 def test_numbers_entities_pii_markup_and_wrong_anchors_are_rejected():
     for after, reason in [("100명을 검토한다.", "unsupported_number"),
                           ("서울대학교에서 검토한다.", "unsupported_fact"),
+                          ("치료 효과를 입증한다.", "unsupported_content"),
                           ("a@example.com에 연락한다.", "pii_or_identity"),
                           ("<script>검토</script>", "unsafe_markup")]:
         out = finalize_plan("방법을 검토한다.", provider=provider([edit(after)]))
