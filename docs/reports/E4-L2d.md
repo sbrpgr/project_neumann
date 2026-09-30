@@ -3,6 +3,49 @@
 - 빌더: Claude Opus 5.5 · 검증 예정: Claude Sonnet 5.5 · 브랜치 `task/E4-L2d`(`task/E4-L2c` 위에서 시작, 시작 때 `main` 병합 1회, 충돌 없음)
 - 스펙: PM 배정 지시(과제 파일 없음). 배경: cloudflared quick tunnel은 응답을 약 100초에서 끊는다(524). 분석 1건 60~70초라 대기열에서 기다리면 넘는다.
 
+## 재작업 2(E4-L2c 재검증 PASS-조건부 대응, 이 브랜치가 L2c를 포함)
+
+근거: main 체크아웃 `docs/reports/E4-L2c.verify.md` "재검증 (83754ff)". 모든 명령 `NEUMANN_LLM_PROVIDER=mock`, `git stash` 안 씀.
+
+| # | 지시 | 한 일 | 확인 |
+|---|---|---|---|
+| 1 | 최신 main 병합(E4-L1f 포함), 업로드 4xx 본문 | `git merge main`(충돌 없음, `2b305d3`). serving `_finish`가 4xx 본문에 `request_id`를 덧붙이던 것을 **업로드 경로에서는 하지 않는다**(앱 본문 모양 그대로, 요청 번호는 `X-Neumann-Ticket` 헤더). 분석 경로 4xx는 그대로 본문에도 싣는다. E4-L1f 테스트 파일은 안 고침 | `test_upload_4xx_body_is_the_apps_own_shape`(hwp 415 본문이 정확히 `{"detail": HWP_MESSAGE}`), 패치 적용 사본의 `tests/e4/test_webui_upload.py` 전부 통과(아래) |
+| 2 | `scripts/serve.py` cp949 | `main()` 첫머리에서 stdout·stderr를 `reconfigure(encoding="utf-8", errors="replace")` | `test_serve_py_survives_cp949_redirected_stdout`(`PYTHONIOENCODING=cp949`로 파일에 돌려 `--public --dry-run` → 종료 코드 2·문구 기록). 고치기 전 판은 같은 조건에서 `UnicodeEncodeError`, 종료 코드 1(직접 재현) |
+| 3 | 본문 파싱 전 IP별 사전 속도 검사 | 분석 경로(`/premortem`·`/premortem/view`·`/premortem/jobs`) POST는 **본문을 읽기 전에** IP(/64)별 `NEUMANN_PREPARSE_PER_MIN`(공개 60, 개발 끔) 검사 → 넘으면 429. 그다음 바이트 상한 → 파싱 → 글자 상한 → 긴 토큰 422 → `plan_key`(스레드) → 관문 | `test_preparse_rate_limit_runs_before_body_parse_and_hash`(상한 3: 네 번째는 잘못된 JSON 4만 바이트여도 429, `plan_key` 호출 수 그대로, 다른 IP는 202) |
+| 4 | slowloris(참고) | 구현 안 함. 아래 "남은 위험" | — |
+
+검증 보고의 재현(프로세스 안, 차단 스위치 ON, 서로 다른 IP 8건 동시 `"a"*49000`, jobs·/view 반반):
+
+```
+8건 동시(차단 ON, 'a'*49000): [(422, 'long_token')] 전체 0.313s
+/health 20회 최장 16.0ms, 중앙 0.0ms          (검증 보고: 13.9초·/health 최대 10.5초)
+(참고) 상한 경계 20,000자 한 토큰 plan_key 0.281s   (스레드에서 계산)
+```
+
+패치 적용 순서·확인(HEAD `git archive` 사본): `E4-L2c_main.patch` → `E4-L2d_main.patch` 둘 다 `git apply --check` 통과 후 적용. 패치 파일은 바뀌지 않았다.
+
+```
+$ git archive HEAD → git apply --check/apply E4-L2c_main.patch → E4-L2d_main.patch
+PATCHES: L2c→L2d check+apply OK
+$ NEUMANN_LLM_PROVIDER=mock python -m pytest -q        # 패치 적용 사본, 최신 main(E4-L1f 포함)
+1207 passed, 26 skipped in 100.34s          (0 failed: test_webui_upload.py의 hwp·hwpx 415 포함)
+```
+
+```
+$ NEUMANN_LLM_PROVIDER=mock python scripts/verify.py   # worktree
+1207 passed, 26 skipped in 97.70s
+보안: 파일 410개
+계약: 2개
+테스트: 통과
+verify 통과
+```
+
+### 남은 위험(재작업 2 기준)
+
+- **본문 읽기 시간 제한 없음(slowloris)**: 미들웨어가 본문을 끝까지 받을 때까지 기다린다. 반쯤 보낸 연결을 오래 붙잡아도 서버가 끊지 않는다(게이트 자리는 쓰지 않고 `/health`도 정상, 검증 실측). cloudflared·Cloudflare 엣지가 요청을 모아 보내므로 공개 경로에서는 완화되지만, 서버가 127.0.0.1에만 바인딩돼 있어야 한다. 필요하면 미들웨어 수신 루프에 `asyncio.wait_for(receive(), 본문 시간 상한)`을 넣는다.
+- **이메일 정규식**: 토큰 상한(2만 자) 경계에서 `plan_key`가 약 0.28초(스레드)다. 4만~5만 자 안에 2만 자 토큰 두 개를 넣으면 요청 하나에 약 0.5초 CPU를 쓴다. 사전 속도 검사(분당 60/IP)가 상한을 두지만 IP를 바꾸는 공격은 못 막는다. 근본 수정은 SEC-4(선형 email_spans).
+- 큰 IPv6 대역(/56·/48)을 가진 공격자는 /64 통을 여러 개 쓴다. 실제 상한은 게이트 처리량이다(검증 권고 3).
+
 ## 재작업(검증 PASS-조건부 대응 · 대표 지시 "여러 명이 동시에" · PM 조정)
 
 검증 보고서 `docs/reports/E4-L2d.verify.md`(main 체크아웃)의 고칠 것 1~3·권고 4·5와 이후 지시 두 건을 반영했다. 모든 명령은 `NEUMANN_LLM_PROVIDER=mock`, 실제 OpenAI·bge-m3 호출 0회, `git stash` 안 씀.
@@ -37,6 +80,7 @@
 | `NEUMANN_JOB_TTL_S` / `NEUMANN_JOB_TIMEOUT_S` / `NEUMANN_JOB_POLL_S` | 900 / 900 / 1.5 | 같음 | 보관·작업 시간 상한·폴링 간격 |
 | `NEUMANN_MAX_TOKEN_CHARS` | 20000 | 20000 | 공백 없는 토큰 한 개 상한(422) |
 | `NEUMANN_REQUEST_TIMEOUT_S` | 90 | 300 | 동기 경로 시간 상한(L2c) |
+| `NEUMANN_PREPARSE_PER_MIN` | 60 | 0 | 본문 파싱 전 IP별 분석 경로 POST(재작업 2) |
 
 - 같은 공유기(행사장 와이파이 NAT)의 여러 사람은 한 IP로 보인다. 그때는 IP당 활성 작업 3·분당 6이 좁을 수 있으니 `NEUMANN_JOB_PER_IP`·`NEUMANN_JOB_RATE_PER_MIN`·`NEUMANN_RATE_PER_MIN`을 올린다.
 
