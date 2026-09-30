@@ -935,9 +935,11 @@ def build_ui_view(
     try:
         if records is AUTO:
             records = None if sample else default_records()
-        return _build(result, filename=filename, sample=sample, pipeline_state=pipeline_state, error=error,
+        view = _build(result, filename=filename, sample=sample, pipeline_state=pipeline_state, error=error,
                       input_info=input_info, extra_notices=list(extra_notices),
                       records=records if isinstance(records, RecordLookup) else None)
+        _attach_result(view, result, sample=sample, error=error)
+        return view
     except Exception as exc:  # noqa: BLE001 - 마지막 방어선: 빈 뷰 + 오류 상태
         view = empty_view()
         view["_status"] = _status_block(
@@ -945,6 +947,37 @@ def build_ui_view(
             error=error or f"화면 데이터 조립 실패: {type(exc).__name__}", notices=list(extra_notices),
             input_info=input_info)
         return view
+
+
+def export_result(result: Any) -> tuple[dict[str, Any] | None, str | None]:
+    """내보내기(``POST /premortem/package``)에 그대로 넘길 원결과(E4-L2f). 실패하면 ``(None, 사유)``.
+
+    ``PremortemResult`` 계약으로 검증한 뒤 계약 필드만 JSON으로 되돌린다(모델이 extra=forbid라 설정·경로·키 같은
+    계약 밖 값은 실리지 않는다). 값은 화면과 같다: 계획서 줄·인용·카드는 결과 값 그대로이고, 계획서의 이메일·ORCID는
+    분석 입구(``PlanDocument``)에서 이미 가려졌다. 화면이 이 값을 들고 있다가 내보내기 때 보내므로 재분석이 없다.
+    """
+    try:
+        from neumann.models import PremortemResult
+
+        res = result if isinstance(result, PremortemResult) else PremortemResult.model_validate(_as_dict(result))
+        return res.model_dump(mode="json"), None
+    except Exception as exc:  # noqa: BLE001 - 화면은 그대로 그리고, 내보내기만 막는다
+        return None, f"원결과가 계약(PremortemResult)과 맞지 않음: {type(exc).__name__}"
+
+
+def _attach_result(view: dict[str, Any], result: Any, *, sample: bool, error: str | None) -> None:
+    """뷰에 ``result``(원결과 또는 None)와 ``_status.export``(실렸는지·사유)를 붙인다. 계약(ui_view)은 추가 필드를 허용한다."""
+    data: dict[str, Any] | None = None
+    if sample:
+        reason: str | None = "샘플 데이터라 원결과를 싣지 않음"
+    elif error or not result:
+        reason = "분석 결과 없음"
+    elif view.get("_status", {}).get("contract_ok") is False:
+        reason = "화면 계약을 어긴 결과라 싣지 않음"
+    else:
+        data, reason = export_result(result)
+    view["result"] = data
+    view.setdefault("_status", {})["export"] = {"result": data is not None, "reason": reason}
 
 
 def _status_block(*, sample: bool, pipeline_state: str, result_status: str | None, error: str | None,
