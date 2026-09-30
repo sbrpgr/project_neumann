@@ -57,7 +57,7 @@ Python `C:/Users/User/.venvs/neumann/Scripts/python.exe`. 모든 표적 시험·
 @@ -1068,6 +1069,12 @@
  # ── 공개 함수 ─────────────────────────────────────────────────────────────
 
- 
+
 +def _guard_export_plan(result: Any, plan_text: str | None) -> None:
 +    check_payload_plan({"result": result, "plan_text": plan_text})
 +    if isinstance(result, PremortemResult) and result.plan is not None:
