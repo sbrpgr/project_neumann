@@ -2,7 +2,14 @@
 
 PM이 병합할 때마다 갱신한다. Claude 한도가 다 되면 이 문서를 Codex에 주고 PM 역할을 넘긴다.
 
-## 지금 상태 (2026-09-30 18:35)
+## 지금 상태 (2026-09-30 18:30, PM 세션 "로컬 세팅"이 이어받음)
+
+- PM이 `AGENTS.md`를 개정 계획서에 맞춤(push는 주요 에픽마다, HANDOFF 병합마다 갱신, 인계 뒤 astra→sol 검증, astra 주력), 패키지 골격(`src/neumann/{sources,index,analyze,api}/__init__.py`, `eval/__init__.py`)과 pytest `pythonpath` 추가
+- 과제 지시문: `docs/tasks/_COMMON.md`(공통) + W1 1차 `E0b`(모델·설정·fixture) · `E1-L0`(코퍼스) · `E4-L0`(API·화면) · `E5-L1a`(DISAPERE 골드·Macro-F1)
+- 진행 중 빌더: 위 4건(Claude Opus 5.5, worktree 격리, 브랜치 `task/<과제ID>`). E0b의 `models.py`가 main에 들어오면 W1 2차(E2-L0 색인, E3-L0 astra 추출·카드, E5-L0 근거 연결 검사기, E1-L2 Retraction Watch)를 띄운다
+- 공유 데이터 폴더: `C:/Users/User/Desktop/project_neumann/data`(모든 worktree 공용, gitignore)
+
+## 이전 상태 (2026-09-30 18:35 구축 세션 기록)
 
 - 단계: E0(골격) 일부 완료. 제품 코드 0줄. 태그 없음. **push 안 함**(E0 첫 push는 대표 확인 뒤).
 - 이 문서까지 구축 세션이 썼다. 이후는 PM 세션("로컬 세팅")이 이어받는다.

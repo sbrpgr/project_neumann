@@ -29,8 +29,9 @@
 
 ## git
 
-- 커밋은 작게 한다. 메시지 앞에 과제 ID(`[E3-L1] …`), 끝에 검증 결과 한 줄과 빌더 레인(`builder: claude-opus`, `builder: codex` 등).
-- main 병합과 push는 PM만 한다. push 전에 `python scripts/verify.py`가 통과해야 한다.
+- 커밋은 작게 한다. 메시지 앞에 과제 ID(`[E3-L1] …`), 끝에 검증 결과 한 줄과 빌더 모델(`builder: claude-opus-5.5`, 인계 뒤 `builder: codex-gpt-6-astra`).
+- main 병합과 push는 PM만 한다. push는 **주요 에픽마다**: 에픽 과제가 검증을 통과해 main에 병합됐을 때와 태그(`v0`~`v3`, `v3.x`, `final`)를 찍을 때. push 전에 `python scripts/verify.py`가 통과해야 한다.
+- PM은 병합할 때마다 `docs/HANDOFF.md`를 갱신한다. Claude 한도가 다 되면 Codex가 이 문서로 이어받는다.
 - 계약(`contracts/`, `src/neumann/models.py`)은 추가만 한다. 바꾸려면 PM 승인을 받고 `docs/decisions.md`에 한 줄 남긴다.
 - 자기 소유가 아닌 폴더는 고치지 않는다(아래 표). 다른 에이전트의 프로세스를 종료하지 않는다.
 
@@ -48,7 +49,8 @@
 
 ## 품질과 정직성
 
-- 검증은 빌더와 다른 모델이 한다(Opus 빌드 → Sonnet 검증). 검증자는 빌더 코드를 쓰지 않고 완료 기준을 다시 잰다. Codex 인계 뒤에는 `docs/HANDOFF.md`의 검증 방식을 따른다.
+- 검증은 빌더와 다른 모델이 한다(Opus 빌드 → Sonnet 검증). 검증자는 빌더 코드를 쓰지 않고 완료 기준을 다시 잰다. Codex 인계 뒤에는 `gpt-6-astra` 빌드 → `gpt-6-sol` 검증이고, `verify` 통과가 병합 조건이다.
+- 제품 분석은 `gpt-6-astra`가 주력이다. 규칙은 API 실패·시간 초과 때만 쓰는 비상 경로다. 비상 경로로 돌면 결과의 `status`와 화면에 표시한다.
 - 테스트 없는 기능은 완료가 아니다. 검사기는 기능을 실제로 검사해야 한다(항상 통과하는 검사 금지).
 - 실패를 숨기지 않는다. 폴백으로 돌면 결과와 화면에 표시한다.
 - 근거 없는 문장을 출력하지 않는다. 인용은 원문 오프셋과 글자 단위로 같아야 한다.
