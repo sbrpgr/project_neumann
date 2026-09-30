@@ -109,6 +109,8 @@ def test_excluded_note_renders_in_browser(tmp_path) -> None:
               rev: (document.getElementById('revExcluded') || {}).innerText || '',
               rows: Array.from(document.querySelectorAll('#s-check .ck:not(.head)')).map(r => r.querySelectorAll('.cite').length),
               text: document.getElementById('s-check').innerText + document.getElementById('s-review').innerText,
+              fold: (() => { const d = document.getElementById('revDropped'); return d ? {open: d.open,
+                summary: d.querySelector('summary').innerText, struck_visible: !!d.querySelector('s') && d.querySelector('s').checkVisibility()} : null; })(),
             })""")
             for sec, name in (("s-check", "check"), ("s-review", "review")):
                 page.evaluate(f"document.getElementById('{sec}').scrollIntoView({{block: 'start'}})")
@@ -121,6 +123,11 @@ def test_excluded_note_renders_in_browser(tmp_path) -> None:
     assert dom["ck"].startswith("근거 없는 항목 1개 제외") and dom["rev"].startswith("근거 없는 항목 1개 제외")
     assert dom["rows"] and all(n >= 1 for n in dom["rows"])  # 화면 항목은 전부 근거 번호가 있다
     assert "분할 단위를 계획서 16행에 적는다." not in dom["text"]  # 폐기된 행동 문구는 화면에 없다
+    # PM 결정: 심사평 감사 카드의 제외 문장 목록은 기본 접힘, 제목 "근거가 없어 제외한 문장(분석 결과 아님)"
+    fold = dom["fold"]
+    assert fold is not None and fold["open"] is False and not fold["struck_visible"]
+    assert fold["summary"].startswith("근거가 없어 제외한 문장(분석 결과 아님)")
+    assert "근거 없이 쓴 약점 문장이다." not in dom["text"]  # 접힌 상태에서는 제외 문장이 보이지 않는다
 
 
 def _mock_view() -> dict:

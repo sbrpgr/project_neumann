@@ -136,7 +136,7 @@ verify 통과
 | `src/neumann/analyze/validate.py` | 2차 검증 같은 게이트(모델에 안 보냄·apply에서 뺌), counts·evidence_gate·dropped_actions·notice | E3 |
 | `src/neumann/analyze/review.py` | audit `no_evidence`, 단계 counts·detail | E3 |
 | `src/neumann/api/view.py` | 화면 게이트, `checklist_audit`, `review.audit.no_evidence·note` | E4(과제 지시로 최소 변경) |
-| `src/neumann/webui/index.html` | 새 줄 4개(기존 줄 수정 없음) | E4(과제 지시로 최소 변경) |
+| `src/neumann/webui/index.html` | 새 줄 4개. PM 결정으로 감사 카드 삭제 문장 목록을 `<details>`로 감쌈(기존 줄 1곳 + CSS 1줄) | E4(과제 지시로 최소 변경) |
 | `contracts/ui_view.schema.json` | 선택 필드 추가 | PM(과제 지시 "계약은 추가만") |
 | `tests/e3/test_evidence_gate_l1e.py`, `tests/e3/test_evidence_gate_view_l1e.py` | 새 테스트 | E3 |
 | `tests/e3/test_checklist.py`, `test_review.py`, `test_gate.py` | 위 "기존 테스트도 고쳤다" 참조 | E3 |
@@ -156,7 +156,7 @@ verify 통과
 ## 못 한 것 · 관찰
 
 - **라이브 재확인 안 함**(지시: API 0, 재실행 금지). E5-L1e2e의 2건(C3·C6)이 이제 어떻게 나오는지는 다음 승인 라이브에서 확인한다. 기대 결과: 그 항목은 폐기되고 화면에 "근거 없는 항목 1개 제외"가 나오며 E5 판정은 PASS다.
-- (PM 판단) 심사평 감사 카드는 기존 목업 설계대로 삭제된 문장을 **취소선과 사유 코드**로 보여 준다(`R.audit.dropped`, 스크린샷 `E3-L1e_review.png`의 `missing_citation`). "삭제됨" 표시가 붙은 감사 기록이지만, "근거 없는 문장은 출력하지 않는다"를 엄격히 읽으면 걸릴 수 있다. E4 화면 설계라 고치지 않았다. 체크리스트는 이렇게 문구를 보여 주지 않고 수만 보여 준다.
+- (PM 결정 반영) 심사평 감사 카드의 삭제 문장 목록(취소선·사유 코드)은 유지하되 **기본 접힘**으로 바꿨다. 제목은 **"근거가 없어 제외한 문장(분석 결과 아님) · k"**다(`<details id="revDropped">`, `open` 없음). 결과로 주장하지 않는 감사 기록이라 원칙과 맞다는 PM 판단이다. 체크리스트에는 비슷한 목록이 없다(view에 문구를 싣지 않고 수만 싣는다). 그래서 맞출 것이 없다. 브라우저 테스트가 다음을 확인한다: 접힘(`open=false`), 제목, 접힌 상태에서 취소선 문장이 보이지 않음(`checkVisibility()=false`, 화면 텍스트에 없음). 스크린샷 `E3-L1e_review.png`를 새로 찍었다.
 - `hasCheck`가 거짓이면(체크리스트가 0행이면) 체크리스트 절이 그려지지 않아 제외 문구도 보이지 않는다. 카드가 있으면 규칙 경로가 항목을 채우므로 실제로는 생기지 않는다.
 - 기준선 실행에서 `tests/e3/test_pipeline_parallel_sim.py::test_simulated_parallel_is_faster_and_same`가 한 번 시간 초과로 실패했다(0.858s < 0.624s 기대, 다른 빌더들이 동시에 돌아 부하가 있었음). 코드를 바꾸기 전의 일이고, 마지막 verify에서는 통과했다. 시간 기반 테스트라 부하에 약하다.
 
@@ -167,4 +167,3 @@ verify 통과
   - `verification.checklist_evidence.reasons`
   - 화면 `#ckExcluded`
 - (E5) E2E 판정기가 `checklist_audit.excluded`·`review.audit.no_evidence`를 요약 줄에 기록하면 폐기율을 계획서별로 볼 수 있다.
-- (E4) 심사평 감사 카드의 취소선 문장 표시를 유지할지 결정한다(위 관찰).
