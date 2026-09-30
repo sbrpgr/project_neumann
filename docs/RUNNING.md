@@ -1,6 +1,6 @@
 # 실행 방법
 
-- 기준: 이 문서를 병합하기 직전의 `main`(작성 때 확인한 커밋 `304e91e`). 이 문서의 명령은 그 커밋에서 Windows 11 + Git Bash + Python 3.12.10으로 실행해 확인했다(결과는 `docs/reports/E6-docs.md`). 실행하지 않은 명령은 그렇다고 적었다.
+- 기준: 이 문서를 병합하기 직전의 `main`(작성 때 확인한 커밋 `588da63`). 이 문서의 명령은 `304e91e`·`588da63`에서 Windows 11 + Git Bash + Python 3.12.10으로 실행해 확인했다(결과는 `docs/reports/E6-docs.md`). 실행하지 않은 명령은 그렇다고 적었다.
 - 구조와 상태는 [ARCHITECTURE.md](ARCHITECTURE.md), 엔드포인트는 [API.md](API.md).
 
 > **비용 주의:** 기본 설정(`NEUMANN_LLM_PROVIDER=openai`)에서는 서버의 분석 요청(`/premortem`, `/premortem/view`, `plan_text`만 보낸 `/premortem/package`)과 파이프라인 명령이 OpenAI API(`gpt-6-astra`)를 부른다. 시험·개발은 `NEUMANN_LLM_PROVIDER=mock`으로 한다. mock 결과는 분석이 아니며 결과에 그렇게 표시된다.
@@ -92,7 +92,7 @@ python -c "from neumann.sources.corpus import audit_processed; r = audit_process
 
 확인한 출력(요약): `편수 1128`, `심사평 4298 + 메타리뷰 1068, 저자 답변 12660, 결정 1128`, 거절 비율 `0.6028`, 원문 대조 `전부 일치`, 전량 검사 위반 `0`.
 
-확대 코퍼스(샤드 6개 + 일반 ML)는 `python scripts/collect_l3_corpus.py`가 `<데이터 폴더>/processed_l3/`에 따로 만든다. 지금 색인과 서버는 §4-1의 1,128편 코퍼스를 쓴다. 이 문서에서는 실행하지 않았다(샤드 2~5 필요).
+확대 코퍼스(샤드 6개 + 일반 ML)는 `python scripts/collect_l3_corpus.py`가 `<데이터 폴더>/processed_l3/`에 따로 만들고, `python scripts/build_index_l3.py`가 확대 색인 `<데이터 폴더>/index_l3/`를 만든다(현재 색인은 덮지 않는다). 서버·파이프라인은 기본으로 `<데이터 폴더>/index`(1,128편)를 쓰고, 확대 색인으로 바꾸려면 `NEUMANN_INDEX_DIR=<데이터 폴더>/index_l3`로 설정한다. 이 문서에서는 실행하지 않았다(샤드 2~5·bge-m3 필요). E2-L3 보고서의 실측: 2,128편·문장 257,244개·오프셋 100%.
 
 ### 4-2. 정정·철회 사후 상태
 
@@ -176,8 +176,9 @@ python -m pytest tests/e4 -q               # 에픽별
 NEUMANN_LIVE_TESTS=1 python -m pytest -q   # 실제 API 테스트까지(키 필요, 비용)
 ```
 
-- 확인한 결과(main `304e91e`, `NEUMANN_DATA_DIR` = 공유 데이터 폴더): `868 passed, 15 skipped`. 건너뛴 것: 실제 API 테스트 12건(`NEUMANN_LIVE_TESTS=1`), 실제 bge-m3 1건(`NEUMANN_E2_MODEL_TESTS=1`), 브라우저 화면 1건(`NEUMANN_UI_TESTS=1`), 실색인 회귀 1건(`NEUMANN_REAL_DATA_TESTS=1`).
-- 공유 데이터 폴더가 없으면 실데이터 테스트(`tests/e1/test_e1_corpus_real.py` 등)도 건너뛴다.
+- 재측정(main `588da63` 병합 상태, `NEUMANN_DATA_DIR` = 공유 데이터 폴더, mock): `908 passed, 22 skipped`. 건너뛰는 것은 실제 API 테스트(`NEUMANN_LIVE_TESTS=1`), 실제 bge-m3(`NEUMANN_E2_MODEL_TESTS=1`), 브라우저 화면(`NEUMANN_UI_TESTS=1`), 실색인 회귀(`NEUMANN_REAL_DATA_TESTS=1`)다.
+- 라이브 E2E(`tests/e2e/test_live.py`)는 실서버와 실제 astra를 쓰므로 `NEUMANN_LIVE_TESTS=1`일 때만 돈다(`--e2e-base-url`로 서버 지정, 비용). 판정 함수는 기본 pytest(`tests/e2e/test_e2e_checks.py`)가 검사한다. 이 문서에서는 라이브로 돌리지 않았다.
+- 공개자료 폴더(`NEUMANN_RAW_DIR`)나 공유 데이터 폴더가 없으면 원본·실데이터 테스트(`tests/e1/test_e1_corpus_real.py`, `test_retraction_real.py` 등)도 건너뛴다. 위 재측정은 두 폴더를 모두 준 상태다.
 
 화면 스크린샷(Playwright, 1440×900). 스크립트가 uvicorn을 하위 프로세스로 띄우고 끝나면 끈다(시험은 mock으로):
 
@@ -206,7 +207,7 @@ python -m eval.report_card --inputs <지표 JSON …> --out <파일.md>
 
 확인한 출력: 빈도 기준선 `Macro-F1 0.3308 [95% 0.2980, 0.3623]  Micro-F1 0.5379 … n=148`, 근거 연결 `8/8 = 1.000 · 카드 통과 2/2 · 폐기율 없음 · 판정 pass`(fixture라 폐기율이 없다), 백테스트 표본 30편 출력, `report_card --help`.
 
-백테스트의 나머지 단계(`eval.backtest_run_neumann`, `eval.baseline_llm`, `eval.judge_run`)는 파이프라인·일반 LLM 호출·판정자 실행이 들어가 이 문서에서 실행하지 않았다. 사용법은 각 모듈 머리말에 있다.
+DISAPERE 골드에 제품 지적 추출기를 돌리는 `python -m eval.disapere_extract extract|tune|predict`(astra 호출)와 백테스트의 나머지 단계(`eval.backtest_run_neumann`, `eval.baseline_llm`, `eval.judge_run`)는 파이프라인·일반 LLM 호출·판정자 실행이 들어가 이 문서에서 실행하지 않았다. 사용법은 각 모듈 머리말에 있다.
 
 ## 9. verify (병합·push 전 필수)
 

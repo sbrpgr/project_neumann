@@ -2,7 +2,7 @@
 
 Neumann은 연구계획서를 받아, 비슷한 연구가 실제로 받은 심사평·저자 답변·결정·정정/철회 기록에서 위험을 찾는다. 결과는 근거 문장과 원문 링크가 달린 위험카드다.
 
-- 기준: 이 문서를 병합하기 직전의 `main`(작성 때 확인한 커밋 `304e91e`, 태그 `v0` 이후).
+- 기준: 이 문서를 병합하기 직전의 `main`(작성 때 확인한 커밋 `588da63`, 태그 `v0` 이후).
 - 표기: **있음** = main에 코드와 테스트가 있고 제품 경로에서 쓰인다. **있음(모듈만)** = 모듈과 테스트는 있지만 분석 파이프라인이 아직 부르지 않아 서버 응답에는 쓰이지 않는다. **예정** = main에 없다(과제 ID를 붙였다).
 - 실행 방법은 [RUNNING.md](RUNNING.md), 엔드포인트는 [API.md](API.md).
 
@@ -16,7 +16,7 @@ Neumann은 연구계획서를 받아, 비슷한 연구가 실제로 받은 심�
 | LLM 호출 층(provider `openai`·`mock`·`off`) | 있음 | `src/neumann/llm.py` |
 | 검색어·축 추출, 지적 추출, 카드 합성, 비상 규칙 | 있음 | `src/neumann/analyze/queries.py`, `extract.py`, `cards.py`, `rules.py`, `backend.py` |
 | 코퍼스: ResearchArcade → AI for Science 1,128편 | 있음 | `src/neumann/sources/researcharcade.py`, `corpus.py`, `scripts/collect_researcharcade.py` |
-| 확대 코퍼스(샤드 6개 + 일반 ML, 별도 폴더) | 있음(색인 반영 전) | `src/neumann/sources/corpus_l3.py`, `scripts/collect_l3_*.py` |
+| 확대 코퍼스·확대 색인(샤드 6개 + 일반 ML, 별도 폴더 `processed_l3`·`index_l3`) | 있음(기본 색인은 1,128편, `NEUMANN_INDEX_DIR`로 전환) | `src/neumann/sources/corpus_l3.py`, `scripts/collect_l3_*.py`, `scripts/build_index_l3.py` |
 | 정정·철회 사후 상태(Retraction Watch) | 있음 | `src/neumann/sources/retraction.py` |
 | DISAPERE 로더(평가 골드용) | 있음 | `src/neumann/sources/disapere.py` |
 | 검색 색인: 문장 Excerpt·비상용 규칙 태그·BM25·bge-m3·하이브리드 검색 | 있음 | `src/neumann/index/`, `scripts/build_index.py` |
@@ -30,7 +30,9 @@ Neumann은 연구계획서를 받아, 비슷한 연구가 실제로 받은 심�
 | MCP 서버(stdio, 읽기 전용 도구 3종) | 있음 | `src/neumann/api/mcp_server.py` |
 | 정적 배포 빌드, 시연 녹화 스크립트 | 있음 | `scripts/build_static_site.py`, `scripts/record_demo.py` |
 | 평가: 근거 연결 검사, DISAPERE 골드·Macro-F1, 빈도 기준선 | 있음 | `eval/linkage.py`, `disapere_gold.py`, `macro_f1.py`, `baseline_freq.py` |
+| 평가: DISAPERE 골드에 제품 지적 추출기(astra·비상 규칙) 채점 | 있음 | `eval/disapere_extract.py` |
 | 평가: 백테스트(표본·일반 LLM 기준선·판정 실행기·지표), 리포트 카드 | 있음 | `eval/backtest_*.py`, `baseline_llm.py`, `judge_run.py`, `report_card.py` |
+| 라이브 E2E(실서버·Playwright, `NEUMANN_LIVE_TESTS=1`일 때만) | 있음 | `tests/e2e/` |
 | 검증 러너·git 훅 | 있음 | `scripts/verify.py`, `.githooks/` |
 | 업로드 파서(txt·md·pdf·docx) | 예정 (E4-L1a) | — |
 | eLife·Europe PMC | 예정 (E1-L1b) | — |
@@ -91,7 +93,7 @@ src/neumann/
 ├─ pipeline.py                 run_premortem: 6단계 순서, 강등을 stages·status에 기록           있음
 ├─ sources/
 │  ├─ researcharcade.py · corpus.py   ResearchArcade → 코퍼스, load_corpus·audit_processed      있음
-│  ├─ corpus_l3.py             확대 코퍼스(샤드 6개 + 일반 ML)                                  있음(색인 반영 전)
+│  ├─ corpus_l3.py             확대 코퍼스(샤드 6개 + 일반 ML)                                  있음
 │  ├─ retraction.py            Retraction Watch CSV → PostStatus, get_post_status(doi)          있음
 │  ├─ disapere.py              DISAPERE.zip → 심사평 문장과 사람 라벨                           있음
 │  └─ elife …                  eLife·Europe PMC                                                예정 (E1-L1b)
@@ -124,13 +126,14 @@ scripts/
 ├─ verify.py                   보안 + 계약 + 전체 pytest                                       있음
 ├─ collect_researcharcade.py · collect_l3_corpus.py · collect_l3_shards.py   코퍼스 조립·확대    있음
 ├─ build_index.py · build_index_check.py   색인 빌드 · 점검                                     있음
+├─ build_index_l3.py · build_index_compare.py   확대 색인(index_l3) 빌드 · 전후 비교              있음
 ├─ precompute_demo.py          데모 3건 사전 계산본                                             있음
 ├─ build_static_site.py · build_static_site_shots.py   서버 없이 도는 정적 데모 사이트          있음
 ├─ record_demo.py              시연 영상 녹화(Playwright)                                       있음
 └─ codex_task.sh               인계 뒤 Codex 과제 실행기                                       있음
-eval/                          linkage · disapere_gold · macro_f1 · baseline_freq              있음
+eval/                          linkage · disapere_gold · disapere_extract · macro_f1 · baseline_freq   있음
                                backtest_* · baseline_llm · judge_run · judge_envelope · report_card   있음
-tests/                         fixtures/(공용 가짜 데이터) + e0·e1·e2·e3·e4·e5·e6              있음
+tests/                         fixtures/(공용 가짜 데이터) + e0·e1·e2·e3·e4·e5·e6·e2e          있음
 ```
 
 폴더마다 주인 에픽이 하나다(`AGENTS.md` 표). 계약(`contracts/`, `models.py`)은 추가만 한다.
