@@ -19,6 +19,8 @@
 - 비밀 짝 표(어느 위험이 어느 시스템·조건·순위인지)는 봉투 폴더 밖 별도 파일(`judge_key/pairing.json`).
 - 시스템명·근거 인용·원문 링크·카드 번호는 위험 묶음 단계(`backtest_riskset.blind_text`)에서 지우고, 여기서 한 번 더 검사해
   흔적이 있으면 봉투를 만들지 않는다(`blind_violations`).
+- 진짜 조건만 있는 실행(셔플 행 없음)도 같은 형식이다. 모든 시스템이 위험 0개인 논문은 봉투를 만들지 않고 짝 표의
+  `empty_works`에 적는다(판정할 위험이 없다. 지표는 적중 0으로 센다).
 """
 
 from __future__ import annotations
@@ -149,6 +151,10 @@ def build_envelopes(
             for r in rs["risks"]:
                 items.append((r["text"], {"system": rs["system"], "condition": rs["condition"], "rank": r["rank"],
                                           "plan_work_id": rs["plan_work_id"], "evidence_ok": bool(r.get("evidence_ok"))}))
+        if not items:
+            # 모든 시스템이 위험 0개(실패)인 논문: 판정할 것이 없어 봉투를 만들지 않는다. 지표에서는 적중 0으로 센다
+            key.setdefault("empty_works", []).append(wid)
+            continue
         rng = random.Random(f"{seed}|{wid}")
         rng.shuffle(items)
         env_id = envelope_id_for(wid, seed)
