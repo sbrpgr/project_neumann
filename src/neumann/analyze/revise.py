@@ -163,10 +163,15 @@ class RevisionIndex(EvidenceIndex):
 
 PLACEHOLDER_RE = re.compile(r"\[확인 필요: [^\]\n]{1,120}\]")
 REVIEWER_HANDLE_RE = re.compile(r"\b(?:Reviewer|reviewer)\s+(?!this\b|that\b|said\b|also\b|will\b|have\b)[A-Za-z0-9]{4}(?![A-Za-z0-9])|\brvw_[0-9a-f]{16}(?![A-Za-z0-9])|reviewer_pseudonym")
-AUTHOR_SIGNATURE_RE = re.compile(r"(?im)^\s*(?:best regards|kind regards|sincerely|the authors of)\b")
+# ``^[ \t]*`` (not ``^\s*``): with multiline mode, ``\s*`` re-scans every following newline from each line start
+# (quadratic on newline-heavy input); horizontal whitespace only keeps this linear.
+AUTHOR_SIGNATURE_RE = re.compile(r"(?im)^[ \t]*(?:best regards|kind regards|sincerely|the authors of)\b")
 CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 UNSAFE_MARKUP_RE = re.compile(r"<\s*/?\s*[A-Za-z][^>]*>|\]\(\s*(?:javascript|data):", re.I)
-_ENTITY_RE = re.compile(r"[가-힣A-Za-z0-9·_-]{2,}(?:대학교|대학|병원|연구소|연구원|센터|재단)|\b(?:[A-Z][A-Za-z&.-]*\s+){0,4}(?:University|Hospital|Institute|Clinic|Laboratory|Center)\b|\b[A-Z][A-Za-z0-9._-]{2,}(?=\s*(?:데이터셋|dataset|코퍼스))")
+# Bounded repeats ({2,40}, {0,40}): unbounded ``{2,}`` backtracks over the whole token run at every position
+# (quadratic on long runs). Entity names longer than 40 characters are not recognised, which only makes the
+# gate stricter elsewhere (unsupported content words), never looser.
+_ENTITY_RE = re.compile(r"[가-힣A-Za-z0-9·_-]{2,40}(?:대학교|대학|병원|연구소|연구원|센터|재단)|\b(?:[A-Z][A-Za-z&.-]{0,40}[ \t]+){0,4}(?:University|Hospital|Institute|Clinic|Laboratory|Center)\b|\b[A-Z][A-Za-z0-9._-]{2,40}(?=[ \t]*(?:데이터셋|dataset|코퍼스))")
 _ASSERTED_RESULT_RE = re.compile(r"이미[^.?!\n]{0,35}(?:달성|확보|확인|입증|수집|검증)(?:했|하였|한|된|됐다|했다)|already\s+(?:[A-Za-z]+\s+){0,4}(?:confirmed|achieved|secured|collected|demonstrated)", re.I)
 
 

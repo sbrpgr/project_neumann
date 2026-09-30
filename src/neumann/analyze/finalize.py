@@ -8,6 +8,7 @@ from __future__ import annotations
 import copy
 import json
 import math
+import re
 from typing import Any
 
 from neumann.analyze.gate import extract_numbers
@@ -22,6 +23,29 @@ from neumann.models import PlanDocument, contains_pii
 VERSION = "finalization@v1"
 ASSESSMENT_TASK = "final_assessment"
 CORRECTION_TASK = "final_correction"
+MAX_PLAN_CHARS = 200_000  # engine-level cap before any model call (HTTP caps are separate and smaller)
+
+_WORD_RE = re.compile(r"[A-Za-z][A-Za-z0-9._-]+|[가-힣]{2,}")
+_KO_SUFFIX_RE = re.compile(r"(?:으로써|으로|에서는|에서|에게|께서|이다|입니다|한다|합니다|된다|됩니다|하며|하고|하도록|하는|하여|해서|하면|했다|되어|"
+                           r"이며|이고|이라|라는|다는|보다|처럼|까지|부터|마다|조차|밖에|과|와|의|를|을|는|은|이|가|에|도|로|만|고|며|서)$")
+_STYLE_WORDS = frozenset({"다듬음", "제안", "이러한", "해당", "또한", "그리고", "따라서", "명확히", "자연스럽게", "위한", "위해서", "이다", "있다"})
+_NEGATION_RE = re.compile(r"(?<![가-힣])(?:안|못)\s+(?=[가-힣])|않|없|아니|불가|금지|제외|\b(?:not|no|never|without|cannot)\b", re.I)
+
+
+def _grounded_words(text: str) -> set[str]:
+    """Content words outside placeholders, Korean tokens from two characters with common particles stripped.
+
+    Stricter than assemble._content_words (three characters): short scientific claims such as 효과·입증 count.
+    """
+    words: set[str] = set()
+    for raw in _WORD_RE.findall(PLACEHOLDER_RE.sub(" ", text).lower()):
+        base = _KO_SUFFIX_RE.sub("", raw) if re.fullmatch(r"[가-힣]+", raw) else raw
+        words.add(base if len(base) >= 2 else raw)
+    return words - _STYLE_WORDS
+
+
+def _negations(text: str) -> set[str]:
+    return {m.group(0).strip().lower() for m in _NEGATION_RE.finditer(PLACEHOLDER_RE.sub(" ", text))}
 
 
 def _object(properties: dict) -> dict:
@@ -261,6 +285,8 @@ def finalize_plan(plan_text: str, *, result=None, provider=None, checks=None,
         return stop("취소되어 최종 검토를 완료하지 못했습니다.")
     if not text.strip():
         return stop("빈 계획서는 최종 검토할 수 없습니다.")
+    if len(text) > MAX_PLAN_CHARS:
+        return stop(f"계획서가 {MAX_PLAN_CHARS:,}자를 넘어 최종 검토를 시작하지 않았습니다.")
     try:
         llm = make_llm(provider=provider) if isinstance(provider, (str, type(None))) else provider
         invoke = llm_call or llm.complete_json
@@ -301,6 +327,10 @@ def finalize_plan(plan_text: str, *, result=None, provider=None, checks=None,
         return stop("도구 검사는 목록이어야 하며 최대 16개입니다.")
     if any(not isinstance(c, dict) for c in selected):
         return stop("도구 검사 형식이 유효하지 않습니다.")
+    ids = [c.get("check_id") for c in selected]
+    if any(not isinstance(i, str) or not i.strip() for i in ids) or len(set(ids)) != len(ids):
+        # Duplicate ids would let a later passing row overwrite an earlier failure (audit F1).
+        return stop("도구 검사 id가 비었거나 중복돼 최종 검토를 완료하지 못했습니다.")
     try:
         selected = _bind_sources(selected, lines)
     except (AttributeError, TypeError, ValueError):
@@ -346,7 +376,11 @@ def finalize_plan(plan_text: str, *, result=None, provider=None, checks=None,
                 # tool-checked source quotes already contain ("fix the text with facts the text states").
                 # New scientific content, numbers, entities or achieved results are still rejected; unknown
                 # researcher facts can be expressed only inside explicit [확인 필요: …] placeholders.
-                if not reason and _content_words(replacement) - _content_words(scope):
+                # A correction must not flip the researcher's direction: new negations are rejected first.
+                if not reason and _negations(replacement) - _negations(scope):
+                    reason = "negation_change"
+                if not reason and (_content_words(replacement) - _content_words(scope)
+                                   or _grounded_words(replacement) - _grounded_words(scope)):
                     reason = "unsupported_content"
         touched.add(no)
         applied = not reason and replacement != lines[no - 1]
@@ -360,12 +394,19 @@ def finalize_plan(plan_text: str, *, result=None, provider=None, checks=None,
     final_text = "\n".join(updated)
     output["final_text"] = final_text
     output["output_plan_id"] = PlanDocument.from_text(final_text, "finalize").plan_id
-    # Rechecks retain original explicit facts; changed source text cannot silently re-anchor a claim.
+    # Rechecks keep the original quotes while they still occur in the corrected line. When a correction rewrote
+    # the quoted text, the source is re-bound by code to the corrected line and dependency edges that are no
+    # longer stated there are dropped: the tool then judges the prerequisites the corrected text actually
+    # states (audit F4). Numbers that vanished make the check unchecked, never passed.
     targeted = [c for c in selected if edited.intersection(c.get("plan_lines", [])) or
                 any(s.get("line") in edited for s in c.get("params", {}).get("sources", []))]
     if targeted:
         output["counters"]["recheck_runs"] = 1
+        targeted, rebound = _rebind_for_recheck(targeted, updated, edited)
         output["tool_checks_after"] = _run_checks(final_text, targeted, cancel_event)
+        for row in output["tool_checks_after"]:
+            if row["check_id"] in rebound:
+                row["details"] = {**row.get("details", {}), "rebound_to_corrected_lines": rebound[row["check_id"]]}
     if _cancelled(cancel_event):
         output["status"] = "incomplete"
         return stop("취소되어 재검토가 미완료입니다.")
@@ -379,5 +420,30 @@ def finalize_plan(plan_text: str, *, result=None, provider=None, checks=None,
             issue["unchecked_reason"] = _unchecked_reason(issue["check_ids"], rows)
         issue["corrected_lines"] = sorted(n for n in issue.get("plan_lines", []) if n in edited)
         issue.pop("check_ids", None)
-    output["status"] = "partial" if any(i["status"] != "resolved" for i in issues) or any(not c["applied"] for c in output["corrections"]) else "completed"
+    # Placeholders left in the draft are open researcher decisions: the review cannot be reported as completed.
+    output["status"] = ("partial" if any(i["status"] != "resolved" for i in issues) or any(not c["applied"] for c in output["corrections"])
+                        or PLACEHOLDER_RE.search(final_text) else "completed")
     return output
+
+
+def _rebind_for_recheck(checks: list, new_lines: list[str], edited: set[int]) -> tuple[list, dict[str, list[int]]]:
+    """Code-only re-anchoring of checks whose quoted source line was rewritten by an applied correction."""
+    out = copy.deepcopy(checks)
+    rebound: dict[str, list[int]] = {}
+    for check in out:
+        params = check.get("params") if isinstance(check.get("params"), dict) else None
+        if params is None:
+            continue
+        for idx, source in enumerate(params.get("sources", []) if isinstance(params.get("sources"), list) else []):
+            n = source.get("line") if isinstance(source, dict) else None
+            if not (isinstance(n, int) and n in edited and isinstance(source.get("quote"), str)):
+                continue
+            current = new_lines[n - 1]
+            if source["quote"] in current:
+                continue
+            source["quote"] = current
+            rebound.setdefault(check.get("check_id", ""), []).append(n)
+            if check.get("kind") == "dependency" and isinstance(params.get("edges"), list):
+                params["edges"] = [e for e in params["edges"] if not (isinstance(e, dict) and e.get("source") == idx)
+                                   or str(e.get("phrase", "")) in current]
+    return out, rebound
