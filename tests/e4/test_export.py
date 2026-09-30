@@ -309,6 +309,29 @@ def test_decision_log_rejects_unknown_card_and_identity_fields() -> None:
         build_package(fixture_result(), decisions=[{"card_id": "nope", "decision": "adopt"}])
     with pytest.raises(ValueError):
         build_package(fixture_result(), decisions=[{"card_id": "card-fx-leak", "decision": "adopt", "reviewer_name": "x"}])
+    with pytest.raises(ValueError):
+        build_package(fixture_result(), decisions=[{"decision": "adopt"}])  # 대상 없음
+    with pytest.raises(ValueError):
+        build_package(fixture_result(), decisions=[{"card_id": "card-fx-leak", "decision": "maybe"}])
+    with pytest.raises(ValueError, match="item_id"):
+        build_package(fixture_result(), decisions=[{"item_id": "A9", "decision": "adopt"}])  # 체크리스트에 없음
+
+
+def test_checklist_items_render_and_accept_item_decisions() -> None:
+    checklist = [
+        {"id": "A1", "text": "scaffold 기반 분할 추가", "card_id": "card-fx-leak", "plan_lines": [16], "generator": "rule"},
+        {"id": "A2", "t": "5회 반복 실험 평균±표준편차 보고", "r": "R2", "s": "보류", "m": "GPU 예산 확인"},
+    ]
+    result = variant(checklist=checklist)
+    decisions = [{"item_id": "A2", "card_id": "card-fx-seed", "decision": "보류", "note": "GPU 예산 확인 후"}]
+    files = unzip(build_package(result, decisions=decisions))
+    report = text(files, "neumann_report.md")
+    assert "- [A1] scaffold 기반 분할 추가 (카드 card-fx-leak · 계획서 줄 16 · 생성 rule)" in report
+    assert "- [A2] 5회 반복 실험 평균±표준편차 보고 (R2) — 결정: 보류 — GPU 예산 확인" in report
+    assert "카드 `card-fx-seed` · 행동 `A2`: 보류 — GPU 예산 확인 후" in report
+    log = as_json(files, "decision_log.json")
+    assert log["checklist_item_ids"] == ["A1", "A2"]
+    assert log["decisions"][0]["item_id"] == "A2" and log["decisions"][0]["decision"] == "hold"
 
 
 # ── 결정성 ────────────────────────────────────────────────────────────────

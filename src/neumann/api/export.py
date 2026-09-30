@@ -32,7 +32,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 from fastapi import APIRouter, Body, HTTPException, Response
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from neumann.models import (
     SCHEMA_VERSION,
@@ -72,7 +72,7 @@ FILE_ROLES: dict[str, str] = {
     "plan_annotated.md": "계획서 줄 번호 옆에 연결된 카드 표시",
     "neumann_report.md": "사람이 읽는 리포트",
     "ai_context.md": "다른 AI에 넘길 요약: 카드·근거 id·한계",
-    "decision_log.json": "카드별 채택·보류·기각 기록(없으면 빈 목록)",
+    "decision_log.json": "카드·행동별 채택·보류·기각 기록(없으면 빈 목록)",
 }
 
 GENERATOR_LABELS: dict[Generator, str] = {
@@ -103,9 +103,14 @@ _DECISION_ALIASES: dict[str, str] = {v: k for k, v in DECISION_LABELS.items()}
 
 
 class DecisionEntry(NeumannModel):
-    """카드 하나에 대한 연구자의 결정(채택·보류·기각). 신원 필드는 둘 수 없다(NeumannModel이 막는다)."""
+    """카드(또는 체크리스트 행동) 하나에 대한 연구자의 결정(채택·보류·기각).
 
-    card_id: str = Field(min_length=1)
+    `card_id`·`item_id` 중 하나 이상. `item_id`는 결과 `checklist` 항목의 id(목업은 행동 단위로 결정을 받는다).
+    신원 필드는 둘 수 없다(NeumannModel이 막는다).
+    """
+
+    card_id: str | None = Field(default=None, min_length=1)
+    item_id: str | None = Field(default=None, min_length=1, description="체크리스트 행동 id")
     decision: DecisionChoice
     note: str | None = Field(default=None, max_length=2000, description="메모. 이메일·ORCID는 가린다")
     decided_at: datetime | None = None
@@ -129,6 +134,55 @@ class DecisionEntry(NeumannModel):
         if v is not None and (v.tzinfo is None or v.tzinfo.utcoffset(v) is None):
             raise ValueError("timezone-aware datetime만 허용한다")
         return v
+
+    @model_validator(mode="after")
+    def _target(self) -> DecisionEntry:
+        if not (self.card_id or self.item_id):
+            raise ValueError("card_id와 item_id 중 하나는 있어야 한다")
+        return self
+
+    @property
+    def target(self) -> str:
+        parts = []
+        if self.card_id:
+            parts.append(f"카드 `{self.card_id}`")
+        if self.item_id:
+            parts.append(f"행동 `{self.item_id}`")
+        return " · ".join(parts)
+
+
+CHECKLIST_ID_KEYS = ("id", "item_id", "action_id")
+
+
+def _checklist_ids(checklist: Sequence[Mapping[str, Any]]) -> set[str]:
+    return {str(item[k]) for item in checklist for k in CHECKLIST_ID_KEYS if item.get(k) is not None}
+
+
+def _checklist_line(item: Mapping[str, Any]) -> str:
+    """체크리스트 항목 한 줄. 키 이름은 E3 형식(text·risk_code·card_id·plan_lines)과 목업 형식(t·r·s·m)을 모두 읽는다."""
+    text = item.get("text") or item.get("action") or item.get("t")
+    if not text:
+        return _one_line(json.dumps(item, ensure_ascii=False))
+    item_id = next((item[k] for k in CHECKLIST_ID_KEYS if item.get(k) is not None), None)
+    meta = []
+    if item.get("risk_code") or item.get("r"):
+        meta.append(str(item.get("risk_code") or item.get("r")))
+    if item.get("card_id"):
+        meta.append(f"카드 {item['card_id']}")
+    if item.get("plan_lines"):
+        meta.append("계획서 줄 " + ", ".join(str(n) for n in item["plan_lines"]))
+    if item.get("generator"):
+        meta.append(f"생성 {item['generator']}")
+    line = (f"[{item_id}] " if item_id is not None else "") + _one_line(text)
+    if meta:
+        line += f" ({_one_line(' · '.join(meta))})"
+    status = item.get("decision") or item.get("s")
+    if status:
+        line += f" — 결정: {_one_line(status)}"
+    memo = item.get("note") or item.get("m")
+    if memo:
+        line += f" — {_one_line(memo)}"
+    return line
 
 
 # ── 조립 문맥 ─────────────────────────────────────────────────────────────
@@ -183,11 +237,14 @@ def _make_ctx(
         gen_counts[card.generator.value] += 1
 
     card_ids = {card.card_id for card in result.risk_cards}
+    item_ids = _checklist_ids(result.checklist)
     entries: list[DecisionEntry] = []
     for raw in decisions or ():
         entry = raw if isinstance(raw, DecisionEntry) else DecisionEntry.model_validate(raw)
-        if entry.card_id not in card_ids:
+        if entry.card_id is not None and entry.card_id not in card_ids:
             raise ValueError(f"결정 로그의 card_id {entry.card_id!r}가 결과의 카드에 없다")
+        if entry.item_id is not None and entry.item_id not in item_ids:
+            raise ValueError(f"결정 로그의 item_id {entry.item_id!r}가 결과의 체크리스트에 없다")
         entries.append(entry)
 
     return _Ctx(
@@ -606,14 +663,12 @@ def _report(c: _Ctx) -> bytes:
         L += json.dumps(r.expected_review, ensure_ascii=False, indent=2).split("\n")
         L.append("```")
     if r.checklist:
-        L += ["", "## 체크리스트 (결과의 checklist를 그대로 옮김)", ""]
-        for item in r.checklist:
-            text = item.get("text") or item.get("action") or json.dumps(item, ensure_ascii=False)
-            L.append(f"- {_one_line(text)}")
+        L += ["", "## 체크리스트 (결과의 checklist를 옮김)", ""]
+        L += [f"- {_checklist_line(item)}" for item in r.checklist]
     if c.decisions:
         L += ["", "## 결정 로그", ""]
         L += [
-            f"- `{d.card_id}`: {DECISION_LABELS[d.decision]}" + (f" — {_one_line(d.note)}" if d.note else "")
+            f"- {d.target}: {DECISION_LABELS[d.decision]}" + (f" — {_one_line(d.note)}" if d.note else "")
             for d in c.decisions
         ]
     if c.warnings:
@@ -693,6 +748,7 @@ def _decision_log_json(c: _Ctx) -> bytes:
                 {"card_id": card.card_id, "risk_code": card.risk_code.value, "title": card.title}
                 for _ref, card in c.refs
             ],
+            "checklist_item_ids": sorted(_checklist_ids(r.checklist)),
             "decisions": [d.model_dump(mode="json") for d in c.decisions],
         }
     )
