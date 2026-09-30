@@ -24,6 +24,7 @@ import json
 import logging
 import re
 from collections.abc import Callable, Mapping, Sequence
+from copy import copy
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -293,11 +294,14 @@ def _regate_adoptions(plan: PlanDocument, revision: Any, edits: dict[str, EditRe
     """되돌려 받은 제안은 새 신뢰 경계다. 채택 문안을 적용하기 전에 다시 검사한다."""
     from neumann.analyze.revise import fabricated_numbers
     from neumann.analyze.gate import Draft, EvidenceIndex
-    from neumann.models import PremortemResult
+    from neumann.models import Excerpt, PremortemResult
 
     ev = evidence_lookup(result, revision if isinstance(revision, Mapping) else None)
     pools = {str(r.get("card_id")): set(r.get("evidence_pool", []))
              for r in (revision.get("revisions", []) if isinstance(revision, Mapping) else []) if isinstance(r, Mapping)}
+    records = {str(rec["excerpt_id"]): rec
+               for rec in (revision.get("records", []) if isinstance(revision, Mapping) else [])
+               if isinstance(rec, Mapping) and rec.get("excerpt_id")}
     index = EvidenceIndex(result if isinstance(result, PremortemResult) else PremortemResult.model_validate(result)) if result is not None else None
     for eid, decision in decided.items():
         edit = edits.get(eid)
@@ -316,16 +320,21 @@ def _regate_adoptions(plan: PlanDocument, revision: Any, edits: dict[str, EditRe
             raise ValueError("proposed_text lacks verified evidence links")
         if index is not None:
             source_card = index.cards.get(edit.card_id)
-            if source_card is None or any(x in index.excerpts and x not in source_card.evidence for x in edit.excerpt_ids):
+            # 카드 원래 근거 + 이 카드의 풀에 포함된 추가 기록만 허용한다.
+            # records와 evidence_pool은 revision 서명 범위에 함께 포함된다.
+            allowed_ids = (set(source_card.evidence) if source_card is not None else set()) | (
+                pools.get(edit.card_id, set()) & records.keys())
+            if source_card is None or any(x not in allowed_ids for x in edit.excerpt_ids):
                 raise ValueError("proposed_text cites another card")
-            # 기록 발췌도 숫자 대조 풀에 추가한다. 결과 밖 id를 허용하지 않는다.
-            from neumann.models import Excerpt
-
-            for rec in (revision.get("records", []) if isinstance(revision, Mapping) else []):
-                if isinstance(rec, Mapping) and rec.get("excerpt_id") in edit.excerpt_ids:
-                    index.excerpts.setdefault(rec["excerpt_id"], Excerpt.model_validate({k: v for k, v in rec.items()
-                                                                                       if k in Excerpt.model_fields}))
-            unknown = fabricated_numbers(text, Draft("edit", text, tuple(edit.excerpt_ids), (), (edit.plan_line,)), index)
+            # 수치 대조용 발췌는 제안별 사본에만 추가한다. 앞선 채택이 뒤 검사에 영향을 주지 않는다.
+            proposal_index = copy(index)
+            proposal_index.excerpts = dict(index.excerpts)
+            for x in edit.excerpt_ids:
+                if x not in proposal_index.excerpts and x in records:
+                    rec = records[x]
+                    proposal_index.excerpts[x] = Excerpt.model_validate({k: v for k, v in rec.items()
+                                                                        if k in Excerpt.model_fields})
+            unknown = fabricated_numbers(text, Draft("edit", text, tuple(edit.excerpt_ids), (), (edit.plan_line,)), proposal_index)
         else:
             allowed = set([*gate_mod.extract_numbers(plan.text), *written_numbers(plan.text)])
             for x in edit.excerpt_ids:
