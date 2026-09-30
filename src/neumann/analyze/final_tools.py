@@ -19,6 +19,7 @@ SOLVER_TIMEOUT_MS = 200
 # process (VER-FIN C-1). Every Z3 path runs under this process-wide lock with a fresh
 # per-call Context. Other modules that touch Z3 must take the same lock.
 Z3_LOCK = threading.Lock()
+_UNIT_GRAMMAR = re.compile(r"[A-Za-zµ°]+(?:\^[1-3])?(?:[*/][A-Za-zµ°]+(?:\^[1-3])?)*")
 # Korean particles can attach directly to a numeral (``3이다``). ASCII
 # identifiers/exponents and fragments of signed or dotted tokens cannot.
 _NUMBER = re.compile(r"(?<![A-Za-z0-9_.+-])[-+]?[0-9]+(?:\.[0-9]+)?(?![A-Za-z0-9_.])")
@@ -71,7 +72,9 @@ def _fact(fact, sources, units=False):
     _require(len(matches) == 1, "ambiguous_or_ungrounded_number")
     if units:
         unit = _string(fact["unit"], 48)
-        _require(bool(re.fullmatch(r"[A-Za-zµ°]+(?:[*/][A-Za-zµ°]+|\^[1-3])*", unit)), "unsupported_unit")
+        # One optional ^1..^3 per factor (C-3): chains like m^3^3^3^3 made Pint compute a right-associative
+        # integer tower that never finished while holding the GIL.
+        _require(bool(_UNIT_GRAMMAR.fullmatch(unit)), "unsupported_unit")
         _require(bool(re.match(r"\s*" + re.escape(unit) + r"(?![A-Za-zµ°])", quote[matches[0].end():])), "ungrounded_unit")
     return value
 

@@ -1,7 +1,7 @@
 """규칙 기반 점검 추출기(FIN-TOOLS): 계획서 문장에서 검사할 주장을 뽑아 코드가 정한 도구 호출(ToolCall)로 만든다.
 
 LLM이 검사를 제안하지 않아도(mock 포함) 원문에 적힌 수치·단위·합계·일정·절 참조·인용이 있으면 검사가 생긴다.
-도구 선택은 `TOOL_FOR_CHECK`(FIN-ENGINE 계약) 표가 정하고, 인자는 원문에서 코드가 뽑는다. 각 검사에는 근거 위치
+도구 선택은 `fin_tools.FIN_TOOL_FOR_KIND` 표가 정하고(엔진 이름 z3·pint·networkx 별칭), 인자는 원문에서 코드가 뽑는다. 각 검사에는 근거 위치
 (`anchors`: 줄·시작·끝·원문 글자 그대로)가 붙는다. 인용 문자열은 코드가 원문에서 잘라 붙인다.
 
 뽑는 것(라벨 → 점검 유형 → 도구)
@@ -29,7 +29,8 @@ from dataclasses import dataclass, field
 from fractions import Fraction
 from typing import Any
 
-from neumann.finalize.tools import TOOL_FOR_CHECK, ToolCall
+from neumann.finalize.tools import ToolCall
+from neumann.finalize.tools.fin_tools import FIN_TOOL_FOR_KIND
 from neumann.finalize.tools.quantities import Quantity, parse_decimal, qualified, scan_line
 from neumann.finalize.tools.structure import (
     LABELS, detect_captions, detect_headings, detect_references,
@@ -114,13 +115,13 @@ class _Builder:
 
     def add(self, label: str, kind: str, anchors: list[dict[str, Any]], args: dict[str, Any],
             notes: tuple[str, ...] = ()) -> None:
-        if self.counts.get(label, 0) >= MAX_PER_LABEL or kind not in TOOL_FOR_CHECK:
+        if self.counts.get(label, 0) >= MAX_PER_LABEL or kind not in FIN_TOOL_FOR_KIND:
             return
         self.counts[label] = self.counts.get(label, 0) + 1
         plan_lines = tuple(sorted({a["line"] for a in anchors}))
         check_id = f"{label}-{plan_lines[0] if plan_lines else 0}-{self.counts[label]}"
         self.out.append(ExtractedCheck(check_id, kind, label, plan_lines, tuple(anchors),
-                                       ToolCall(TOOL_FOR_CHECK[kind], args, check_id=check_id), notes))
+                                       ToolCall(FIN_TOOL_FOR_KIND[kind], args, check_id=check_id), notes))
 
 
 # ── 섹션 정보 ─────────────────────────────────────────────────────────────
@@ -578,15 +579,13 @@ def extract_checks(plan_text: str, *, max_checks: int = MAX_CHECKS) -> list[Extr
 
 
 def run_checks(checks: list[ExtractedCheck], *, reg: Any = None, cancel_event: Any = None) -> list[dict[str, Any]]:
-    """추출한 검사를 FIN-ENGINE 레지스트리로 돌린다(FIN-TOOLS 도구를 먼저 등록). → [{check, result}]"""
-    from neumann.finalize.tools import registry, run_tool
-    from neumann.finalize.tools.fin_tools import register_all
+    """추출한 검사를 돌린다: 엔진 이름(z3·pint·networkx)은 FIN-ENGINE 레지스트리(FIN-TOOLS 구현 등록)로,
+    citation_lookup은 FIN-TOOLS 안에서(같은 ToolResult 모양). → [{check, result}]"""
+    from neumann.finalize.tools.fin_tools import run_call
 
-    target = reg or registry
-    register_all(target)
     out = []
     for check in checks:
-        result = run_tool(check.call, cancel_event=cancel_event, reg=target)
+        result = run_call(check.call, reg=reg, cancel_event=cancel_event)
         out.append({"check": check.as_dict(), "result": result.as_dict()})
     return out
 

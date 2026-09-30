@@ -12,6 +12,13 @@
   - `extract.py`: 계획서 → 점검 목록(`ExtractedCheck`: 점검 유형·줄·원문 글자 그대로의 근거 위치·`ToolCall`). 도구 선택은 `TOOL_FOR_CHECK` 표가 한다.
   - `sums.py`(arithmetic_sum): 정확한 유리수 + Z3 교차 확인(같은 잠금). `dimension.py`(unit_dimension): Pint 차원·변환·규모(derive·compare), 정보량은 [information] 차원(Pint 기본 byte 무차원·Gb=gilbert 회피). `structure.py`(structure): NetworkX 절 계층·표/그림·참조 그래프. `citation.py`(citation_lookup): MCP 서버 백엔드로 DOI 철회 조회·제목 코퍼스 확인, 환경변수를 읽지 않음(엔진이 `configure(data_dir)`로 지정).
 
+## VER-FIN 추가 조건(C-3·E-8)과 병합 준비
+
+- **C-3/F-17**: `final_tools`의 단위 문법이 `m^3^3^3^3`를 허용해 Pint가 끝나지 않았다(GIL 점유). 두 곳 모두 인수당 지수 1회만 허용하도록 고쳤다 — `final_tools._UNIT_GRAMMAR`(`^[1-3]` 인수당 최대 1회), `dimension.normalize_unit`(`^n`·`**n`은 한 자리 1~4, 사슬·묶음 지수·괄호 지수 거절, 64자 상한). 회귀: 별도 프로세스(타임아웃 180초)에서 `m^3^3^3^3`·`m**3**3**3`·`(m^3)^3^3`·`m^(3^3)`·1만 자 단위가 두 경로 모두 unchecked, 최악 100 ms 미만.
+- **E-8**: FIN-ENGINE v2 레지스트리는 z3·pint·networkx 이름만 받는다. `fin_tools.register_all()`은 FIN-TOOLS 구현을 같은 계산 엔진 이름으로 붙인다(arithmetic_sum→z3, unit_dimension→pint, structure→networkx). 인자가 `{plan_text, check}`면 엔진의 final_tools 어댑터로 그대로 넘겨 엔진 동작을 바꾸지 않는다. citation_lookup은 `run_call`이 같은 ToolResult 모양으로 FIN-TOOLS 안에서 돌린다. 실제 엔진 공용 레지스트리 통합 테스트: `tests/finalize/test_fin_tools_engine_integration.py`.
+- 병합 준비: main 39055d1 병합(e25552e, decisions.md 양쪽 보존), task/FIN-ENGINE adf7798 병합(54920d2, 엔진 소유 파일은 엔진 쪽, 문서는 중복 없는 합집합).
+- 아래 표의 도구 이름은 이제 엔진 이름으로 부른다: arithmetic_sum = **z3**, unit_dimension = **pint**, structure = **networkx**.
+
 ## 점검 유형 → 도구 표 (코드: `fin_tools.CHECK_TOOL_TABLE`, 선택은 `TOOL_FOR_CHECK`)
 
 | 추출 라벨 | 원문 예 | 점검 유형 | 도구(구현) |

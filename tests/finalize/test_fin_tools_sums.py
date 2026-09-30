@@ -9,7 +9,7 @@ import pytest
 
 from neumann.finalize.tools import ToolCall, ToolRegistry
 from neumann.finalize.tools import sums
-from neumann.finalize.tools.fin_tools import register_all
+from neumann.finalize.tools.fin_tools import register_all, run_call
 
 # (args, verdict, 추가 기대) — 변이 검사(test_fin_tools_mutation)도 이 표를 쓴다.
 CASES = [
@@ -82,11 +82,11 @@ def test_engine_disagreement_is_never_a_verdict():
 
 def test_registry_integration_schema_and_evidence():
     reg = ToolRegistry()
-    assert "arithmetic_sum" in register_all(reg)
-    res = reg.run(ToolCall("arithmetic_sum", {"items": [3, 4, 3], "total": 12, "unit": "month"}, check_id="s1"))
-    assert res.ok and res.verdict == "fail" and res.evidence["tool"] == "arithmetic_sum"
-    assert res.evidence["version"] == sums.VERSION and res.evidence["output"]["computed"] == 10
-    bad = reg.run(ToolCall("arithmetic_sum", {"items": [1], "total": 1, "code": "SECRET"}))
+    assert "z3" in register_all(reg)  # 엔진 이름(E-8 별칭)
+    res = run_call(ToolCall("arithmetic_sum", {"items": [3, 4, 3], "total": 12, "unit": "month"}, check_id="s1"), reg=reg)
+    assert res.ok and res.verdict == "fail" and res.evidence["tool"] == "z3" and res.evidence["check_id"] == "s1"
+    assert sums.VERSION in res.evidence["version"] and res.evidence["output"]["computed"] == 10
+    bad = run_call(ToolCall("arithmetic_sum", {"items": [1], "total": 1, "code": "SECRET"}), reg=reg)
     assert bad.verdict == "unchecked" and bad.error == "invalid_args" and "SECRET" not in str(bad.evidence["reason"])
 
 

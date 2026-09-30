@@ -9,7 +9,7 @@ import pytest
 
 from neumann.finalize.tools import ToolCall, ToolRegistry
 from neumann.finalize.tools import dimension
-from neumann.finalize.tools.fin_tools import register_all
+from neumann.finalize.tools.fin_tools import register_all, run_call
 
 
 def q(value, unit):
@@ -97,7 +97,7 @@ def test_pint_unavailable_is_tool_unavailable_not_pass():
     reg = ToolRegistry()
     register_all(reg)
     with patch.object(dimension, "registry", side_effect=ImportError("pint")):
-        res = reg.run(ToolCall("unit_dimension", {"left": q(1, "m"), "right": q(1, "m")}))
+        res = run_call(ToolCall("unit_dimension", {"left": q(1, "m"), "right": q(1, "m")}), reg=reg)
     assert res.verdict == "unchecked" and res.error == "tool_unavailable"
 
 
@@ -106,6 +106,6 @@ def test_registry_evidence_and_time():
     register_all(reg)
     t0 = time.perf_counter()
     for _ in range(50):
-        res = reg.run(ToolCall("unit_dimension", {"left": q(3, "m"), "right": q(4, "s"), "operation": "add"}))
+        res = run_call(ToolCall("unit_dimension", {"left": q(3, "m"), "right": q(4, "s"), "operation": "add"}), reg=reg)
     assert time.perf_counter() - t0 < 5.0
     assert res.ok and res.verdict == "fail" and res.evidence["output"]["left_dimension"] == "[length]"

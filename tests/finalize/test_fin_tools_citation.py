@@ -14,7 +14,7 @@ import pytest
 
 from neumann.finalize.tools import ToolCall, ToolRegistry
 from neumann.finalize.tools import citation
-from neumann.finalize.tools.fin_tools import register_all
+from neumann.finalize.tools.fin_tools import register_all, run_call
 from tests.finalize.fin_tools_backend import RETRACTED_DOI, build_backend
 
 TITLE = "[FAKE] EquiMol: equivariant message passing for molecular property prediction"
@@ -78,7 +78,7 @@ def test_slow_backend_times_out_through_registry(backend):
     register_all(reg)
     try:
         t0 = time.perf_counter()
-        res = reg.run(ToolCall("citation_lookup", {"doi": RETRACTED_DOI}))
+        res = run_call(ToolCall("citation_lookup", {"doi": RETRACTED_DOI}), reg=reg)
         assert time.perf_counter() - t0 < 5.0  # 0.2초 상한 + 부하 여유
         assert res.verdict == "unchecked" and res.error == "timeout"
     finally:
@@ -94,7 +94,7 @@ def test_backend_error_text_does_not_leak(backend):
     reg = ToolRegistry()
     register_all(reg)
     try:
-        res = reg.run(ToolCall("citation_lookup", {"doi": RETRACTED_DOI}))
+        res = run_call(ToolCall("citation_lookup", {"doi": RETRACTED_DOI}), reg=reg)
         assert res.error == "tool_error" and "secret" not in str(res.as_dict())
     finally:
         citation.set_backend(backend, timeout_s=10.0)

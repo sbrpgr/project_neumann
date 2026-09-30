@@ -26,7 +26,10 @@ from neumann.finalize.tools.quantities import _ASCII_UNITS, _KO_UNITS, _WORD_UNI
 VERSION = "fin-tools.unit_dimension@1"
 MAX_FACTORS = 8
 _UNIT_RE = re.compile(r"^[A-Za-z0-9µμΩÅ°℃%_\s*/().\-^가-힣]{1,64}$")
-_EXP_RE = re.compile(r"(\^|\*\*)\s*\(?\s*(-?\d+)")
+# 지수는 인수 하나에 한 번, ``^n``·``**n``(n은 부호 있는 한 자리 1~4)만. 사슬(m^3^3)·묶음 지수((m^3)^3)·
+# 괄호 지수(m^(3))는 문법에서 거절한다(C-3/F-17: Pint가 오른쪽 결합 정수 거듭제곱을 끝없이 계산하며 GIL을 잡는다).
+_EXP_OP = re.compile(r"\^|\*\*")
+_EXP_OK = re.compile(r"\s*-?[1-4](?![\d.])")
 _TOKEN_RE = re.compile(r"[A-Za-zµμΩÅ°℃%가-힣_][A-Za-z0-9µμΩÅ°℃%가-힣_\-]*")
 RELATIONS = {"le": lambda a, b: a <= b, "lt": lambda a, b: a < b, "ge": lambda a, b: a >= b,
              "gt": lambda a, b: a > b, "eq": lambda a, b: a == b}
@@ -83,8 +86,9 @@ def normalize_unit(unit: Any) -> str:
     if type(unit) is not str or not _UNIT_RE.fullmatch(unit.strip()):
         raise Unchecked("invalid_unit")
     text = unit.strip()
-    for m in _EXP_RE.finditer(text):
-        if abs(int(m.group(2))) > 4:
+    for m in _EXP_OP.finditer(text):
+        exp = _EXP_OK.match(text, m.end())
+        if not exp or text[:m.start()].rstrip().endswith((")", "^")) or _EXP_OP.match(text[exp.end():].lstrip()):
             raise Unchecked("invalid_unit")
     whole = _KO_UNITS.get(text) or _ASCII_UNITS.get(text) or _WORD_UNITS.get(text.lower())
     if whole:

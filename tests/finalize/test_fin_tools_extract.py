@@ -10,8 +10,9 @@ from pathlib import Path
 
 import pytest
 
-from neumann.finalize.tools import TOOL_FOR_CHECK, ToolRegistry
+from neumann.finalize.tools import ToolRegistry
 from neumann.finalize.tools import citation
+from neumann.finalize.tools.fin_tools import FIN_TOOL_FOR_KIND
 from neumann.finalize.tools.extract import extract_checks, run_checks
 from tests.finalize.fin_tools_backend import build_backend
 from tests.finalize.fin_tools_plans import CLEAN, SEEDED
@@ -95,7 +96,7 @@ def test_anchors_are_exact_source_substrings_and_tool_choice_is_code_fixed():
     checks = extract_checks(SEEDED)
     assert checks
     for c in checks:
-        assert c.call.name == TOOL_FOR_CHECK[c.kind]
+        assert c.call.name == FIN_TOOL_FOR_KIND[c.kind]
         assert c.call.check_id == c.check_id
         for a in c.anchors:
             assert lines[a["line"] - 1][a["start"]:a["end"]] == a["text"]

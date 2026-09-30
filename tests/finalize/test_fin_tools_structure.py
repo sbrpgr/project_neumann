@@ -9,7 +9,7 @@ import pytest
 
 from neumann.finalize.tools import ToolCall, ToolRegistry
 from neumann.finalize.tools import structure
-from neumann.finalize.tools.fin_tools import register_all
+from neumann.finalize.tools.fin_tools import register_all, run_call
 
 REQUIRED = ["배경", "연구 질문", "가설", "방법", "데이터", "평가", "일정", "위험", "기대효과"]
 FULL = """# 계획서
@@ -100,7 +100,7 @@ def test_networkx_unavailable_is_tool_unavailable():
         return real(name, *a, **k)
 
     with patch.object(structure.importlib, "import_module", side_effect=no_nx):
-        res = reg.run(ToolCall("structure", {**lines(FULL), "required_sections": REQUIRED}))
+        res = run_call(ToolCall("structure", {**lines(FULL), "required_sections": REQUIRED}), reg=reg)
     assert res.verdict == "unchecked" and res.error == "tool_unavailable"
 
 
