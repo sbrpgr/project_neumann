@@ -1,0 +1,368 @@
+{
+  "session_id": "fixture-session",
+  "plan_id": "3d35460def76efc4a786dce769e614f0d54d110ee2837da6b8fc1dbcf88ef33c",
+  "generated_at": "2026-09-30T09:00:00Z",
+  "status": "ok",
+  "pipeline_version": "neumann-1",
+  "plan": {
+    "plan_id": "3d35460def76efc4a786dce769e614f0d54d110ee2837da6b8fc1dbcf88ef33c",
+    "session_id": "fixture-session",
+    "lines": [
+      {
+        "no": 1,
+        "text": "# 연구계획서 (예시) — 전해액 이온전도도 예측 대리모델"
+      },
+      {
+        "no": 2,
+        "text": ""
+      },
+      {
+        "no": 3,
+        "text": "## 1. 연구 목표"
+      },
+      {
+        "no": 4,
+        "text": ""
+      },
+      {
+        "no": 5,
+        "text": "리튬이온 배터리 전해액의 이온전도도를 예측하는 Graph Neural Network 대리모델을 개발하여,"
+      },
+      {
+        "no": 6,
+        "text": "실험 합성 없이 후보 조성을 사전 선별하는 것을 목표로 한다."
+      },
+      {
+        "no": 7,
+        "text": ""
+      },
+      {
+        "no": 8,
+        "text": "## 2. 방법"
+      },
+      {
+        "no": 9,
+        "text": ""
+      },
+      {
+        "no": 10,
+        "text": "분자 그래프 인코더와 조성 임베딩을 결합한 GNN 을 학습한다."
+      },
+      {
+        "no": 11,
+        "text": "제안 모델을 기존에 발표된 baseline 2종과 비교한다."
+      },
+      {
+        "no": 12,
+        "text": ""
+      },
+      {
+        "no": 13,
+        "text": "## 3. 데이터"
+      },
+      {
+        "no": 14,
+        "text": ""
+      },
+      {
+        "no": 15,
+        "text": "문헌에 보고된 약 12,000건의 전해액 조성-전도도 데이터를 수집해 사용한다."
+      },
+      {
+        "no": 16,
+        "text": "We randomly split the dataset into 80/10/10 train/validation/test sets."
+      },
+      {
+        "no": 17,
+        "text": "조성이 거의 동일한 중복 항목에 대한 별도 제거 절차는 두지 않는다."
+      },
+      {
+        "no": 18,
+        "text": ""
+      },
+      {
+        "no": 19,
+        "text": "## 4. 평가"
+      },
+      {
+        "no": 20,
+        "text": ""
+      },
+      {
+        "no": 21,
+        "text": "holdout test set 에서 R2 와 MAE 를 보고한다."
+      },
+      {
+        "no": 22,
+        "text": "We do not report error bars, and no ablation study is planned."
+      },
+      {
+        "no": 23,
+        "text": "Code and data will not be released due to an industrial collaboration agreement."
+      },
+      {
+        "no": 24,
+        "text": ""
+      },
+      {
+        "no": 25,
+        "text": "## 5. 기대 성과"
+      },
+      {
+        "no": 26,
+        "text": ""
+      },
+      {
+        "no": 27,
+        "text": "제안 모델이 기존 baseline 대비 더 높은 예측 정확도를 달성할 것으로 기대한다."
+      },
+      {
+        "no": 28,
+        "text": ""
+      }
+    ]
+  },
+  "similar_works": [
+    {
+      "work_id": "fixture:gnn-001",
+      "similarity": 0.82,
+      "title": "[FAKE] EquiMol: equivariant message passing for molecular property prediction",
+      "url": "https://example.org/fake-venue/forum?id=gnn-001",
+      "venue": "FakeConf 2099",
+      "year": 2099,
+      "axis_scores": {}
+    },
+    {
+      "work_id": "fixture:gnn-002",
+      "similarity": 0.74,
+      "title": "[FAKE] Scaffold-aware contrastive pretraining for small-molecule GNNs",
+      "url": "https://example.org/fake-venue/forum?id=gnn-002",
+      "venue": "FakeConf 2099",
+      "year": 2099,
+      "axis_scores": {}
+    },
+    {
+      "work_id": "fixture:gnn-003",
+      "similarity": 0.61,
+      "title": "[FAKE] Uncertainty-calibrated GNN ensembles for aqueous solubility prediction",
+      "url": "https://example.org/fake-venue/forum?id=gnn-003",
+      "venue": "FakeConf 2099",
+      "year": 2099,
+      "axis_scores": {}
+    }
+  ],
+  "evidence": [
+    {
+      "excerpt_id": "ex_c5986bb2facc61b2",
+      "source_kind": "review",
+      "source_id": "rev-gnn-001-a",
+      "start": 0,
+      "end": 59,
+      "text": "The paper reports a random 80/10/10 split of the molecules.",
+      "text_sha256": "69233c395f723472130cc6f3d3e9372cf9e0ee3540d4c22edafdc30578d3a560",
+      "source_url": "https://example.org/fake-venue/forum?id=gnn-001&noteId=rev-gnn-001-a",
+      "source_sha256": "30481b833a1e331a6554ed2794186bfba3ecf7016b70678d8d491e1d99e08326"
+    },
+    {
+      "excerpt_id": "ex_110f92f3599151f1",
+      "source_kind": "review",
+      "source_id": "rev-gnn-001-a",
+      "start": 60,
+      "end": 182,
+      "text": "Random splits are known to leak near-duplicate scaffolds between train and test, so the reported MAE is likely optimistic.",
+      "text_sha256": "4aea7ef6bff915efa676fbe4652683a4df59abcb9199c8c97931438b8add115d",
+      "source_url": "https://example.org/fake-venue/forum?id=gnn-001&noteId=rev-gnn-001-a",
+      "source_sha256": "30481b833a1e331a6554ed2794186bfba3ecf7016b70678d8d491e1d99e08326"
+    },
+    {
+      "excerpt_id": "ex_845f5eb5621099f5",
+      "source_kind": "review",
+      "source_id": "rev-gnn-002-a",
+      "start": 0,
+      "end": 67,
+      "text": "The pretraining corpus overlaps with the downstream test molecules.",
+      "text_sha256": "7217f5f5452140e190ca9dc38c9aac1985075b2ba43c857d2affed4e77ee0991",
+      "source_url": "https://example.org/fake-venue/forum?id=gnn-002&noteId=rev-gnn-002-a",
+      "source_sha256": "523ccc30305f67955b24a23f860c5e3699137cf12aff88416b5a6c1511bec9bb"
+    },
+    {
+      "excerpt_id": "ex_ca5fa760fdb45841",
+      "source_kind": "decision",
+      "source_id": "dec-gnn-001",
+      "start": 25,
+      "end": 71,
+      "text": "the random split likely overstates performance",
+      "text_sha256": "b1188787a3179b6328c37c24b4e2f13b5d7e64a2ef17b85d7c12321c419aa734",
+      "source_url": "https://example.org/fake-venue/forum?id=gnn-001&noteId=dec-gnn-001",
+      "source_sha256": "8d50f325e4ad8e39417cc04147d3ee27c45d8fd1be7c97d5ecd98aaf6807c80a"
+    },
+    {
+      "excerpt_id": "ex_fc88c26e0b31af5e",
+      "source_kind": "review",
+      "source_id": "rev-gnn-001-b",
+      "start": 0,
+      "end": 65,
+      "text": "All numbers come from a single training run with one random seed.",
+      "text_sha256": "0d7b5472269009086dc50a604e98a22d476ff659b5eed7cd74c744ac15299f00",
+      "source_url": "https://example.org/fake-venue/forum?id=gnn-001&noteId=rev-gnn-001-b",
+      "source_sha256": "d36b1f9452c00bdcf6ee593f13c589c6602bfd52d498b2adce2db97c7bf25bdd"
+    },
+    {
+      "excerpt_id": "ex_4b76d98627bb3f0c",
+      "source_kind": "review",
+      "source_id": "rev-gnn-001-b",
+      "start": 66,
+      "end": 158,
+      "text": "Without error bars across seeds it is impossible to tell whether the 3% improvement is real.",
+      "text_sha256": "9ad7066b7817f78221ab28aa4be425a7fc2ace2db305bfec0c30b2d61f68ac10",
+      "source_url": "https://example.org/fake-venue/forum?id=gnn-001&noteId=rev-gnn-001-b",
+      "source_sha256": "d36b1f9452c00bdcf6ee593f13c589c6602bfd52d498b2adce2db97c7bf25bdd"
+    },
+    {
+      "excerpt_id": "ex_6ec54fbcbb2ccae1",
+      "source_kind": "review",
+      "source_id": "rev-gnn-003-b",
+      "start": 267,
+      "end": 313,
+      "text": "A single seed is used for every ensemble size.",
+      "text_sha256": "8c8cbb924781e2a79cfcf6d8c43899ec1d56d3ccaf62d5818df4d5747dd4ab54",
+      "source_url": "https://example.org/fake-venue/forum?id=gnn-003&noteId=rev-gnn-003-b",
+      "source_sha256": "f345f597ea99e2eaf41c13a718bb38c4305179ed218c681e42ade1ba53d9a28b"
+    },
+    {
+      "excerpt_id": "ex_7686b8804b5212e3",
+      "source_kind": "review",
+      "source_id": "rev-seg-002-b",
+      "start": 0,
+      "end": 52,
+      "text": "Results are reported from one run with a fixed seed.",
+      "text_sha256": "78310efc1e22004b23f9d4d4f51dad3cf1ccb3749998d08dfb04dad99d129d5d",
+      "source_url": "https://example.org/fake-venue/forum?id=seg-002&noteId=rev-seg-002-b",
+      "source_sha256": "90e5eddfad372178f6c629dd9128de3b77df5da55ee8c03251e9d0f595103dbd"
+    }
+  ],
+  "risk_cards": [
+    {
+      "card_id": "card-fx-leak",
+      "risk_code": "R3",
+      "title": "Random splitting can leak near-duplicates into the test set",
+      "why_applies": {
+        "text": "The plan splits the data randomly (80/10/10) and has no step to remove near-duplicate compositions.",
+        "plan_lines": [
+          16,
+          17
+        ]
+      },
+      "evidence": [
+        "ex_c5986bb2facc61b2",
+        "ex_110f92f3599151f1",
+        "ex_845f5eb5621099f5",
+        "ex_ca5fa760fdb45841"
+      ],
+      "score": {
+        "similarity": 0.82,
+        "frequency": 0.5,
+        "severity": 1.0,
+        "confidence": 0.9,
+        "total": 0.78,
+        "weights": {
+          "similarity": 0.25,
+          "frequency": 0.25,
+          "severity": 0.25,
+          "confidence": 0.25
+        }
+      },
+      "generator": "mock",
+      "works": [
+        "fixture:gnn-001",
+        "fixture:gnn-002"
+      ],
+      "subcode": null,
+      "model": null
+    },
+    {
+      "card_id": "card-fx-seed",
+      "risk_code": "R2",
+      "title": "Single-seed results without error bars",
+      "why_applies": {
+        "text": "The plan states that no error bars and no ablation will be reported.",
+        "plan_lines": [
+          22
+        ]
+      },
+      "evidence": [
+        "ex_fc88c26e0b31af5e",
+        "ex_4b76d98627bb3f0c",
+        "ex_6ec54fbcbb2ccae1",
+        "ex_7686b8804b5212e3"
+      ],
+      "score": {
+        "similarity": 0.7,
+        "frequency": 0.5,
+        "severity": 0.6,
+        "confidence": 0.85,
+        "total": 0.65,
+        "weights": {
+          "similarity": 0.25,
+          "frequency": 0.25,
+          "severity": 0.25,
+          "confidence": 0.25
+        }
+      },
+      "generator": "mock",
+      "works": [
+        "fixture:gnn-001",
+        "fixture:gnn-003",
+        "fixture:seg-002"
+      ],
+      "subcode": null,
+      "model": null
+    }
+  ],
+  "stages": [
+    {
+      "name": "retrieve",
+      "status": "ok",
+      "reason": null,
+      "phase": "search",
+      "impl": "fixture",
+      "elapsed_s": 0.0,
+      "counts": {}
+    },
+    {
+      "name": "extract",
+      "status": "ok",
+      "reason": null,
+      "phase": "analyze",
+      "impl": "fixture:mock",
+      "elapsed_s": 0.0,
+      "counts": {}
+    },
+    {
+      "name": "cards",
+      "status": "ok",
+      "reason": null,
+      "phase": "analyze",
+      "impl": "fixture:mock",
+      "elapsed_s": 0.0,
+      "counts": {}
+    }
+  ],
+  "expected_review": {},
+  "checklist": [],
+  "notices": [
+    "[FAKE] fixture result for UI/API development"
+  ],
+  "plan_stats": {},
+  "axes": {},
+  "domain": null,
+  "claims": [],
+  "post_status": [],
+  "field_prior": null,
+  "plan_checks": {},
+  "research_questions": {},
+  "plan_side_candidates": [],
+  "verification": {},
+  "risk_synthesis": {},
+  "manifest": {}
+}
