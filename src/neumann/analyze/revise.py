@@ -79,7 +79,7 @@ MAX_EXCERPT_CHARS = 700
 MAX_PLAN_CHARS = 12000
 MAX_PROPOSED_CHARS = 600
 MAX_QUESTION_CHARS = 300
-MAX_PARALLEL = 3
+MAX_PARALLEL = 4
 MAX_CARDS = 8
 EST_CHARS_PER_TOKEN = 3          # 한국어·영어 혼합 입력의 어림값(보고서에 적는다)
 EST_OUTPUT_TOKENS_PER_CALL = 700  # 카드 한 장 응답의 어림값
@@ -863,7 +863,9 @@ def revise_result(
             return _CardRun(rev, per_card[card.card_id], 0, {}, True)
 
     if len(cards) > 1 and parallel > 1:
-        with ThreadPoolExecutor(max_workers=min(parallel, len(cards)), thread_name_prefix="neumann-revise") as pool:
+        # Each card owns its ProviderLLMCall (last_result/usage); only the request
+        # holds a serving analysis slot. map preserves selected-card order.
+        with ThreadPoolExecutor(max_workers=min(parallel, MAX_PARALLEL, len(cards)), thread_name_prefix="neumann-revise") as pool:
             runs = list(pool.map(run, cards))
     else:
         runs = [run(c) for c in cards]

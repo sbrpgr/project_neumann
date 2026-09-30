@@ -11,8 +11,9 @@
 - 두 경로는 서빙 층의 **분석(analysis) 보호 경로로 코드가 등록**한다(설정으로 뺄 수 없다): 바이트·글자 상한(413), 긴 토큰(422),
   차단 스위치(503), IP 속도 제한(429), 일일 예산(503), 동시 상한·대기열(503). 미들웨어가 자리를 잡지 않은 요청(같은 계획서의
   분석이 캐시·진행 중이라 통과한 경우)은 핸들러가 같은 입장 검사(`Serving.admit_new`)를 다시 거친다.
-- 실행은 분석 관문의 자리(`Gate.acquire`)를 얻은 뒤 스레드에서 돈다. 동기 상한 `NEUMANN_REVISE_TIMEOUT_S`(기본 90초, 터널
-  응답 상한 아래). 넘으면 504 사용자 문구. 미들웨어를 거치지 않은 요청은 503으로 받지 않는다.
+- 실행은 분석 관문의 자리(`Gate.acquire`) 하나를 얻은 뒤 카드별 호출을 최대 4개 스레드에서 처리한다. 동기 상한
+  `NEUMANN_REVISE_TIMEOUT_S`(revise·finalize 기본 240초, assemble 기본 90초). 넘으면 504 사용자 문구.
+  미들웨어를 거치지 않은 요청은 503으로 받지 않는다.
 - 작업(jobs) 방식 연결: `run_revision(payload)`·`run_assembly(payload)`는 순수 동기 함수라 E4-L2d `JobStore`에 작업 종류를
   하나 더 두면 그대로 감쌀 수 있다(이번 과제는 동기 경로만).
 
@@ -47,7 +48,8 @@ ASSEMBLE_PATH = "/premortem/revise/assemble"
 MAX_PLAN_CHARS = 200_000
 MAX_CARD_IDS = 8
 MAX_DECISIONS = 200
-DEFAULT_TIMEOUT_S = 90.0
+DEFAULT_TIMEOUT_S = 240.0
+DEFAULT_ASSEMBLE_TIMEOUT_S = 90.0
 DOCX_MEDIA = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 MESSAGES = {
@@ -287,8 +289,8 @@ def build_docx_bytes(req: AssembleRequest, assembled: Mapping[str, Any]) -> byte
 router = APIRouter()
 
 
-def _timeout_s() -> float:
-    return serving._env_num("NEUMANN_REVISE_TIMEOUT_S", DEFAULT_TIMEOUT_S, 0.05, 3600)
+def _timeout_s(default: float = DEFAULT_TIMEOUT_S) -> float:
+    return serving._env_num("NEUMANN_REVISE_TIMEOUT_S", default, 0.05, 3600)
 
 
 def _json(payload: dict[str, Any], code: int = 200, headers: dict[str, str] | None = None) -> JSONResponse:
@@ -451,7 +453,7 @@ async def premortem_revise_assemble(request: Request) -> Response:
         asm.assemble_revised_plan(req.plan_text, req.revision, req.decisions, result=req.result, regate=True)
     except ValueError:
         return _json(serving._err("invalid_revision_proposal", "수정 제안의 근거·수치·개인정보 검사를 통과하지 못했습니다.", ticket), 422)
-    limit = _timeout_s()
+    limit = _timeout_s(DEFAULT_ASSEMBLE_TIMEOUT_S)
 
     def assemble_output(cancelled: threading.Event) -> tuple[dict[str, Any], bytes | None]:
         from neumann.analyze.revise import check_cancelled
