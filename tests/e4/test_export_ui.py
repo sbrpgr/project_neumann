@@ -1,4 +1,6 @@
-"""E4-L2f 화면 "IV 내보내기": 정적 검사(항상) + Playwright 1440×900(``NEUMANN_UI_TESTS=1``일 때만).
+"""E4-L2f 화면 "IV 내보내기": 정적·서버 검사(항상) + Playwright 1440×900(``NEUMANN_UI_TESTS=1``일 때만).
+
+원결과는 화면 응답(``build_ui_view`` → ``/premortem/view``·jobs 화면 결과)의 ``result``로 온다. 내보내기 때 재분석하지 않는다.
 
     python -m pytest tests/e4/test_export_ui.py -q                              # 정적 검사
     NEUMANN_UI_TESTS=1 NEUMANN_LLM_PROVIDER=mock python -m pytest tests/e4/test_export_ui.py -q -s
@@ -7,10 +9,11 @@
 Playwright 흐름(서버는 하위 프로세스 uvicorn, 기본 8149번, ``NEUMANN_LLM_PROVIDER=mock``·OpenAI 키 없이 띄우고 끝나면 종료.
 8010·8020은 쓰지 않는다):
 A. 첫 화면: 단계 IV 비활성·사유(분석 결과 없음) → 계획서 분석(mock) → 리포트에서 결정 3건(뷰에 실린 결정·메모 1건 +
-   클릭 2건) → 단계 IV 누르면 내보내기 섹션으로 → ZIP 내려받기 → ZIP을 열어 9파일·decision_log.json 내용 확인 →
-   스크린샷 ``docs/reports/E4-L2f_export.png`` 한 장 → 서버 오류(가로챈 422·429)의 문구가 textContent로 보이는지(태그 안 만듦).
+   클릭 2건) → 단계 IV 누르면 내보내기 섹션으로 → ZIP 내려받기(POST /premortem 재분석 요청 0건) → ZIP을 열어 9파일·
+   decision_log.json 내용 확인 → 스크린샷 ``docs/reports/E4-L2f_export.png`` 한 장 → 서버 오류(가로챈 422·429)의 문구가
+   textContent로 보이는지(태그 안 만듦).
 B. 샘플 결과: 버튼·단계 IV 비활성, 사유 "샘플".
-C. 다시 받은 원본 결과가 화면과 다르면(체크리스트 문구 바꿔 가로챔) 내보내지 않고 사유를 보인다.
+C. 화면 응답에 원결과(result)가 없으면(옛 서버를 흉내 내 가로챔) 버튼 비활성·사유, 요청 없음.
 콘솔 오류·페이지 오류·실패 요청·외부 도메인 요청이 있으면 실패(가로챈 4xx의 "Failed to load resource"만 뺀다).
 """
 
@@ -111,13 +114,59 @@ def test_server_message_goes_through_text_content():
     assert "esc(e.msg)" in html and "esc('내보낼 수 없음 · ' + why)" in html
 
 
-def test_refetch_is_checked_against_screen():
+def test_no_reanalysis_uses_view_result():
     src = _src()
-    raw = _func(src, "expRaw")
-    assert "fetch('premortem'," in raw and "expMismatch(d, raw)" in raw and "throw new Error" in raw
-    mm = _func(src, "expMismatch")
-    for part in ("raw.sample", "raw.plan_id !== d.plan_id", "risk_cards", "checklist"):
-        assert part in mm
+    assert "fetch('premortem'," not in src, "내보내기는 재분석(POST /premortem)을 부르지 않는다"
+    assert "var r = d && d.result;" in _func(src, "expInline")
+    block = _func(src, "expBlock")
+    assert "원결과가 없음" in block and "raw.plan_id !== D.plan_id" in block
+    assert "var raw = expInline(d)" in _func(src, "doExport")
+
+
+# ── 서버: 화면 응답에 실리는 원결과(view.py) ────────────────────────────────
+
+
+def _fixture_result() -> dict:
+    return json.loads((ROOT / "tests" / "fixtures" / "premortem_result.json").read_text(encoding="utf-8"))
+
+
+def test_view_carries_contract_result_that_packages():
+    from neumann.api.export import FILE_NAMES, build_package
+    from neumann.api.view import build_ui_view, validate_ui_view
+    from neumann.models import PremortemResult
+
+    res = _fixture_result()
+    view = build_ui_view(res, records=None)
+    assert validate_ui_view(view) == [], "result를 붙여도 ui_view 계약을 지킨다"
+    raw = view["result"]
+    assert view["_status"]["export"] == {"result": True, "reason": None}
+    assert raw == PremortemResult.model_validate(res).model_dump(mode="json")
+    assert raw["plan_id"] == view["plan_id"] and raw["session_id"] == view["session_id"]
+    # 화면과 같은 값: 계획서 줄(빈 줄은 화면이 뺀다) 번호·문구가 뷰와 같다
+    assert [(ln["no"], ln["text"]) for ln in raw["plan"]["lines"] if ln["text"].strip()] ==         [(ln["n"], ln["t"]) for ln in view["plan"]["lines"]]
+    json.dumps(view, ensure_ascii=False, allow_nan=False)
+    ids = [it["id"] for it in view["checklist"]]
+    decisions = [{"item_id": ids[0], "decision": "adopt", "note": "메모 a@b.org"}] if ids else []
+    with zipfile.ZipFile(io.BytesIO(build_package(raw, decisions=decisions))) as zf:
+        assert zf.namelist() == list(FILE_NAMES)
+        log = json.loads(zf.read("decision_log.json"))
+    assert len(log["decisions"]) == len(decisions)
+    if decisions:
+        assert "a@b.org" not in log["decisions"][0]["note"]
+
+
+def test_view_result_withheld_for_sample_error_and_bad_input():
+    from neumann.api.view import build_ui_view
+
+    res = _fixture_result()
+    sample = build_ui_view(res, sample=True, pipeline_state="unavailable")
+    assert sample["result"] is None and "샘플" in sample["_status"]["export"]["reason"]
+    err = build_ui_view(None, pipeline_state="error", error="파이프라인 실행 실패: X")
+    assert err["result"] is None and err["_status"]["export"]["reason"] == "분석 결과 없음"
+    bad = dict(res, api_key="sk-should-not-pass")  # 계약 밖 필드(extra=forbid) → 싣지 않는다
+    v = build_ui_view(bad, records=None)
+    assert v["result"] is None and "PremortemResult" in v["_status"]["export"]["reason"]
+    assert "sk-should-not-pass" not in json.dumps(v, ensure_ascii=False)
 
 
 def test_service_ports_refused():
@@ -177,11 +226,13 @@ class Watch:
 
     def __init__(self, page, base: str) -> None:
         self.errors: list[str] = []
+        self.posts: list[str] = []
         self.allow_4xx = False
         host = urlparse(base).hostname
         page.on("console", self._console)
         page.on("pageerror", lambda e: self.errors.append(f"pageerror: {e}"))
         page.on("requestfailed", lambda r: self.errors.append(f"requestfailed: {r.url}"))
+        page.on("request", lambda r: self.posts.append(urlparse(r.url).path) if r.method == "POST" else None)
         page.on("request", lambda r: None if (urlparse(r.url).hostname in LOCAL_HOSTS | {host}
                                                or r.url.startswith(("blob:", "data:")))
                 else self.errors.append(f"external: {r.url}"))
@@ -246,8 +297,10 @@ def run_ui(base: str, out: Path, tmp: Path) -> dict:
             page.click('#s-check .dec[data-i="1"]')          # 보류 → 기각
             page.click('#s-check .dec[data-i="2"]')          # 보류 → 기각
             page.click('#s-check .dec[data-i="2"]')          # 기각 → 채택
-            page.wait_for_function("document.getElementById('expDec').textContent.indexOf('결정 3건') >= 0")
+            # 클릭마다 집계는 다음 틱에 다시 그린다 — 중간 상태("결정 3건 · 채택 1 · 기각 2")가 아니라 최종 값을 기다린다
+            page.wait_for_function("document.getElementById('expDec').textContent.indexOf('채택 2 · 보류 0 · 기각 1') >= 0")
             info["exp_dec"] = page.locator("#expDec").inner_text()
+            assert [page.locator(f'#s-check .dec[data-i="{i}"]').text_content() for i in range(3)] == ["채택", "기각", "채택"]
             assert "채택 2 · 보류 0 · 기각 1" in info["exp_dec"], info["exp_dec"]
             assert f"결정 전 {n_items - 3}건은 싣지 않음" in info["exp_dec"], info["exp_dec"]
 
@@ -264,6 +317,8 @@ def run_ui(base: str, out: Path, tmp: Path) -> dict:
             dl.save_as(zpath)
             page.wait_for_function("document.getElementById('expMsg').textContent.indexOf('내려받음') >= 0")
             info["download"] = dl.suggested_filename
+            info["posts"] = list(w.posts)
+            assert w.posts == ["/premortem/view", "/premortem/package"], w.posts  # 재분석(POST /premortem) 없음
             info["exp_msg"] = page.locator("#expMsg").inner_text()
             info["exp_src"] = page.locator("#expSrc").inner_text()
             assert re.fullmatch(r"neumann_package_[0-9A-Za-z_-]+\.zip", dl.suggested_filename), dl.suggested_filename
@@ -340,26 +395,26 @@ def run_ui(base: str, out: Path, tmp: Path) -> dict:
             assert not w.errors, w.errors
             page.close()
 
-            # ── C. 다시 받은 원본이 화면과 다르면 내보내지 않는다 ──
+            # ── C. 화면 응답에 원결과가 없으면(옛 서버) 비활성·사유, 요청 없음 ──
             page = ctx.new_page()
             w = Watch(page, base)
-            downloads: list = []
-            page.on("download", downloads.append)
 
-            def changed_raw(route, _req):
+            def no_result_view(route, _req):
                 resp = route.fetch()
-                raw = resp.json()
-                raw["checklist"][0]["action"] = raw["checklist"][0]["action"] + " (바뀐 문구)"
-                route.fulfill(response=resp, json=raw)
+                view = resp.json()
+                view.pop("result", None)
+                view["_status"].pop("export", None)
+                route.fulfill(response=resp, json=view)
 
+            page.route("**/premortem/view", no_result_view)
             _analyze(page, base, plan_text)
-            page.route("**/premortem", changed_raw)
-            page.click("#btnExport")
-            page.wait_for_function("document.getElementById('expMsg').textContent.indexOf('내보내기 실패') >= 0")
-            info["mismatch_msg"] = page.locator("#expMsg").text_content()
-            assert "화면과 달라 내보내지 않음" in info["mismatch_msg"] and "체크리스트" in info["mismatch_msg"]
-            page.wait_for_timeout(500)
-            assert not downloads, "화면과 다른 결과로 ZIP을 만들면 안 된다"
+            assert page.locator("#btnExport").is_disabled()
+            info["no_result_why"] = page.locator("#expWhy").inner_text()
+            assert "원결과가 없음" in info["no_result_why"], info["no_result_why"]
+            assert "원결과" in (page.locator("#stpExport").get_attribute("title") or "")
+            page.locator("#btnExport").click(force=True)
+            page.wait_for_timeout(300)
+            assert w.posts == ["/premortem/view"], w.posts
             assert not w.errors, w.errors
             page.close()
         finally:
