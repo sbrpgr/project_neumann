@@ -138,7 +138,11 @@ def public_item(item: dict[str, Any]) -> dict[str, Any]:
     hit = precomputed_hit(item)
     out["precomputed"] = {"available": hit is not None, "label": PRECOMPUTED_LABEL if hit else None}
     if hit:
-        out["precomputed"].update(url=f"/templates/samples/{item['id']}/view", generated_at=hit.entry.get("generated_at"))
+        generation = generation_of(hit.result.model_dump(mode="json", by_alias=True), source=hit.entry.get("source"))
+        out["precomputed"].update(url=f"/templates/samples/{item['id']}/view", generated_at=hit.entry.get("generated_at"),
+                                  generation=generation)
+        if generation == OFFLINE_LABEL:
+            out["precomputed"]["label"] += " · " + OFFLINE_LABEL
     return out
 
 
@@ -217,7 +221,12 @@ def samples_view(sample_id: str):
         if generation == OFFLINE_LABEL:
             notices.append(OFFLINE_LABEL)
         view = build_ui_view(result, records=None, extra_notices=notices)
-        view["_status"]["label"] = PRECOMPUTED_LABEL + (" · " + OFFLINE_LABEL if generation == OFFLINE_LABEL else "")
+        labels = [PRECOMPUTED_LABEL]
+        if generation == OFFLINE_LABEL:
+            labels.append(OFFLINE_LABEL)
+        if view["_status"].get("label"):
+            labels.append(view["_status"]["label"])  # Keep degradation and UI contract error labels visible.
+        view["_status"]["label"] = " · ".join(labels)
         return JSONResponse(view, headers={"X-Neumann-Precomputed": "1", "Cache-Control": "no-store"})
     except RegistryError as exc:
         return registry_failure(exc)
