@@ -68,8 +68,47 @@ STAGE_MODULES: dict[str, list[str]] = {
     "config": ["neumann.config"],
 }
 
+_FONT_DEVICE_NAMES = frozenset({"CON", "PRN", "AUX", "NUL"} | {
+    f"{prefix}{n}" for prefix in ("COM", "LPT") for n in range(1, 10)
+})
+
+
+def _safe_font_path(path: str) -> bool:
+    """Reject Windows-invalid names before stat; StaticFiles still checks containment."""
+    if any(ord(char) < 32 or char in '<>:"\\|?*' for char in path):
+        return False
+    for part in path.split("/"):
+        if not part:
+            continue
+        if part in {".", ".."} or part.endswith((" ", ".")) or len(part) > 255:
+            return False
+        if sum(2 if ord(char) > 0xFFFF else 1 for char in part) > 255:
+            return False
+        stem = part.split(".", 1)[0].upper()
+        if stem in _FONT_DEVICE_NAMES:
+            return False
+    return True
+
+
+class _FontFiles(StaticFiles):
+    async def __call__(self, scope, receive, send) -> None:
+        # Check the original decoded path: Windows normpath turns valid forward
+        # separators into backslashes, and could hide unsafe dot segments.
+        if not _safe_font_path(scope.get("path", "")):
+            await JSONResponse({"detail": "Not Found"}, status_code=404)(scope, receive, send)
+            return
+        await super().__call__(scope, receive, send)
+
+    async def get_response(self, path, scope):
+        try:
+            return await super().get_response(path, scope)
+        except (OSError, ValueError):
+            # Filesystem-specific invalid names fail closed, without a path/error leak.
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+
+
 app = FastAPI(title="Neumann", version=neumann.__version__, description="Research pre-mortem API")
-app.mount("/fonts", StaticFiles(directory=WEBUI_DIR / "fonts"), name="fonts")
+app.mount("/fonts", _FontFiles(directory=WEBUI_DIR / "fonts"), name="fonts")
 
 from neumann.api import serving  # noqa: E402  E4-L2c 서빙 층(동시 상한·대기열·속도 제한·예산·캐시·오류 문구·로그 위생)
 

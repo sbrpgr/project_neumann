@@ -19,7 +19,12 @@ def forbidden(*args, **kwargs):
     pytest.fail("rejected raw input reached normalization/hash/model/pipeline allocation")
 
 
-@pytest.mark.parametrize("text,status", [("가" * 800_001, 413), ("x\u2028" * 5000 + "x", 422)], ids=["hangul-800001", "unicode-5001-lines"])
+@pytest.mark.parametrize("text,status", [
+    ("가" * 800_001, 413),
+    ("\u0301" * 400_000 + "\u0316" * 400_001, 413),
+    ("x\u2028" * 5000 + "x", 422),
+    ("x\n" * 5000 + "x", 422),
+], ids=["hangul-800001", "combining-800001", "unicode-5001-lines", "lf-5001-lines"])
 def test_upload_rejects_before_nfc(monkeypatch, text, status):
     calls = []
 
