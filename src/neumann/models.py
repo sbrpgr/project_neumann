@@ -40,13 +40,13 @@ def normalize_text(text: str) -> str:
 
 
 # TLD를 알파벳으로 제한한다(지표 표기 `vIoU@0.3` 오탐 방지).
+# 주의(SEC-4): 본문 전체에 EMAIL_RE.search/sub/finditer를 돌리지 않는다(긴 토큰에서 제곱 시간). `email_spans`를 쓴다.
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,}")
 ORCID_RE = re.compile(r"\b\d{4}-\d{4}-\d{4}-\d{3}[\dX]\b")
 
 
 _EMAIL_LOCAL_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._%+-")
 _EMAIL_DOMAIN_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-")
-EMAIL_DOMAIN_MAX = 255  # RFC 1035 도메인 상한
 
 
 def email_spans(text: str) -> list[tuple[int, int]]:
@@ -54,7 +54,8 @@ def email_spans(text: str) -> list[tuple[int, int]]:
 
     `EMAIL_RE.search`를 본문 전체에 돌리면 `@` 없는 긴 토큰에서 시작 위치마다 끝까지 훑어 제곱 시간이 된다
     (20만 자 한 토큰에 수십 초, 공개 서버 이벤트 루프 정지). 여기서는 `@`마다 앞쪽 local 문자 연속(직전 `@`나
-    직전 일치 끝에서 멈춤)과 뒤쪽 도메인 문자(255자까지)만 걷고, 그 구간에서만 정규식을 맞춘다.
+    직전 일치 끝에서 멈춤)과 뒤쪽 도메인 문자 연속(다음 `@`나 도메인 밖 문자에서 멈춤)만 걷고, 그 구간에서만
+    정규식을 맞춘다. 구간들이 `@`로 나뉘어 겹치지 않으므로 전체가 선형이고, 결과는 `finditer`와 같다(길이 상한 없음).
     """
     out: list[tuple[int, int]] = []
     n = len(text)
@@ -65,7 +66,7 @@ def email_spans(text: str) -> list[tuple[int, int]]:
         while s > floor and text[s - 1] in _EMAIL_LOCAL_CHARS:
             s -= 1
         e = at + 1
-        while e < n and e - at <= EMAIL_DOMAIN_MAX and text[e] in _EMAIL_DOMAIN_CHARS:
+        while e < n and text[e] in _EMAIL_DOMAIN_CHARS:
             e += 1
         if s < at:
             m = EMAIL_RE.match(text, s, e)

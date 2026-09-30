@@ -63,3 +63,12 @@ def test_long_tokens_are_fast(text):
     contains_pii(text)
     redact_pii(text)
     assert time.perf_counter() - t0 < 1.0
+
+
+@pytest.mark.parametrize("n", [1, 63, 64, 65, 252, 253, 254, 255, 256, 257, 300, 5000])
+def test_long_domains_match_reference(n):
+    """도메인 길이 상한이 없다: 아주 긴 도메인도 옛 구현(EMAIL_RE.finditer·sub)과 같게 가린다."""
+    for text in (f"x.y@{'d' * n}.org", f"a@{'b.' * n}com tail", f"pre {'l' * n}@ex.io post"):
+        assert email_spans(text) == _ref_spans(text)
+        assert redact_pii(text) == EMAIL_RE.sub("[EMAIL]", text)
+        assert contains_pii(text) is bool(_ref_spans(text))
