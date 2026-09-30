@@ -44,6 +44,8 @@ DEMO_PLANS = ["plan.md", "plan_elife_neuro.md", "plan_medimaging.md"]
 NEGATIVE_PLAN = "negative_recipe.md"
 VIEWPORT = {"width": 1440, "height": 900}
 C_PREFIX = "E5-L0e2e"
+CLIP_JS = ("(s) => { const r = document.querySelector(s).getBoundingClientRect(); "
+           "return {x: r.left + window.scrollX, y: r.top + window.scrollY, width: r.width, height: Math.min(r.height, 6000)}; }")
 HEALTH_WAIT_JS = "() => { const h = document.getElementById('hdrState'); return h && h.textContent.trim() !== '서버 확인 중'; }"
 DONE_WAIT_JS = ("() => (document.body.dataset.view === 'report' && document.body.dataset.ready === '1') "
                 "|| !!document.getElementById('jobErr')")
@@ -115,8 +117,9 @@ def _run_ui(browser, base_url: str, plan_name: str, timeout_s: float, out_dir: P
     def shot(tag: str, full: bool = False, selector: str | None = None) -> None:
         path = out_dir / f"{C_PREFIX}_{mode}_{stem}_{tag}.png"
         try:
-            if selector:
-                page.locator(selector).first.screenshot(path=str(path))
+            if selector:  # 페이지 좌표로 잘라 찍는다(요소 스크린샷은 고정 헤더가 카드 위에 겹친다)
+                box = page.evaluate(CLIP_JS, selector)
+                page.screenshot(path=str(path), full_page=True, clip=box)
             else:
                 page.screenshot(path=str(path), full_page=full)
             rec["shots"].append(path.name)
