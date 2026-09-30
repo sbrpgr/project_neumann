@@ -159,7 +159,7 @@ def test_health_reports_guard_without_key_material(monkeypatch):
     get_settings.cache_clear()
     body = TestClient(app).get("/health").json()
     assert body["llm"] == {"provider_requested": "openai", "live_llm_ok": False, "key_present": True,
-                           "effective": "mock", "model": ""}
+                           "effective": "mock", "model": "", "astra_allowed": False}
     assert FAKE_KEY not in json.dumps(body)
 
     monkeypatch.setenv("NEUMANN_LIVE_LLM_OK", "1")
@@ -173,3 +173,72 @@ def test_health_reports_guard_without_key_material(monkeypatch):
     monkeypatch.setattr("neumann.config.Settings.has_openai_key", property(lambda self: False))
     body = TestClient(app).get("/health").json()
     assert body["llm"]["effective"] == "openai_no_key"
+
+
+# ── astra 금지(대표 지시 20:4x) ─────────────────────────────────────────
+
+
+@pytest.mark.parametrize("model", ["gpt-6-astra", "GPT-6-Astra", "gpt-6.1-astra-preview"])
+def test_make_llm_replaces_astra_with_sol(monkeypatch, model):
+    monkeypatch.setenv("NEUMANN_LIVE_LLM_OK", "1")
+    monkeypatch.delenv("NEUMANN_ALLOW_ASTRA", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    llm = make_llm(SimpleNamespace(llm_provider="openai", llm_model=model, openai_api_key=None, llm_timeout_s=5.0))
+    assert llm.name == "openai" and llm.model == "gpt-6.1-sol"
+
+
+def test_env_astra_model_is_replaced(monkeypatch):
+    """사고 재현: 옛 프로세스 환경 NEUMANN_LLM_MODEL=gpt-6-astra."""
+    monkeypatch.setenv("NEUMANN_LIVE_LLM_OK", "1")
+    monkeypatch.setenv("NEUMANN_LLM_PROVIDER", "openai")
+    monkeypatch.setenv("NEUMANN_LLM_MODEL", "gpt-6-astra")
+    monkeypatch.delenv("NEUMANN_ALLOW_ASTRA", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    assert make_llm(get_settings()).model == "gpt-6.1-sol"
+
+
+def test_allow_astra_flag_keeps_model(monkeypatch):
+    monkeypatch.setenv("NEUMANN_LIVE_LLM_OK", "1")
+    monkeypatch.setenv("NEUMANN_ALLOW_ASTRA", "1")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    llm = make_llm(SimpleNamespace(llm_provider="openai", llm_model="gpt-6-astra", openai_api_key=None, llm_timeout_s=5.0))
+    assert llm.model == "gpt-6-astra"
+
+
+def test_direct_provider_real_client_path_replaces_astra(monkeypatch):
+    """실제 클라이언트를 만드는 경로(키 있음·플래그 1)에서 모델이 sol로 바뀐다. 클라이언트 생성만, 호출 없음."""
+    monkeypatch.setenv("NEUMANN_LIVE_LLM_OK", "1")
+    monkeypatch.delenv("NEUMANN_ALLOW_ASTRA", raising=False)
+    p = OpenAIProvider(api_key=FAKE_KEY, model="gpt-6-astra")
+    assert p.model == "gpt-6.1-sol"
+
+
+def test_injected_client_keeps_model_name(monkeypatch):
+    """가짜 클라이언트 주입(테스트 대역)은 모델 이름을 바꾸지 않는다(실제 호출이 아니다)."""
+    monkeypatch.delenv("NEUMANN_ALLOW_ASTRA", raising=False)
+    assert OpenAIProvider(api_key=None, model="gpt-6-astra", client=object()).model == "gpt-6-astra"
+
+
+def test_baseline_replaces_astra(monkeypatch):
+    bl = _eval_mod(monkeypatch, "baseline_llm")
+    monkeypatch.delenv("NEUMANN_ALLOW_ASTRA", raising=False)
+    monkeypatch.setenv("NEUMANN_LLM_MODEL", "gpt-6-astra")
+    assert bl.OpenAIBaseline().model == "gpt-6.1-sol"
+    assert bl.OpenAIBaseline(model="gpt-6-astra").model == "gpt-6.1-sol"
+    assert bl.OpenAIBaseline(model="gpt-6-astra", client=object()).model == "gpt-6-astra"
+
+
+def test_health_shows_effective_model_not_astra(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from neumann.api.main import app
+
+    monkeypatch.setenv("NEUMANN_LLM_PROVIDER", "openai")
+    monkeypatch.setenv("NEUMANN_LLM_MODEL", "gpt-6-astra")
+    monkeypatch.setenv("NEUMANN_LIVE_LLM_OK", "1")
+    monkeypatch.setenv("OPENAI_API_KEY", FAKE_KEY)
+    monkeypatch.delenv("NEUMANN_ALLOW_ASTRA", raising=False)
+    get_settings.cache_clear()
+    body = TestClient(app).get("/health").json()
+    assert body["llm"]["model"] == "gpt-6.1-sol" and body["llm"]["astra_allowed"] is False
+    assert FAKE_KEY not in json.dumps(body)

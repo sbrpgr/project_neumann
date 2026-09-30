@@ -108,6 +108,14 @@ class OpenAIBaseline:
 
     def __init__(self, model: str | None = None, effort: str = EFFORT, timeout_s: float = TIMEOUT_S, client: Any = None) -> None:
         self.model = model or os.environ.get("NEUMANN_LLM_MODEL") or DEFAULT_MODEL
+        if client is None:
+            try:  # astra 금지(대표 지시). 캐시 키가 실제 모델로 잡히도록 생성 시점에 바꾼다
+                from neumann.config import guard_model
+
+                self.model = guard_model(self.model)
+            except Exception:  # noqa: BLE001
+                if "astra" in self.model.lower():
+                    self.model = DEFAULT_MODEL
         self.effort = effort
         self.timeout_s = timeout_s
         self._client = client

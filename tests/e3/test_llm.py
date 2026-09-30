@@ -199,9 +199,9 @@ def test_make_llm_selects_provider(monkeypatch):
     assert make_llm(provider="mock").name == "mock"
     monkeypatch.setenv("NEUMANN_LIVE_LLM_OK", "1")
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)  # 키가 없으니 실제 클라이언트를 만들지 않는다
-    s = SimpleNamespace(llm_provider="openai", llm_model="gpt-6-astra", openai_api_key=None, llm_timeout_s=5.0)
+    s = SimpleNamespace(llm_provider="openai", llm_model="gpt-6.1-sol", openai_api_key=None, llm_timeout_s=5.0)
     p = make_llm(s, provider="openai")
-    assert p.name == "openai" and p.model == "gpt-6-astra"
+    assert p.name == "openai" and p.model == "gpt-6.1-sol"
 
 
 def test_task_options_per_call_effort(monkeypatch):

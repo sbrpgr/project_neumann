@@ -238,7 +238,7 @@ def health() -> dict[str, Any]:
 def _llm_state() -> dict[str, Any]:
     """실제 호출이 열려 있는지(SEC-3). 키 값·설정 전체는 싣지 않는다."""
     try:
-        from neumann.config import get_settings, live_llm_allowed
+        from neumann.config import astra_allowed, get_settings, guard_model, live_llm_allowed
 
         s = get_settings()
         allowed = live_llm_allowed()
@@ -251,7 +251,8 @@ def _llm_state() -> dict[str, Any]:
             "key_present": key_present,
             # openai_no_key: 호출마다 config_error → 비상 규칙 경로로 강등된다
             "effective": ("openai" if key_present else "openai_no_key") if live else "mock",
-            "model": s.llm_model if live else "",
+            "model": guard_model(s.llm_model) if live else "",
+            "astra_allowed": astra_allowed(),
         }
     except Exception as exc:  # noqa: BLE001
         return {"error": type(exc).__name__}

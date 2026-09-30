@@ -78,11 +78,11 @@ def test_negative_control_astra(backend):
 
 def test_real_api_failure_goes_to_rule_path(backend, monkeypatch):
     """실제 API가 거부하는 모델명으로 강제 실패 → 단계마다 비상 규칙 경로, 강등 표시."""
-    monkeypatch.setenv("NEUMANN_LLM_MODEL", "gpt-6-astra-does-not-exist")
+    monkeypatch.setenv("NEUMANN_LLM_MODEL", "gpt-6-no-such-model")
     from neumann.llm import make_llm
 
     llm = make_llm(provider="openai")
-    assert llm.model == "gpt-6-astra-does-not-exist"
+    assert llm.model == "gpt-6-no-such-model"
     r = run_premortem(plan_text("plan.md"), llm=llm, backend=backend, cache_dir=None)
     _show("plan.md / forced API failure", r, backend)
     assert r.status == "degraded"

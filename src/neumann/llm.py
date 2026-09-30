@@ -224,6 +224,7 @@ class OpenAIProvider:
                 # SEC-3: 실제 클라이언트는 허용 플래그가 있을 때만 만든다(직접 생성 경로도 막는다)
                 self._config_error = "실제 호출 잠김(NEUMANN_LIVE_LLM_OK 없음)"
             else:
+                self.model = _guard_model(self.model)  # astra 금지(대표 지시): 실제 호출 모델만 바꾼다
                 from openai import OpenAI
 
                 # SDK 재시도는 끄고(시간 초과까지 재시도하면 상한이 두 배가 된다) 아래에서 직접 한 번만 다시 한다.
@@ -452,6 +453,15 @@ def _live_llm_allowed() -> bool:
     return live_llm_allowed()
 
 
+def _guard_model(model: str) -> str:
+    """astra 금지(대표 지시). 설정 모듈을 못 읽으면 astra는 sol로 바꾼다(닫힌 쪽)."""
+    try:
+        from neumann.config import guard_model
+    except Exception:  # noqa: BLE001
+        return DEFAULT_MODEL if model and "astra" in model.lower() else model
+    return guard_model(model)
+
+
 def make_llm(settings: Any = None, provider: str | None = None) -> LLMProvider:
     """설정에서 provider를 만든다. provider 인자가 있으면 설정보다 우선한다.
 
@@ -464,7 +474,7 @@ def make_llm(settings: Any = None, provider: str | None = None) -> LLMProvider:
         log.warning("provider=openai 요청이지만 NEUMANN_LIVE_LLM_OK가 없어 mock으로 강등한다")
         name = "mock"
     if name == "openai":
-        model = str(setting(settings, "llm_model", "NEUMANN_LLM_MODEL", DEFAULT_MODEL))
+        model = _guard_model(str(setting(settings, "llm_model", "NEUMANN_LLM_MODEL", DEFAULT_MODEL)))
         key = getattr(settings, "openai_api_key", None) if settings is not None else None
         if key is None or not _secret_value(key):
             key = os.environ.get("OPENAI_API_KEY")
