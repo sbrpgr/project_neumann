@@ -12,6 +12,33 @@ PM이 병합할 때마다 갱신한다. Claude 한도가 다 되면 이 문서�
 - **막힌 것·대표 대기:** 라이브 묶음(v1 확인·원문 복원 7편·E2-L5 분야 6편)은 E3-L1s·E3-L1e 병합 뒤. E1-L1b는 병합 보류(대표 결정 대기). 대표 블라인드 판정(`data/eval/judge_n5v3/human`, JUDGE-H 양식은 검증 뒤). 터널은 공개 전 필수 묶음 뒤.
 - **되받기:** 02:39 초기화 뒤 구축 세션이 되받는다(예약). PM 세션도 이 절과 메시지함부터 읽는다.
 
+### PM 과제 20개 — 인수 시점 브랜치·상태(모두 WIP, 검증 전, 병합 안 함)
+
+| ID | 브랜치 · 머리 | 상태 · 핵심 |
+|---|---|---|
+| LIC-1 | task/LIC-1 · 287a8b6 | LICENSES.md 초안. 위험: 심사평 인용 라이선스 미확인(OpenReview 약관), DISAPERE 비상업, **키트 데모 계획서 3편 반입**(decisions 00:5x) |
+| DOC-1 | task/DOC-1 · ccfbedf | README·ARCHITECTURE·API 개정(RUNNING 미편집). main 기준 사실로 정정(관문 40자, HWPX 415, 화면 내보내기 준비 중) |
+| PERF-2 | worktree-agent-acb6309df7b7878ad · 410109e | 지연 시뮬레이터(라이브 보정). 추정: EXTRACT_PARALLEL 32면 추출 1파, 동시 6명이면 상한 32 대기로 규칙 강등 위험 |
+| OBS-1 | task/OBS-1 · 4c059ef | ops_report.py. **토큰 사용량이 manifest에 없음** → 비용 추정 불가(E3 manifest.llm_usage 제안) |
+| REL-1 | worktree-agent-a41b74d979c55aa30 · 88bba3c | 동결 시트 작동(--skip-tests). 테스트·RELEASE.md 미완 |
+| JUDGE-H | worktree-agent-a99b4bb99789be31d · 4234fb3 | 대표 판정 HTML 양식 완성(테스트 11). 생성: `python -m eval.human_form --judge-dir judge_n5v3` |
+| E5-L1c | worktree-agent-aefb52ad3e6f89337 · a3bca7a | sol 재측정 준비(모델별 캐시, dry-run). gold만 약 $1.1~1.2, 명령은 보고서 |
+| FUZZ-1 | worktree-agent-a6d1e116df0df0aa9 · ee086fc | 보고서만. 500 결함 4건(B1 /fonts Windows 금지 문자, B2~B4 package 입력) |
+| CFG-1 | worktree-agent-a249a205b33b8b10d · 86e941f | .env 읽기 필드 17개·env_value(). **주의: main .env의 튜닝 키가 병합 뒤 적용됨** |
+| SYSTEM-CARD | task/SYSTEM-CARD · 82939c7 | 초안. 발견: 분야 수준 카드 화면 라벨 미구현(E3-L1s), P3 측정값 있음 |
+| PROMPT-AUDIT | worktree-agent-a1c0f2f573a9e1b93 · dd7f9fb | 호출별 표·우선 10·탐침 43 |
+| E5-L3c | worktree-agent-a8e282159ab7af9ab · c5ec724 | generator 분리 코드. 새 테스트 미실행 |
+| QA-1 | worktree-agent-acc37aea9a4ea9854 · 62138a4 | 결함 12(높음 3: 화면 내보내기 꺼짐→E4-L2f, HWPX 415→E4-L2h, 300자 없음→E3-L1s). **녹화 전 예열 필수(첫 분석 166초)**, mock에서 "OpenAI 전송" 안내 부정확 |
+| PRIV-1 | task/PRIV-1 · 87f101c | **높음: 검색어 캐시가 계획서 요약을 만료 없이 디스크에**(끄는 설정 없음). 전화번호 가림 하이픈만. 맨 uvicorn이면 실제 IP 로그 → `serve.py --public` 필수 |
+| E2E-2 | task/E2E-2 · 75d7a00 | 12개 중 9통과·1실패(연결 끊김 뒤 합류 미확인)·2건너뜀. 설계 공백: 300자 거절도 job 생성(202) |
+| SEC-8·MCP-demo·DATA-CARD·UXC-1·A11Y-1 | (정지 중, 보고 도착 전) | `git log --all --oneline --grep '^\[<ID>\]'` |
+
+### 구축 세션 판정(인수 직전, 전체는 out/dashboard/handoff_agents.md E절)
+- **E3-L2r FAIL(68385cd): 422 요청이 관문 자리를 반납하지 않아 한 IP 6건이면 전체 /premortem 504** 등 — 재탄생 병합 전 필수, **Codex 1순위**.
+- PERF-pk PASS-조건부(보고서 docs/reports/PERF-pk.verify.md): 한글+결합 문자 NFC 제곱 → 정규화 전 길이 관문, 줄 상한 3,000~5,000.
+- E4-L2g·OPS-tun PASS-조건부(수정 필요), E6-L3d ✅ 병합(이 커밋 직전). WIP: SEC-7 554d2b9, TEST-1 2bd6704, E3-L1z2 0f4e93e, E5-L3b 1a1da0e, E4-L1g a97a165, E5-L2f 0a720b4.
+- 정적 판 교체 명령(E6-L3d): `precompute_demo.py --from-results <E5 worktree>/docs/reports/E5-L1e2e_live --run-commit a9f28e1 --allow-partial` → `build_static_site.py`(공유 data/precomputed·data/site를 바꾸므로 8010·8020 영향 확인 뒤).
+
 ## ★ Codex 인수 시 첫 30분 (00:4x 준비, 사용량 92%에 구축 세션이 인수 신호)
 
 실행 방법·첫 메시지·체크리스트: `out/dashboard/codex_kickoff.md`(gitignore). 진행 중 작업 표: `out/dashboard/handoff_agents.md`. 대시보드 http://127.0.0.1:8099 메시지함을 먼저 읽는다. Codex는 개발용(gpt-6-astra 빌드 → gpt-6-sol 검증, 구독)이고 **제품 API는 gpt-6.1-sol만**(astra 금지, 코드가 막음).
