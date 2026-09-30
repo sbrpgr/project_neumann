@@ -36,7 +36,7 @@ _NEGATION_RE = re.compile(r"(?<![가-힣])(?:안|못)\s+(?=[가-힣])|않|없|�
 # 아래 고정 사유 어휘 안에서만 허용한다. 수치는 _text_problem이 따로 본다(원문·도구 계산값만).
 _PLACEHOLDER_UNSAFE_RE = re.compile(r"://|www\.|\]\(|@|[<>]|https?|mailto|\\", re.I)
 _PLACEHOLDER_VOCAB = frozenset({
-    "확인", "필요", "값", "수치", "단위", "차원", "합계", "총계", "항목", "상한", "하한", "불일치", "일치", "초과", "미만", "미달", "넘음",
+    "확인", "필요", "값", "수치", "단위", "차원", "합계", "총계", "항목", "상한", "하한", "불일치", "일치", "초과", "미만", "미달", "넘음", "표기",
     "순서", "순환", "선행", "후행", "방향", "모순", "가설", "방법", "데이터", "평가", "지표", "일정", "예산", "기대", "성과", "정정", "조정",
     "확정", "정의", "근거", "출처", "인용", "참조", "누락", "미기재", "재확인", "연구자", "결정", "세부", "기준", "절차", "증가", "감소",
     "이상", "이하", "같음", "다름", "또는", "및", "대비", "대조", "검산", "결과", "계산", "범위", "조건", "명시", "보완", "추가", "삭제",
@@ -243,11 +243,12 @@ def _numbers(text: str) -> set[str]:
     return set(extract_numbers(text) + written_numbers(text))
 
 
-def _text_problem(text: str, source: str, tool_numbers: frozenset[str] | set[str] = frozenset()) -> str:
+def _text_problem(text: str, source: str, tool_numbers: frozenset[str] | set[str] = frozenset(),
+                  assertion_numbers: frozenset[str] | set[str] = frozenset()) -> str:
     """Gate against invented content. ``source`` is the grounded scope (issue lines + tool source quotes).
 
-    Numbers outside ``[확인 필요: …]`` must already occur in ``source``. Inside a placeholder, a number may also
-    be a tool-computed value (``tool_numbers``): the computation is shown to the researcher, never asserted as fact.
+    Body numbers come from source or the code-selected equality's computed result
+    on this exact output line. General constraints only authorize placeholders.
     """
     if contains_pii(text) or contains_identity(text):
         return "pii_or_identity"
@@ -256,22 +257,17 @@ def _text_problem(text: str, source: str, tool_numbers: frozenset[str] | set[str
     if unsupported_facts(text, source):
         return "unsupported_fact"
     allowed = _numbers(source)
-    if _numbers(PLACEHOLDER_RE.sub(" ", text)) - allowed:
+    if _numbers(PLACEHOLDER_RE.sub(" ", text)) - allowed - set(assertion_numbers):
         return "unsupported_number"
     if _numbers(" ".join(PLACEHOLDER_RE.findall(text))) - allowed - set(tool_numbers):
         return "unsupported_number"
     return ""
 
 
-def _computed_numbers(check: dict, row: dict) -> set[str]:
-    """Only a completed tool's explicitly computed scalar grants numeric evidence.
-
-    Input params and result metadata (nodes, edges, timings, anchors) do not
-    declare calculations. Source numbers are grounded separately by _edit_scope.
-    This matches the computed field consumed by _placeholder_template (E-1).
-    """
+def _computed_token(row: dict) -> str:
+    """A completed tool's explicit finite scalar, never inputs or metadata (E-1)."""
     if row.get("status") not in ("pass", "passed", "ok", "fail", "failed"):
-        return set()
+        return ""
     details = row.get("details")
     value = details.get("computed") if isinstance(details, dict) else None
     if type(value) is int:
@@ -282,8 +278,60 @@ def _computed_numbers(check: dict, row: dict) -> set[str]:
         # FIN-TOOLS code-selected checks report exact computed values as decimal strings.
         token = value
     else:
-        return set()
-    return set(extract_numbers(token))
+        return ""
+    return token
+
+
+def _computed_numbers(check: dict, row: dict) -> set[str]:
+    return set(extract_numbers(_computed_token(row)))
+
+
+def _numeric_failure(no: int, scope_lines: set[int], checks: dict, rows: dict,
+                     lines: list[str]) -> dict:
+    """Find a code-owned equality result anchored to this correction's output.
+
+    A semantic model issue may omit its code check ID. Match the exact output
+    anchor and require every check line inside the issue scope; never use a
+    different calculation, an inequality bound, or arbitrary numeric leaves.
+    """
+    for cid, check in checks.items():
+        row = rows.get(cid, {})
+        details = row.get("details", {})
+        if (not details.get("code_selected") or row.get("status") != "failed"
+                or not _computed_token(row) or not set(check.get("plan_lines", [])) <= scope_lines):
+            continue
+        eligible = (row.get("tool") == "z3" and check.get("label") in {
+                    "schedule_sum", "table_sum", "budget_sum", "expr_sum"}
+                    and row.get("message") == "sum_mismatch"
+                    and details.get("relation") == "eq") or (
+                    row.get("tool") == "pint" and check.get("label") == "unit_derive"
+                    and row.get("message") == "magnitude_differs"
+                    and details.get("operation") == "derive" and details.get("compatible") is True)
+        anchors = details.get("anchors", [])
+        if not eligible or not anchors:
+            continue
+        anchor = anchors[-1]  # extractor puts the stated result after its operands
+        if (anchor.get("line") == no and type(anchor.get("start")) is int
+                and type(anchor.get("end")) is int
+                and 0 <= anchor["start"] < anchor["end"] <= len(lines[no - 1])
+                and lines[no - 1][anchor["start"]:anchor["end"]] == anchor.get("text")):
+            return row
+    return {}
+
+
+def _numeric_warning(row: dict) -> str:
+    """Closed code-owned wording; model placeholder prose is discarded (C-4)."""
+    details = row["details"]
+    stated = details.get("stated", details.get("expected"))
+    if type(stated) not in (int, float) or not math.isfinite(stated):
+        return ""
+    stated = str(int(stated)) if float(stated).is_integer() else str(stated)
+    unit = details.get("unit", details.get("expected_unit", ""))
+    # Only fixed tool units enter code wording. Other units remain in tool details.
+    unit = {"KRW": "원", "month": "개월", "week": "주", "hour": "시간",
+            "gpu * hour": "GPU시간"}.get(unit, "")
+    body = f"계산 불일치 — 계산값 {_computed_token(row)}{unit}, 표기 {stated}{unit}"
+    return "[확인 필요: " + body + "]" if len(body) <= 120 else ""
 
 
 def _edit_scope(issue_ids: list, issue_by_id: dict, check_by_id: dict, rows: dict, lines: list[str]) -> tuple[set[int], str, set[str]]:
@@ -340,9 +388,9 @@ def _placeholder_template(issue_ids: list, issues: dict, checks: dict, rows: dic
                 continue
             reasons.add({"constraint": "NUMERIC_CONSTRAINT", "units": "UNIT_DIMENSION",
                          "dependency": "DEPENDENCY_ORDER"}.get(check.get("kind"), "TOOL_REVIEW"))
-            value = row.get("details", {}).get("computed")
-            if type(value) in (int, float) and math.isfinite(value):
-                computed.add(str(int(value)) if float(value).is_integer() else str(value))
+            value = _computed_token(row)
+            if value:
+                computed.add(value)
     # Keep every generated body within PLACEHOLDER_RE's 120-character grammar,
     # including checks with many anchors. Split into closed templates as needed.
     line_tokens = [str(n) for n in sorted(anchors) if type(n) is int]
@@ -504,6 +552,7 @@ def finalize_plan(plan_text: str, *, result=None, provider=None, checks=None,
     for edit in correction["edits"]:
         no, replacement = edit["line"], edit["replacement"]
         reason = ""
+        numeric_warning_used = False
         if no in touched:
             reason = "duplicate_line"
         elif edit["current_text"] != lines[no - 1]:
@@ -517,7 +566,10 @@ def finalize_plan(plan_text: str, *, result=None, provider=None, checks=None,
             if no not in scope_lines:
                 reason = "line_outside_issue"
             else:
-                reason = _text_problem(replacement, scope, tool_numbers)
+                numeric_row = _numeric_failure(no, scope_lines, check_by_id, rows_before, lines)
+                assertion_numbers = _computed_numbers({}, numeric_row)
+                tool_numbers |= assertion_numbers
+                reason = _text_problem(replacement, scope, tool_numbers, assertion_numbers)
                 if not reason:  # [확인 필요: …] 본문: 링크·마크업 거절, 고정 사유 어휘 + 범위 낱말만(audit C-4)
                     reason = _placeholder_problem(replacement, _grounded_words(scope))
                 # Grounded-vocabulary gate: a correction may only use words the issue's own lines and the
@@ -531,10 +583,20 @@ def finalize_plan(plan_text: str, *, result=None, provider=None, checks=None,
                                    or _grounded_words(replacement) - _grounded_words(scope)):
                     reason = "unsupported_content"
                 if not reason and PLACEHOLDER_RE.search(replacement):
-                    template = _placeholder_template(edit["issue_ids"], issue_by_id, check_by_id, rows_before)
+                    template = _numeric_warning(numeric_row) if numeric_row else ""
+                    numeric_warning_used = bool(template)
+                    template = template or _placeholder_template(
+                        edit["issue_ids"], issue_by_id, check_by_id, rows_before)
                     replacement = PLACEHOLDER_RE.sub(lambda _: template, replacement)
                     if len(replacement) > 12000:
                         reason = "invalid_line"
+                if reason in {"unsupported_number", "placeholder_vocabulary", "placeholder_malformed"} and numeric_row:
+                    warning = _numeric_warning(numeric_row)
+                    # Keep the original commitment and expose its computed discrepancy.
+                    # Nothing from the rejected model replacement is serialized.
+                    if warning and warning not in lines[no - 1] and len(lines[no - 1] + " " + warning) <= 12000:
+                        replacement, reason = lines[no - 1] + " " + warning, ""
+                        numeric_warning_used = True
         touched.add(no)
         applied = not reason and replacement != lines[no - 1]
         output["corrections"].append({"line": no, "before": lines[no - 1],
@@ -543,6 +605,10 @@ def finalize_plan(plan_text: str, *, result=None, provider=None, checks=None,
         if applied:
             updated[no - 1] = replacement
             edited.add(no)
+            if numeric_warning_used:
+                notice = "계산 불일치의 확인 필요 문구는 도구 결과로 코드가 생성했습니다. 연구자 확정이 필요합니다."
+                if notice not in output["notices"]:
+                    output["notices"].append(notice)
     output["counters"]["correction_batches"] = int(bool(edited))
     final_text = "\n".join(updated)
     output["final_text"] = final_text
