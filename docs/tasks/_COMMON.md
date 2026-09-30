@@ -25,6 +25,8 @@ export NEUMANN_EMBED_MODEL="C:/Users/User/Desktop/노이만_본선자료/공개�
 - `OPENAI_API_KEY`는 이미 환경변수로 들어와 있다. 있는지 확인할 때는 참·거짓만 본다. 값을 출력·기록하지 않는다.
 - 제품 LLM은 OpenAI Responses API `gpt-6-astra`다(9/30 호출 확인: `client.responses.create(model="gpt-6-astra", input=..., reasoning={"effort": "low"})`, 짧은 요청 약 3초).
 
+- **실제 OpenAI 호출 제한(대표 상시 규칙):** OpenAI API는 실제 서비스(사람이 쓰는 8010·공개 서버)와 태그급 성공 뒤 대표가 승인한 확인 테스트에서만 쓴다. `NEUMANN_LLM_PROVIDER=openai`와 `NEUMANN_LIVE_TESTS=1`은 PM이 대표 승인을 받은 과제에서만 켠다. 개발·빌드·검증·단위 테스트·측정은 mock이나 로컬로 한다. 설정 기본 provider는 mock이다. 구독(Claude·Codex) 에이전트가 만든 오프라인 결과를 제품 데이터에 쓰면 생성 방식을 "Claude/Codex 오프라인"으로 표기한다
+
 ## 작업 방식
 
 - 자기 worktree에서만 작업한다. 시작하면 `git switch -c task/<과제ID>`(이미 있으면 그대로). 커밋은 그 브랜치에만 한다. main 병합과 push는 PM이 한다.
@@ -33,7 +35,7 @@ export NEUMANN_EMBED_MODEL="C:/Users/User/Desktop/노이만_본선자료/공개�
 - 테스트는 `tests/<에픽 소문자>/`(예: `tests/e1/`)에 둔다. 기본 테스트는 mock·fixture로 돈다. 실제 API를 부르는 테스트는 `NEUMANN_LIVE_TESTS=1`일 때만 돈다.
 - 큰 데이터 산출물은 공유 데이터 폴더에 둔다. 저장소에는 코드·테스트·작은 fixture만.
 - 끝내기 전에 `python scripts/verify.py`가 통과해야 한다(보안 + 계약 + 전체 pytest). 완료 기준의 명령을 **직접 실행**하고 출력을 보고서에 붙인다. 실행하지 않고 "됐다"고 쓰지 않는다.
-- 커밋: 작게, 메시지 `[과제ID] 무엇을`, 끝줄에 `verify 통과`와 `builder: claude-opus-5.5`. `git add`는 파일을 지정해서 한다.
+- **커밋은 기능 단위로 여러 번(한 커밋 수백 줄 이내)** — 큰 덩어리 커밋은 사전 개발물로 오해받는다(계획서 §1.4). 메시지 `[과제ID] 무엇을`, 끝줄에 `verify 통과`와 `builder: claude-opus-5.5`. `git add`는 파일을 지정해서 한다.
 - 보고서 `docs/reports/<과제ID>.md`: 무엇을 했나, 완료 기준별 명령·출력, 바꾼 파일, 결정한 것(스펙이 모호해서 고른 것), 못 한 것, 다음 과제에 넘길 것. 커밋에 포함한다.
 - 하위 에이전트를 띄우지 않는다. 막히면 합리적인 쪽을 골라 계속하고 보고서 "결정"에 적는다. 멈춰서 기다리지 않는다.
 - 목표 시간을 넘길 것 같으면 핵심 완료 기준부터 채우고, 나머지는 보고서 "못 한 것"에 적고 끝낸다. 끝낼 때 작업 트리에 커밋 안 된 변경이 없어야 한다.

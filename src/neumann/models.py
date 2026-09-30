@@ -437,7 +437,7 @@ RISK_NAMES: dict[RiskCode, tuple[str, str, str]] = {
 class Generator(StrEnum):
     """결과를 누가 만들었나(정직 표기). 규칙 결과를 LLM 결과라고 쓰지 않는다."""
 
-    astra = "astra"  # 제품 LLM gpt-6-astra
+    astra = "astra"  # 제품 LLM(OpenAI). 값 이름은 계약이라 유지, 실제 모델은 결과 manifest에
     rule = "rule"  # 규칙(비상 경로)
     mock = "mock"  # 테스트용 가짜
 

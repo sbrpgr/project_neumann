@@ -7,7 +7,6 @@
 ## 읽을 것
 
 - 계획서 §2 TRACE, §3 L2 "내보내기 패키지", §4 E4 L2(9파일 목록)
-- `01_구조_뼈대.md` §1·§5의 내보내기 설명(파일 목록과 각 파일의 역할만 참고. 코드 없음)
 - `src/neumann/models.py`(PremortemResult, RiskCard, Excerpt, SimilarWork, StageStatus)
 - `tests/fixtures/`(premortem_result.json 등)
 

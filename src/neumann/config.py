@@ -35,8 +35,9 @@ class Settings(BaseSettings):
     pseudonym_salt: SecretStr | None = Field(default=None, validation_alias="NEUMANN_PSEUDONYM_SALT")
 
     # 제품 LLM
-    llm_provider: Literal["openai", "mock"] = Field(default="openai", validation_alias="NEUMANN_LLM_PROVIDER")
-    llm_model: str = Field(default="gpt-6-astra", validation_alias="NEUMANN_LLM_MODEL")
+    # 기본은 mock(대표 상시 규칙: 실제 OpenAI 호출은 실제 서비스와 승인된 확인 테스트에만). 실서비스는 main 체크아웃 .env에서 openai로 켠다
+    llm_provider: Literal["openai", "mock"] = Field(default="mock", validation_alias="NEUMANN_LLM_PROVIDER")
+    llm_model: str = Field(default="gpt-6.1-sol", validation_alias="NEUMANN_LLM_MODEL")
     llm_timeout_s: float = Field(default=60.0, gt=0, validation_alias="NEUMANN_LLM_TIMEOUT_S")
 
     # 임베딩·데이터 경로

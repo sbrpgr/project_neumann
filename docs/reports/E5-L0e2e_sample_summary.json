@@ -1,0 +1,222 @@
+{
+  "plans": {
+    "plan.md": {
+      "http_status": 200,
+      "api_status": 200,
+      "source": "sample",
+      "result_status": "degraded",
+      "n_cards": 2,
+      "generators": {
+        "mock": 2
+      },
+      "stages_not_ok": [
+        {
+          "name": "run_premortem",
+          "phase": "PIPELINE",
+          "status": "unavailable",
+          "reason": "neumann.pipeline 모듈 없음 — 샘플 데이터"
+        }
+      ],
+      "timings": {
+        "ui_response_s": 0.056,
+        "ui_total_s": 0.833,
+        "view_phase_s": {
+          "PIPELINE": 0.0
+        },
+        "view_server_elapsed_s": 0.007,
+        "view_pipeline_total_s": 0.0,
+        "result_stage_s": {
+          "PIPELINE/run_premortem": 0.0
+        },
+        "api_premortem_s": 0.005
+      },
+      "linkage": {
+        "summary": "검사 안 함: 샘플 결과(공용 fixture)는 근거 연결 검사 대상이 아니다"
+      },
+      "shots": [
+        "E5-L0e2e_sample_plan_input.png",
+        "E5-L0e2e_sample_plan_report.png",
+        "E5-L0e2e_sample_plan_cards.png"
+      ],
+      "browser": {
+        "console_errors": 0,
+        "page_errors": 0,
+        "external": 0,
+        "failed": 0
+      },
+      "failures": [
+        "파이프라인 미연결(샘플 모드): /health pipeline.state=unavailable · neumann.pipeline 모듈 없음 · 화면 표시 '분석 파이프라인 미연결(샘플 데이터)'",
+        "파이프라인 미연결(샘플 모드): /premortem/view _status.source=sample · label='분석 파이프라인 미연결(샘플 데이터)' — 입력한 계획서는 분석되지 않았고 화면 값은 공용 fixture다",
+        "파이프라인 미연결(샘플 모드): 헤더 표시 '분석 파이프라인 미연결(샘플 데이터)'",
+        "파이프라인 미연결(샘플 모드): /premortem 결과 sample=True · stages.impl=['fallback:sample']",
+        "/premortem/view _status.pipeline=unavailable",
+        "근거 연결률 미측정: 파이프라인 미연결(샘플 모드)"
+      ]
+    },
+    "plan_elife_neuro.md": {
+      "http_status": 200,
+      "api_status": 200,
+      "source": "sample",
+      "result_status": "degraded",
+      "n_cards": 2,
+      "generators": {
+        "mock": 2
+      },
+      "stages_not_ok": [
+        {
+          "name": "run_premortem",
+          "phase": "PIPELINE",
+          "status": "unavailable",
+          "reason": "neumann.pipeline 모듈 없음 — 샘플 데이터"
+        }
+      ],
+      "timings": {
+        "ui_response_s": 0.07,
+        "ui_total_s": 0.848,
+        "view_phase_s": {
+          "PIPELINE": 0.0
+        },
+        "view_server_elapsed_s": 0.007,
+        "view_pipeline_total_s": 0.0,
+        "result_stage_s": {
+          "PIPELINE/run_premortem": 0.0
+        },
+        "api_premortem_s": 0.007
+      },
+      "linkage": {
+        "summary": "검사 안 함: 샘플 결과(공용 fixture)는 근거 연결 검사 대상이 아니다"
+      },
+      "shots": [
+        "E5-L0e2e_sample_plan_elife_neuro_input.png",
+        "E5-L0e2e_sample_plan_elife_neuro_report.png",
+        "E5-L0e2e_sample_plan_elife_neuro_cards.png"
+      ],
+      "browser": {
+        "console_errors": 0,
+        "page_errors": 0,
+        "external": 0,
+        "failed": 0
+      },
+      "failures": [
+        "파이프라인 미연결(샘플 모드): /health pipeline.state=unavailable · neumann.pipeline 모듈 없음 · 화면 표시 '분석 파이프라인 미연결(샘플 데이터)'",
+        "파이프라인 미연결(샘플 모드): /premortem/view _status.source=sample · label='분석 파이프라인 미연결(샘플 데이터)' — 입력한 계획서는 분석되지 않았고 화면 값은 공용 fixture다",
+        "파이프라인 미연결(샘플 모드): 헤더 표시 '분석 파이프라인 미연결(샘플 데이터)'",
+        "파이프라인 미연결(샘플 모드): /premortem 결과 sample=True · stages.impl=['fallback:sample']",
+        "/premortem/view _status.pipeline=unavailable",
+        "근거 연결률 미측정: 파이프라인 미연결(샘플 모드)"
+      ]
+    },
+    "plan_medimaging.md": {
+      "http_status": 200,
+      "api_status": 200,
+      "source": "sample",
+      "result_status": "degraded",
+      "n_cards": 2,
+      "generators": {
+        "mock": 2
+      },
+      "stages_not_ok": [
+        {
+          "name": "run_premortem",
+          "phase": "PIPELINE",
+          "status": "unavailable",
+          "reason": "neumann.pipeline 모듈 없음 — 샘플 데이터"
+        }
+      ],
+      "timings": {
+        "ui_response_s": 0.061,
+        "ui_total_s": 0.803,
+        "view_phase_s": {
+          "PIPELINE": 0.0
+        },
+        "view_server_elapsed_s": 0.007,
+        "view_pipeline_total_s": 0.0,
+        "result_stage_s": {
+          "PIPELINE/run_premortem": 0.0
+        },
+        "api_premortem_s": 0.007
+      },
+      "linkage": {
+        "summary": "검사 안 함: 샘플 결과(공용 fixture)는 근거 연결 검사 대상이 아니다"
+      },
+      "shots": [
+        "E5-L0e2e_sample_plan_medimaging_input.png",
+        "E5-L0e2e_sample_plan_medimaging_report.png",
+        "E5-L0e2e_sample_plan_medimaging_cards.png"
+      ],
+      "browser": {
+        "console_errors": 0,
+        "page_errors": 0,
+        "external": 0,
+        "failed": 0
+      },
+      "failures": [
+        "파이프라인 미연결(샘플 모드): /health pipeline.state=unavailable · neumann.pipeline 모듈 없음 · 화면 표시 '분석 파이프라인 미연결(샘플 데이터)'",
+        "파이프라인 미연결(샘플 모드): /premortem/view _status.source=sample · label='분석 파이프라인 미연결(샘플 데이터)' — 입력한 계획서는 분석되지 않았고 화면 값은 공용 fixture다",
+        "파이프라인 미연결(샘플 모드): 헤더 표시 '분석 파이프라인 미연결(샘플 데이터)'",
+        "파이프라인 미연결(샘플 모드): /premortem 결과 sample=True · stages.impl=['fallback:sample']",
+        "/premortem/view _status.pipeline=unavailable",
+        "근거 연결률 미측정: 파이프라인 미연결(샘플 모드)"
+      ]
+    },
+    "negative_recipe.md": {
+      "http_status": 200,
+      "source": "sample",
+      "result_status": "degraded",
+      "n_cards": 2,
+      "empty_reason": null,
+      "timings": {
+        "ui_response_s": 0.066,
+        "ui_total_s": 0.831,
+        "view_phase_s": {
+          "PIPELINE": 0.0
+        },
+        "view_server_elapsed_s": 0.006,
+        "view_pipeline_total_s": 0.0
+      },
+      "shots": [
+        "E5-L0e2e_sample_negative_recipe_input.png",
+        "E5-L0e2e_sample_negative_recipe_report.png",
+        "E5-L0e2e_sample_negative_recipe_cards.png"
+      ],
+      "browser": {
+        "console_errors": 0,
+        "page_errors": 0,
+        "external": 0,
+        "failed": 0
+      },
+      "failures": [
+        "파이프라인 미연결(샘플 모드): /health pipeline.state=unavailable · neumann.pipeline 모듈 없음 · 화면 표시 '분석 파이프라인 미연결(샘플 데이터)'",
+        "파이프라인 미연결(샘플 모드): /premortem/view _status.source=sample — 범위 밖 판정을 잴 수 없다",
+        "파이프라인 미연결(샘플 모드): 헤더 표시 '분석 파이프라인 미연결(샘플 데이터)'",
+        "범위 밖 입력인데 위험카드 2장이 나왔다"
+      ]
+    }
+  },
+  "base_url": "http://127.0.0.1:8123/",
+  "timeout_s": 120.0,
+  "started_at": "2026-09-30T09:59:41+00:00",
+  "mode": "sample",
+  "health": {
+    "pipeline": {
+      "state": "unavailable",
+      "reason": "neumann.pipeline 모듈 없음",
+      "mode": "sample",
+      "label": "분석 파이프라인 미연결(샘플 데이터)"
+    },
+    "version": "0.0.1",
+    "stages": {
+      "pipeline": false,
+      "INPUT": false,
+      "EVIDENCE": false,
+      "RISK": false,
+      "REVIEW": false,
+      "ACTION": false,
+      "TRACE": false,
+      "llm": false,
+      "models": true,
+      "config": true
+    }
+  },
+  "finished_at": "2026-09-30T09:59:51+00:00"
+}

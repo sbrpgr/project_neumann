@@ -1,4 +1,4 @@
-"""메타 API(E4-L1d): 코퍼스·색인 실측 메타, 위험 택소노미, 위험점수 가중치.
+"""메타 API(E4-L1d): 코퍼스·색인 실측 메타, 위험 택소노미, 위험점수 공식.
 
     from neumann.api.meta import router
     app.include_router(router)      # GET /api · GET /taxonomy · GET /config/weights
@@ -10,13 +10,16 @@
   로컬 절대 경로·GPU 이름 같은 환경 정보는 내보내지 않는다(공개 서버에서도 쓴다).
 - ``GET /taxonomy``: R0~R9 이름·설명·심각도 기본값. 기준은 기획서 ``부록/설계/03_risk_taxonomy.md``
   (v1.0, §2.3 심각도 표, §3 Tier-1 카드). 이름은 ``neumann.models.RISK_NAMES``와 같은 값을 쓴다.
-- ``GET /config/weights``: 위험점수 가중치. 설정(``Settings.risk_weights``)에 값이 있으면 그 값,
-  없거나 형식이 틀리면 기본값(0.30/0.30/0.30/0.10)과 ``label="기본값"``·사유를 돌려준다.
-  파이프라인 점수 모듈(``neumann.analyze.cards``)이 있으면 그 모듈이 실제로 쓰는 공식·가중치도 함께 보여준다.
+- ``GET /config/weights``: 위험점수 공식. PM 결정(docs/decisions.md 2026-09-30 19:15)대로
+  **유사도 × 빈도 × 심각도 × 신뢰도의 곱, 가중치 없음**(``weights=null``, ``weighted=false``)을 보이고 결정 출처를 적는다.
+  설계·목업의 0.3/0.3/0.3/0.1은 ``legacy_design_weights``에 "제품에서 쓰지 않는 옛 설계값"으로만 남긴다.
+  파이프라인 점수 모듈(``neumann.analyze.cards``)이 있으면 그 모듈의 공식·가중치가 곱(가중치 전부 1.0)과
+  같은지(``pipeline.matches``) 대조한다.
 """
 
 from __future__ import annotations
 
+import copy
 import importlib
 import json
 import logging
@@ -44,11 +47,6 @@ INDEX_MANIFEST = "index/manifest.json"
 def get_data_dir() -> Path:
     """공유 데이터 폴더(설정 ``NEUMANN_DATA_DIR``)."""
     return Path(get_settings().data_dir)
-
-
-def get_weights_setting() -> Any:
-    """설정의 위험점수 가중치 원값. config.py에 키가 아직 없으면 None(→ 기본값)."""
-    return getattr(get_settings(), "risk_weights", None)
 
 
 PIPELINE_SCORE_MODULE = "neumann.analyze.cards"
@@ -364,59 +362,26 @@ def build_taxonomy() -> dict[str, Any]:
     }
 
 
-# ───────────────────────── 위험점수 가중치 ─────────────────────────
+# ───────────────────────── 위험점수 공식(곱, 가중치 없음) ─────────────────────────
 
-WEIGHT_KEYS: tuple[str, ...] = ("similarity", "frequency", "severity", "confidence")
-WEIGHT_LABELS_KO: dict[str, str] = {"similarity": "유사도", "frequency": "빈도", "severity": "심각도", "confidence": "신뢰도"}
-DEFAULT_WEIGHTS: dict[str, float] = {"similarity": 0.30, "frequency": 0.30, "severity": 0.30, "confidence": 0.10}
-DEFAULT_WEIGHTS_SOURCE = "기획서 부록/설계/04_architecture.md §3.8 aggregate_risk 입력 예시 · 목업 가중치 모달(0.3/0.3/0.3/0.1)"
-WEIGHTS_FORMULA_KO = "위험점수 = 유사도 × 빈도 × 심각도 × 신뢰도"
-DEFAULT_LABEL = "기본값"
-
-
-def parse_weights(raw: Any) -> tuple[dict[str, float] | None, str]:
-    """설정 원값 → (가중치, 오류 사유). 허용 형식: dict, "0.3/0.3/0.3/0.1"(순서: 유사도·빈도·심각도·신뢰도),
-    "similarity=0.3,frequency=0.3,severity=0.3,confidence=0.1". 값은 0~1, 네 키가 모두 있어야 한다."""
-    if raw is None or (isinstance(raw, str) and not raw.strip()):
-        return None, ""
-    values: dict[str, Any]
-    if isinstance(raw, Mapping):
-        values = dict(raw)
-    elif isinstance(raw, str):
-        text = raw.strip()
-        if "=" in text:
-            values = {}
-            for part in text.replace(";", ",").split(","):
-                if not part.strip():
-                    continue
-                if "=" not in part:
-                    return None, f"항목 형식 오류: {part.strip()!r}"
-                k, v = part.split("=", 1)
-                values[k.strip()] = v.strip()
-        else:
-            nums = [x.strip() for x in text.replace(",", "/").split("/") if x.strip()]
-            if len(nums) != len(WEIGHT_KEYS):
-                return None, f"값이 {len(WEIGHT_KEYS)}개여야 한다({len(nums)}개)"
-            values = dict(zip(WEIGHT_KEYS, nums, strict=True))
-    else:
-        return None, f"지원하지 않는 형식: {type(raw).__name__}"
-    extra = sorted(set(values) - set(WEIGHT_KEYS))
-    lacking = [k for k in WEIGHT_KEYS if k not in values]
-    if extra or lacking:
-        return None, f"키 불일치(없음: {lacking}, 모름: {extra})"
-    out: dict[str, float] = {}
-    for k in WEIGHT_KEYS:
-        v = values[k]
-        if isinstance(v, bool):
-            return None, f"{k} 값이 숫자가 아니다"
-        try:
-            f = float(v)
-        except (TypeError, ValueError):
-            return None, f"{k} 값이 숫자가 아니다"
-        if not math.isfinite(f) or not 0.0 <= f <= 1.0:
-            return None, f"{k} 값이 0~1 밖이다"
-        out[k] = f
-    return out, ""
+SCORE_COMPONENTS: tuple[str, ...] = ("similarity", "frequency", "severity", "confidence")
+COMPONENT_LABELS_KO: dict[str, str] = {"similarity": "유사도", "frequency": "빈도", "severity": "심각도", "confidence": "신뢰도"}
+FORMULA = "product"
+FORMULA_EXPR = "similarity * frequency * severity * confidence"
+FORMULA_KO = "위험점수 = 유사도 × 빈도 × 심각도 × 신뢰도 (곱, 가중치 없음)"
+FORMULA_DISPLAY = "곱 · 가중치 없음"
+DECISION = {
+    "source": "docs/decisions.md 2026-09-30 19:15 (PM)",
+    "summary": "위험점수는 계획서 §2 정의대로 유사도 × 빈도 × 심각도 × 신뢰도의 곱(가중치 없음). "
+    "설계·목업의 가중합(0.3/0.3/0.3/0.1)은 쓰지 않는다.",
+}
+# 설계 문서·목업에만 있던 가중합 값. 제품은 쓰지 않는다(현재 값으로 보이지 않게 따로 둔다).
+LEGACY_DESIGN_WEIGHTS: dict[str, Any] = {
+    "status": "제품에서 쓰지 않는 옛 설계값",
+    "used_in_product": False,
+    "values": {"similarity": 0.30, "frequency": 0.30, "severity": 0.30, "confidence": 0.10},
+    "source": "기획서 부록/설계/04_architecture.md §3.8 aggregate_risk 입력 예시 · 목업 가중치 모달",
+}
 
 
 def pipeline_scoring(module_name: str) -> dict[str, Any]:
@@ -443,47 +408,40 @@ def pipeline_scoring(module_name: str) -> dict[str, Any]:
     return info
 
 
-def build_weights(raw_setting: Any, pipeline: dict[str, Any] | None = None) -> dict[str, Any]:
-    """``GET /config/weights`` 응답."""
-    parsed, error = parse_weights(raw_setting)
-    if parsed is not None:
-        weights, source, reason = parsed, "config", ""
-    elif error:
-        weights, source = dict(DEFAULT_WEIGHTS), "default"
-        reason = f"설정 값 형식 오류({error}) → 기본값 사용"
-    else:
-        weights, source = dict(DEFAULT_WEIGHTS), "default"
-        reason = "설정에 위험점수 가중치(risk_weights)가 없다 → 기본값 사용"
-    is_default = source == "default"
+def pipeline_matches(pipeline: Mapping[str, Any]) -> tuple[bool | None, str]:
+    """점수 모듈이 결정(곱, 가중치 없음)과 같은가. 가중치가 있으면 전부 1.0이어야 곱과 같다."""
+    if pipeline.get("state") != "ok":
+        return None, "파이프라인 점수 모듈이 없거나 불러오지 못해 대조하지 못함."
+    formula, weights = pipeline.get("formula"), pipeline.get("weights")
+    if formula is None and weights is None:
+        return None, "파이프라인 점수 모듈이 공식·가중치를 내놓지 않아 대조하지 못함."
+    if formula is not None and "product" not in formula.lower():
+        return False, "파이프라인 점수 모듈의 공식이 곱(product)이 아니다. 결정(곱, 가중치 없음)과 다르다."
+    if weights is not None:
+        if set(weights) != set(SCORE_COMPONENTS):
+            return False, "파이프라인 점수 모듈의 가중치 항목이 네 요소(유사도·빈도·심각도·신뢰도)와 다르다."
+        if not all(math.isclose(weights[k], 1.0) for k in SCORE_COMPONENTS):
+            return False, "파이프라인 점수 모듈이 1.0이 아닌 가중치를 쓴다. 결정(곱, 가중치 없음)과 다르다."
+    return True, "파이프라인 점수 모듈이 곱(가중치 없음)으로 계산한다."
+
+
+def build_weights(pipeline: dict[str, Any] | None = None) -> dict[str, Any]:
+    """``GET /config/weights`` 응답. 제품 공식은 곱(가중치 없음), 결정 출처를 함께 적는다."""
     out: dict[str, Any] = {
-        "weights": weights,
-        "order": list(WEIGHT_KEYS),
-        "labels_ko": dict(WEIGHT_LABELS_KO),
-        "display": " / ".join(f"{weights[k]:g}" for k in WEIGHT_KEYS),
-        "sum": round(sum(weights.values()), 6),
-        "source": source,
-        "is_default": is_default,
-        "label": DEFAULT_LABEL if is_default else "설정값",
-        "reason": reason,
-        "config_error": error or None,
-        "default": dict(DEFAULT_WEIGHTS),
-        "default_source": DEFAULT_WEIGHTS_SOURCE,
-        "formula_ko": WEIGHTS_FORMULA_KO,
+        "formula": FORMULA,
+        "formula_expr": FORMULA_EXPR,
+        "formula_ko": FORMULA_KO,
+        "weighted": False,
+        "weights": None,
+        "display": FORMULA_DISPLAY,
+        "components": list(SCORE_COMPONENTS),
+        "labels_ko": dict(COMPONENT_LABELS_KO),
+        "decision": dict(DECISION),
+        "legacy_design_weights": copy.deepcopy(LEGACY_DESIGN_WEIGHTS),
     }
     if pipeline is not None:
-        pw = pipeline.get("weights")
         pipeline = dict(pipeline)
-        pipeline["matches"] = (
-            None
-            if not isinstance(pw, Mapping)
-            else set(pw) == set(WEIGHT_KEYS) and all(math.isclose(pw[k], weights[k]) for k in WEIGHT_KEYS)
-        )
-        if pipeline["matches"] is False:
-            pipeline["note"] = "파이프라인 점수 모듈의 가중치가 이 값과 다르다. 카드 점수는 모듈 값(formula)으로 계산된다."
-        elif pipeline["matches"] is None:
-            pipeline["note"] = "파이프라인 점수 모듈이 없거나 가중치를 내놓지 않아 대조하지 못함."
-        else:
-            pipeline["note"] = ""
+        pipeline["matches"], pipeline["note"] = pipeline_matches(pipeline)
         out["pipeline"] = pipeline
     return out
 
@@ -501,25 +459,25 @@ def taxonomy() -> dict[str, Any]:
     return build_taxonomy()
 
 
-@router.get("/config/weights", summary="위험점수 가중치(설정값, 없으면 기본값)")
-def config_weights(
-    raw: Any = Depends(get_weights_setting), pipeline: dict[str, Any] = Depends(get_pipeline_scoring)
-) -> dict[str, Any]:
-    return build_weights(raw, pipeline)
+@router.get("/config/weights", summary="위험점수 공식: 곱(가중치 없음), 결정 출처와 파이프라인 대조")
+def config_weights(pipeline: dict[str, Any] = Depends(get_pipeline_scoring)) -> dict[str, Any]:
+    return build_weights(pipeline)
 
 
 __all__ = [
     "CORPUS_MANIFEST",
-    "DEFAULT_WEIGHTS",
+    "DECISION",
+    "FORMULA",
     "INDEX_MANIFEST",
+    "LEGACY_DESIGN_WEIGHTS",
+    "SCORE_COMPONENTS",
     "TAXONOMY_VERSION",
     "build_api_meta",
     "build_taxonomy",
     "build_weights",
     "get_data_dir",
     "get_pipeline_scoring",
-    "get_weights_setting",
-    "parse_weights",
+    "pipeline_matches",
     "pipeline_scoring",
     "read_manifest",
     "router",
