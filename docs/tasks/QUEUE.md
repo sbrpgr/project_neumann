@@ -6,16 +6,31 @@
 
 ## ⚠ 최종 마감: 발표자료 제출 10/01 09:00 (HANDOFF 표). 발표 작업(E6)을 모든 L3 확장보다 앞에 둔다
 
-## 19:27 현황 요약(아래 표보다 이것이 최신)
+## ★ 20:00 교대 스냅숏 (PM "로컬 세팅" 19:48) — 이것이 최신
 
-- **v0 달성(19:19, 태그 `v0`)**. 8010 서버는 main 체크아웃에서 실제 분석 연결 상태로 떠 있다(`C:/Users/User/Desktop/pn_logs/server_8010_main.log`)
-- main 병합 완료(22건): E0·E0b·E1-L0·E1-L2·E1-L3·E2-L0·E3-L0·E3-L1a·E3-L1b·E3-L1c·E4-L0·E4-L1b·E4-L1d·E4-L2a·E4-L2b·E5-L0·E5-L1a·E5-L2a·E5-L3a·E6-L2a·E6-L3a·E6-L3b
-- **v1 진행:** E3-L1w(파이프라인에 적합성·예상 심사평·체크리스트·2차 검증 연결, 검색어 캐시) 빌더 작업 중(PM 세션)
-- **v2 진행:** 백테스트 생성 실행 중(PM, 백그라운드) — `eval.baseline_llm`·`eval.backtest_run_neumann`, 로그 `pn_logs/bt_*.log`, 산출 `data/eval/riskset_*.jsonl`. 끝나면 판정(Claude Sonnet 3명, `python -m eval.judge_run build` → `briefs` → 서브에이전트 3명 → `validate` → `aggregate`) + 대표 블라인드 10편
-- 검증·재작업 대기: E4-L1a(S-03 상한 반영 31f0b88, 재검증 필요), E5-L0e2e(PASS, 라이브 실행 결과 대기 — 구축 세션)
-- 구축 세션 빌드 중: E6-pres1(발표자료 작업본), E2-L1, E5-L1b, E2-L3, E4-L1c, E4-S06, E4-L2c(서빙 안정성·SEC-1 S-01·S-02, **터널 전제**), E6-docs
-- 공개(터널)는 E4-L2c 병합·비용 상한 확인·SEC-1 재점검 뒤
-- 사용량(19:22): Claude 5시간 창 41%, 주간 11%
+**원칙:** 실제 OpenAI 호출은 실서비스·프로토타입 검증(시연·대표 점검·승인된 확인 테스트)만. 개발·빌드·검증은 mock(설정 기본값 mock). 제품 기본 모델 `gpt-6.1-sol`. 이미 잰 평가(E5-L1b Macro-F1 0.4864, 라이브 E2E, v0)는 `gpt-6-astra`로 쟀다고 구분 표기.
+
+**main 상태:** v0 태그(19:19). **점검 서버는 8020**(구축 세션이 main 497d3f8로 기동, openai·gpt-6.1-sol, 로그 `pn_logs/server_8020.*.log`). 옛 8010(astra)은 19:50에 PM이 내림. 병합 30건 가까이(아래 표 + E2-L3·E5-L1b·E5-L0e2e·E4-S06·E4-L1c·E6-L3c). 8010 = main 체크아웃 실서버(19:10 기동, 당시 astra 기본값으로 떴음 → **재시작 시 sol**).
+
+**열린 브랜치와 다음 행동**
+
+| 과제 | 상태 | 다음 |
+|---|---|---|
+| E3-L1w v1 파이프라인 연결 | 🔍 빌드 끝(실제 호출 0), Sonnet 검증 중(mock) — task/E3-L1w 19b3fc1 | 끝나면 Sonnet/sol 검증 → 병합 → 실서버 재시작(sol) → 대표 점검 → 태그 `v1` |
+| E2-L1 검색 보정 | ✅ 병합(33dd641), .env.example 키 추가됨 | 병합 시 `.env.example`에 새 키 5개(SCORE_FLOOR는 비움), similar_works 유사도 정렬·무관 사유 노출은 E3 후속 |
+| E4-L1e 입력 예시·템플릿 AI4S 정렬(대표 지시) | ⏳ 구축 세션(API 금지) | 예시: 전해액 GNN 유지 + 단백질-리간드·신경 연산자 PDE 기후 새로. 템플릿 5종 AI4S. 병합 뒤 사전 계산본·정적 판·시연 녹화의 예시도 맞출 것 |
+| E1-L1c eLife(+EPMC) 색인(우선순위 낮아짐: 예시에서 fMRI·의료영상 제외) | a3a4251, `index_elife`·`index_elife_epmc`에 DO_NOT_SERVE 표시(E1-L1b 실명 FAIL) | 데모 3건 모두 살리려면 `index_elife_epmc` 후보. E2-L1 병합 뒤 `NEUMANN_INDEX_DIR` 전환 결정·서버 재시작(첫 분석에 API 사용 = 허용) |
+| E1-L1b eLife·EPMC 수집 | ❌ FAIL(리뷰어 실명 22+3건) → PM 세션 빌더 재작업(오프라인) | 잔존 서명 0 증명 후 재검증 → 병합. **그 전에는 eLife/EPMC 색인을 서비스에 쓰지 않는다** |
+| E4-L2c 서빙 안정성 | ❌ FAIL(BOM·UTF-16 본문으로 입장 검사 우회, IPv6 /64 우회) → 재작업 중(구축 세션). **공개 금지** | 병합 + `docs/reports/E4-L2c_main.patch` 적용. 공개 모드 `NEUMANN_DAILY_BUDGET=0`(대표 정정), 동시 상한·대기열·속도 제한 유지 |
+| E4-L2d 비동기 작업 API | 🔍 999f3f9 빌드 끝(동시 5건 응답 최장 0.08초). E4-L2c 재작업 병합 뒤 재검증 | E4-L2c 뒤 병합 + `E4-L2d_main.patch`. **터널 공개 전제**(Cloudflare 100초 제한) |
+| SEC-2 재점검 | 대기 | E4-L2c·L2d 병합 뒤 → 통과하면 cloudflared 터널 공개(주소는 발표자료로) |
+| E4-L1a 업로드 | 🔍 S-03 수정(31f0b88) 재검증 필요 | 재검증 PASS → 병합(라우터 자동 연결) |
+| E6-docs 문서·README | 🔍 재검증 중 | 병합 + 루트 README를 `docs/reports/E6-docs_README_draft.md`로 갱신(PM 소유) |
+| E6-pres2 발표자료 숫자 | ⏳ 구축 세션 | `data/deck/` 작업본. 백테스트 칸은 "측정 중" |
+| E3-L1d 사전 추출 스크립트 | 중지·선택 병합 | 재개는 대표 승인 뒤, 데모 상위 논문만 `--work-ids` |
+| **E5-L2b 백테스트** | ⏸ 보류(19:36 중지) | **대표 승인 뒤** `gpt-6.1-sol`로 Neumann·기준선 둘 다 15편(`--limit 15`), 새 검색(E2-L1) 병합 뒤 조건으로. 이어서 판정 Claude Sonnet 3명(§5.7) → 지표 → 태그 `v2` |
+
+**발표 마감 10/01 09:00**(HANDOFF 맨 위 일정표)
 
 ## v0 크리티컬 패스
 

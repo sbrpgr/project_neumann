@@ -188,6 +188,39 @@
   .same { display: grid; grid-template-columns: minmax(0, 1fr) 72px 44px; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }
   .empty { color: var(--muted); font-size: 13px; padding: 30px 6px; text-align: center; }
   .doclines { display: grid; grid-template-columns: 30px minmax(0, 1fr); font-size: 13.5px; }
+  /* ===== E4-L1c 근거 열람 패널 · 평가이력 지도 (Evidence.dc.html) ===== */
+  .evh { display: flex; align-items: baseline; gap: 10px; padding-bottom: 10px; margin-bottom: 12px; border-bottom: 1px solid var(--ink); }
+  .evh .fk { font-family: var(--head); font-size: 13px; font-weight: 600; color: var(--red); }
+  .evh .nav { margin-left: auto; display: inline-flex; gap: 4px; flex-shrink: 0; }
+  .evh .nav button { width: 26px; height: 22px; padding: 0; border: 1px solid var(--line2); border-radius: 2px; background: transparent; font-family: var(--mono); font-size: 12px; color: var(--text2); }
+  .evh .nav button:hover:not([disabled]) { border-color: var(--ink); color: var(--ink); }
+  .evh .nav button[disabled] { opacity: .35; cursor: default; }
+  .plbl { font-size: 12.5px; font-weight: 600; color: var(--muted); margin: 18px 0 6px 0; }
+  .plbl:first-child { margin-top: 0; }
+  .pline { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 0 4px; padding: 4px 0; font-size: 13.5px; line-height: 1.65; }
+  .pline .t { background: linear-gradient(transparent 58%, var(--red-t) 58%); }
+  .pwarn { color: var(--red-d); font-size: 12.5px; padding: 0 0 8px 0; margin-bottom: 12px; border-bottom: 1px solid var(--red-l); }
+  .pwarn b { color: var(--red); font-weight: 600; margin-right: 6px; }
+  .pcard { display: grid; grid-template-columns: 54px minmax(0, 1fr); gap: 0 8px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; align-items: baseline; }
+  .pcard .r { font-family: var(--serif); font-style: italic; color: var(--red); font-size: 16px; cursor: pointer; }
+  .strip .c.sel { outline: 2px solid var(--ink); outline-offset: 1px; }
+  .doclines .l.sel { background: linear-gradient(transparent 58%, var(--red-t) 58%); }
+  .ev.on .q { color: var(--red-d); }
+  .tag.amb { color: var(--amber); }
+  .tablewrap { overflow-x: auto; }
+  .dist { display: flex; height: 6px; gap: 2px; margin: 2px 0 10px 0; }
+  .dist span { display: block; height: 100%; min-width: 4px; }
+  .dist .d-rej { background: var(--red); } .dist .d-acc { background: var(--green); } .dist .d-rev { background: var(--amber); } .dist .d-unk { background: var(--line2); }
+  .distl { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 20px; font-size: 13px; color: var(--text2); }
+  .distl .n { font-family: var(--mono); font-size: 15px; font-weight: 600; line-height: 1; color: var(--ink); margin-right: 5px; }
+  .distl .d-rej .n { color: var(--red); } .distl .d-acc .n { color: var(--green); } .distl .d-rev .n { color: var(--amber); }
+  .distl .avg { margin-left: auto; color: var(--muted); font-size: 12.5px; }
+  .rdots { display: inline-block; vertical-align: -1px; margin-left: 6px; color: var(--ink); }
+  table.map td.evs { white-space: nowrap; }
+  table.map td.evs .cite { margin: 0 1px; }
+  .ck .sub { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; margin-top: 4px; font-size: 12.5px; color: var(--muted); }
+  .rev .gh { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+  .rev .gh .bad { color: var(--red-d); }
 
   /* 스트립 + 요약 */
   .strip { display: grid; grid-template-columns: repeat(15, minmax(0, 1fr)); gap: 4px; }
@@ -426,7 +459,9 @@
   var GEN = { astra: 'astra 합성', rule: '규칙 합성 · 비상 경로', mock: 'mock provider', sample: '샘플 · 분석 결과 아님', unknown: '생성 방식 미표기' };
   var HANGUL = /[가-힣]/;
 
-  function dec(d) { if (d === '거절') return '<span class="tag rej">거절</span>'; if (!d || d === '미정' || d === '철회') return '<span class="tag x">' + esc(d || '미정') + '</span>'; return '<span class="tag acc">' + (d === '채택' ? '채택' : '채택 · ' + esc(d)) + '</span>'; }
+  var ACC = { '채택': 1, 'Oral': 1, 'Spotlight': 1, 'Poster': 1 }, REVS = { '대폭 수정': 1, '소폭 수정': 1 };
+  function decCls(d) { return d === '거절' ? 'd-rej' : (ACC[d] ? 'd-acc' : (REVS[d] ? 'd-rev' : 'd-unk')); }
+  function dec(d) { if (d === '거절') return '<span class="tag rej">거절</span>'; if (!d || d === '미정' || d === '철회') return '<span class="tag x">' + esc(d || '미정') + '</span>'; if (REVS[d]) return '<span class="tag amb">' + esc(d) + '</span>'; return '<span class="tag acc">' + (d === '채택' ? '채택' : '채택 · ' + esc(d)) + '</span>'; }
   function cite(k) { return k === 'map' ? '<button class="cite" data-jump="s-map" type="button">지도</button>' : '<button class="cite" data-ev="' + esc(k) + '" type="button">#' + esc(k) + '</button>'; }
   function lref(n) { return '<span class="lref" data-line="' + esc(n) + '">' + esc(n) + '행</span>'; }
   function lineOf(n) { var ls = (D && D.plan && D.plan.lines) || []; for (var i = 0; i < ls.length; i++) { if (ls[i].n === n) return ls[i]; } return null; }
@@ -435,7 +470,7 @@
   function toast(m) { var t = $('toast'); t.textContent = m; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(function () { t.classList.remove('on'); }, 2200); }
   function renderSteps() { $('steps').innerHTML = STEPS.map(function (s, i) { if (i === 3) return '<button class="stp" type="button" disabled title="내보내기 · 준비 중"><span class="n">IV</span>' + s + '<span class="soon">준비 중</span></button>'; var c = i === S.step ? 'cur' : (i < S.maxStep ? 'done' : ''); return '<button class="stp ' + c + '" type="button" data-step="' + i + '"' + (c ? '' : ' disabled') + '><span class="n">' + (c === 'done' ? CHECK : ['I', 'II', 'III', 'IV'][i]) + '</span>' + s + '</button>'; }).join(''); }
   function go(step) { S.step = step; S.maxStep = Math.max(S.maxStep, step); renderSteps(); window.scrollTo(0, 0); render(); }
-  function docLines(hl) { return '<div class="doclines">' + D.plan.lines.map(function (l) { var cls = 'l' + (l.h ? ' h' : '') + (l.f ? ' flag' : '') + (hl === l.n ? ' hl' : ''); return '<div class="ln' + (l.f ? ' f' : '') + '">' + l.n + '</div><div class="' + cls + '"' + (l.h === 'title' ? ' style="font-size:14px;"' : '') + '>' + esc(l.t) + '</div>'; }).join('') + '</div>'; }
+  function docLines(hl, sel) { return '<div class="doclines">' + D.plan.lines.map(function (l) { var cls = 'l' + (l.h ? ' h' : '') + (l.f ? ' flag' : '') + (hl === l.n ? ' hl' : '') + (sel && sel.indexOf(l.n) >= 0 ? ' sel' : ''); return '<div class="ln' + (l.f ? ' f' : '') + '">' + l.n + '</div><div class="' + cls + '"' + (l.h === 'title' ? ' style="font-size:14px;"' : '') + '>' + esc(l.t) + '</div>'; }).join('') + '</div>'; }
 
   /* ---------- 헤더 상태: GET /health ---------- */
   function renderHdr() {
@@ -535,12 +570,12 @@
   }
   function showFitness(f) { FIT = normFit(f); var b = $('fitBox'); if (b) { b.innerHTML = fitInner(); b.hidden = !FIT; b.classList.toggle('ok', !!(FIT && FIT.fit === true)); } return FIT; }
   window.NeumannInput = { showFitness: showFitness, clearFitness: function () { return showFitness(null); }, reloadTemplates: loadTemplates };
-  /* 전송 고지(E4-S06, SEC-1 S-06). 직접 입력·파일 업로드 공통. 글은 textContent로만 넣는다. 확인할 수 없는 약속(학습 미사용 등)은 쓰지 않는다.
+  /* 전송 고지(E4-S06, SEC-1 S-06). 직접 입력·파일 업로드 공통. 글은 textContent로만 넣는다. 확인할 수 없는 약속(학습 미사용 등)과 바뀔 수 있는 모델명은 쓰지 않는다.
      접힌 상태 = 라벨 + 한 줄 요약(세 사실 모두), 펼치면 전문 두 줄 */
   var SEND_NOTE = {
     label: '외부 전송',
-    summary: 'OpenAI API(gpt-6-astra)로 전송 · 개인정보·미공개 기밀 입력 금지 · 본문 파일 저장 없음',
-    lines: ['입력한 계획서는 분석을 위해 OpenAI API(gpt-6-astra)로 전송됩니다. 개인정보·미공개 기밀은 넣지 마세요.',
+    summary: 'OpenAI API로 전송 · 개인정보·미공개 기밀 입력 금지 · 본문 파일 저장 없음',
+    lines: ['입력한 계획서는 분석을 위해 OpenAI API로 전송됩니다. 개인정보·미공개 기밀은 넣지 마세요.',
             '이 서버는 계획서 본문을 파일로 저장하지 않습니다.'],
     more: ['자세히', '접기'],
     open: false
@@ -611,11 +646,28 @@
   function ckCounts() { var c = { '채택': 0, '보류': 0, '기각': 0 }; D.checklist.forEach(function (it) { c[it.s] = (c[it.s] || 0) + 1; }); return c; }
   function reviewCount() { var R = D.review || {}; return ['strength', 'weakness', 'request'].reduce(function (a, k) { return a + ((R[k] || []).length); }, 0); }
   function fmtDate(s) { var m = /^(\d{4}-\d{2}-\d{2})/.exec(String(s || '')); return m ? m[1] : ''; }
+  /* 평가이력 지도: 유사 연구 결정 분포(막대 + 범례), 평점 하나하나(점), 논문별 근거 번호 */
+  var DORDER = ['거절', 'Oral', 'Spotlight', 'Poster', '채택', '대폭 수정', '소폭 수정', '철회', '미정'];
+  function distHtml(works) {
+    var cnt = {}, sum = {}, nr = {};
+    works.forEach(function (w) { var d = w.d || '미정', c = decCls(d), r = parseFloat(w.r); cnt[d] = (cnt[d] || 0) + 1; if (isFinite(r)) { sum[c] = (sum[c] || 0) + r; nr[c] = (nr[c] || 0) + 1; } });
+    var keys = DORDER.filter(function (d) { return cnt[d]; }).concat(Object.keys(cnt).filter(function (d) { return DORDER.indexOf(d) < 0; }));
+    if (!keys.length) return '';
+    var avg = ['d-rej', 'd-acc'].filter(function (c) { return nr[c]; }).map(function (c) { return (c === 'd-rej' ? '거절' : '채택') + ' 평균 ' + (sum[c] / nr[c]).toFixed(2); }).join(' · ');
+    return '<div id="mapDist" style="margin:0 0 14px 0;"><div class="dist" role="img" aria-label="결정 분포">' + keys.map(function (d) { return '<span class="' + decCls(d) + '" style="flex:' + cnt[d] + ' 1 0;" title="' + esc(d + ' ' + cnt[d] + '편') + '"></span>'; }).join('') + '</div>' +
+      '<div class="distl">' + keys.map(function (d) { return '<span class="' + decCls(d) + '"><span class="n">' + cnt[d] + '</span>' + esc(d) + '</span>'; }).join('') + (avg ? '<span class="avg">공식 심사 평점 · ' + esc(avg) + '</span>' : '') + '</div></div>';
+  }
+  function rdots(rs) {
+    if (!rs || !rs.length) return '';
+    var W = 64, x = function (v) { return 2 + (Math.max(1, Math.min(10, v)) - 1) / 9 * (W - 4); };
+    return '<svg class="rdots" width="' + W + '" height="10" viewBox="0 0 ' + W + ' 10" aria-label="' + esc('심사 평점 ' + rs.join(', ')) + '"><title>' + esc('심사 평점 ' + rs.join(' · ') + ' (1–10)') + '</title><line x1="2" y1="5" x2="' + (W - 2) + '" y2="5" stroke="var(--line2)" stroke-width="1"/>' + rs.map(function (v) { return '<circle cx="' + x(+v).toFixed(1) + '" cy="5" r="2.6" fill="currentColor" fill-opacity=".55"/>'; }).join('') + '</svg>';
+  }
+  function workEv(wid) { return Object.keys(D.ev || {}).filter(function (k) { return D.ev[k].id && D.ev[k].id === wid; }).sort(function (a, b) { return a - b; }); }
   function renderReport() {
     var st = D._status || {}, K = D.kpi || {}, fc = famCounts(), works = D.works || [], cards = D.cards || [], R = D.review || {};
-    var hasMap = works.length > 0, hasReview = reviewCount() > 0, hasCheck = (D.checklist || []).length > 0;
+    var hasMap = works.length > 0, hasReview = reviewCount() > 0 || !!(R.audit && R.audit.gen > 0), hasCheck = (D.checklist || []).length > 0;
     var evKeys = Object.keys(D.ev || {}), evLinked = evKeys.filter(function (k) { return safeUrl(D.ev[k].u); }).length;
-    var para = function (arr) { return '<p>' + (arr || []).map(function (s) { return esc(s.t) + s.c.map(cite).join('') + '.'; }).join(' ') + '</p>'; };
+    var para = function (arr) { return '<p>' + (arr || []).map(function (s) { return esc(String(s.t).replace(/[.。]\s*$/, '')) + s.c.map(cite).join('') + '.'; }).join(' ') + '</p>'; };
     var notice = '';
     if (st.label) {
       var inp = st.input || {};
@@ -634,9 +686,10 @@
       '<p style="font-size:15px; color:var(--text2); max-width:700px;">' + lead + '</p>' + strip +
       '<div class="kpiline"><div class="k"><div class="v">' + works.length + '<i>편</i></div><div class="l">유사 연구 · ' + (decKnown ? '거절 ' + K.n_reject + ' / 채택 ' + K.n_accept : '결정 정보 없음') + '</div></div><div class="k"><div class="v">' + evKeys.length + '<i>건</i></div><div class="l">근거 문장 · 원문 링크 ' + (evKeys.length ? Math.round(evLinked / evKeys.length * 100) : 0) + '%</div></div><div class="k"><div class="v">' + cards.length + '<i>장</i></div><div class="l">위험카드</div></div>' + (hasReview ? '<div class="k"><div class="v">' + reviewCount() + '<i>문장</i></div><div class="l">예상 심사평 · 삭제 ' + R.audit.drop + '</div></div>' : '') + '</div>' +
       (cards.length ? '<div class="top3">' + cards.slice(0, 3).map(function (cd) { var f = fam(cd.fam); return '<div class="card t3" data-jump="s-cards"><div class="rk">' + ('0' + cd.rank).slice(-2) + '</div><div><h3>' + esc(f.n) + '</h3><div class="f">' + esc(f.k) + ' · 심각도 S' + cd.sev + ' · ' + esc(cd.freq) + (cd.lines.length ? ' · 계획서 ' + cd.lines.map(function (n) { return n + '행'; }).join(', ') : '') + '</div></div><div class="sc">' + esc(cd.score) + '</div></div>'; }).join('') + '</div>' : '') + '</section>';
-    var map = !hasMap ? '' : '<section id="s-map"><div class="sec"><span class="num">I</span><h2>유사 연구 · 평가이력 지도</h2><span class="d">유사 연구 ' + works.length + '편' + (D.fams.length ? ' · 칸 = 그 위험카드의 근거가 나온 논문' : '') + '</span></div><div class="card tablewrap" style="padding:6px 16px 10px 16px;"><table class="map"><thead><tr><th>#</th><th>논문</th><th>결정</th><th>평점</th>' + D.fams.map(function (f) { return '<th class="c" title="' + esc(f.k + ' ' + f.n) + '">' + esc(f.col) + '</th>'; }).join('') + '<th></th></tr></thead><tbody>' +
-      works.map(function (w) { var u = safeUrl(w.u); return '<tr><td class="mono muted">' + w.n + '</td><td title="' + esc(w.t) + '" style="white-space:nowrap;">' + esc(w.s) + '</td><td>' + dec(w.d) + '</td><td class="mono">' + esc(w.r) + '</td>' + (w.f || []).map(function (v) { return '<td class="c"><span class="sq' + (v ? '' : ' o') + '"></span></td>'; }).join('') + '<td>' + (u ? '<a class="lnk" href="' + esc(u) + '" target="_blank" rel="noopener noreferrer" title="원문">' + EXT + '</a>' : '') + '</td></tr>'; }).join('') +
-      (D.fams.length ? '<tr class="tf"><td></td><td class="muted">' + works.length + '편 중 근거 논문 수' + (decKnown ? ' / 그중 거절' : '') + '</td><td></td><td></td>' + fc.sums.map(function (s, i) { return '<td class="c">' + s + (decKnown ? '<span style="color:var(--red)">/' + fc.rej[i] + '</span>' : '') + '</td>'; }).join('') + '<td></td></tr>' : '') + '</tbody></table></div>' +
+    var map = !hasMap ? '' : '<section id="s-map"><div class="sec"><span class="num">I</span><h2>유사 연구 · 평가이력 지도</h2><span class="d">유사 연구 ' + works.length + '편' + (D.fams.length ? ' · 칸 = 그 위험카드의 근거가 나온 논문' : '') + '</span></div>' + distHtml(works) +
+      '<div class="card tablewrap" style="padding:6px 16px 10px 16px;"><table class="map"><thead><tr><th>#</th><th>논문</th><th>결정</th><th>평점</th>' + D.fams.map(function (f) { return '<th class="c" title="' + esc(f.k + ' ' + f.n) + '">' + esc(f.col) + '</th>'; }).join('') + '<th>근거</th><th></th></tr></thead><tbody>' +
+      works.map(function (w) { var u = safeUrl(w.u), evs = workEv(w.id); return '<tr data-work="' + esc(w.id) + '"><td class="mono muted">' + esc(w.n) + '</td><td title="' + esc(w.t + (w.venue ? ' · ' + w.venue : '')) + '" style="white-space:nowrap;">' + esc(w.s) + '</td><td title="' + esc(w.draw || '') + '">' + dec(w.d) + '</td><td class="mono" style="white-space:nowrap;">' + esc(w.r) + rdots(w.rs) + '</td>' + (w.f || []).map(function (v) { return '<td class="c"><span class="sq' + (v ? '' : ' o') + '"></span></td>'; }).join('') + '<td class="evs">' + evs.slice(0, 3).map(cite).join('') + (evs.length > 3 ? '<span class="sm muted">+' + (evs.length - 3) + '</span>' : '') + '</td><td>' + (u ? '<a class="lnk" href="' + esc(u) + '" target="_blank" rel="noopener noreferrer" title="원문">' + EXT + '</a>' : '') + '</td></tr>'; }).join('') +
+      (D.fams.length ? '<tr class="tf"><td></td><td class="muted">' + works.length + '편 중 근거 논문 수' + (decKnown ? ' / 그중 거절' : '') + '</td><td></td><td></td>' + fc.sums.map(function (s, i) { return '<td class="c">' + s + (decKnown ? '<span style="color:var(--red)">/' + fc.rej[i] + '</span>' : '') + '</td>'; }).join('') + '<td></td><td></td></tr>' : '') + '</tbody></table></div>' +
       ((D.corpus || []).some(function (v) { return v != null; }) ? '<div class="corp">' + D.corpus.map(function (v, i) { return v == null ? '' : '<div><div class="v">' + esc(v) + '</div><div class="l">' + esc(fam(i).col) + '</div></div>'; }).join('') + '</div>' : '') + '</section>';
     var cardHtml = cards.length ? cards.map(function (cd) { var f = fam(cd.fam); return '<div class="card rc" data-card="' + cd.rank + '"><div class="hd"><div class="rk">' + ('0' + cd.rank).slice(-2) + '</div><div><h3>' + esc(f.n) + '</h3><div class="sub"><span class="tag gray">' + esc(f.k) + '</span><span class="tag s' + cd.sev + '">심각도 S' + cd.sev + '</span><span class="sm muted">' + esc(cd.src) + '</span>' + genLabel(cd.gen) + '</div></div><div class="score"><div class="v">' + esc(cd.score) + '</div><div class="l">위험점수</div></div></div>' +
       (cd.desc ? '<p class="desc">' + esc(cd.desc) + '</p>' : '') +
@@ -646,38 +699,64 @@
       (cd.acts.length ? '<div class="acts"><div class="eyebrow" style="margin-bottom:4px;">착수 전 예방 행동</div>' + cd.acts.map(function (a, i) { return '<div class="a"><span class="n">' + String.fromCharCode(97 + i) + '</span><div>' + esc(a) + '</div></div>'; }).join('') + '</div>' : '') + '</div>'; }).join('')
       : '<div class="card emptycard" id="noCards"><b>위험카드 0장</b>' + esc(st.empty_reason || '사유 없음') + '</div>';
     var cardsSec = '<section id="s-cards"><div class="sec"><span class="num">II</span><h2>위험카드</h2><span class="d">위험점수 = 유사도 × 빈도 × 심각도 × 신뢰도</span></div>' + cardHtml + '</section>';
-    var review = !hasReview ? '' : '<section id="s-review"><div class="sec"><span class="num">III</span><h2>예상 심사평</h2><span class="d">문장마다 근거 번호 · 인용의 적용 여부는 연구자가 확인</span></div><div class="card rev"><div class="g"><div class="h" style="color:var(--green)">Strengths</div>' + para(R.strength) + '</div><div class="g"><div class="h" style="color:var(--red)">Weaknesses</div>' + para(R.weakness) + '</div><div class="g"><div class="h" style="color:var(--muted)">Requests</div>' + para(R.request) + '</div></div>' +
-      '<div class="card audit"><div class="a"><div class="v">' + R.audit.gen + '</div><div class="l">생성 문장</div></div><div class="a"><div class="v">' + R.audit.pass + '</div><div class="l">검증 통과</div></div><div class="a"><div class="v" style="color:var(--red)">' + R.audit.drop + '</div><div class="l">삭제</div></div><div class="a"><div class="v" style="color:var(--green)">' + reviewCount() + '</div><div class="l">근거 연결 문장</div></div><div class="del">' + R.audit.dropped.map(function (d) { return '<div style="margin-bottom:8px;"><span class="mono" style="color:var(--red)">' + esc(d[0]) + '</span><s>' + esc(d[1]) + '</s></div>'; }).join('') + '</div></div></section>';
+    var revHead = (R.gen ? genLabel(R.gen) : '<span class="gen unknown">생성 방식 미표기</span>') + (R.model ? '<span class="mono">' + esc(R.model) + '</span>' : '') + (R.st && R.st !== 'ok' ? '<span class="bad">상태 ' + esc(R.st) + (R.why ? ' · ' + esc(R.why) : '') + '</span>' : '');
+    var revGroups = [['strength', 'Strengths', 'var(--green)'], ['weakness', 'Weaknesses', 'var(--red)'], ['request', 'Requests', 'var(--muted)']].filter(function (g) { return (R[g[0]] || []).length; });
+    var review = !hasReview ? '' : '<section id="s-review"><div class="sec"><span class="num">III</span><h2>예상 심사평</h2><span class="d">문장마다 근거 번호 · 인용의 적용 여부는 연구자가 확인</span></div><div class="card rev"><div class="gh" id="revGen">' + revHead + '</div>' + (revGroups.length ? revGroups.map(function (g) { return '<div class="g"><div class="h" style="color:' + g[2] + '">' + g[1] + '</div>' + para(R[g[0]]) + '</div>'; }).join('') : '<div class="sm muted">근거 게이트를 통과한 문장 없음</div>') + '</div>' +
+      '<div class="card audit"><div class="a"><div class="v">' + R.audit.gen + '</div><div class="l">생성 문장</div></div><div class="a"><div class="v">' + R.audit.pass + '</div><div class="l">검증 통과</div></div><div class="a"><div class="v" style="color:var(--red)">' + R.audit.drop + '</div><div class="l">삭제</div></div><div class="a"><div class="v" style="color:var(--green)">' + reviewCount() + '</div><div class="l">근거 연결 문장</div></div><div class="del">' + R.audit.dropped.map(function (d) { return '<div style="margin-bottom:8px;"><span class="mono" style="color:var(--red)">' + esc(d[0]) + '</span><s>' + esc(d[1]) + '</s></div>'; }).join('') + (R.audit.gate ? '<span class="sm">게이트 <span class="mono">' + esc(R.audit.gate) + '</span></span>' : '') + '</div></div></section>';
     var c = hasCheck ? ckCounts() : null;
-    var check = !hasCheck ? '' : '<section id="s-check"><div class="sec"><span class="num">IV</span><h2>예방 체크리스트 · 결정 로그</h2><span class="d">결정을 누르면 채택 → 보류 → 기각 순환</span></div><div class="card" style="overflow:hidden;"><div class="ck head"><div>#</div><div>착수 전 행동</div><div>위험</div><div>결정</div><div>메모</div></div>' + D.checklist.map(function (it, i) { return '<div class="ck"><div class="mono muted">' + esc(it.id) + '</div><div>' + esc(it.t) + '</div><div><span class="tag gray">' + esc(it.r) + '</span></div><div><span class="dec" data-i="' + i + '" data-s="' + esc(it.s) + '">' + esc(it.s) + '</span></div><div class="sm muted">' + esc(it.m) + '</div></div>'; }).join('') + '</div><div style="margin-top:14px;" id="ckSum">채택 <strong>' + c['채택'] + '</strong> · 보류 <strong>' + c['보류'] + '</strong> · 기각 <strong>' + c['기각'] + '</strong></div></section>';
+    var check = !hasCheck ? '' : '<section id="s-check"><div class="sec"><span class="num">IV</span><h2>예방 체크리스트 · 결정 로그</h2><span class="d">결정을 누르면 채택 → 보류 → 기각 순환</span></div><div class="card" style="overflow:hidden;"><div class="ck head"><div>#</div><div>착수 전 행동</div><div>위험</div><div>결정</div><div>메모</div></div>' + D.checklist.map(function (it, i) { var sub = (it.ln || []).map(lref).join('') + (it.ev || []).map(cite).join('') + (it.card ? '<span>카드 ' + esc(('0' + it.card).slice(-2)) + '</span>' : '') + (it.gen ? genLabel(it.gen) : '') + (it.v ? '<span>확인 · ' + esc(it.v) + '</span>' : ''); return '<div class="ck"><div class="mono muted">' + esc(it.id) + '</div><div>' + esc(it.t) + (sub ? '<div class="sub">' + sub + '</div>' : '') + '</div><div><span class="tag gray">' + esc(it.r) + '</span></div><div><span class="dec" data-i="' + i + '" data-s="' + esc(it.s) + '"' + (it.set === false ? ' title="결정 전 · 기본값 보류"' : '') + '>' + esc(it.s) + '</span></div><div class="sm muted">' + esc(it.m) + '</div></div>'; }).join('') + '</div><div style="margin-top:14px;" id="ckSum">채택 <strong>' + c['채택'] + '</strong> · 보류 <strong>' + c['보류'] + '</strong> · 기각 <strong>' + c['기각'] + '</strong></div></section>';
     var gens = st.generators || {}, genTxt = Object.keys(gens).map(function (g) { return (GEN[g] || g) + ' ' + gens[g] + '장'; }).join(' · ') || '카드 없음';
     var stageTxt = (D.pipeline || []).map(function (p) { return esc(p.k) + ' ' + esc(p.m); }).join('<br>') || '단계 기록 없음';
     var trace = '<section id="s-trace"><div class="sec"><span class="num">V</span><h2>추적</h2><span class="d">출처 · 생성 방식 · 모델 · 버전</span></div><div class="card" style="padding:20px 24px;"><div class="trace">' +
       '<div><div class="k">Result</div>' + esc(st.source === 'sample' ? '샘플 데이터 · 분석 결과 아님' : (st.result_status || '—')) + '<br><span class="mono">' + esc(D.session_id) + ' · ' + esc(D.plan_id) + '</span></div>' +
       '<div><div class="k">Generate</div>' + esc(genTxt) + '<br>모델 ' + esc(K.model_id || '—') + (K.model_provider ? ' · ' + esc(K.model_provider) : '') + '</div>' +
       '<div><div class="k">Stages</div>' + stageTxt + '</div>' +
-      '<div><div class="k">Version</div>파이프라인 ' + esc(st.pipeline_version || '—') + '<br>API ' + esc(H ? H.version : '—') + '</div></div>' +
+      '<div><div class="k">Version</div>파이프라인 ' + esc(st.pipeline_version || '—') + '<br>API ' + esc(H ? H.version : '—') + '</div>' +
+      '<div id="traceRecords"><div class="k">Records</div>' + (st.records ? '결정·평점: 코퍼스 기록 조회 <span class="mono">' + esc(st.records.source) + '</span><br>' + esc(Object.keys(st.records.filled || {}).map(function (k) { return k + ' ' + st.records.filled[k]; }).join(' · ') || '채운 값 없음') : '결정·평점: 분석 결과 값만') + '</div>' +
+      '<div><div class="k">Verify</div>' + (st.verification ? '원문 대조 ' + esc(st.verification.verified == null ? '—' : st.verification.verified) + ' / ' + esc(st.verification.total == null ? '—' : st.verification.total) + (st.verification.stage ? ' · verify_evidence ' + esc(st.verification.stage) : '') : '원문 대조 기록 없음') + '</div></div>' +
       '<div class="sm muted" style="margin-top:14px; padding-top:12px; border-top:1px solid var(--line);">모든 출력은 \'문서화된 위험 신호\'이며 특정 저자·리뷰어에 대한 판단이 아닙니다. 리뷰어는 익명 번호로만 표기됩니다. 최종 판단은 연구자에게 있습니다.</div></div></section>';
     var panel = '<aside class="panel card" style="padding:12px;"><div class="ptabs"><button class="' + (S.ptab === 'ev' ? 'on' : '') + '" data-ptab="ev" type="button">근거</button><button class="' + (S.ptab === 'plan' ? 'on' : '') + '" data-ptab="plan" type="button">계획서</button></div><div class="pbody" id="pbody"></div></aside>';
     var planApp = '<section id="s-plan" class="print-only"><div class="sec"><span class="num">§</span><h2>부록 · 계획서 원문</h2><span class="d">' + esc(D.plan.file) + ' · 붉은 밑줄 = 위험카드가 대응하는 문장</span></div><div class="card" style="padding:16px 18px;">' + docLines(null) + '</div></section>';
     return '<div class="rep"><article class="doc">' + summary + map + cardsSec + review + check + trace + planApp + '</article>' + panel + '</div>';
   }
+  var KINDQ = { review: '심사평 원문 · 축자', author_response: '저자 답변 원문 · 축자', decision: '결정문 원문 · 축자', post_status: '사후 기록 원문 · 축자' };
+  function panelWarn() {
+    var st = D._status || {}, gens = st.generators || {}, bad = Object.keys(gens).filter(function (g) { return g !== 'astra'; });
+    if (st.source === 'sample') return '<div class="pwarn" id="panelWarn"><b>' + esc(st.label || '샘플 데이터') + '</b>분석 결과 아님 · 공용 fixture(가짜 데이터)</div>';
+    if (st.label || bad.length) return '<div class="pwarn" id="panelWarn"><b>' + esc(st.label || '생성 방식 확인') + '</b>' + esc(bad.map(function (g) { return (GEN[g] || g) + ' ' + gens[g] + '장'; }).join(' · ')) + '</div>';
+    return '';
+  }
+  function markSel(k) {
+    var e = k && D.ev[k], sel = e ? (e.lns && e.lns.length ? e.lns : (e.ln ? [e.ln] : [])) : [];
+    document.querySelectorAll('.strip .c').forEach(function (c) { c.classList.toggle('sel', sel.indexOf(+c.dataset.line) >= 0); });
+    document.querySelectorAll('.doc .ev').forEach(function (b) { var q = b.querySelector('.q'); b.classList.toggle('on', !!(q && q.dataset.ev === String(k))); });
+    return sel;
+  }
   function renderPanel() {
     var b = $('pbody'); if (!b) return;
+    var sel = markSel(S.ev);
     if (S.ptab === 'plan') {
       var n = S.line, hits = n ? D.cards.filter(function (c) { return c.lines.indexOf(n) >= 0; }) : [];
-      b.innerHTML = '<div class="eyebrow" style="margin-bottom:8px;">계획서 원문 · ' + esc(D.plan.file) + '</div>' + (D.plan.lines.length ? docLines(n) : '<div class="empty">계획서 줄 없음</div>') + (hits.length ? '<div style="margin-top:16px;"><div class="eyebrow" style="margin-bottom:4px;">' + n + '행이 부르는 지적</div>' + hits.map(function (c) { var f = fam(c.fam); return '<div class="pkv"><div class="k">' + esc(f.k) + '</div><div>' + esc(f.n) + ' · 근거 ' + c.ev.map(cite).join('') + '</div></div>'; }).join('') + '</div>' : '<div class="sm muted" style="margin-top:12px;">행 번호나 스트립을 누르면 원문 줄로 이동</div>');
-    } else {
-      var k = S.ev, e = k && D.ev[k];
-      if (!e) { b.innerHTML = '<div class="empty">본문의 <span class="cite" style="cursor:default;">#n</span> 번호나 인용문을 누르면<br>실제 심사평 원문이 여기에 표시됩니다.</div>'; return; }
-      var f = fam(e.fam), same = D.works.filter(function (w) { return w.f && w.f[e.fam]; }), l = e.ln ? lineOf(e.ln) : null, u = safeUrl(e.u);
-      b.innerHTML = '<div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;"><span class="cite on" style="cursor:default;">#' + esc(k) + '</span><strong style="font-size:13px;">' + esc(f.k) + ' · ' + esc(f.n) + '</strong></div><div class="pq' + (HANGUL.test(e.q) ? ' ko' : '') + '">' + esc(e.q) + '</div>' +
-        '<div style="margin-top:16px;"><div class="pkv"><div class="k">논문</div><div>' + esc(e.p) + '</div></div><div class="pkv"><div class="k">출처</div><div>' + esc(e.v || '—') + '<br>' + (e.x ? '<span class="tag x">확장 검색 · 유사 ' + D.works.length + '편 외</span>' : '<span class="tag gray">유사 ' + D.works.length + '편 내' + (e.map ? ' · ' + e.map + '번' : '') + '</span>') + '</div></div><div class="pkv"><div class="k">결정</div><div>' + dec(e.d) + '</div></div>' + (e.rt ? '<div class="pkv"><div class="k">평점</div><div>' + esc(e.rt) + ' / 10' + (e.rv ? ' · <span class="mono">' + esc(e.rv) + '</span>' : '') + ' · 익명 유지</div></div>' : '') +
-        '<div class="pkv"><div class="k">원문</div><div>' + (u ? '<a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer" class="mono" style="display:inline-flex; gap:4px; align-items:center;">' + esc(u.replace(/^https?:\/\//, '')) + EXT + '</a>' : '<span class="muted">링크 없음</span>') + '</div></div>' +
-        (e.off ? '<div class="pkv"><div class="k">오프셋</div><div class="mono">' + esc(e.off[0]) + '–' + esc(e.off[1]) + (e.sha ? ' · ' + esc(e.sha) : '') + '</div></div>' : '') + '</div>' +
-        (l ? '<div style="margin-top:16px;"><div class="eyebrow" style="margin-bottom:6px;">계획서의 대응 문장</div><div style="padding:10px 12px; background:var(--soft); border-radius:3px; font-size:13.5px;">' + lref(e.ln) + esc(l.t) + '</div></div>' : '') +
-        (D.works.length ? '<div style="margin-top:16px;"><div class="eyebrow" style="margin-bottom:4px;">같은 위험 · 유사 ' + D.works.length + '편 중 ' + same.length + '편</div>' + same.map(function (w) { return '<div class="same"><div>' + esc(w.s) + '</div><div>' + dec(w.d) + '</div><div class="mono" style="text-align:right;">' + esc(w.r) + '</div></div>'; }).join('') + '</div>' : '');
+      b.innerHTML = panelWarn() + '<div class="eyebrow" style="margin-bottom:8px;">계획서 원문 · ' + esc(D.plan.file) + (S.ev && sel.length ? ' · 근거 #' + esc(S.ev) + ' 대응 줄 강조' : '') + '</div>' + (D.plan.lines.length ? docLines(n, sel) : '<div class="empty">계획서 줄 없음</div>') + (hits.length ? '<div style="margin-top:16px;"><div class="eyebrow" style="margin-bottom:4px;">' + esc(n) + '행이 부르는 지적</div>' + hits.map(function (c) { var f = fam(c.fam); return '<div class="pkv"><div class="k">' + esc(f.k) + '</div><div>' + esc(f.n) + ' · 근거 ' + c.ev.map(cite).join('') + '</div></div>'; }).join('') + '</div>' : '<div class="sm muted" style="margin-top:12px;">행 번호나 스트립을 누르면 원문 줄로 이동</div>');
+      return;
     }
+    var k = S.ev, e = k && D.ev[k];
+    if (!e) { b.innerHTML = panelWarn() + '<div class="empty">본문의 <span class="cite" style="cursor:default;">#n</span> 번호나 인용문을 누르면<br>실제 심사평 원문이 여기에 표시됩니다.</div>'; return; }
+    var keys = Object.keys(D.ev).sort(function (a, c) { return a - c; }), at = keys.indexOf(String(k)), prev = at > 0 ? keys[at - 1] : null, next = at >= 0 && at < keys.length - 1 ? keys[at + 1] : null;
+    var f = fam(e.fam), same = D.works.filter(function (w) { return w.f && w.f[e.fam]; }), u = safeUrl(e.u), V = (D._status || {}).verification;
+    var lines = sel.map(function (n) { var l = lineOf(n); return l ? '<div class="pline">' + lref(n) + '<span class="t">' + esc(l.t) + '</span></div>' : ''; }).join('');
+    var usedBy = (e.cards || []).map(function (r) { var cd = D.cards[r - 1]; if (!cd) return ''; var cf = fam(cd.fam); return '<div class="pcard"><span class="r" data-jump="s-cards">카드 ' + esc(('0' + r).slice(-2)) + '</span><div>' + esc(cf.k) + ' · ' + esc(cf.n) + ' ' + genLabel(cd.gen) + '</div></div>'; }).join('');
+    var verify = (e.off ? '오프셋 <span class="mono">' + esc(e.off[0]) + '–' + esc(e.off[1]) + '</span>' : '오프셋 기록 없음') + (e.sha ? ' · sha256 <span class="mono">' + esc(e.sha) + '</span>' : '') + (V && V.total != null ? '<br>원문 대조 ' + esc(V.verified == null ? '—' : V.verified) + ' / ' + esc(V.total) + (V.stage ? ' · verify_evidence ' + esc(V.stage) : '') : '<br><span class="muted">원문 대조 기록 없음</span>');
+    b.innerHTML = panelWarn() + '<div class="evh" id="evHead"><span class="cite on" style="cursor:default;">#' + esc(k) + '</span><span class="fk">' + esc(f.k) + ' · ' + esc(f.n) + '</span><span class="nav"><button type="button" title="이전 근거"' + (prev ? ' data-ev="' + esc(prev) + '"' : ' disabled') + '>‹</button><button type="button" title="다음 근거"' + (next ? ' data-ev="' + esc(next) + '"' : ' disabled') + '>›</button></span></div>' +
+      '<div class="plbl">' + esc(KINDQ[e.kind] || '원문 · 축자') + '</div><div class="pq' + (HANGUL.test(e.q) ? ' ko' : '') + '" id="evQuote">' + esc(e.q) + '</div>' +
+      '<div style="margin-top:16px; border-top:1px solid var(--ink);"><div class="pkv"><div class="k">논문</div><div>' + esc(e.p) + '<br>' + (e.x ? '<span class="tag x">확장 검색 · 유사 ' + D.works.length + '편 외</span>' : '<span class="tag gray">유사 ' + D.works.length + '편 내' + (e.map ? ' · ' + esc(e.map) + '번' : '') + '</span>') + '</div></div>' +
+      '<div class="pkv"><div class="k">출처</div><div>' + esc(e.v || '—') + '</div></div><div class="pkv"><div class="k">결정</div><div>' + dec(e.d) + '</div></div>' +
+      (e.rt ? '<div class="pkv"><div class="k">평점</div><div><span title="' + esc(e.rtraw || '') + '">' + esc(e.rt) + ' / 10</span>' + (e.rv ? ' · <span class="mono">' + esc(e.rv) + '</span>' : '') + ' · 익명 유지</div></div>' : '') +
+      '<div class="pkv"><div class="k">원문</div><div>' + (u ? '<a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer" class="mono" id="evLink" style="display:inline-flex; gap:4px; align-items:center;">' + esc(u.replace(/^https?:\/\//, '')) + EXT + '</a>' : '<span class="muted">링크 없음</span>') + '</div></div>' +
+      '<div class="pkv" style="border-bottom:1px solid var(--ink);"><div class="k">검증</div><div>' + verify + '</div></div></div>' +
+      (lines ? '<div class="plbl">계획서의 대응 문장</div><div id="evLines">' + lines + '</div>' : '') +
+      (usedBy ? '<div class="plbl">이 근거를 쓴 위험카드</div>' + usedBy : '') +
+      (D.works.length ? '<div class="plbl">같은 지적 · 유사 ' + D.works.length + '편 중 ' + same.length + '편</div>' + same.map(function (w) { return '<div class="same"><div>' + esc(w.s) + '</div><div>' + dec(w.d) + '</div><div class="mono" style="text-align:right;">' + esc(w.r) + '</div></div>'; }).join('') : '');
   }
   function spy() {
     var secs = Array.prototype.slice.call(document.querySelectorAll('.doc section')), links = document.querySelectorAll('.idx a'); if (!secs.length || !window.IntersectionObserver) return;

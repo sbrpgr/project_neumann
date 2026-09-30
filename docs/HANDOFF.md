@@ -11,6 +11,8 @@ PM이 병합할 때마다 갱신한다. Claude 한도가 다 되면 이 문서�
 | ~08:30 | 발표자료(키트 `발표자료/본선_발표자료.pptx`) 빈칸 10·11·12·13쪽 + 주소·영상 채우기 |
 | 09:00 전 | PDF 저장과 제출 |
 
+- **실제 OpenAI 호출 제한(대표 상시 규칙):** OpenAI API는 실제 서비스(사람이 쓰는 8010·공개 서버)와 태그급 성공 뒤 대표가 승인한 확인 테스트에서만 쓴다. `NEUMANN_LLM_PROVIDER=openai`와 `NEUMANN_LIVE_TESTS=1`은 PM이 대표 승인을 받은 과제에서만 켠다. 개발·빌드·검증·단위 테스트·측정은 mock이나 로컬로 한다. 설정 기본 provider는 mock이다. 구독(Claude·Codex) 에이전트가 만든 오프라인 결과를 제품 데이터에 쓰면 생성 방식을 "Claude/Codex 오프라인"으로 표기한다
+
 ## Codex PM이 20:00에 이어받으면 할 일 (순서대로)
 
 1. `docs/tasks/QUEUE.md` 최신 현황 요약을 읽는다. 검증 보고서(`docs/reports/<ID>.verify.md`)가 PASS인데 main에 없는 브랜치를 병합한다(`git merge --no-ff task/<ID>`, 검증 보고서도 커밋). PASS-조건부는 조건이 해소된 커밋이 있을 때만

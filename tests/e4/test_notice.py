@@ -20,9 +20,9 @@ ROOT = Path(__file__).resolve().parents[2]
 HTML_PATH = ROOT / "src" / "neumann" / "webui" / "index.html"
 SERVING = ROOT / "src" / "neumann" / "api" / "serving.py"
 
-SEND_LINE = "입력한 계획서는 분석을 위해 OpenAI API(gpt-6-astra)로 전송됩니다. 개인정보·미공개 기밀은 넣지 마세요."
+SEND_LINE = "입력한 계획서는 분석을 위해 OpenAI API로 전송됩니다. 개인정보·미공개 기밀은 넣지 마세요."
 STORE_LINE = "이 서버는 계획서 본문을 파일로 저장하지 않습니다."
-SUMMARY = "OpenAI API(gpt-6-astra)로 전송 · 개인정보·미공개 기밀 입력 금지 · 본문 파일 저장 없음"
+SUMMARY = "OpenAI API로 전송 · 개인정보·미공개 기밀 입력 금지 · 본문 파일 저장 없음"
 LABEL = "외부 전송"
 # 우리가 직접 확인할 수 없는 약속, 또는 서빙 층 구현에 따라 거짓이 되는 보관 설명. 고지에 쓰지 않는다.
 UNVERIFIABLE = ("학습에 쓰지", "학습에 사용하지", "학습하지 않", "모델 학습", "학습 미사용", "학습에 이용",
@@ -66,9 +66,11 @@ def test_notice_mentions_facts_only(html: str) -> None:
     for w in UNVERIFIABLE:
         assert w not in block, f"확인할 수 없거나 구현 따라 거짓이 되는 문구: {w}"
     # 전문과 한 줄 요약이 같은 세 사실(전송 대상·모델, 입력 금지 대상, 본문 파일 미저장)을 모두 밝힌다
-    for w in ("OpenAI API", "gpt-6-astra", "전송", "개인정보", "미공개 기밀", "본문"):
+    for w in ("OpenAI API", "전송", "개인정보", "미공개 기밀", "본문"):
         assert w in SEND_LINE + STORE_LINE and w in SUMMARY, f"빠진 요소: {w}"
     assert "파일로 저장하지 않습니다" in STORE_LINE and "파일 저장 없음" in SUMMARY
+    # 모델명은 넣지 않는다(제품 모델이 바뀌어도 사실이게. 2026-09-30 대표 지시: gpt-6-astra → gpt-6.1-sol)
+    assert not re.search(r"gpt-|o\d-|astra|sol\b", block, re.I), "고지에 모델명"
 
 
 def test_notice_inside_input_card_before_run_button(html: str) -> None:

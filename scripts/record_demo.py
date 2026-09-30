@@ -5,6 +5,9 @@
 
 순서: 입력 → 계획서 붙여넣기 → 분석 대기 → 리포트 → 위험카드 → 근거 열람 → (있으면) 내보내기.
 사람 속도로 움직이고(가짜 커서·부드러운 스크롤), 단계마다 화면 아래에 짧은 주석(자막)을 띄운다.
+(E6-L3c) 입력 화면에 범위 안내·"예시 불러오기"가 있고 `GET /templates`의 예시 중 파일 이름이 `--plan`과 같은 것이 있으면
+붙여넣기 대신 그 예시 버튼을 누른다(`--example none`이면 늘 붙여넣기). 불러온 본문이 계획서 파일과 같은지 JSON에 남긴다.
+분석 버튼 클릭·리포트 표시 시각(`observed.analysis_t_click`/`analysis_t_report`, 타임라인 기준)도 남겨 편집본이 대기 구간만 가속하게 한다.
 
 - 샘플 판정: **헬스와 분석 응답 중 하나라도 샘플이면 샘플.** 녹화 전 `GET /health`가 `connected`가 아니면(미연결·오류)
   처음부터, 분석 응답 `_status`가 `source == "sample"` 또는 `sample: true`면 그 순간부터 화면 왼쪽 아래에
@@ -128,6 +131,18 @@ async ([sel, offset, ms]) => {
 """
 
 
+# 요소 가운데 점을 눌렀을 때 그 요소(또는 자식)가 맞는가. 가짜 커서·자막은 pointer-events:none이라 판정에 안 걸린다.
+HIT_JS = r"""
+(e) => {
+  const r = e.getBoundingClientRect();
+  const x = r.left + r.width / 2, y = r.top + r.height / 2;
+  if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) return false;
+  const t = document.elementFromPoint(x, y);
+  return !!t && (t === e || e.contains(t));
+}
+"""
+
+
 # ── 결과 구조 ────────────────────────────────────────────────────────────────
 @dataclass
 class Step:
@@ -202,6 +217,24 @@ def fetch_health(base_url: str, timeout: float = 5.0) -> dict[str, Any] | None:
             return json.loads(r.read().decode("utf-8"))
     except (urllib.error.URLError, OSError, ValueError):
         return None
+
+
+def find_example(base_url: str, plan_name: str, timeout: float = 5.0) -> dict[str, Any] | None:
+    """`GET /templates`의 예시 중 `filename`이 계획서 파일 이름과 같은 것(없거나 실패하면 None)."""
+    url = base_url.rstrip("/") + "/templates"
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as r:  # noqa: S310 (로컬 점검 서버)
+            cat = json.loads(r.read().decode("utf-8"))
+    except (urllib.error.URLError, OSError, ValueError):
+        return None
+    for ex in (cat or {}).get("examples") or []:
+        if isinstance(ex, dict) and ex.get("filename") == plan_name and ex.get("id"):
+            return ex
+    return None
+
+
+def _norm_text(t: str) -> str:
+    return t.replace("\r\n", "\n").strip()
 
 
 def classify_health(health: dict[str, Any] | None) -> tuple[str, str]:
@@ -391,6 +424,16 @@ class Director:
 
     def move_to(self, locator: Any) -> None:
         locator.scroll_into_view_if_needed()
+        if not locator.evaluate(HIT_JS):
+            # (E6-L3c) 화면 안에 있어도 고정 머리글 밑에 가려 있으면 클릭이 머리글에 떨어진다 → 가운데로 올린다
+            locator.evaluate("(e) => e.scrollIntoView({ block: 'center', behavior: 'smooth' })")
+            prev = None
+            for _ in range(40):  # 부드러운 스크롤이 멈추고 요소가 눌릴 자리에 올 때까지(최대 약 2초)
+                self.page.wait_for_timeout(50)
+                cur = locator.bounding_box()
+                if cur == prev and locator.evaluate(HIT_JS):
+                    break
+                prev = cur
         box = locator.bounding_box()
         if not box:
             return
@@ -430,6 +473,12 @@ class DemoInfo:
     analysis_s: float | None = None
     status_notice: str | None = None
     export: str = "unknown"
+    scope: str | None = None  # 입력 화면 범위 안내 문구(#scope)
+    plan_source: str = "paste"  # paste | example:<id>
+    plan_loaded_chars: int | None = None  # 입력칸에 들어간 글자 수
+    plan_matches_file: bool | None = None  # 입력칸 본문 == 계획서 파일(줄바꿈·앞뒤 공백 정규화)
+    analysis_t_click: float | None = None  # 분석 버튼 클릭(타임라인 초)
+    analysis_t_report: float | None = None  # 리포트 또는 오류가 뜬 시각(타임라인 초)
     badge: str = ""  # 녹화 끝에 화면에 있던 배지 문구(DOM에서 읽음)
     badge_from: str | None = None  # 배지가 처음 보인 단계
     badge_by_step: dict[str, str] = field(default_factory=dict)  # 단계 끝마다 화면의 배지 문구
@@ -453,6 +502,7 @@ def demo_scenario(
     analysis_timeout_s: float = 180.0,
     stills_dir: Path | None = None,
     stills_prefix: str = "",
+    example: dict[str, Any] | None = None,
 ) -> Callable[[Any, Timeline], None]:
     """입력 → 붙여넣기 → 분석 대기 → 리포트 → 위험카드 → 근거 → 내보내기. `record()`에 넘긴다."""
     url = base_url.rstrip("/") + "/"
@@ -485,19 +535,38 @@ def demo_scenario(
                 page.wait_for_function("() => { const e = document.getElementById('hdrState'); return !e || e.textContent.trim() !== '서버 확인 중'; }", timeout=5_000)
             except Exception:
                 pass
+            if example is not None:  # 템플릿·예시 목록이 그려질 때까지(없어도 계속)
+                try:
+                    page.wait_for_selector("#exList [data-ex]", timeout=5_000)
+                except Exception:
+                    pass
+            if page.locator("#scope").count():  # 범위 안내(AI 활용 과학 연구 계획서 전용)를 가리킨다
+                info.scope = " ".join(page.locator("#scope").inner_text().split())
+                d.move_to(page.locator("#scope"))
             d.pause(2.2)
             still("input")
 
-        with step("paste"):
-            if page.locator("#ta").count() == 0:
-                d.click(page.locator('[data-mode="text"]').first)
-                page.wait_for_selector("#ta")
-            d.caption(f"{STEP_LABEL['paste']} — {plan_name} ({len(plan_text):,}자)")
-            ta = page.locator("#ta")
-            d.click(ta)
-            d.pause(0.5)
-            ta.fill(plan_text)  # 붙여넣기처럼 한 번에 넣는다(input 이벤트 발생)
-            ta.evaluate("(e) => { e.setSelectionRange(0, 0); e.scrollTop = 0; }")  # 계획서 첫머리가 보이게
+        with step("paste") as s:
+            ex_sel = f'#exList [data-ex="{example["id"]}"]' if example is not None else ""
+            if ex_sel and page.locator(ex_sel).count():
+                d.caption(f"예시 불러오기 — {example.get('name') or example['id']} ({plan_name})")
+                d.click(page.locator(ex_sel).first)
+                page.wait_for_function("() => { const t = document.getElementById('ta'); return t && t.value.trim().length > 0; }")
+                info.plan_source = f"example:{example['id']}"
+            else:
+                if page.locator("#ta").count() == 0:
+                    d.click(page.locator('[data-mode="text"]').first)
+                    page.wait_for_selector("#ta")
+                d.caption(f"{STEP_LABEL['paste']} — {plan_name} ({len(plan_text):,}자)")
+                ta = page.locator("#ta")
+                d.click(ta)
+                d.pause(0.5)
+                ta.fill(plan_text)  # 붙여넣기처럼 한 번에 넣는다(input 이벤트 발생)
+                ta.evaluate("(e) => { e.setSelectionRange(0, 0); e.scrollTop = 0; }")  # 계획서 첫머리가 보이게
+            loaded = page.locator("#ta").input_value()
+            info.plan_loaded_chars = len(loaded)
+            info.plan_matches_file = _norm_text(loaded) == _norm_text(plan_text)
+            s.note = f"{info.plan_source} · {len(loaded)}자 · 파일과 {'같음' if info.plan_matches_file else '다름'}"
             page.wait_for_selector("#btnStart:not([disabled])")
             d.pause(2.0)
             still("paste")
@@ -508,6 +577,7 @@ def demo_scenario(
             d.move_to(btn)
             d.pause(0.5)
             t_click = time.monotonic()
+            info.analysis_t_click = tl.now()
             with page.expect_response(lambda r: r.url.rstrip("/").endswith("premortem/view"), timeout=int(analysis_timeout_s * 1000)) as resp_info:
                 page.mouse.down()
                 page.mouse.up()
@@ -523,6 +593,7 @@ def demo_scenario(
                 d.badge(SAMPLE_BADGE)
             page.wait_for_selector('body[data-view="report"], #jobErr', timeout=int(analysis_timeout_s * 1000))
             info.analysis_s = round(time.monotonic() - t_click, 3)
+            info.analysis_t_report = tl.now()
             if page.locator("#jobErr").count():
                 s.note = page.locator("#jobErr").inner_text().strip()
                 still("analyze_failed")
@@ -622,6 +693,9 @@ def run_demo(
     health_fetcher: Callable[[str], dict[str, Any] | None] = fetch_health,
     setup: Callable[[Any], None] | None = None,
     now: dt.datetime | None = None,
+    example: str = "auto",
+    example_finder: Callable[[str, str], dict[str, Any] | None] = find_example,
+    task: str = "E6-L3b",
 ) -> tuple[int, dict[str, Any]]:
     """헬스 확인 → 녹화 → 이름 정하기 → JSON. (종료 코드, 메타데이터)."""
     health = health_fetcher(base_url)
@@ -635,9 +709,13 @@ def run_demo(
     basename = make_basename(mode, when)
     stills_dir = out_dir if stills else None
     info = DemoInfo()
+    ex = None if example == "none" else example_finder(base_url, plan_path.name)
+    if example not in ("auto", "none") and ex is not None and ex.get("id") != example:
+        ex = None  # 지정한 예시 id가 파일 이름으로 찾은 것과 다르면 붙여넣기로
+    _log(mode, "예시 불러오기: " + (f"{ex['id']} ({plan_path.name})" if ex else "없음 → 붙여넣기"))
     scenario = demo_scenario(
         base_url, plan_text, plan_path.name, mode=mode, info=info, pace=pace, captions=captions,
-        analysis_timeout_s=analysis_timeout_s, stills_dir=stills_dir, stills_prefix=basename + "_",
+        analysis_timeout_s=analysis_timeout_s, stills_dir=stills_dir, stills_prefix=basename + "_", example=ex,
     )
     _log(mode, f"녹화 시작: {base_url} · {plan_path.name} ({len(plan_text)}자) · {VIEWPORT[0]}×{VIEWPORT[1]}")
     result = record(out_dir, basename, scenario, viewport=VIEWPORT, headless=headless, setup=setup)
@@ -660,7 +738,7 @@ def run_demo(
     except Exception as exc:  # 헤더를 못 읽어도 영상은 남는다
         vinfo = {"duration_s": None, "duration_source": f"읽기 실패: {exc}", "width": None, "height": None, "frames": None}
     meta: dict[str, Any] = {
-        "task": "E6-L3b",
+        "task": task,
         "video": result.video.name,
         "bytes": result.video.stat().st_size if result.video.exists() else 0,
         "mode": mode,
@@ -715,6 +793,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--headed", action="store_true", help="브라우저 창을 띄워 녹화")
     ap.add_argument("--analysis-timeout", type=float, default=180.0, help="분석 응답 대기 상한(초)")
     ap.add_argument("--stills", action="store_true", help="단계마다 PNG도 out에 저장")
+    ap.add_argument("--example", default="auto", help="auto(파일 이름이 같은 예시 버튼) | none(늘 붙여넣기) | 예시 id")
+    ap.add_argument("--task", default="E6-L3b", help="JSON의 task 표기")
     args = ap.parse_args(argv)
 
     plan = resolve_plan(args.plan)
@@ -729,7 +809,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     code, _ = run_demo(
         args.base_url, plan, out_dir, pace=args.pace, captions=not args.no_captions, headless=not args.headed,
-        analysis_timeout_s=args.analysis_timeout, stills=args.stills,
+        analysis_timeout_s=args.analysis_timeout, stills=args.stills, example=args.example, task=args.task,
     )
     return code
 
