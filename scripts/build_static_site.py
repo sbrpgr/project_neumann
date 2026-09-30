@@ -93,6 +93,8 @@ class Demo:
     model: str = ""
     provider: str = ""  # 결과 manifest.llm_provider(있을 때)
     server_port: int | None = None  # 라이브 결과를 받은 서버 포트(0이면 로컬 리허설 — 라이브 서버 아님)
+    entry_rehearsal: bool = False  # 사전 계산본 매니페스트 항목의 live.rehearsal
+    entry_substitute: bool = False  # 사전 계산본 매니페스트 항목의 substitute(가져올 때 판정)
     origin: str = ""
     reason: str = ""
     manifest_sha_ok: bool | None = None
@@ -100,9 +102,18 @@ class Demo:
 
     @property
     def substitute(self) -> bool:
-        """실제 분석이 아닌 결과(공용 fixture 폴백, 사전 계산본 자체가 fixture·mock 대체, 또는 mock provider 결과)."""
+        """실제 분석이 아닌 결과(공용 fixture 폴백, 사전 계산본 자체가 fixture·mock 대체, mock provider·mock 카드 결과)."""
         return (self.kind != "precomputed" or any(s in self.origin.lower() for s in SUBSTITUTE_ORIGINS)
-                or self.provider.lower() == "mock")
+                or self.provider.lower() == "mock" or self.mock_cards > 0 or self.entry_substitute)
+
+    @property
+    def mock_cards(self) -> int:
+        return sum(1 for c in self.result.get("risk_cards", []) if c.get("generator") == "mock")
+
+    @property
+    def rehearsal(self) -> bool:
+        """로컬 리허설(라이브 서버 결과 아님): 가져올 때 포트 0·리허설 표시, 또는 mock provider·mock 카드."""
+        return self.server_port == 0 or self.entry_rehearsal or self.provider.lower() == "mock" or self.mock_cards > 0
 
     @property
     def live(self) -> bool:
@@ -111,7 +122,7 @@ class Demo:
 
     @property
     def where(self) -> str:
-        return "로컬 리허설 · 라이브 서버 아님" if self.server_port == 0 else "라이브 서버"
+        return "로컬 리허설 · 라이브 서버 아님" if self.rehearsal else "라이브 서버"
 
     @property
     def llm_model(self) -> str:
@@ -331,9 +342,12 @@ def resolve_demo(demo: Demo, pre_dir: Path | None, fixture_path: Path = FIXTURE_
         demo.model = _model_of(result, entry)
         demo.provider = _provider_of(result)
         if demo.live:
-            port = ((entry or {}).get("live") or {}).get("server_port")
+            live_info = (entry or {}).get("live") or {}
+            port = live_info.get("server_port")
             demo.server_port = port if isinstance(port, int) else None
-            where = "로컬 리허설(라이브 서버 아님)" if port == 0 else f"라이브 서버{f'({port})' if port else ''}"
+            demo.entry_rehearsal = live_info.get("rehearsal") is True
+            demo.entry_substitute = (entry or {}).get("substitute") is True
+            where = "로컬 리허설(라이브 서버 아님)" if demo.rehearsal else f"라이브 서버{f'({port})' if port else ''}"
             demo.notices.append(f"{where}에서 {demo.llm_model}로 분석한 결과를 "
                                 f"{_fmt_time(demo.generated_at) or '시각 미기록'}에 저장해 둔 사전 계산본이다. "
                                 "이 화면은 서버에 다시 묻지 않는다.")

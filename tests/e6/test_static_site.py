@@ -87,6 +87,8 @@ def write_precomputed(pre: Path, *, name: str = "plan.md", strip_plan: bool = Fa
     pid = plan_id(name)
     assert data["plan_id"] == pid, "공용 fixture는 plan.md 기준이어야 한다"
     data.update({"generated_at": when, "notices": [], "manifest": {"model_id": model, "model_provider": "openai"}})
+    for c in data["risk_cards"]:  # 공용 fixture 카드는 mock이다. 실제 분석처럼 쓰려면 LLM 카드로 바꾼다
+        c.update(generator="astra", model=model)
     if strip_plan:
         data["plan"] = None
     path = pre / f"{pid}.json"
@@ -451,7 +453,8 @@ def test_live_mock_or_rule_results_are_not_called_real(tmp_path: Path, webui: Pa
     site, summary = build(tmp_path, webui, pre=pre)
     plan = summary["demos"][0]
     assert plan["substitute"] is True and plan["provider"] == "mock"
-    assert plan["badge"] == ("사전 계산본(라이브 서버, mock-deterministic-v1, 2026-09-30 21:20 KST) · "
+    # mock이면 포트와 무관하게 로컬 리허설로 적는다
+    assert plan["badge"] == ("사전 계산본(로컬 리허설 · 라이브 서버 아님, mock-deterministic-v1, 2026-09-30 21:20 KST) · "
                              "mock 결과 · 가짜 데이터 · 규칙 대체 1장")
     assert summary["label"].endswith("mock 결과 · 가짜 데이터) — 라이브 분석 아님")
     st = json.loads((site / "demo" / "plan.json").read_text(encoding="utf-8"))["_status"]
@@ -522,3 +525,17 @@ def test_unrecorded_model_is_shown_as_llm_not_astra(tmp_path: Path, webui: Path)
     assert plan["model"] == "LLM (모델 미기록)" and "astra" not in plan["badge"]
     st = json.loads((site / "demo" / "plan.json").read_text(encoding="utf-8"))["_status"]
     assert "LLM (모델 미기록)" in st["label"] and "astra" not in st["label"] and "astra" not in st["static"]["model"]
+
+
+def test_mock_cards_in_precomputed_are_substitute(tmp_path: Path, webui: Path) -> None:
+    """생성 방식이 mock인 카드가 있는 사전 계산본은 provider 표기와 무관하게 대체(가짜 데이터)다."""
+    pre = tmp_path / "pre"
+    path = write_precomputed(pre)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["risk_cards"][0]["generator"] = "mock"
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    entry = {"plan_id": data["plan_id"], "file": path.name, "sha256": bss._sha256_bytes(path.read_bytes())}
+    (pre / "manifest.json").write_text(json.dumps({"entries": [entry]}), encoding="utf-8")
+    _, summary = build(tmp_path, webui, pre=pre)
+    plan = summary["demos"][0]
+    assert plan["kind"] == "precomputed" and plan["substitute"] is True and "가짜 데이터" in plan["badge"]
