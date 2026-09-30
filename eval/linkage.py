@@ -503,17 +503,19 @@ def load_sources(paths: Iterable[str | Path]) -> dict[str, str]:
 
     - `.json`: `{source_id: 원문}` dict 또는 레코드 목록
     - `.jsonl`: 한 줄에 레코드 하나(ReviewEvent·AuthorResponse·Decision·PostStatus의 JSON 등)
-    - 폴더: 안의 `*.json`·`*.jsonl`(하위 폴더 제외)
+    - 폴더: 안의 `*.json`·`*.jsonl`(하위 폴더 제외). 원문 형식이 아닌 파일(결과 JSON 등)은 건너뛴다
     레코드 id는 review_id → response_id → decision_id → post_status_id → source_id → id 순으로 읽는다.
     `excerpt_id`가 있는 레코드(발췌)는 원문이 아니므로 건너뛴다. 같은 id에 다른 원문이면 ValueError.
     """
-    files: list[Path] = []
+    files: list[tuple[Path, bool]] = []  # (파일, 형식이 틀리면 오류로 볼지)
     for p in paths:
         p = Path(p)
         if p.is_dir():
-            files.extend(sorted(f for f in p.iterdir() if f.suffix.lower() in (".json", ".jsonl") and f.is_file()))
+            files.extend(
+                (f, False) for f in sorted(p.iterdir()) if f.is_file() and f.suffix.lower() in (".json", ".jsonl")
+            )
         else:
-            files.append(p)
+            files.append((p, True))
     out: dict[str, str] = {}
 
     def put(sid: Any, text: Any, where: Path) -> None:
@@ -523,13 +525,15 @@ def load_sources(paths: Iterable[str | Path]) -> dict[str, str]:
             raise ValueError(f"{where}: source_id {sid!r}의 원문이 앞선 파일과 다르다")
         out[sid] = text
 
-    for f in files:
+    for f, strict in files:
         data = _read_json_any(f)
         if isinstance(data, Mapping) and all(isinstance(v, str) for v in data.values()):
             for sid, text in data.items():
                 put(sid, text, f)
             continue
         if not isinstance(data, list):
+            if not strict:
+                continue
             raise ValueError(f"{f}: 원문 파일 형식이 아니다(dict[str,str] 또는 레코드 목록)")
         for rec in data:
             if not isinstance(rec, Mapping) or "excerpt_id" in rec:

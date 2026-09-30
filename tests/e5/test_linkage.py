@@ -390,7 +390,11 @@ def test_load_sources_formats(tmp_path: Path) -> None:
 
     mp = tmp_path / "more.json"
     mp.write_text(json.dumps({"dec_1": "Reject."}), encoding="utf-8")
+    res = tmp_path / "premortem_result.json"  # 폴더 안의 결과 JSON은 원문이 아니다
+    res.write_text(json.dumps(as_dict(make_result())), encoding="utf-8")
     assert load_sources([tmp_path]) == {**SOURCES, "dec_1": "Reject."}
+    with pytest.raises(ValueError):
+        load_sources([res])  # 파일을 직접 주면 형식 오류를 알린다
 
     text_with_ls = "line one\u2028still the same record"  # splitlines()였다면 잘렸을 문자
     ls = tmp_path / "ls.jsonl"
