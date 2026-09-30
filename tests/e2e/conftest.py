@@ -69,7 +69,7 @@ def run_log(e2e_base_url: str, e2e_timeout_s: float, e2e_out: Path):
     RUN_LOG["finished_at"] = datetime.now(UTC).isoformat(timespec="seconds")
     mode = RUN_LOG.get("mode", "unknown")
     path = e2e_out / f"{PREFIX}_{mode}_summary.json"
-    path.write_text(json.dumps(RUN_LOG, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    path.write_text(json.dumps(RUN_LOG, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
     RUN_LOG["summary_path"] = str(path)
 
 
@@ -85,7 +85,7 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:  # no
         tr.write_line(
             f"- {name}: {'PASS' if not p.get('failures') else 'FAIL'} · 카드 {p.get('n_cards')} · "
             f"화면 전체 {t.get('ui_total_s')}s(응답 {t.get('ui_response_s')}s) · 서버 {t.get('view_server_elapsed_s')}s · "
-            f"단계 {t.get('view_phase_s')} · /premortem {t.get('api_premortem_s')}s · 연결 {(p.get('linkage') or {}).get('summary', '-')}")
+            f"단계 {t.get('view_phase_s')} · /premortem {t.get('api_premortem_s', '-')}s · 연결 {(p.get('linkage') or {}).get('summary', '-')}")
         for f in p.get("failures") or []:
             tr.write_line(f"    ✗ {f}")
     if RUN_LOG.get("summary_path"):
