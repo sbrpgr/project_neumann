@@ -1,6 +1,6 @@
 # 확정 지표 한 장 요약 (발표 12쪽·README용)
 
-- 기준: 2026-09-30 21시 main `88f1b51` + E5-L3b. 원본 카드 `docs/reports/report_card.md`
+- 기준: 2026-09-30 21시. `88f1b51`은 브랜치 `task/E5-L3b`가 main에서 **갈라진 분기점**이다. 지금 main 최신이 아니다. 그 위에 E5-L3b 커밋을 올린 상태에서 쟀다. 원본 카드 `docs/reports/report_card.md`
 - **평가 모델 `gpt-6-astra`, 제품 기본 모델 `gpt-6.1-sol`.** 아래 Neumann 수치는 모두 `gpt-6-astra`로 쟀다. sol로는 다시 재지 않았다. 사유는 비용이다(`docs/decisions.md` 19:38·19:42). 표에서 `Neumann (astra)`의 astra는 평가 모델 이름이다.
 - 순서는 미달, 측정 전, 달성이다. 값은 출처 파일의 숫자를 그대로 옮겼다.
 - **PM 결정(2026-09-30):** 근거 연결률(P2)과 시연(P6)은 **측정 전**이다. 43/43과 시연 3/3은 연결 검사 실행의 카드 generator가 기록되지 않은 실행("generator 미기록 실행")에서 나왔다. 시연 통과 조건에는 그 연결 검사가 들어 있다. 그래서 둘 다 약속 칸에 넣지 않고 참고로만 적는다(3절). generator·model을 기록하는 v1 라이브 결과(E5-L1e2e, sol)가 나오면 채운다.
@@ -66,5 +66,5 @@ python scripts/metrics_from_e2e.py --summary docs/reports/E5-L0e2e_live_summary.
   --model gpt-6-astra --product-model gpt-6.1-sol --out docs/reports/E5-L3b_metrics_e2e.json
 D=C:/Users/User/Desktop/project_neumann/data/eval
 python -m eval.report_card --inputs $D/score_baseline_freq.json $D/score_astra.json $D/score_rule.json \
-  docs/reports/E5-L3b_metrics_e2e.json --out docs/reports/report_card.md
+  docs/reports/E5-L3b_metrics_e2e.json --out docs/reports/report_card.md --eval-model gpt-6-astra
 ```
