@@ -28,7 +28,7 @@ PM이 병합할 때마다 갱신한다. Claude 한도가 다 되면 이 문서�
 ## 교대 일정 (대표 지시 2026-09-30)
 
 - **20:00 Claude → Codex 교대.** Codex PM(`gpt-6-astra`)이 21:40까지 진행한다. **21:40 Claude 5시간 창 초기화 뒤 Claude가 되받는다.** 되받을 때도 이 문서와 `docs/tasks/QUEUE.md`로 한다.
-- Codex PM 시작(대표): Codex 앱을 `C:\Users\User\Desktop\project_neumann`에서 열고, 모델 `gpt-6-astra`(추론 high)로 "`AGENTS.md`, `docs/HANDOFF.md`, `docs/tasks/QUEUE.md`를 읽고 PM을 이어받아라".
+- Codex PM 시작(대표): Codex 앱을 `C:\Users\User\Desktop\project_neumann`에서 열고, 모델 `gpt-6-astra`(추론 high)로 "`AGENTS.md`, `docs/HANDOFF.md`, `docs/tasks/QUEUE.md`, `out/dashboard/README.md`를 읽고 PM을 이어받아라". 대시보드 http://127.0.0.1:8099 (꺼져 있으면 `out/dashboard/start_dashboard.cmd`), usage.json·attention.json 갱신 규칙은 그 README.
 - Codex 빌더·검증: `bash scripts/codex_task.sh build <과제ID>`(astra), `bash scripts/codex_task.sh verify <과제ID>`(sol, 빌더와 다른 모델). 백그라운드로 여러 개 띄워도 된다. 인계 뒤 병합 조건은 `python scripts/verify.py` 통과와 sol 검증 PASS.
 - **평가 판정은 Codex로 하지 않는다**(계획서 §5.7). 21:40 뒤 Claude가 한다. Claude로 못 하게 되면 §5.7 비상 판정.
 
