@@ -1,5 +1,13 @@
 # E3-L1e 보고서 — 근거 없는 체크리스트 항목·심사평 문장 차단(근거 게이트)
 
+## 남은 일 (Codex 인수, 2026-09-30)
+
+1. 반영함: 검증 지적 필수 1(두 목록·기본 접힘·"제외됨"·k 일치)·2(화면 게이트가 카드 근거 안 확인), 권고 3(jobs 가로채기 브라우저 테스트·콘솔 0)·4(전부 제외 문구)·5(M1b 테스트 2개)·6(malformed를 no_evidence로)·7(리포트 md는 사유 코드·개수만). main 병합 `b3a9662`(DISP-1 두 줄 유지 + 4줄).
+2. 남은 것: 마지막 verify 1건 실패 `tests/e3/test_pipeline_parallel_cache.py::test_concurrent_writes_same_key_no_torn_file_no_exception[extract]`. 동시 쓰기 테스트이고 이 과제와 무관해 보이지만 확인하지 않았고 재실행하지 않았다. 재실행으로 간헐 실패인지 먼저 확인한다.
+3. 이 아래 본문(층별 표·결정·바꾼 파일)은 검증 지적 반영 전 기준이다. export.py 변경, view 카드 근거 확인, 두 목록, `NO_EVIDENCE_FAMILY`, 전부 제외 문구를 본문에 반영해야 한다.
+4. 재검증 범위: `view._build_checklist`·`_build_review`(no_evidence는 목록에서 셈, `no_evidence_reasons`), index.html `dropList`·`hasCheck`, `export._review_for_report`, `gate.NO_EVIDENCE_FAMILY`, 체크리스트 비객체 → malformed, 계약 `review.audit.no_evidence_reasons`.
+5. 브라우저 확인: `NEUMANN_UI_TESTS=1 NEUMANN_UI_SHOTS_OUT=docs/reports python -m pytest tests/e3/test_evidence_gate_view_l1e.py -k browser` → 1 passed(42s, 8164). 스크린샷 `E3-L1e_check.png`·`E3-L1e_review.png`·`E3-L1e_check_all_excluded.png`. 변이 검사: 화면 카드 근거 검사를 끄면 4 failed, 마지막 게이트를 끄면 2 failed, 내보내기 정리를 끄면 1 failed.
+
 - 빌더: Claude Opus 5.5 · 브랜치 `task/E3-L1e`(main `1864d70` 기준) · 2026-09-30
 - 모든 명령은 `NEUMANN_LLM_PROVIDER=mock`, `NEUMANN_LIVE_LLM_OK` 없음으로 돌렸다. **OpenAI 호출 0회**, 라이브 재실행 없음.
 - 배경: v1 라이브 E2E(E5-L1e2e, gpt-6.1-sol, 8020)에서 protein_ligand_affinity C3, neural_operator_weather C6 항목이
