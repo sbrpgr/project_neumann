@@ -1699,6 +1699,20 @@ class ServingMiddleware:
         #    앱(FastAPI·Starlette)과 같은 파서로 읽는다: json.loads(bytes)는 BOM·UTF-16·UTF-32를 스스로 판별한다.
         #    분석 경로는 plan_text를 문자열로 못 읽으면 앱에 넘기지 않고 거절한다(fail-closed: 파서 차이로 관문 우회 금지).
         ctx.mode = "analysis" if kind == "analysis" else "aux"
+        if kind == "export":
+            from neumann.api.export import package_limit_refusal
+
+            try:
+                payload = json.loads(body) if body else None
+            except (ValueError, UnicodeError, RecursionError, TypeError):
+                payload = None  # 스키마 오류는 라우트가 처리한다.
+            if isinstance(payload, dict):
+                refusal = package_limit_refusal(payload, max_plan_lines=cfg.max_plan_lines,
+                                                max_plan_chars=cfg.max_plan_chars)
+                if refusal:
+                    status, code, message = refusal
+                    await reply(status, _err(code, message, ticket))
+                    return
         if ctx.mode == "analysis":
             plan_text: str | None = None
             try:

@@ -101,6 +101,7 @@ PAGE_CHARS_MESSAGE = (f"PDF 한 쪽에서 나온 글자가 너무 많습니다(�
 PDF_COMPLEX_MESSAGE = ("PDF 내용(그림·도형 명령)이 너무 많아 처리 시간 안에 읽을 수 없습니다. "
                        "계획서 본문 부분만 PDF로 저장하거나 DOCX로 올려 주세요")
 MEMORY_MESSAGE = "파일을 읽는 데 메모리가 너무 많이 듭니다. 쪽수를 줄이거나 다시 저장해 올려 주세요"
+MEMORY_LIMIT_MESSAGE = "파일 처리의 메모리 제한을 준비하지 못했습니다. 잠시 뒤 다시 올려 주세요"
 BUSY_MESSAGE = "업로드 처리 중인 요청이 많습니다. 잠시 뒤 다시 올려 주세요"
 WORKER_FAILED_MESSAGE = "파일을 처리하지 못했습니다(손상된 파일일 수 있습니다)"
 UNSUPPORTED_MESSAGE = "지원하지 않는 형식입니다. txt·md·pdf·docx만 올릴 수 있습니다"
@@ -281,9 +282,7 @@ def _decode_text(data: bytes) -> tuple[str, str, list[str]]:
 
 
 def _pdf_limits():  # noqa: ANN202 - pypdf 설정 문맥
-    """pypdf 스트림 해제 크기 상한(SEC-7). 옛 pypdf라 설정 API가 없으면 아무것도 안 하는 문맥."""
-    import contextlib
-
+    """pypdf 스트림 해제 크기 상한(SEC-7). 제한 API가 없으면 보호 없이 PDF를 읽지 않는다."""
     try:
         from pypdf import apply_configuration
 
@@ -291,7 +290,7 @@ def _pdf_limits():  # noqa: ANN202 - pypdf 설정 문맥
         return apply_configuration(zlib_maximum_output_length=n, lzw_maximum_output_length=n,
                                    run_length_maximum_output_length=n, array_based_stream_maximum_output_length=n)
     except (ImportError, TypeError):
-        return contextlib.nullcontext()
+        raise UploadRejected(503, "PDF 안전 제한을 준비하지 못했습니다. DOCX나 텍스트로 올려 주세요") from None
 
 
 def _content_parts(page):  # noqa: ANN001, ANN202 - pypdf 객체
@@ -379,13 +378,17 @@ def _extract_pdf_limited(data: bytes, budget: _Budget) -> tuple[str, int, list[s
     content_total = 0
     for i in range(n_pages):
         budget.spend()
+        page = None
         try:
             page = reader.pages[i]
             size = _page_content_size(page)  # 해석(느림) 전에 푼 크기만 잰다(빠름)
         except MemoryError:
             raise UploadRejected(413, MEMORY_MESSAGE) from None
         except limit_errors:
-            size = MAX_PDF_PAGE_STREAM + 1
+            heavy.append(i + 1)
+            if page is not None:
+                _drop_decoded(page)
+            continue
         except Exception:
             failed.append(i + 1)
             continue
@@ -625,6 +628,7 @@ def _limit_worker_memory(max_mb: int) -> bool:
     k32.SetInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD]
     k32.GetCurrentProcess.restype = wintypes.HANDLE
     k32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+    k32.CloseHandle.argtypes = [wintypes.HANDLE]
     job = k32.CreateJobObjectW(None, None)
     if not job:
         return False
@@ -633,18 +637,22 @@ def _limit_worker_memory(max_mb: int) -> bool:
     info.BasicLimitInformation.ActiveProcessLimit = 1
     info.ProcessMemoryLimit = limit
     if not k32.SetInformationJobObject(job, 9, ctypes.byref(info), ctypes.sizeof(info)):  # ExtendedLimitInformation
+        k32.CloseHandle(job)
         return False
-    return bool(k32.AssignProcessToJobObject(job, k32.GetCurrentProcess()))  # 핸들은 프로세스가 끝날 때 닫힌다
+    if not k32.AssignProcessToJobObject(job, k32.GetCurrentProcess()):
+        k32.CloseHandle(job)
+        return False
+    return True  # 작업 개체 핸들은 프로세스가 끝날 때 닫힌다.
 
 
 def _worker_main() -> None:
     """작업자 진입점. 표준 입력: JSON 머리 한 줄 + 파일 바이트. 표준 출력: JSON 결과 하나."""
     _deny_disk_writes()
-    header = json.loads(sys.stdin.buffer.readline().decode("utf-8"))
-    if header.get("memory_mb"):
-        _limit_worker_memory(int(header["memory_mb"]))
-    data = sys.stdin.buffer.read(MAX_UPLOAD_BYTES + 1)
     try:
+        header = json.loads(sys.stdin.buffer.readline().decode("utf-8"))
+        if not _limit_worker_memory(int(header.get("memory_mb", EXTRACT_MEMORY_MB))):
+            raise UploadRejected(503, MEMORY_LIMIT_MESSAGE)
+        data = sys.stdin.buffer.read(MAX_UPLOAD_BYTES + 1)
         result = extract_plan(header["filename"], data, deadline_s=header.get("deadline_s"))
         out: dict = {"ok": True, "result": asdict(result)}
     except UploadRejected as exc:
