@@ -266,7 +266,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"오류: {exc}", file=sys.stderr)
         return 2
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(out, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    # 줄바꿈을 LF로 고정한다(.gitattributes eol=lf). CRLF로 쓰면 리포트 카드에 적힌 sha256이 체크아웃 파일과 달라진다.
+    args.out.write_bytes((json.dumps(out, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
     for m in out["metrics"]:
         print(f"{m['id']:<15} {m['system']:<40} {m['value']!s:<8} {m.get('detail', '')}")
     print(f"지표 {len(out['metrics'])}개 → {args.out}")

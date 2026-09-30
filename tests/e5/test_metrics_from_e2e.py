@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 from pathlib import Path
 
@@ -152,3 +153,13 @@ def test_cli_error_exit_code(tmp_path):
     good.write_text(json.dumps(s, ensure_ascii=False), encoding="utf-8")
     assert mfe.main(["--summary", str(good), "--model", "m", "--out", str(out)]) == 0
     assert json.loads(out.read_text(encoding="utf-8"))["source"].startswith("scripts/metrics_from_e2e.py ← ok.json (sha256 ")
+    assert b"\r\n" not in out.read_bytes()  # LF 고정: 체크아웃 파일과 sha256이 같아야 한다
+
+
+def test_committed_metrics_file_matches_converter():
+    """커밋된 변환 결과(리포트 카드 입력)가 지금 변환기 출력과 바이트 단위로 같다."""
+    committed = ROOT / "docs" / "reports" / "E5-L3b_metrics_e2e.json"
+    raw = LIVE.read_bytes()
+    out = mfe.convert(json.loads(raw.decode("utf-8")), model="gpt-6-astra", product_model="gpt-6.1-sol",
+                      summary_name=LIVE.name, summary_sha256=hashlib.sha256(raw).hexdigest())
+    assert committed.read_bytes() == (json.dumps(out, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
