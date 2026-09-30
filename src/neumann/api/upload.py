@@ -1,12 +1,14 @@
-"""계획서 업로드 파서(E4-L1a). `POST /upload/plan`.
+"""계획서 업로드 파서(E4-L1a, HWPX E4-L2h). `POST /upload/plan`.
 
-- 받는 형식: txt·md(인코딩 추정 UTF-8 → CP949), pdf(pypdf), docx(python-docx).
-  확장자와 매직바이트를 함께 본다. 내용이 PDF·DOCX로 확인되면 확장자가 달라도 내용 기준으로 읽고 경고를 남긴다.
-- HWP·HWPX는 415로 거부하고 "HWP는 PDF나 DOCX로 저장해 올려 주세요"라고 안내한다.
+- 받는 형식: txt·md(인코딩 추정 UTF-8 → CP949), pdf(pypdf), docx(python-docx), hwpx(zip + lxml, `neumann.api.hwpx`).
+  확장자와 매직바이트를 함께 본다. 내용이 PDF·DOCX·HWPX로 확인되면 확장자가 달라도 내용 기준으로 읽고 경고를 남긴다.
+- 옛 한글 바이너리(.hwp·.hwt, HWP 3·5)와 .hml은 415로 거부하고 "HWP는 한글에서 HWPX 또는 PDF로 저장해 올려 주세요"라고
+  안내한다(대표 지시: 바이너리 HWP는 읽지 않는다). 텍스트가 없는 PDF(스캔본)는 422로 안내한다(OCR 안 함).
 - **상한(SEC-1 S-03, 업로드 증폭 차단). 넘으면 413, 붐비면 503.**
   파일 10MB(10 × 1024 × 1024바이트) · 추출 글자 50,000자 · 줄 5,000줄(422, SEC-7) · PDF 200쪽 ·
-  DOCX 압축 해제 합계 20MB·항목 1,000개·압축비 100배(1MB 넘는 항목) · 처리 시간 10초(SEC-7, 옛 20초) · 동시 처리 2건.
-  HTTP 경로의 pdf·docx 추출은 **별도 프로세스**에서 돌리고 시간이 넘으면 강제 종료한다(pypdf·python-docx가
+  DOCX·HWPX 압축 해제 합계 20MB·항목 1,000개·압축비 100배(1MB 넘는 항목) · 처리 시간 10초(SEC-7) · 동시 처리 2건.
+  HWPX XML은 요소 50만 개·중첩 32단계, DTD·ENTITY 선언 거부(`neumann.api.hwpx`).
+  HTTP 경로의 pdf·docx·hwpx 추출은 **별도 프로세스**에서 돌리고 시간이 넘으면 강제 종료한다(pypdf·python-docx가
   한 쪽·한 문서 안에서 오래 걸려도 서버 CPU를 붙잡지 못하게). 그 프로세스에는 비밀값 환경변수를 넘기지 않고,
   감사 훅으로 디스크 쓰기를 막는다. 추출 루프 안에서도 시간·글자 예산을 확인해 일찍 멈춘다.
 - **PDF 폭탄(SEC-7).** 작업자 프로세스 메모리(커밋) 상한 512MB(Windows 작업 개체·POSIX RLIMIT_AS, 자식 프로세스 금지),
@@ -32,6 +34,7 @@ import sys
 import threading
 import time
 import zipfile
+import zlib
 from contextlib import ExitStack, contextmanager
 from dataclasses import asdict, dataclass, field
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -46,7 +49,7 @@ from starlette.concurrency import run_in_threadpool
 from neumann.models import normalize_text
 from neumann.api.plan_limits import PlanLimitError, prepare_upload_text
 
-PlanKind = Literal["txt", "md", "pdf", "docx"]
+PlanKind = Literal["txt", "md", "pdf", "docx", "hwpx"]
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 """업로드 파일 상한(10MB). 넘으면 413."""
@@ -91,7 +94,7 @@ EXTRACT_QUEUE_WAIT_S = 5.0
 MAX_REPLACEMENT_RATIO = 0.05
 """UTF-8·CP949 둘 다 실패했을 때, 깨진 글자 비율이 이보다 크면 텍스트 파일로 보지 않는다."""
 
-HWP_MESSAGE = "HWP는 PDF나 DOCX로 저장해 올려 주세요"
+HWP_MESSAGE = "HWP는 한글에서 HWPX 또는 PDF로 저장해 올려 주세요"
 TOO_LARGE_MESSAGE = "파일이 10MB를 넘습니다. 10MB 이하로 줄여 올려 주세요"
 TOO_MANY_CHARS_MESSAGE = "계획서 글자 수가 상한(50,000자)을 넘습니다. 계획서 본문만 남겨 올려 주세요"
 TOO_MANY_PAGES_MESSAGE = "PDF가 200쪽을 넘습니다. 계획서 부분만 PDF로 저장해 올려 주세요"
@@ -106,11 +109,26 @@ MEMORY_MESSAGE = "파일을 읽는 데 메모리가 너무 많이 듭니다. 쪽
 MEMORY_LIMIT_MESSAGE = "파일 처리의 메모리 제한을 준비하지 못했습니다. 잠시 뒤 다시 올려 주세요"
 BUSY_MESSAGE = "업로드 처리 중인 요청이 많습니다. 잠시 뒤 다시 올려 주세요"
 WORKER_FAILED_MESSAGE = "파일을 처리하지 못했습니다(손상된 파일일 수 있습니다)"
-UNSUPPORTED_MESSAGE = "지원하지 않는 형식입니다. txt·md·pdf·docx만 올릴 수 있습니다"
+UNSUPPORTED_MESSAGE = "지원하지 않는 형식입니다. txt·md·pdf·docx·hwpx만 올릴 수 있습니다"
 LEGACY_OFFICE_MESSAGE = "구형 Office 문서(.doc 등)는 지원하지 않습니다. DOCX나 PDF로 저장해 올려 주세요"
+SCANNED_PDF_MESSAGE = (
+    "텍스트가 없는 PDF(스캔본)는 처리할 수 없습니다. 문자 인식(OCR)은 하지 않습니다. "
+    "텍스트가 들어 있는 PDF나 DOCX·HWPX로 올려 주세요"
+)
+BROKEN_CHARS_MESSAGE = "문서 글자가 많이 깨져 있습니다. 한글에서 다시 저장하거나 PDF로 올려 주세요"
 
-HWP_EXTS = frozenset({".hwp", ".hwpx", ".hwt", ".hml"})
-EXT_KIND: dict[str, PlanKind] = {".txt": "txt", ".md": "md", ".markdown": "md", ".pdf": "pdf", ".docx": "docx"}
+HWP_EXTS = frozenset({".hwp", ".hwt", ".hml"})
+"""옛 한글 바이너리(.hwp·.hwt)와 HWPML(.hml). 415 + `HWP_MESSAGE`."""
+EXT_KIND: dict[str, PlanKind] = {
+    ".txt": "txt",
+    ".md": "md",
+    ".markdown": "md",
+    ".pdf": "pdf",
+    ".docx": "docx",
+    ".hwpx": "hwpx",
+}
+ISOLATED_KINDS = frozenset({"pdf", "docx", "hwpx"})
+"""HTTP 경로에서 별도 프로세스(강제 종료)로 추출하는 형식. txt·md는 디코딩뿐이라 같은 프로세스."""
 
 OLE_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 HWP_SIGNATURE = b"HWP Document File"
@@ -143,6 +161,16 @@ class PlanExtract:
     def lines(self) -> int:
         """`PlanDocument.from_text`와 같은 규칙(`split("\\n")`)으로 센 줄 수."""
         return len(self.text.split("\n")) if self.text else 0
+
+    @property
+    def paragraphs(self) -> int:
+        """글자가 있는 줄 수(빈 줄 제외). pdf·docx·hwpx는 문단·표 행이 한 줄씩이다(E3-L1s 분량 판단용)."""
+        return sum(1 for line in self.text.split("\n") if line.strip())
+
+    @property
+    def chars_no_space(self) -> int:
+        """공백·줄바꿈을 뺀 글자 수(E3-L1s 분량 기준 "공백 제외")."""
+        return sum(1 for ch in self.text if not ch.isspace())
 
 
 class _Budget:
@@ -177,15 +205,87 @@ def _looks_like_hwp(data: bytes) -> bool:
     return False
 
 
-def _check_zip_limits(infos: list[zipfile.ZipInfo]) -> None:
-    """zip 폭탄 차단. 선언된 크기로 본다(zipfile은 선언 크기보다 더 풀지 않고, 어긋나면 CRC 오류를 낸다)."""
+HWPX_PARTS_RE = re.compile(
+    r"Contents/section\d{1,6}\.xml|Contents/content\.hpf|META-INF/manifest\.xml|Preview/PrvText\.txt|mimetype",
+    re.IGNORECASE,
+)
+"""HWPX 추출기(`neumann.api.hwpx`)가 압축을 푸는 항목. 그림(BinData/*)은 풀지 않는다."""
+
+
+def hwpx_parts(infos: list[zipfile.ZipInfo]) -> list[zipfile.ZipInfo]:
+    return [i for i in infos if HWPX_PARTS_RE.fullmatch(i.filename)]
+
+
+def _check_zip_limits(infos: list[zipfile.ZipInfo], inflated: list[zipfile.ZipInfo] | None = None) -> None:
+    """zip 폭탄 차단. 선언된 크기로 본다(zipfile은 선언 크기보다 더 풀지 않고, 어긋나면 CRC 오류를 낸다).
+
+    항목 수는 늘 전체로 센다. 압축 해제 합계·압축비는 `inflated`(실제로 푸는 항목, 없으면 전부)로 본다.
+    DOCX는 python-docx가 모든 부분을 읽으므로 전부, HWPX는 본문 XML·목록만 풀므로 `hwpx_parts`다
+    (한글이 BMP로 넣은 그림은 압축비가 높아 50MB가 넘기도 하지만 풀지 않는다).
+    """
     if len(infos) > MAX_ZIP_ENTRIES:
         raise UploadRejected(413, ZIP_BOMB_MESSAGE)
-    if sum(i.file_size for i in infos) > MAX_ZIP_UNCOMPRESSED:
+    inflated = infos if inflated is None else inflated
+    if sum(i.file_size for i in inflated) > MAX_ZIP_UNCOMPRESSED:
         raise UploadRejected(413, ZIP_BOMB_MESSAGE)
-    for i in infos:
+    for i in inflated:
         if i.file_size > 1024 * 1024 and i.file_size > MAX_ZIP_RATIO * max(i.compress_size, 1):
             raise UploadRejected(413, ZIP_BOMB_MESSAGE)
+
+
+def _read_zip_mimetype(zf: zipfile.ZipFile, info: zipfile.ZipInfo) -> bytes:
+    """격리 전 판별용. 선언 크기를 믿고 ZipExtFile.read/flush로 압축을 풀지 않는다.
+
+    mimetype은 해제 256B·압축 4KiB까지, 저장 또는 DEFLATE만 허용한다.
+    DEFLATE 출력은 257B에서 멈추며, 실제 크기·CRC·스트림 끝을 모두 검사한다.
+    """
+    message = "ZIP 형식 정보(mimetype)가 손상되었거나 상한(256바이트)을 넘습니다. 다시 저장해 올려 주세요"
+    try:
+        if info.file_size > 256 or info.compress_size > 4096:
+            raise ValueError("mimetype limit")
+        if info.compress_type not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED):
+            raise ValueError("unsupported mimetype compression")
+        # open은 로컬 헤더·항목 이름·겹친 범위·암호 플래그를 검사한다. 내용은 읽지 않는다.
+        with zf.open(info):
+            pass
+        fp = zf.fp
+        if fp is None:
+            raise ValueError("closed zip")
+        fp.seek(info.header_offset)
+        header = fp.read(30)
+        if len(header) != 30 or header[:4] != b"PK\x03\x04":
+            raise ValueError("invalid local header")
+        name_size = int.from_bytes(header[26:28], "little")
+        extra_size = int.from_bytes(header[28:30], "little")
+        fp.seek(info.header_offset + 30 + name_size + extra_size)
+        compressed = fp.read(info.compress_size)
+        if len(compressed) != info.compress_size:
+            raise ValueError("truncated mimetype")
+        if info.compress_type == zipfile.ZIP_STORED:
+            raw = compressed
+        else:
+            decoder = zlib.decompressobj(-15)
+            raw = decoder.decompress(compressed, 257)
+            if not decoder.eof or decoder.unused_data or decoder.unconsumed_tail:
+                raise ValueError("incomplete or oversized mimetype")
+        if len(raw) > 256 or len(raw) != info.file_size or zlib.crc32(raw) != info.CRC:
+            raise ValueError("mimetype size or CRC mismatch")
+        return raw
+    except Exception:
+        raise UploadRejected(422, message) from None
+
+
+def _zip_kind(zf: zipfile.ZipFile, infos: list[zipfile.ZipInfo]) -> Literal["docx", "hwpx", "zip"]:
+    names = {i.filename for i in infos}
+    mimetype = next((i for i in infos if i.filename == "mimetype"), None)
+    if mimetype is not None:
+        if _read_zip_mimetype(zf, mimetype).strip().lower().startswith(b"application/hwp"):
+            return "hwpx"
+    if any(n.startswith("Contents/section") or n == "Contents/content.hpf" for n in names):
+        return "hwpx"
+    if "word/document.xml" in names:
+        return "docx"
+    return "zip"
 
 
 def _sniff_zip(data: bytes) -> Literal["docx", "hwpx", "zip", "binary"]:
@@ -195,20 +295,12 @@ def _sniff_zip(data: bytes) -> Literal["docx", "hwpx", "zip", "binary"]:
         return "binary"
     with zf:
         infos = zf.infolist()
-        _check_zip_limits(infos)  # 형식을 가리기 전에 막는다(UploadRejected는 그대로 올라간다)
-        try:
-            names = {i.filename for i in infos}
-            mimetype = next((i for i in infos if i.filename == "mimetype"), None)
-            if mimetype is not None and mimetype.file_size <= 256:
-                if zf.read(mimetype).strip().lower().startswith(b"application/hwp"):
-                    return "hwpx"
-            if any(n.startswith("Contents/section") or n == "Contents/content.hpf" for n in names):
-                return "hwpx"
-            if "word/document.xml" in names:
-                return "docx"
-            return "zip"
-        except Exception:  # 암호 zip(RuntimeError), 미지원 압축(NotImplementedError) 등
-            return "binary"
+        if len(infos) > MAX_ZIP_ENTRIES:  # 항목 수는 형식을 가리기 전에 막는다
+            raise UploadRejected(413, ZIP_BOMB_MESSAGE)
+        kind = _zip_kind(zf, infos)
+        # 형식 판별(목록 + 256바이트 이하 mimetype)만 하고, 압축을 풀기 전에 막는다(UploadRejected는 그대로 올라간다)
+        _check_zip_limits(infos, hwpx_parts(infos) if kind == "hwpx" else None)
+        return kind
 
 
 def _sniff(data: bytes, ext_kind: str | None) -> Literal["pdf", "docx", "hwpx", "zip", "ole", "binary", "text"]:
@@ -234,9 +326,7 @@ def _detect_kind(filename: str, data: bytes) -> tuple[PlanKind, list[str]]:
         raise UploadRejected(415, HWP_MESSAGE)
     ext_kind = EXT_KIND.get(ext)
     magic = _sniff(data, ext_kind)
-    if magic == "hwpx":
-        raise UploadRejected(415, HWP_MESSAGE)
-    if magic in ("pdf", "docx"):
+    if magic in ("pdf", "docx", "hwpx"):
         warnings: list[str] = []
         if ext_kind != magic:
             shown = ext or "없음"
@@ -244,7 +334,7 @@ def _detect_kind(filename: str, data: bytes) -> tuple[PlanKind, list[str]]:
         return magic, warnings  # type: ignore[return-value]
     if magic == "ole":
         raise UploadRejected(415, LEGACY_OFFICE_MESSAGE)
-    if ext_kind in ("pdf", "docx"):
+    if ext_kind in ("pdf", "docx", "hwpx"):
         raise UploadRejected(422, f"{ext_kind.upper()} 파일이 아니거나 손상되었습니다. 다시 저장해 올려 주세요")
     if magic == "text" and ext_kind in ("txt", "md"):
         return ext_kind, []
@@ -495,6 +585,22 @@ def _extract_docx(data: bytes, budget: _Budget) -> tuple[str, list[str]]:
     return "\n".join(lines), []
 
 
+def _extract_hwpx(data: bytes, budget: _Budget) -> tuple[str, list[str]]:
+    from neumann.api.hwpx import extract_hwpx  # hwpx가 이 모듈을 가져다 쓰므로 여기서 늦게 부른다
+
+    return extract_hwpx(data, budget)
+
+
+def _check_broken_chars(text: str, warnings: list[str]) -> None:
+    """치환 문자(�) 비율 검사. txt 디코딩 폴백과 같은 기준(5%)을 hwpx 추출 결과에도 건다."""
+    bad = text.count("�")
+    if not bad:
+        return
+    if bad / max(len(text), 1) > MAX_REPLACEMENT_RATIO:
+        raise UploadRejected(422, BROKEN_CHARS_MESSAGE)
+    warnings.append(f"읽지 못한 글자 {bad}곳이 �로 들어 있습니다")
+
+
 # ── 정리·진입점 ─────────────────────────────────────────────────────────────
 
 _CONTROL_TO_NEWLINE = str.maketrans({"\x0b": "\n", "\x0c": "\n", "\u2028": "\n", "\u2029": "\n"})
@@ -536,20 +642,25 @@ def extract_plan(filename: str, data: bytes, *, deadline_s: float | None = EXTRA
         raw, pages, more = _extract_pdf(data, budget)
     elif kind == "docx":
         raw, more = _extract_docx(data, budget)
+    elif kind == "hwpx":
+        raw, more = _extract_hwpx(data, budget)
     else:
         raw, encoding, more = _decode_text(data)  # 10MB 디코딩·정리는 1초 안쪽이라 글자 상한은 정리 뒤 한 번만 본다
         budget.spend()
     warnings.extend(more)
     if raw.count("\n") + raw.count("\r") > 20 * MAX_PLAN_LINES:  # 정리(줄 목록) 전에 값싸게: 줄바꿈 수백만 개 txt의 메모리
         raise UploadRejected(422, TOO_MANY_LINES_MESSAGE)
-    text = _clean(raw, collapse_blank=kind in ("pdf", "docx"))
+    text = _clean(raw, collapse_blank=kind in ("pdf", "docx", "hwpx"))
     if not text.strip():
-        hint = " 스캔한 PDF라면 텍스트가 들어 있는 PDF나 DOCX로 올려 주세요" if kind == "pdf" else ""
-        raise UploadRejected(422, "파일에서 텍스트를 찾지 못했습니다." + hint)
+        if kind == "pdf":
+            raise UploadRejected(422, SCANNED_PDF_MESSAGE)
+        raise UploadRejected(422, "파일에서 텍스트를 찾지 못했습니다")
     if len(text) > MAX_PLAN_CHARS:
         raise UploadRejected(413, TOO_MANY_CHARS_MESSAGE)
     if text.count("\n") + 1 > MAX_PLAN_LINES:  # SEC-7: 분석 입구와 같은 줄 수 상한
         raise UploadRejected(422, TOO_MANY_LINES_MESSAGE)
+    if kind == "hwpx":
+        _check_broken_chars(text, warnings)
     return PlanExtract(
         filename=name,
         kind=kind,
@@ -703,7 +814,7 @@ def _run_worker(filename: str, data: bytes, timeout_s: float) -> PlanExtract:
 
 
 def extract_plan_isolated(filename: str, data: bytes, *, timeout_s: float = EXTRACT_TIMEOUT_S) -> PlanExtract:
-    """HTTP 경로용 `extract_plan`. 동시 처리 상한(자리 없으면 503), pdf·docx는 별도 프로세스에서 돌려
+    """HTTP 경로용 `extract_plan`. 동시 처리 상한(자리 없으면 503), pdf·docx·hwpx는 별도 프로세스에서 돌려
     `timeout_s`가 지나면 강제 종료(413). 형식 판별·zip 상한·HWP 거부는 가벼워서 프로세스를 띄우기 전에 한다."""
     if not _EXTRACT_SLOTS.acquire(timeout=EXTRACT_QUEUE_WAIT_S):
         raise UploadRejected(503, BUSY_MESSAGE)
@@ -712,7 +823,7 @@ def extract_plan_isolated(filename: str, data: bytes, *, timeout_s: float = EXTR
         if not data or len(data) > MAX_UPLOAD_BYTES:
             return extract_plan(name, data, deadline_s=timeout_s)  # 빈 파일 422·크기 413
         kind, _ = _detect_kind(name, data)
-        if kind in ("pdf", "docx"):
+        if kind in ISOLATED_KINDS:
             return _run_worker(name, data, timeout_s)
         return extract_plan(name, data, deadline_s=timeout_s)  # txt·md: 디코딩뿐이라 같은 프로세스
     finally:
@@ -731,6 +842,8 @@ class PlanUploadResponse(BaseModel):
     text: str
     lines: int = Field(ge=1, description="줄 수(PlanDocument 줄 번호와 같은 규칙)")
     chars: int = Field(ge=1)
+    chars_no_space: int = Field(ge=1, description="공백·줄바꿈을 뺀 글자 수(E3-L1s 분량 기준)")
+    paragraphs: int = Field(ge=1, description="글자가 있는 줄(문단·표 행) 수(E3-L1s 분량 기준)")
     warnings: list[str] = Field(default_factory=list, description="추출 경고(인코딩 추정, 빈 쪽, 확장자 불일치 등)")
 
 
@@ -829,9 +942,9 @@ router = APIRouter(tags=["upload"])
 
 _ERROR_RESPONSES = {
     400: {"description": "multipart 형식 오류, 파일 여러 개"},
-    413: {"description": "상한 초과: 파일 10MB, 글자 50,000자, PDF 200쪽, 압축 해제 20MB, 처리 시간 10초(SEC-7), 줄 5,000줄(422)"},
-    415: {"description": f"HWP·HWPX(\"{HWP_MESSAGE}\"), 그 밖의 미지원 형식"},
-    422: {"description": "빈 파일, 손상·암호 PDF, 텍스트 없음"},
+    413: {"description": "상한 초과: 파일 10MB, 글자 50,000자, PDF 200쪽, 압축 해제 20MB, HWPX XML 요소 50만 개, 처리 시간 10초(SEC-7)"},
+    415: {"description": f"옛 한글 .hwp·.hwt·.hml(\"{HWP_MESSAGE}\"), 구형 .doc, 그 밖의 미지원 형식"},
+    422: {"description": "빈 파일, 손상·암호 PDF·HWPX, DTD가 든 HWPX, 텍스트 없음(스캔 PDF 포함), 줄 5,000줄 초과"},
     503: {"description": BUSY_MESSAGE},
 }
 
@@ -839,7 +952,7 @@ _ERROR_RESPONSES = {
 @router.post(
     "/upload/plan",
     response_model=PlanUploadResponse,
-    summary="계획서 파일(txt·md·pdf·docx, 10MB 이하)에서 텍스트 추출. 디스크에 저장하지 않는다",
+    summary="계획서 파일(txt·md·pdf·docx·hwpx, 10MB 이하)에서 텍스트 추출. 디스크에 저장하지 않는다",
     responses=_ERROR_RESPONSES,
     openapi_extra={
         "requestBody": {
@@ -871,6 +984,8 @@ async def upload_plan(request: Request) -> PlanUploadResponse:
         text=result.text,
         lines=result.lines,
         chars=len(result.text),
+        chars_no_space=result.chars_no_space,
+        paragraphs=result.paragraphs,
         warnings=list(result.warnings),
     )
 
@@ -884,6 +999,7 @@ __all__ = [
     "MAX_ZIP_UNCOMPRESSED",
     "PlanExtract",
     "PlanUploadResponse",
+    "SCANNED_PDF_MESSAGE",
     "UploadRejected",
     "extract_plan",
     "extract_plan_isolated",
