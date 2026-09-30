@@ -14,12 +14,18 @@ similar_works.csv, plan_annotated.md, neumann_report.md, ai_context.md, decision
   규칙 카드를 LLM 결과라고 쓰지 않는다. 카드가 0장이면 결과에 적힌 사유를 옮기고, 없으면 "사유 없음"이라고 쓴다.
 - 인용: `evidence`의 text를 가공 없이 옮긴다. 패키지는 원문을 다시 받지 않으므로 재대조 상태는 `not_reverified`다.
 - 개인정보: 계획서 줄은 `PlanDocument` 규칙(NFC+LF, 이메일·ORCID 가림)을 거친 줄만 쓴다. 설정·환경변수는 읽지 않는다.
+- 출처(E4-L2f F1): API로 받은 결과는 서버 서명(`result_sig`, `neumann.api.signing`)을 확인한다. 확인되면
+  `result_origin: "server_signed"`, 아니면 `"client_submitted_unverified"`(README 첫 줄 경고, "제품 LLM이 만든"·
+  "오프셋으로 자른" 같은 서버 보증 문구를 쓰지 않는다). 파이썬에서 직접 부르면 `"in_process"`(호출한 코드가 가진 결과).
+- 서식 안전(F4): 마크다운 파일에 옮기는 결과 문자열의 `& < >`는 HTML 엔티티로 바꾸고(글자 그대로의 인용은
+  `evidence_pack.json`), 코드 스팬 안 id의 백틱은 뺀다. CSV 문자열 칸이 `= + - @`·탭·CR로 시작하면 앞에 `'`를 붙인다.
 """
 
 from __future__ import annotations
 
 import csv
 import hashlib
+import html
 import io
 import json
 import logging
@@ -94,6 +100,21 @@ SOURCE_KIND_KO: dict[str, str] = {
 
 NOT_OK_STATES = ("degraded", "error", "skipped")
 
+# ── 결과 출처(서버 서명) ──────────────────────────────────────────────────
+
+ResultOrigin = Literal["server_signed", "client_submitted_unverified", "in_process"]
+RESULT_ORIGINS: tuple[str, ...] = ("server_signed", "client_submitted_unverified", "in_process")
+ORIGIN_LABELS: dict[str, str] = {
+    "server_signed": "이 서버가 분석해 서명한 결과(서명 확인됨)",
+    "client_submitted_unverified": "요청자가 보낸 결과(서버 서명 확인 안 됨: 서명 없음·변조·서버 재기동)",
+    "in_process": "서버 프로세스 안에서 직접 호출해 묶은 결과(API를 거치지 않음)",
+}
+UNVERIFIED_WARNING = (
+    "**주의: 서버가 분석·서명한 결과가 아님.** 이 패키지의 결과 JSON은 요청자가 보낸 값이고 Neumann 서버의 서명을 "
+    "확인하지 못했다(서명 없음·변조·서버 재기동). 위험카드의 생성 방식(generator)·인용문·점수는 보낸 값을 그대로 옮긴 것이며 "
+    "서버가 검증하지 않았다."
+)
+
 # ── 결정 로그 ─────────────────────────────────────────────────────────────
 
 DecisionChoice = Literal["adopt", "hold", "reject"]
@@ -144,9 +165,9 @@ class DecisionEntry(NeumannModel):
     def target(self) -> str:
         parts = []
         if self.card_id:
-            parts.append(f"카드 `{self.card_id}`")
+            parts.append(f"카드 `{_code(self.card_id)}`")
         if self.item_id:
-            parts.append(f"행동 `{self.item_id}`")
+            parts.append(f"행동 `{_code(self.item_id)}`")
         return " · ".join(parts)
 
 
@@ -172,7 +193,7 @@ def _checklist_line(item: Mapping[str, Any]) -> str:
         meta.append("계획서 줄 " + ", ".join(str(n) for n in item["plan_lines"]))
     if item.get("generator"):
         meta.append(f"생성 {item['generator']}")
-    line = (f"[{item_id}] " if item_id is not None else "") + _one_line(text)
+    line = (f"[{_one_line(item_id)}] " if item_id is not None else "") + _one_line(text)
     if meta:
         line += f" ({_one_line(' · '.join(meta))})"
     status = item.get("decision") or item.get("s")
@@ -198,17 +219,26 @@ class _Ctx:
     not_ok_stages: list[StageStatus]
     decisions: list[DecisionEntry]
     warnings: list[str] = field(default_factory=list)
+    origin: str = "in_process"
 
     @property
     def n_cards(self) -> int:
         return len(self.refs)
+
+    @property
+    def verified(self) -> bool:
+        """서버가 만든 결과라고 말할 수 있는지(서명 확인 또는 프로세스 안 직접 호출)."""
+        return self.origin != "client_submitted_unverified"
 
 
 def _make_ctx(
     result: PremortemResult,
     plan_text: str | None,
     decisions: Sequence[DecisionEntry | Mapping[str, Any]] | None,
+    origin: str = "in_process",
 ) -> _Ctx:
+    if origin not in RESULT_ORIGINS:
+        raise ValueError(f"result_origin은 {RESULT_ORIGINS} 중 하나다")
     warnings: list[str] = []
     plan: PlanDocument | None
     if result.plan is not None:
@@ -256,6 +286,7 @@ def _make_ctx(
         not_ok_stages=[s for s in result.stages if s.state in NOT_OK_STATES],
         decisions=entries,
         warnings=warnings,
+        origin=origin,
     )
 
 
@@ -266,9 +297,36 @@ def _iso(dt: datetime) -> str:
     return dt.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
+def _md_escape(text: str) -> str:
+    """마크다운 파일에 옮기는 결과 문자열의 HTML을 무력화한다(& < > → 엔티티). 렌더하면 같은 글자로 보인다."""
+    return html.escape(text, quote=False)
+
+
 def _one_line(text: Any) -> str:
-    """마크다운 한 줄용: 개인정보 가림 + 줄바꿈·연속 공백을 한 칸으로."""
-    return re.sub(r"\s+", " ", redact_pii(str(text))).strip()
+    """마크다운 한 줄용: 개인정보 가림 + 줄바꿈·연속 공백을 한 칸으로 + HTML 이스케이프."""
+    return _md_escape(re.sub(r"\s+", " ", redact_pii(str(text))).strip())
+
+
+def _code(text: Any) -> str:
+    """코드 스팬(`…`) 안에 넣을 id: 백틱·줄바꿈을 빼서 스팬을 깨고 나오지 못하게 한다."""
+    return re.sub(r"[`\r\n]+", "", str(text))
+
+
+def _url(url: str) -> str:
+    """자동 링크(<…>)로 쓸 수 있는 http(s) URL만 링크로, 아니면 이스케이프한 글자로."""
+    return f"<{url}>" if re.fullmatch(r"https?://[^\s<>`]+", url) else _one_line(url)
+
+
+def _csv(text: Any) -> str:
+    """CSV 수식 주입 방지(F4): = + - @ 탭 CR로 시작하는 문자열 칸 앞에 ' 를 붙인다."""
+    s = "" if text is None else str(text)
+    return "'" + s if s[:1] in ("=", "+", "-", "@", "\t", "\r") else s
+
+
+def _json_md(obj: Any) -> str:
+    """마크다운 안 JSON: < > & 를 \\u 이스케이프(디코드하면 같은 값, 렌더러가 HTML로 읽지 않는다)."""
+    return (json.dumps(obj, ensure_ascii=False, indent=2)
+            .replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e"))
 
 
 def _cell(text: Any) -> str:
@@ -293,15 +351,25 @@ def _risk_label(card: RiskCard) -> str:
     return f"{code} {card.risk_code.title_ko}"
 
 
-def _gen_label(card: RiskCard) -> str:
-    label = GENERATOR_SHORT[card.generator]
+def _gen_short(c: _Ctx, g: Generator) -> str:
+    return GENERATOR_SHORT[g] if c.verified else f"{g.value}(결과에 적힌 표기, 미확인)"
+
+
+def _gen_desc(c: _Ctx, g: Generator) -> str:
+    if c.verified:
+        return GENERATOR_LABELS[g]
+    return f"결과에 generator={g.value}로 적힌 카드. 서버 서명이 없어 누가 어떻게 만들었는지 확인하지 못했다"
+
+
+def _gen_label(c: _Ctx, card: RiskCard) -> str:
+    label = _gen_short(c, card.generator)
     if card.generator is Generator.astra and card.model:
-        label += f", 모델 {card.model}"
+        label += f", 모델 {_one_line(card.model)}"
     return label
 
 
 def _gen_summary(c: _Ctx) -> str:
-    return " · ".join(f"{GENERATOR_SHORT[g]} {c.gen_counts[g.value]}장" for g in Generator)
+    return " · ".join(f"{_gen_short(c, g)} {c.gen_counts[g.value]}장" for g in Generator)
 
 
 def _stage_line(s: StageStatus) -> str:
@@ -338,18 +406,25 @@ def _plan_line_text(c: _Ctx, no: int) -> str | None:
 
 
 def _quote_block(text: str, indent: str = "") -> list[str]:
-    return [f"{indent}> {ln}" if ln else f"{indent}>" for ln in text.split("\n")]
+    return [f"{indent}> {_md_escape(ln)}" if ln else f"{indent}>" for ln in text.split("\n")]
 
 
 def _excerpt_ref(ex: Excerpt) -> str:
     kind = SOURCE_KIND_KO.get(ex.source_kind, ex.source_kind)
-    return f"{kind} `{ex.source_id}` [{ex.start}:{ex.end}] · <{ex.source_url}> · `{ex.excerpt_id}`"
+    return f"{kind} `{_code(ex.source_id)}` [{ex.start}:{ex.end}] · {_url(ex.source_url)} · `{_code(ex.excerpt_id)}`"
 
 
 def _limitations(c: _Ctx) -> list[str]:
-    lines = [
+    quote_line = (
         "- 인용문은 분석 시점에 원문을 오프셋으로 잘라 옮긴 것이다. 이 패키지는 원문을 다시 받아 대조하지 않았다"
-        "(`evidence_pack.json`의 `reverification`).",
+        "(`evidence_pack.json`의 `reverification`)."
+        if c.verified else
+        "- 인용문은 요청자가 보낸 결과의 text 값이다. 원문에서 잘라 온 것인지 서버가 확인하지 않았다"
+        "(`evidence_pack.json`의 `reverification`)."
+    )
+    lines = [
+        f"- 결과 출처: `{c.origin}` — {ORIGIN_LABELS[c.origin]}.",
+        quote_line,
         "- 위험카드는 비슷한 연구가 받은 심사 기록에서 찾은 **가능성**이다. 이 계획서의 결함이 확정됐다는 뜻이 아니다.",
         f"- 계획서 본문 출처: {c.plan_source}. 계획서 줄은 이메일·ORCID를 가린 뒤 담는다.",
         "- 설정·API 키·환경변수 값은 담지 않는다. 리뷰어 신원 정보는 없다.",
@@ -367,15 +442,17 @@ def _limitations(c: _Ctx) -> list[str]:
 
 def _readme(c: _Ctx) -> bytes:
     r = c.result
-    L = [
+    L = [UNVERIFIED_WARNING, ""] if not c.verified else []
+    L += [
         "# Neumann 내보내기 패키지",
         "",
         "연구계획서 사전 위험 점검 결과를 파일 9개로 묶었다. 파일별 sha256·크기는 `manifest.json`에 있다.",
         "",
+        f"- 결과 출처: `{c.origin}` — {ORIGIN_LABELS[c.origin]}",
         f"- 결과 상태: **{r.status}**{_status_suffix(c)}",
         f"- 위험카드 {c.n_cards}장 · 근거 발췌 {len(r.evidence)}건 · 유사 연구 {len(r.similar_works)}편",
         f"- 생성 방식: {_gen_summary(c)}",
-        f"- 계획서 id `{r.plan_id}` · 분석 시각 {_iso(r.generated_at)} · 파이프라인 `{r.pipeline_version}`",
+        f"- 계획서 id `{_code(r.plan_id)}` · 분석 시각 {_iso(r.generated_at)} · 파이프라인 `{_code(r.pipeline_version)}`",
         "",
         "## 들어 있는 파일",
         "",
@@ -384,10 +461,10 @@ def _readme(c: _Ctx) -> bytes:
     ]
     L += [f"| `{name}` | {FILE_ROLES[name]} |" for name in FILE_NAMES]
     L += ["", "## 생성 방식", ""]
-    L += [f"- **{g.value}** {c.gen_counts[g.value]}장: {GENERATOR_LABELS[g]}" for g in Generator]
+    L += [f"- **{g.value}** {c.gen_counts[g.value]}장: {_gen_desc(c, g)}" for g in Generator]
     if c.refs:
         L += ["", "카드별:", ""]
-        L += [f"- {ref} `{card.card_id}` — {_gen_label(card)}" for ref, card in c.refs]
+        L += [f"- {ref} `{_code(card.card_id)}` — {_gen_label(c, card)}" for ref, card in c.refs]
     L += ["", "## 강등 단계", ""]
     if c.not_ok_stages:
         L += ["| 단계 | 상태 | 구현 | 사유 |", "|---|---|---|---|"]
@@ -465,11 +542,14 @@ def _evidence_pack_json(c: _Ctx) -> bytes:
             "format": PACKAGE_FORMAT,
             "schema_version": SCHEMA_VERSION,
             "plan_id": r.plan_id,
+            "result_origin": c.origin,
             "reverification": {
                 "status": "not_reverified",
                 "note": (
-                    "패키지는 원문을 다시 받지 않는다. text는 분석 시점에 원문[start:end]를 잘라 옮긴 값이다. "
-                    "대조하려면 source_url의 원문(정규화 NFC+LF, 개인정보 가림 뒤)에서 [start:end]를 잘라 "
+                    ("패키지는 원문을 다시 받지 않는다. text는 분석 시점에 원문[start:end]를 잘라 옮긴 값이다. "
+                     if c.verified else
+                     "서버 서명이 없는 결과다. text는 요청자가 보낸 값이며 원문[start:end]와 같은지 확인되지 않았다. ")
+                    + "대조하려면 source_url의 원문(정규화 NFC+LF, 개인정보 가림 뒤)에서 [start:end]를 잘라 "
                     "text와 글자 단위로 비교하고 sha256을 text_sha256·source_sha256과 비교한다."
                 ),
             },
@@ -495,13 +575,13 @@ def _similar_works_csv(c: _Ctx) -> bytes:
         writer.writerow(
             [
                 i,
-                w.work_id,
+                _csv(w.work_id),
                 f"{w.similarity:.4f}",
-                w.title or "",
-                w.venue or "",
+                _csv(w.title or ""),
+                _csv(w.venue or ""),
                 "" if w.year is None else w.year,
-                w.url or "",
-                ";".join(cited_by.get(w.work_id, [])),
+                _csv(w.url or ""),
+                _csv(";".join(cited_by.get(w.work_id, []))),
                 *("" if a not in w.axis_scores else f"{w.axis_scores[a]:.4f}" for a in axes),
             ]
         )
@@ -513,7 +593,7 @@ def _card_legend(c: _Ctx) -> list[str]:
         return ["위험카드가 0장이라 연결된 줄이 없다."]
     L = ["| 표시 | 카드 id | 위험 유형 | 생성 | 제목 |", "|---|---|---|---|---|"]
     L += [
-        f"| {ref} | `{card.card_id}` | {_cell(_risk_label(card))} | {_cell(_gen_label(card))} | {_cell(card.title)} |"
+        f"| {ref} | `{_code(card.card_id)}` | {_cell(_risk_label(card))} | {_gen_label(c, card)} | {_cell(card.title)} |"
         for ref, card in c.refs
     ]
     return L
@@ -576,7 +656,7 @@ def _plan_annotated(c: _Ctx) -> bytes:
     if c.refs:
         for ref, card in c.refs:
             nos = card.why_applies.plan_lines
-            L.append(f"- {ref} `{card.card_id}`: " + (", ".join(str(n) for n in nos) if nos else "연결된 줄 없음"))
+            L.append(f"- {ref} `{_code(card.card_id)}`: " + (", ".join(str(n) for n in nos) if nos else "연결된 줄 없음"))
     else:
         L.append("위험카드가 0장이다.")
     missing = sorted(n for n in by_line if n > len(lines))
@@ -587,25 +667,30 @@ def _plan_annotated(c: _Ctx) -> bytes:
 
 def _report(c: _Ctx) -> bytes:
     r = c.result
-    L = [
+    L = [UNVERIFIED_WARNING, ""] if not c.verified else []
+    L += [
         "# Neumann 위험 점검 리포트",
         "",
-        "비슷한 연구가 실제로 받은 심사 기록(심사평·저자 답변·결정·사후 상태)에서 찾은 위험이다. "
-        "인용문은 원문을 오프셋으로 잘라 그대로 옮긴 것이다.",
+        ("비슷한 연구가 실제로 받은 심사 기록(심사평·저자 답변·결정·사후 상태)에서 찾은 위험이다. "
+         "인용문은 원문을 오프셋으로 잘라 그대로 옮긴 것이다."
+         if c.verified else
+         "요청자가 보낸 결과를 옮겼다. 위험카드·인용문·점수는 서버가 확인하지 않은 값이다."),
         "",
         "## 요약",
         "",
+        f"- 결과 출처: `{c.origin}` — {ORIGIN_LABELS[c.origin]}",
         f"- 결과 상태: **{r.status}**{_status_suffix(c)}",
         f"- 위험카드 {c.n_cards}장 · 근거 발췌 {len(r.evidence)}건 · 유사 연구 {len(r.similar_works)}편",
         f"- 생성 방식: {_gen_summary(c)}",
-        f"- 계획서 id `{r.plan_id}` · 세션 `{r.session_id}` · 분석 시각 {_iso(r.generated_at)} · 파이프라인 `{r.pipeline_version}`",
+        f"- 계획서 id `{_code(r.plan_id)}` · 세션 `{_code(r.session_id)}` · 분석 시각 {_iso(r.generated_at)} · "
+        f"파이프라인 `{_code(r.pipeline_version)}`",
     ]
     if r.notices:
         L += ["", "알림:", ""]
         L += [f"- {_one_line(n)}" for n in r.notices]
 
     L += ["", "## 생성 방식과 단계", ""]
-    L += [f"- **{g.value}** {c.gen_counts[g.value]}장: {GENERATOR_LABELS[g]}" for g in Generator]
+    L += [f"- **{g.value}** {c.gen_counts[g.value]}장: {_gen_desc(c, g)}" for g in Generator]
     L.append("")
     if r.stages:
         L += ["| 단계 | 상태 | 구현 | 사유 | 소요(초) |", "|---|---|---|---|---:|"]
@@ -625,7 +710,7 @@ def _report(c: _Ctx) -> bytes:
         L += [
             f"### {i}. [{_risk_label(card)}] {_one_line(card.title)}",
             "",
-            f"- 카드 `{card.card_id}` ({ref}) · 생성: {_gen_label(card)}",
+            f"- 카드 `{_code(card.card_id)}` ({ref}) · 생성: {_gen_label(c, card)}",
             f"- 점수 {s.total:.2f} (유사도 {s.similarity:.2f} · 빈도 {s.frequency:.2f} · "
             f"심각도 {s.severity:.2f} · 신뢰도 {s.confidence:.2f})",
             f"- 이 계획서에 해당하는 이유: {_one_line(card.why_applies.text)}",
@@ -636,7 +721,7 @@ def _report(c: _Ctx) -> bytes:
                 text = _plan_line_text(c, no)
                 L.append(f"  - {no}: {text}" if text is not None else f"  - {no}")
         if card.works:
-            L.append("- 근거 논문: " + ", ".join(f"`{w}`" for w in card.works))
+            L.append("- 근거 논문: " + ", ".join(f"`{_code(w)}`" for w in card.works))
         L += ["", f"근거 인용 {len(card.evidence)}건:", ""]
         for k, ex_id in enumerate(card.evidence, start=1):
             ex = c.ex_by_id[ex_id]
@@ -652,14 +737,14 @@ def _report(c: _Ctx) -> bytes:
             venue = ", ".join(x for x in (w.venue or "", "" if w.year is None else str(w.year)) if x) or "-"
             L.append(
                 f"| {i} | {_cell(w.title or w.work_id)} | {w.similarity:.2f} | {_cell(venue)} | "
-                f"{'<' + w.url + '>' if w.url else '-'} |"
+                f"{_url(w.url) if w.url else '-'} |"
             )
     else:
         L.append("유사 연구가 없다.")
 
     if r.expected_review:
         L += ["", "## 예상 심사평 (결과의 expected_review를 그대로 옮김)", "", "```json"]
-        L += json.dumps(r.expected_review, ensure_ascii=False, indent=2).split("\n")
+        L += _json_md(r.expected_review).split("\n")
         L.append("```")
     if r.checklist:
         L += ["", "## 체크리스트 (결과의 checklist를 옮김)", ""]
@@ -680,20 +765,25 @@ def _report(c: _Ctx) -> bytes:
 
 def _ai_context(c: _Ctx) -> bytes:
     r = c.result
-    L = [
+    L = [UNVERIFIED_WARNING, ""] if not c.verified else []
+    L += [
         "# Neumann 결과 요약 (다른 AI에 넘기는 맥락)",
         "",
         "연구계획서 사전 위험 점검 결과다. 이 문서를 받은 AI는 다음을 지킨다.",
         "",
-        "- 따옴표 안 인용문은 실제 심사 기록 원문을 오프셋으로 잘라 옮긴 것이다. 고치거나 지어내지 않는다.",
+        ("- 따옴표 안 인용문은 실제 심사 기록 원문을 오프셋으로 잘라 옮긴 것이다. 고치거나 지어내지 않는다."
+         if c.verified else
+         "- 이 결과는 서버가 분석·서명한 것이 아니다. 인용문·생성 방식·점수는 보낸 값 그대로이고 확인되지 않았다. "
+         "원문과 대조하기 전에는 인용으로 쓰지 않는다."),
         "- 근거는 발췌 id(`ex_…`)로 가리킨다. 근거 id가 없는 위험을 새로 덧붙이지 않는다.",
         "- generator=rule 카드는 규칙(비상 경로) 결과이고 LLM 판단이 아니다. generator=mock 카드는 테스트용 가짜다.",
         "- 위험은 가능성이다. 계획서의 결함이 확정됐다고 말하지 않는다.",
         "",
         "## 상태",
         "",
+        f"- result_origin: {c.origin}",
         f"- status: {r.status}{_status_suffix(c)}",
-        f"- plan_id: {r.plan_id}",
+        f"- plan_id: {_one_line(r.plan_id)}",
         f"- 생성 방식: {_gen_summary(c)}",
     ]
     L += [f"- 정상이 아닌 단계: {_stage_line(s)}" for s in c.not_ok_stages]
@@ -703,29 +793,32 @@ def _ai_context(c: _Ctx) -> bytes:
         L += [f"- {x}" for x in _zero_card_reasons(c)]
     for ref, card in c.refs:
         L += [
-            f"### {ref} {card.card_id}",
+            f"### {ref} {_one_line(card.card_id)}",
             "",
             f"- 위험 유형: {_risk_label(card)} ({card.risk_code.title_en})",
             f"- 제목: {_one_line(card.title)}",
-            f"- generator: {card.generator.value}" + (f" (model {card.model})" if card.model else ""),
+            f"- generator: {card.generator.value}" + (f" (model {_one_line(card.model)})" if card.model else "")
+            + ("" if c.verified else " — 결과에 적힌 표기, 미확인"),
             f"- 점수 total: {card.score.total:.2f}",
             f"- 해당 이유: {_one_line(card.why_applies.text)}",
         ]
         for no in card.why_applies.plan_lines:
             text = _plan_line_text(c, no)
             L.append(f"  - 계획서 {no}줄" + (f": {text}" if text is not None else ""))
-        L.append("- 근거 id: " + ", ".join(card.evidence))
+        L.append("- 근거 id: " + ", ".join(_one_line(x) for x in card.evidence))
         L.append("- 근거 인용:")
         for ex_id in card.evidence:
             ex = c.ex_by_id[ex_id]
-            quote = json.dumps(ex.text, ensure_ascii=False)  # 글자 그대로(줄바꿈은 \n으로 이스케이프)
+            quote = json.dumps(ex.text, ensure_ascii=False).replace("&", "\\u0026").replace("<", "\\u003c").replace(
+                ">", "\\u003e")  # 디코드하면 글자 그대로(줄바꿈 \n, < > &는 \\u 이스케이프)
             kind = SOURCE_KIND_KO.get(ex.source_kind, ex.source_kind)
-            L.append(f"  - [{ex_id}] {quote} ({kind}, {ex.source_url})")
+            L.append(f"  - [{_one_line(ex_id)}] {quote} ({kind}, {_one_line(ex.source_url)})")
         L.append("")
     L += ["## 유사 연구", ""]
     if r.similar_works:
         L += [
-            f"- {w.work_id} · {_one_line(w.title or '-')} · similarity {w.similarity:.2f}" for w in r.similar_works
+            f"- {_one_line(w.work_id)} · {_one_line(w.title or '-')} · similarity {w.similarity:.2f}"
+            for w in r.similar_works
         ]
     else:
         L.append("- 없음")
@@ -760,6 +853,7 @@ def _manifest_json(c: _Ctx, files: Mapping[str, bytes], created_at: datetime) ->
             "format": PACKAGE_FORMAT,
             "schema_version": SCHEMA_VERSION,
             "created_at": _iso(created_at),
+            "result_origin": c.origin,
             "result": {
                 "session_id": r.session_id,
                 "plan_id": r.plan_id,
@@ -803,11 +897,12 @@ def build_package_files(
     plan_text: str | None = None,
     decisions: Sequence[DecisionEntry | Mapping[str, Any]] | None = None,
     created_at: datetime | None = None,
+    result_origin: ResultOrigin = "in_process",
 ) -> dict[str, bytes]:
     """9개 파일 {이름: 바이트}(FILE_NAMES 순서). 입력이 계약을 어기면 ValueError(ValidationError 포함)."""
     if not isinstance(result, PremortemResult):
         result = PremortemResult.model_validate(result)
-    c = _make_ctx(result, plan_text, decisions)
+    c = _make_ctx(result, plan_text, decisions, result_origin)
     files: dict[str, bytes] = {
         "README.md": _readme(c),
         "risk_cards.json": _risk_cards_json(c),
@@ -829,16 +924,19 @@ def build_package(
     plan_text: str | None = None,
     decisions: Sequence[DecisionEntry | Mapping[str, Any]] | None = None,
     created_at: datetime | None = None,
+    result_origin: ResultOrigin = "in_process",
 ) -> bytes:
     """분석 결과 → ZIP 바이트(9파일).
 
     - plan_text: result.plan이 없을 때만 쓴다. PlanDocument 규칙대로 정규화·마스킹한 줄만 담는다.
     - decisions: 카드별 채택·보류·기각 기록(선택). card_id가 결과에 없으면 ValueError.
     - created_at: 패키지 생성 시각(manifest). 없으면 지금. 넘기면 출력 전체가 결정적이다.
+    - result_origin: 결과 출처(manifest·README). API는 서버 서명을 확인해 정한다. 직접 부르면 "in_process".
     """
     if not isinstance(result, PremortemResult):
         result = PremortemResult.model_validate(result)
-    files = build_package_files(result, plan_text=plan_text, decisions=decisions, created_at=created_at)
+    files = build_package_files(result, plan_text=plan_text, decisions=decisions, created_at=created_at,
+                                result_origin=result_origin)
     ts = result.generated_at.astimezone(UTC)
     date_time = max((ts.year, ts.month, ts.day, ts.hour, ts.minute, ts.second), (1980, 1, 1, 0, 0, 0))
     buf = io.BytesIO()
@@ -865,6 +963,7 @@ class PackageRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     result: dict[str, Any] | None = None
+    result_sig: str | None = Field(default=None, max_length=200, description="화면 응답의 서버 서명(v1.<hex>)")
     plan_text: str | None = Field(default=None, max_length=MAX_PLAN_CHARS)
     decisions: list[dict[str, Any]] | None = None
 
@@ -907,8 +1006,14 @@ def premortem_package(payload: dict[str, Any] = Body(...)) -> Response:
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=_errors(exc)) from None
 
+    from neumann.api.signing import verify_result
+
+    origin: ResultOrigin = (
+        "server_signed" if verify_result(req.result, req.result_sig) else "client_submitted_unverified"
+    )
     try:
-        data = build_package(result, plan_text=req.plan_text if has_text else None, decisions=req.decisions)
+        data = build_package(result, plan_text=req.plan_text if has_text else None, decisions=req.decisions,
+                             result_origin=origin)
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=_errors(exc)) from None
     except ValueError as exc:
@@ -922,6 +1027,7 @@ def premortem_package(payload: dict[str, Any] = Body(...)) -> Response:
             "Content-Disposition": f'attachment; filename="{filename}"',
             "X-Neumann-Status": result.status,
             "X-Neumann-Cards": str(len(result.risk_cards)),
+            "X-Neumann-Result-Origin": origin,
         },
     )
 
@@ -930,6 +1036,7 @@ __all__ = [
     "DECISION_LABELS",
     "FILE_NAMES",
     "PACKAGE_FORMAT",
+    "RESULT_ORIGINS",
     "DecisionEntry",
     "PackageRequest",
     "build_package",
