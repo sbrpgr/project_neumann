@@ -974,7 +974,7 @@ def _status_block(*, sample: bool, pipeline_state: str, result_status: str | Non
 
 
 # 입력 분량 단계(E3-L1s, 결과 plan_checks.input_quality) → 화면 문구. 문구는 E3가 만든 message를 그대로 쓴다.
-INPUT_LEVEL_LABEL = {"reject": "입력이 너무 짧아 분석하지 않음", "warn": "입력이 짧아 결과 신뢰도 낮음"}
+INPUT_LEVEL_LABEL = {"reject": "입력이 짧아 분석하지 않음", "warn": "입력이 짧아 결과 신뢰도 낮음"}
 
 
 def _input_quality(res: Mapping[str, Any]) -> dict[str, Any] | None:
@@ -992,7 +992,7 @@ def _input_quality(res: Mapping[str, Any]) -> dict[str, Any] | None:
         "followups": [_text(_as_dict(q).get("question")) for q in _list(iq.get("followup_questions"))
                       if _text(_as_dict(q).get("question"))],
         "metrics": {k: v for k, v in _as_dict(iq.get("metrics")).items()
-                    if k in ("n_chars", "eff_chars", "n_sentences", "n_elements", "n_elements_llm")},
+                    if k in ("length", "n_chars", "n_sentences", "n_elements", "n_elements_llm")},
     }
 
 

@@ -11,10 +11,11 @@
   강하면 `uncertain`으로 내린다. 판정 신호를 하나에 걸지 않는다(모델 판정 + 근거 줄 + 규칙 신호).
 - 모델에 보내는 본문은 개인정보를 다시 가린다(`pii.mask_pii`). 모델이 쓴 사유·분야도 가린다.
 - 언어(ko·en·mixed)는 코드가 글자 수로 잰다(결정적이고 호출이 필요 없다).
-- **입력 분량 단계(E3-L1s, `input_quality`)**: 규칙으로 먼저 잰다(호출 없음).
-  `reject`(판정할 거리가 없다: 너무 짧음·지시어로 시작하거나 요소가 적은 한 문장·분야와 방법을 알 수 없는 짧은 글)는
-  **LLM을 부르지 않고** 거절하고 무엇을 더 적을지 안내한다(옛 MIN_CHARS 사전검사를 이 단계로 합침).
-  `warn`(짧음 또는 요소 2개 이하)은 끝까지 분석하되 "입력이 짧아 신뢰도가 낮다"를 결과·화면에 싣는다. `ok`는 경고 없음.
+- **입력 분량 단계(E3-L1s, `input_quality`)**: 규칙으로 먼저 잰다(호출 없음). 길이는 앞뒤 공백을 뺀 원문 글자 수
+  (공백 포함, 한글 가중치 없음, 대표 지시 2026-09-30).
+  `reject`: 300자 미만(범위 밖 글 포함), 또는 지시어로 시작하거나 요소가 적은 한 문장, 분야와 방법을 알 수 없는 짧은 글.
+  **LLM을 부르지 않고** 거절하고 무엇을 적을지 안내한다(옛 MIN_CHARS 40자 사전검사를 이 단계로 합침).
+  `warn`(600자 미만 또는 요소 2개 이하)은 끝까지 분석하되 "입력이 짧아 신뢰도가 낮다"를 결과·화면에 싣는다. `ok`는 경고 없음.
   기준값은 보고서 docs/reports/E3-L1s.md의 기준표(백테스트 5편·데모·직접 만든 짧은 입력)로 정했다.
 """
 
@@ -34,13 +35,10 @@ from neumann.models import Generator, PlanDocument, StageStatus
 LLMCallable = Callable[..., dict[str, Any] | None]
 
 DEFAULT_EFFORT = "low"
-# 입력 분량 단계(E3-L1s). 환산 글자 수 = 공백 제외 글자 + 한글 음절마다 (HANGUL_WEIGHT - 1)자
-# (같은 내용이면 한국어가 영어보다 글자 수가 적다: 한글 1음절 ≈ 로마자 2.5자로 본다).
-HANGUL_WEIGHT = 2.5
-# 환산 글자 수가 이보다 적으면 판정할 거리가 없다(거절 단계 too_short, 호출하지 않는다). 옛 사전검사(공백 제외 40자)를
-# 거절 단계로 합치면서 환산 기준으로 바꿨다: 영어 80자 ≈ 한글 약 32음절(옛 기준은 한국어 두 문장 계획도 거절했다).
-MIN_CHARS = 80
-WARN_EFF_CHARS = 600  # 환산 글자 수가 이보다 적으면 경고
+# 입력 분량 단계(E3-L1s). 길이 = 앞뒤 공백을 뺀 원문 글자 수(공백 포함, 한글 가중치 없음).
+# 대표 지시(2026-09-30): "300자 미만은 거절하자. 그런 게 연구계획서라고 보기는 어렵다." 옛 사전검사(공백 제외 40자)를 합쳤다.
+MIN_CHARS = 300  # 이보다 짧으면 거절 단계 too_short(호출하지 않는다)
+WARN_CHARS = 600  # 이보다 짧으면 경고(데모 계획서 3건 629~689자, 템플릿·예시 644~925자는 경고 없음)
 WARN_MAX_ELEMENTS = 2  # 연구 요소(질문·방법·데이터·평가)가 이 개수 이하면 경고
 SINGLE_SENTENCE_MIN_ELEMENTS = 3  # 한 문장뿐이면 요소가 이만큼 있어야 거절하지 않는다
 MIN_UNIT_TOKENS = 3  # 문장·항목 하나로 세는 최소 낱말 수(또는 MIN_UNIT_CHARS자)
@@ -220,12 +218,12 @@ _DEMONSTRATIVE = re.compile(
 )
 INPUT_LEVELS: tuple[str, ...] = ("reject", "warn", "ok")
 INPUT_LABEL_KO: dict[str, str] = {
-    "reject": "입력이 너무 짧아 분석하지 않음",
+    "reject": "입력이 짧아 분석하지 않음",
     "warn": "입력이 짧아 결과 신뢰도 낮음",
     "ok": "",
 }
 _REJECT_WHY_KO: dict[str, str] = {
-    "too_short": f"본문이 너무 짧다(환산 {MIN_CHARS}자 미만)",
+    "too_short": f"입력이 {MIN_CHARS}자 미만이다",
     "single_sentence": "연구 요소가 부족한 한 문장뿐이다",
     "demonstrative_sentence": "앞 문장을 가리키는 지시어로 시작하는 한 문장뿐이다",
     "no_topic": "짧은 글에서 연구 분야나 방법을 알 수 없다",
@@ -237,6 +235,9 @@ _WARN_WHY_KO: dict[str, str] = {
     "few_elements_llm": "적합성 판정에서 확인된 연구 요소가 적다",
 }
 ASK_MORE_KO = "연구 질문·방법·데이터·평가를 더 적어 주세요"
+ASK_KO = "연구 질문·방법·데이터·평가를 적어 주세요"
+# 화면 거절 문구(대표 지시 문구 그대로)
+TOO_SHORT_MESSAGE = f"입력이 {MIN_CHARS}자 미만이라 연구계획서로 분석하지 않습니다. {ASK_KO}."
 
 
 def sentence_units(text: str) -> list[str]:
@@ -251,26 +252,19 @@ def sentence_units(text: str) -> list[str]:
     return out
 
 
-def effective_chars(text: str) -> int:
-    """환산 글자 수: 공백 제외 글자 + 한글 음절·자모마다 (HANGUL_WEIGHT - 1)."""
-    n = 0
-    hangul = 0
-    for ch in text:
-        if ch.isspace():
-            continue
-        n += 1
-        if "가" <= ch <= "힣" or "ㄱ" <= ch <= "ㆎ":
-            hangul += 1
-    return int(round(n + (HANGUL_WEIGHT - 1.0) * hangul))
+def input_length(text: str) -> int:
+    """분량 단계의 길이: 앞뒤 공백을 뺀 원문 글자 수(공백 포함, 한글 가중치 없음)."""
+    return len(text.strip())
 
 
 def _iq_message(level: str, codes: list[str], metrics: dict[str, Any], missing: list[str]) -> str | None:
     miss = ", ".join(ELEMENT_KO[e] for e in missing)
-    size = f"공백 제외 {metrics['n_chars']}자, 문장·항목 {metrics['n_sentences']}개, 연구 요소 {metrics['n_elements']}/4"
+    size = f"{metrics['length']}자, 문장·항목 {metrics['n_sentences']}개, 연구 요소 {metrics['n_elements']}/4"
+    if level == "reject" and codes == ["too_short"]:
+        return TOO_SHORT_MESSAGE
     if level == "reject":
         why = "; ".join(_REJECT_WHY_KO[c] for c in codes)
-        return (f"입력이 너무 짧아 분석하지 않았습니다({why}; {size}). {ASK_MORE_KO}"
-                + (f" — 빠진 요소: {miss}." if miss else "."))
+        return f"입력을 연구계획서로 분석하지 않습니다({why}; {size}). {ASK_KO}" + (f" — 빠진 요소: {miss}." if miss else ".")
     if level == "warn":
         return (f"입력이 짧아 결과 신뢰도가 낮습니다 — {ASK_MORE_KO}({size}"
                 + (f"; 빠진 요소: {miss}" if miss else "") + ").")
@@ -289,8 +283,8 @@ def _iq_record(level: str, codes: list[str], metrics: dict[str, Any], missing: l
         "followup_questions": _followups(missing) if level != "ok" else [],
         "metrics": dict(metrics),
         "thresholds": {
-            "min_chars": MIN_CHARS, "warn_eff_chars": WARN_EFF_CHARS, "warn_max_elements": WARN_MAX_ELEMENTS,
-            "single_sentence_min_elements": SINGLE_SENTENCE_MIN_ELEMENTS, "hangul_weight": HANGUL_WEIGHT,
+            "min_chars": MIN_CHARS, "warn_chars": WARN_CHARS, "warn_max_elements": WARN_MAX_ELEMENTS,
+            "single_sentence_min_elements": SINGLE_SENTENCE_MIN_ELEMENTS, "length": "len(text.strip()), 공백 포함",
         },
         "source": source,  # rule(규칙 신호만) | rule+fitness(적합성 판정으로 경고를 더함)
         "generator": "rule",  # 단계 판정은 규칙이다(LLM 결과라고 쓰지 않는다)
@@ -304,13 +298,14 @@ def input_quality(plan: PlanDocument, *, elements: dict[str, list[int]] | None =
                   field: str | None = _UNSET, offtopic_hits: int | None = None) -> dict[str, Any]:
     """입력 분량 단계(reject·warn·ok). 규칙만 쓰고 호출하지 않는다.
 
+    길이는 앞뒤 공백을 뺀 원문 글자 수(공백 포함, 한글 가중치 없음).
     거절(reject) — 판정할 거리가 없다:
-      too_short: 환산 MIN_CHARS자 미만(영어 80자 ≈ 한글 약 32음절)
+      too_short: MIN_CHARS(300)자 미만. 범위 밖 글(조리법 등)도 여기서 호출 없이 거절한다
       demonstrative_sentence: 문장·항목이 1개 이하이고 지시어("This is…", "이는…")로 시작
       single_sentence: 문장·항목이 1개 이하이고 연구 요소가 SINGLE_SENTENCE_MIN_ELEMENTS개 미만
-      no_topic: 환산 WARN_EFF_CHARS자 미만인데 분야 표지도 방법 표지도 없고, 무관한 글(조리법·여행·광고 등)의 표지도 없다
+      no_topic: WARN_CHARS자 미만인데 분야 표지도 방법 표지도 없고, 무관한 글(조리법·여행·광고 등)의 표지도 없다
         (무관한 글의 표지가 있으면 여기서 거절하지 않고 지금처럼 적합성 판정이 "연구계획서가 아니다"로 거절한다)
-    경고(warn) — 짧지만 분야·방법을 알 수 있다: 환산 WARN_EFF_CHARS자 미만(short) 또는 요소 WARN_MAX_ELEMENTS개 이하(few_elements).
+    경고(warn) — 짧지만 분야·방법을 알 수 있다: WARN_CHARS자 미만(short) 또는 요소 WARN_MAX_ELEMENTS개 이하(few_elements).
     elements·field를 주면(rule_fitness 안에서) 다시 세지 않는다.
     """
     if elements is None or field is _UNSET or offtopic_hits is None:
@@ -323,26 +318,26 @@ def input_quality(plan: PlanDocument, *, elements: dict[str, list[int]] | None =
     units = sentence_units(text)
     n_elem = sum(1 for e in ELEMENTS if elements.get(e))
     has_method = bool(elements.get("method"))
-    eff = effective_chars(text)
+    length = input_length(text)
     demonstrative = bool(units) and bool(_DEMONSTRATIVE.match(units[0][:40]))
     metrics = {
-        "n_chars": n_chars, "eff_chars": eff, "n_sentences": len(units), "n_elements": n_elem,
+        "length": length, "n_chars": n_chars, "n_sentences": len(units), "n_elements": n_elem,
         "field": field, "has_method": has_method, "starts_with_demonstrative": demonstrative,
         "offtopic_hits": offtopic_hits,
     }
     missing = [e for e in ELEMENTS if not elements.get(e)]
     codes: list[str] = []
-    if eff < MIN_CHARS:
+    if length < MIN_CHARS:
         codes.append("too_short")
     elif len(units) <= 1 and demonstrative:
         codes.append("demonstrative_sentence")
     elif len(units) <= 1 and n_elem < SINGLE_SENTENCE_MIN_ELEMENTS:
         codes.append("single_sentence")
-    elif eff < WARN_EFF_CHARS and field is None and not has_method and not offtopic_hits:
+    elif length < WARN_CHARS and field is None and not has_method and not offtopic_hits:
         codes.append("no_topic")
     if codes:
         return _iq_record("reject", codes, metrics, missing, "rule")
-    if eff < WARN_EFF_CHARS:
+    if length < WARN_CHARS:
         codes.append("short")
     if n_elem <= WARN_MAX_ELEMENTS:
         codes.append("few_elements")
@@ -737,15 +732,15 @@ __all__ = [
     "DEFAULT_EFFORT",
     "ELEMENTS",
     "FITNESS_SCHEMA",
-    "HANGUL_WEIGHT",
     "INPUT_LABEL_KO",
     "INPUT_LEVELS",
     "INSTRUCTIONS",
     "MIN_CHARS",
-    "WARN_EFF_CHARS",
+    "TOO_SHORT_MESSAGE",
+    "WARN_CHARS",
     "WARN_MAX_ELEMENTS",
     "assess_fitness",
-    "effective_chars",
+    "input_length",
     "input_quality",
     "refine_input_quality",
     "sentence_units",

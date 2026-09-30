@@ -244,8 +244,9 @@ def _llm_call_for(llm: LLMProvider, task: str, settings: Any) -> tuple[Any | Non
 
 LOW_SIMILARITY_FLOOR = 0.0  # 짧은 입력에서 하한을 넘은 논문이 없을 때 다시 찾는 하한(= 하한 없음, 상위 k편)
 # 적합성 보류 + 검색어 단계 "계획서 아님"인 경고 단계 입력을 진행시키는 유사 연구 근거 기준(E3-L1s 실측, bge-m3 하이브리드).
-# 관련도 = max(dense, score)(E2 하한과 같은 값). 무관한 글 7건(조리법·여행·광고·일기) 상위 관련도 최대 0.426·0.50 이상 0편,
-# 경고 단계 입력 24건(직접 만든 21 + 백테스트 3) 최소 0.541·0.50 이상 최소 6편. 보고서 docs/reports/E3-L1s.md 표.
+# 관련도 = max(dense, score)(E2 하한과 같은 값). 무관한 글 8건(조리법·여행·광고·일기) 상위 관련도 최대 0.426·0.50 이상 0편,
+# 경고 단계 입력 16건(300~600자 직접 작성 15 + 백테스트 SFCH) 최소 0.602·0.50 이상 최소 7편(300자 기준 전 보정 24건도
+# 최소 0.541·6편). 보고서 docs/reports/E3-L1s.md 표.
 RESEARCH_GATE_MIN_TOP = 0.50
 RESEARCH_GATE_MIN_WORKS = 3
 
@@ -372,8 +373,8 @@ def run_premortem(
             if iq_level == "warn" and iq.get("message"):
                 run.notice(iq["message"])
             if not fit.get("analyze", True) and fit.get("decided_by") == "precheck":
-                no_card_reason = ("입력이 너무 짧아 분석하지 않았다(규칙 판정, LLM 호출 없음) — "
-                                  "연구 질문·방법·데이터·평가를 더 적어 주세요; 검색 안 함")
+                msg = (iq.get("message") if iq else None) or "입력이 짧아 연구계획서로 분석하지 않습니다."
+                no_card_reason = f"{msg} (규칙 판정, LLM 호출 없음; 검색 안 함)"
             elif not fit.get("analyze", True):
                 no_card_reason = f"입력이 연구계획서가 아니다({fit.get('generator')} 판단: {fit.get('reason')}); 검색 안 함"
                 extras["plan_checks"]["suitability"] = {
