@@ -22,7 +22,7 @@
 | E4-L1e 입력 예시·템플릿 AI4S 정렬(대표 지시) | ✅ 병합(0504255, Sonnet PASS) | 새 예시 사전 계산본·정적 판 DEMO_PLANS 교체는 API 사용 → 대표 승인 대기 |
 | E1-L1c eLife(+EPMC) 색인 | ✅ 코드만 병합(43d116f). 색인 `index_elife*`는 DO_NOT_SERVE 유지 | E1-L1b PASS 뒤 재빌드(입력 해시 rc 0). 권고: 색인 로더가 DO_NOT_SERVE를 거부(E2, 선택) |
 | E1-L1b eLife·EPMC 수집 | ❌ 재검증 FAIL(이전 25건 해소, 새 형식 3건: 대문자 성 서명·`&amp;` 공동 서명·답변 감사문) → PM 세션 빌더 재작업 2(오프라인) | 잔존 0(두 방법) 증명 후 재검증 → **squash 병합**. 그 전에는 eLife/EPMC 색인을 서비스에 쓰지 않는다 |
-| E4-L2c 서빙 안정성 | 🔍 재작업 83754ff(BOM·UTF-16 fail-closed, IPv6 /64, 업로드 IP당 분당 10·동시 1·10MB) 재검증 중(구축 세션). **공개 금지** | PASS → PM이 diff에 templates·index.html 없는지 확인 → 병합 + `E4-L2c_main.patch`, 새 키 3개(TRUST_XFF·UPLOAD_RATE_PER_MIN·UPLOAD_PER_IP) |
+| E4-L2c 서빙 안정성 | 🔍 재검증 PASS-조건부(83754ff): 인코딩 우회 fail-closed, 혼입 0. 남은 것(E4-L1f 테스트 request_id, serve.py UTF-8)은 E4-L2d에서 고침. **공개 금지** | **E4-L2d 하나로 병합**(L2d가 L2c 포함), 패치 L2c → L2d 순서. SEC-4 먼저 |
 | E4-L2d 비동기 작업 API | 🔍 PASS-조건부 → 재작업 중(구축 세션): E4-L2c 재병합·create_job 글자 상한, 작업 저장소 고갈 DoS(IP별 보관 상한·합류/캐시 POST 속도 제한) | E4-L2c 뒤 병합 + `E4-L2d_main.patch`. **터널 공개 전제**. 병합 뒤 README "동시 상한 2건, 대기열·속도 제한 예정"(75행) 갱신: 공개 기본값 동시 4·대기 30 |
 | SEC-4 이메일 정규식 ReDoS | 🔍 task/SEC-4 386621a(PM), Sonnet 검증 중 | `models.contains_pii`·`redact_pii` 선형화(`email_spans`), 결과 동일. 공개 전 필수 |
 | E3-L1x rule_fitness "neural" 오분류 | ✅ 병합(Sonnet PASS) | 남은 한계: `~인지 과제` 오탐, neuromorphic(후속 소과제, 선택) |
