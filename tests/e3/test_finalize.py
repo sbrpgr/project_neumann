@@ -122,3 +122,29 @@ def test_provider_exception_is_sanitized():
         raise RuntimeError("sensitive request")
     out = finalize_plan("본문", llm_call=broken)
     assert out["status"] == "incomplete" and "sensitive" not in str(out)
+
+
+def test_correction_failure_retains_original_and_no_recheck():
+    p = provider()
+    p.fail[CORRECTION_TASK] = "timeout"
+    out = finalize_plan("방법을 검토한다.", provider=p)
+    assert out["status"] == "incomplete"
+    assert out["final_text"] == out["input_text"]
+    assert out["counters"]["assessment_calls"] == 1
+    assert out["counters"]["correction_calls"] == 1
+    assert out["counters"]["recheck_runs"] == 0
+    assert "check_ids" not in out["issues"][0]
+
+
+def test_cancel_after_correction_discards_batch_and_stops():
+    event = threading.Event()
+    def cancelled_correction(call):
+        event.set()
+        return {"edits": [edit("방법을 명확히 검토한다.")]}
+    p = provider()
+    p.scripted[CORRECTION_TASK] = [cancelled_correction]
+    out = finalize_plan("방법을 검토한다.", provider=p, cancel_event=event)
+    assert out["status"] == "incomplete"
+    assert len(p.calls) == 2
+    assert out["final_text"] == out["input_text"]
+    assert out["counters"]["correction_batches"] == 0

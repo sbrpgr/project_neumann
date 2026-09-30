@@ -22,13 +22,15 @@ Targeted measurement (process-scoped mock, LIVE_TESTS=0, LIVE_LLM_OK=0, PYTHONUT
 
 `C:/Users/User/.venvs/neumann/Scripts/python.exe -m pytest tests/e3/test_finalize.py -q`
 
-Output: `10 passed in 0.22s`.
+Output: `12 passed` (final targeted run).
 
 Checks cover strict schemas, mock honesty, safe anchored correction and hashes, numeric/entity/PII/markup
 rejection, wrong anchors, timeout/API/schema failures, cancellation before/after assessment, exactly one
 targeted recheck and preserved unmodified checks, maximum checks, unavailable tools, bounded completed
 notice and sanitized provider exceptions. Targeted adapter orchestration test uses an explicitly labelled
 stub; actual tool-module integration and independent-model validation remain PM integration tasks.
+Additional tests cover correction timeout and cancellation after correction returning the untouched
+source without a correction batch or recheck.
 
 Limits: existing unsupported_facts patterns cannot prove scientific truth or recognize every entity. The
 draft is not certified as scientifically correct. Recheck retains original check anchors; changing the
