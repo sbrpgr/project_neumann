@@ -411,20 +411,15 @@ hwp 415 {'detail': 'HWP는 PDF나 DOCX로 저장해 올려 주세요'}
 empty 422 {'detail': '빈 파일입니다'}
 ```
 
-## 최종 verify (재작업 후)
+## 최종 verify (재작업 2 후)
 
-worktree(`task/E6-docs`, main `c4679f9` 병합 상태)에서 실행. `verify`는 공개자료·공유 데이터 폴더 환경변수 없이 돌려 원본·실데이터 테스트가 더 많이 건너뛰었다(위 재측정 `908 passed, 22 skipped`는 두 폴더를 준 값).
+worktree(`task/E6-docs`, main `47e45e5` 병합 상태, `NEUMANN_LLM_PROVIDER`·`OPENAI_API_KEY` 해제, 기본 mock)에서 실행.
 
 ```
 $ python scripts/verify.py
-897 passed, 41 skipped in 48.52s
-보안: 파일 327개
+994 passed, 42 skipped in 73.13s (0:01:13)
+보안: 파일 357개
 계약: 2개
 테스트: 통과
 verify 통과
-```
-
-```
-$ grep -n "파이프라인이 없\|OpenAI를 부르지 않\|샘플만\|5e14b1c\|ed1d1a0\|82146f9" docs/ARCHITECTURE.md docs/RUNNING.md docs/API.md
-(출력 없음, exit 1)
 ```
