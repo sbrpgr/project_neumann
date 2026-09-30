@@ -8,7 +8,7 @@
 규칙
 - 적용하는 안은 연구자가 **채택**(제안 문안 그대로)하거나 **수정**(연구자 문안 `revised_text`)한 것뿐이다. 기각·미결정은 적용하지
   않는다. 결정이 없는 안은 그대로 두고 `undecided`에 센다.
-- 같은 줄을 여러 안이 바꾸면(같은 줄 replace 둘 이상) **충돌 목록**으로 돌려주고 자동으로 고르지 않는다(그 줄은 원문 유지).
+- 같은 줄의 서로 다른 구간은 원문 오프셋으로 합친다. 겹치는 교체안은 카드 순서대로 다음 줄에 보존한다.
   안의 `current_text`가 계획서 줄과 다르면(계획서가 바뀜) `stale_line` 충돌이다. `insert_after`는 같은 줄에 여럿이어도
   순서대로 넣는다(충돌 아님).
 - 변경 문장마다 근거 id(수정안 이유의 excerpt id)와 카드 id를 붙인다. 자리표시(`[확인 필요: …]`)는 따로 목록에 담는다.
@@ -27,6 +27,7 @@ from collections.abc import Callable, Mapping, Sequence
 from copy import copy
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from difflib import SequenceMatcher
 from typing import Any
 
 from neumann.analyze import gate as gate_mod
@@ -165,6 +166,21 @@ def _plan_of(plan_text: str | PlanDocument) -> PlanDocument:
     return PlanDocument.from_text(masked, "assemble")
 
 
+def _patches(before: str, after: str) -> list[tuple[int, int, str]]:
+    """Original character offsets; equal spans never get overwritten."""
+    return [(a, b, after[c:d]) for tag, a, b, c, d in
+            SequenceMatcher(None, before, after, autojunk=False).get_opcodes() if tag != "equal"]
+
+
+def _overlap(left: tuple[int, int, str], right: tuple[int, int, str]) -> bool:
+    a, b, _ = left
+    c, d, _ = right
+    # Insertion at a replacement boundary is ambiguous, so preserve it separately.
+    if a == b or c == d:
+        return a <= c <= b or c <= a <= d
+    return max(a, c) < min(b, d)
+
+
 def assemble_revised_plan(
     plan_text: str | PlanDocument,
     revision: Mapping[str, Any] | Sequence[Mapping[str, Any]],
@@ -206,6 +222,9 @@ def assemble_revised_plan(
             conflicts.append({"kind": "unknown_line", "plan_line": e.plan_line, "edit_ids": [eid], "card_ids": [e.card_id],
                               "detail": "계획서에 없는 줄"})
             continue
+        if e.kind not in ("replace", "insert_after"):
+            skipped.append({"edit_id": eid, "reason": "unknown_kind", "detail": "지원하지 않는 편집 종류"})
+            continue
         if e.current_text != original[e.plan_line]:
             conflicts.append({"kind": "stale_line", "plan_line": e.plan_line, "edit_ids": [eid], "card_ids": [e.card_id],
                               "detail": "안의 current_text가 계획서 줄과 다르다(계획서가 바뀌었다)",
@@ -218,41 +237,67 @@ def assemble_revised_plan(
             continue
         applied[eid] = (e, d, text)
 
-    # 같은 줄 replace 둘 이상 → 충돌(자동 선택 없음, 그 줄은 원문 유지)
-    by_line_replace: dict[int, list[str]] = {}
-    for eid, (e, _d, _t) in applied.items():
-        if e.kind == "replace":
-            by_line_replace.setdefault(e.plan_line, []).append(eid)
-    for no, ids in sorted(by_line_replace.items()):
-        if len(ids) > 1:
-            conflicts.append({
-                "kind": "same_line", "plan_line": no, "edit_ids": ids, "card_ids": [applied[i][0].card_id for i in ids],
-                "detail": "같은 줄을 바꾸는 안이 둘 이상이다 — 연구자가 하나를 고르거나 직접 합쳐 수정한다",
-                "candidates": [{"edit_id": i, "card_id": applied[i][0].card_id, "text": applied[i][2],
-                                "decision": applied[i][1].decision} for i in ids],
-                "current_text": original[no],
-            })
-            for i in ids:
-                applied.pop(i, None)
-
     lines: list[dict[str, Any]] = []
     changes: list[dict[str, Any]] = []
-    order = list(applied)  # 결정 순서(입력 순서) 유지
+    states: dict[str, tuple[str, str | None]] = {}
+    order = [eid for eid in edits if eid in applied]  # 원문 줄 → 카드·편집 순서; 결정 전송 순서 무관
     for no in sorted(original):
         text = original[no]
-        rep = next((i for i in order if applied[i][0].kind == "replace" and applied[i][0].plan_line == no), None)
-        if rep is not None:
-            e, d, new_text = applied[rep]
+        reps: list[str] = []
+        patches: list[tuple[int, int, str]] = []
+        inserts: list[str] = []
+        for eid in (i for i in order if applied[i][0].plan_line == no):
+            e, _d, new_text = applied[eid]
+            if e.kind == "insert_after":
+                inserts.append(eid)
+                states[eid] = ("applied", None)
+                continue
+            proposed = _patches(text, new_text)
+            if any(_overlap(p, q) for p in proposed for q in patches):
+                inserts.append(eid)
+                states[eid] = ("converted_insert", "겹치는 구간의 수정 문안을 원문 다음 줄에 보존했습니다")
+            else:
+                reps.append(eid)
+                patches.extend(proposed)
+        if reps:
+            new_text = text
+            # Descending original offsets keep every remaining offset valid after each edit.
+            for start, end, replacement in sorted(patches, key=lambda p: (p[0], p[1]), reverse=True):
+                new_text = new_text[:start] + replacement + new_text[end:]
             new_no = len(lines) + 1
-            lines.append({"no": new_no, "orig_no": no, "text": new_text, "changed": True, "edit_id": rep, "card_id": e.card_id})
-            changes.append(_change(e, d, no, text, new_text, new_no))
+            lines.append({"no": new_no, "orig_no": no, "text": new_text, "changed": True,
+                          "edit_id": reps[0], "card_id": applied[reps[0]][0].card_id, "edit_ids": reps})
+            for rep in reps:
+                e, d, proposed_text = applied[rep]
+                states[rep] = ("merged" if len(reps) > 1 else "applied", None)
+                changes.append({**_change(e, d, no, text, proposed_text, new_no),
+                                "applied_text": proposed_text, "assembled_text": new_text})
         else:
             lines.append({"no": len(lines) + 1, "orig_no": no, "text": text, "changed": False})
-        for ins in [i for i in order if applied[i][0].kind == "insert_after" and applied[i][0].plan_line == no]:
+        for ins in inserts:
             e, d, new_text = applied[ins]
             new_no = len(lines) + 1
             lines.append({"no": new_no, "orig_no": None, "text": new_text, "changed": True, "edit_id": ins, "card_id": e.card_id})
-            changes.append(_change(e, d, no, "", new_text, new_no))
+            changes.append({**_change(e, d, no, text if e.kind == "replace" else "", new_text, new_no),
+                            "effective_kind": "insert_after", "applied_text": new_text, "assembled_text": new_text})
+
+    for item in skipped:
+        states[item["edit_id"]] = ("not_applied", item["detail"])
+    for conflict in conflicts:
+        for eid in conflict["edit_ids"]:
+            states[eid] = ("not_applied", conflict["detail"])
+    change_of = {ch["edit_id"]: ch for ch in changes}
+    edit_order = {eid: i for i, eid in enumerate(edits)}
+    status_ids = sorted(set(edits) | set(decided), key=lambda eid: (
+        edits[eid].plan_line if eid in edits else 10**9, edit_order.get(eid, 10**9), eid))
+    edit_statuses = []
+    for eid in status_ids:
+        e, d = edits.get(eid), decided.get(eid)
+        status, reason = states.get(eid, ("not_applied", "기각한 수정안입니다" if d and d.decision == "reject" else "채택 여부가 결정되지 않았습니다"))
+        ch = change_of.get(eid, {})
+        edit_statuses.append({"edit_id": eid, "card_id": e.card_id if e else "", "plan_line": e.plan_line if e else None,
+                              "status": status, "reason": reason, "new_range": ch.get("new_range"),
+                              "excerpt_ids": ch.get("excerpt_ids", [])})
 
     holders: list[dict[str, Any]] = []
     for ch in changes:
@@ -265,11 +310,22 @@ def assemble_revised_plan(
         "modified": sum(1 for c in changes if c["decision"] == "modify"), "rejected": len(rejected),
         "undecided": len(undecided), "conflicts": len(conflicts), "skipped": len(skipped), "placeholders": len(holders),
         "lines_original": len(original), "lines_revised": len(lines),
+        "merged": sum(s[0] == "merged" for s in states.values()),
+        "converted_insert": sum(s[0] == "converted_insert" for s in states.values()),
+        "not_applied": sum(s["status"] == "not_applied" and s["edit_id"] in decided and
+                           decided[s["edit_id"]].decision != "reject" for s in edit_statuses),
     }
     if conflicts:
         notices.append(f"미해결 충돌 {len(conflicts)}건 — 해당 줄은 원문을 유지했다. 화면에서 하나를 고르거나 직접 수정한다")
     if holders:
         notices.append(f"자리표시 {len(holders)}곳 — 연구자만 아는 값을 채워야 한다")
+    if stats["converted_insert"]:
+        notices.append(f"겹치는 수정 {stats['converted_insert']}건은 별도 문장으로 보존했습니다. 문장 간 일관성을 최종 점검에서 확인합니다")
+    if stats["not_applied"]:
+        notices.append(f"채택·수정한 안 중 {stats['not_applied']}건을 반영하지 못했습니다. 편집별 적용 상태에서 사유를 확인합니다")
+        for s in edit_statuses:
+            if s["status"] == "not_applied" and s["edit_id"] in decided and decided[s["edit_id"]].decision != "reject":
+                notices.append(f"미반영 · 원문 {s['plan_line'] or '-'}줄 · 수정안 {s['edit_id']}: {s['reason']}")
     return {
         "version": ASSEMBLE_VERSION,
         "plan_id": plan.plan_id,
@@ -278,6 +334,7 @@ def assemble_revised_plan(
         "revised_text": "\n".join(ln["text"] for ln in lines),
         "lines": lines,
         "changes": changes,
+        "edit_statuses": edit_statuses,
         "conflicts": conflicts,
         "placeholders": holders,
         "skipped": skipped,
@@ -404,6 +461,8 @@ def polish_gate(before: list[dict[str, Any]], after: Any) -> tuple[list[dict[str
             return None, f"new_fact at {old['no']}"
         if _content_words(text) - _content_words(old["text"]):
             return None, f"new_content_word at {old['no']}"
+        if len(old.get("edit_ids", [])) > 1 and _content_words(old["text"]) - _content_words(text):
+            return None, f"merged_content_removed at {old['no']}"
         out.append({**old, "text": text, "polished": text != old["text"]})
     return out, ""
 
@@ -456,6 +515,8 @@ def polish_revised_plan(assembled: Mapping[str, Any], llm_call: Callable[..., An
     for ch in assembled.get("changes", []):
         ch = dict(ch)
         ch["new_text"] = text_by_no.get(ch["new_range"][0], ch["new_text"])
+        if "assembled_text" in ch:
+            ch["assembled_text"] = ch["new_text"]
         changes.append(ch)
     out["changes"] = changes
     out["polish"] = {**base, "applied": True, "generator": gen, "model": model, "reason": None, "lines_polished": n_polished}
@@ -526,6 +587,11 @@ def _footnotes(assembled: Mapping[str, Any], ev: EvidenceLookup) -> tuple[dict[s
     return per_edit, notes
 
 
+def _line_notes(line: Mapping[str, Any], per_edit: Mapping[str, list[int]]) -> list[int]:
+    ids = line.get("edit_ids") or [line.get("edit_id")]
+    return list(dict.fromkeys(n for eid in ids for n in per_edit.get(eid, [])))
+
+
 def render_markdown(assembled: Mapping[str, Any], ev: EvidenceLookup, *, model: str | None = None,
                     generator: str | None = None, title: str = "수정된 연구계획서") -> dict[str, str]:
     """(a) clean: 깨끗한 원고 (b) footnoted: 변경 문장 옆 각주 → 근거 발췌·링크 (c) history: 수정 이력 + 근거 부록 + 충돌·자리표시."""
@@ -536,8 +602,8 @@ def render_markdown(assembled: Mapping[str, Any], ev: EvidenceLookup, *, model: 
     fl: list[str] = []
     for ln in assembled.get("lines", []):
         text = str(ln.get("text", ""))
-        if ln.get("changed") and per_edit.get(ln.get("edit_id"), []):
-            text += "".join(f"[^{n}]" for n in per_edit[ln["edit_id"]])
+        if ln.get("changed"):
+            text += "".join(f"[^{n}]" for n in _line_notes(ln, per_edit))
         fl.append(text)
     fl += ["", "---", "", f"_{label}_", ""]
     for n in notes:
@@ -559,6 +625,11 @@ def render_markdown(assembled: Mapping[str, Any], ev: EvidenceLookup, *, model: 
                      f"{_cell(ch['old_text'])} | {_cell(ch['new_text'])} | {', '.join(f'`{x}`' for x in ch['excerpt_ids']) or '-'} |")
     else:
         h.append("적용된 변경이 없다.")
+    if assembled.get("edit_statuses"):
+        h += ["", "## 편집별 적용 상태", "", "| 수정안 | 상태 | 사유 |", "|---|---|---|"]
+        names = {"applied": "적용", "merged": "구간 병합", "converted_insert": "별도 문장으로 보존", "not_applied": "미반영"}
+        for status in assembled["edit_statuses"]:
+            h.append(f"| {_cell(status['edit_id'])} | {names.get(status['status'], status['status'])} | {_cell(status.get('reason') or '-')} |")
     if assembled.get("conflicts"):
         h += ["", "## 미해결 충돌(자동으로 고르지 않음)", ""]
         for c in assembled["conflicts"]:
@@ -626,7 +697,7 @@ def build_docx(assembled: Mapping[str, Any], ev: EvidenceLookup, *, model: str |
         run = para.add_run(text)
         if ln.get("changed"):
             run.bold = True
-            for n in per_edit.get(ln.get("edit_id"), []):
+            for n in _line_notes(ln, per_edit):
                 sup = para.add_run(str(n))
                 sup.font.superscript = True
     doc.add_heading("미주(변경 문장의 근거)", level=1)
@@ -653,6 +724,18 @@ def build_docx(assembled: Mapping[str, Any], ev: EvidenceLookup, *, model: str |
                 cell.text = redact_pii(str(val))
     else:
         doc.add_paragraph("적용된 변경이 없다.")
+    if assembled.get("edit_statuses"):
+        doc.add_heading("편집별 적용 상태", level=2)
+        table = doc.add_table(rows=1, cols=3)
+        table.style = "Table Grid"
+        for cell, heading in zip(table.rows[0].cells, ("수정안", "상태", "사유"), strict=True):
+            cell.text = heading
+        names = {"applied": "적용", "merged": "구간 병합", "converted_insert": "별도 문장으로 보존", "not_applied": "미반영"}
+        for status in assembled["edit_statuses"]:
+            row = table.add_row().cells
+            for cell, value in zip(row, (status["edit_id"], names.get(status["status"], status["status"]),
+                                         status.get("reason") or "-"), strict=True):
+                cell.text = redact_pii(str(value))
     if assembled.get("conflicts"):
         doc.add_heading("미해결 충돌", level=2)
         for c in assembled["conflicts"]:

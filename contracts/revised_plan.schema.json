@@ -24,6 +24,7 @@
           "changed": {"type": "boolean"},
           "edit_id": {"type": "string"},
           "card_id": {"type": "string"},
+          "edit_ids": {"type": "array", "items": {"type": "string"}, "description": "같은 수정본 줄에 병합된 모든 편집 id(없으면 edit_id만 사용)"},
           "polished": {"type": "boolean"}
         }
       }
@@ -41,6 +42,9 @@
           "old_range": {"type": "array", "items": {"type": "integer"}, "minItems": 2, "maxItems": 2},
           "old_text": {"type": "string", "description": "insert_after면 빈 문자열"},
           "new_text": {"type": "string"},
+          "applied_text": {"type": "string", "description": "편집 하나의 채택·직접 수정 문안(다듬기 전)"},
+          "assembled_text": {"type": "string", "description": "new_range에 실제 출력된 전체 줄(여러 편집 병합 가능)"},
+          "effective_kind": {"type": "string", "enum": ["replace", "insert_after"], "description": "실제 적용 방식. kind는 원래 편집 종류로 유지하여 출처 결합을 검증한다"},
           "new_range": {"type": "array", "items": {"type": "integer"}, "minItems": 2, "maxItems": 2},
           "excerpt_ids": {"type": "array", "items": {"type": "string"}},
           "rationale": {"type": "string"},
@@ -52,6 +56,25 @@
           "decided_at": {"type": ["string", "null"]},
           "placeholders": {"type": "array", "items": {"type": "string"}}
         }
+      }
+    },
+    "edit_statuses": {
+      "type": "array",
+      "description": "편집별 적용 상태. applied=적용, merged=서로 다른 구간 병합, converted_insert=겹치는 문안 별도 줄 보존, not_applied=미반영(사유 필수). 기존 응답에서는 없을 수 있다.",
+      "items": {
+        "type": "object", "additionalProperties": true,
+        "required": ["edit_id", "status", "reason"],
+        "properties": {
+          "edit_id": {"type": "string"},
+          "card_id": {"type": "string"},
+          "plan_line": {"type": ["integer", "null"]},
+          "status": {"type": "string", "enum": ["applied", "merged", "converted_insert", "not_applied"]},
+          "reason": {"type": ["string", "null"]},
+          "new_range": {"type": ["array", "null"], "items": {"type": "integer"}, "minItems": 2, "maxItems": 2},
+          "excerpt_ids": {"type": "array", "items": {"type": "string"}}
+        },
+        "allOf": [{"if": {"properties": {"status": {"const": "not_applied"}}},
+                   "then": {"properties": {"reason": {"type": "string", "minLength": 1}}}}]
       }
     },
     "conflicts": {
@@ -87,7 +110,10 @@
         "edits_total": {"type": "integer"}, "applied": {"type": "integer"}, "adopted": {"type": "integer"},
         "modified": {"type": "integer"}, "rejected": {"type": "integer"}, "undecided": {"type": "integer"},
         "conflicts": {"type": "integer"}, "skipped": {"type": "integer"}, "placeholders": {"type": "integer"},
-        "lines_original": {"type": "integer"}, "lines_revised": {"type": "integer"}
+        "lines_original": {"type": "integer"}, "lines_revised": {"type": "integer"},
+        "merged": {"type": "integer", "minimum": 0, "description": "같은 줄의 서로 다른 구간에 병합한 편집 수(applied에 포함)"},
+        "converted_insert": {"type": "integer", "minimum": 0, "description": "겹치는 교체안을 별도 줄로 보존한 편집 수(applied에 포함)"},
+        "not_applied": {"type": "integer", "minimum": 0, "description": "채택·직접 수정한 결정 중 미반영 수(기각·미결정 제외)"}
       }
     },
     "notices": {"type": "array", "items": {"type": "string"}},
