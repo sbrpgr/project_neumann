@@ -33,9 +33,14 @@ exit 1: 분석 실패, 재생 실패, 또는 파이프라인 결과 중 데모 �
   - 결과는 고치지 않는다: manifest.llm_provider·llm_model, generated_at, 카드 generator(rule·mock 포함)를 그대로 둔다.
     매니페스트에 source "live_e2e", 서버 포트(8020), 서버 실행 커밋(--run-commit 또는 결과에 적힌 값, 없으면 미기록),
     가져온 쪽 커밋, 결과 파일 sha256을 적는다. 항목 generated_at은 라이브 생성 시각이다(라우터 라벨이 이 시각을 쓴다).
-  - 받지 않는 것: 샘플 응답(sample), 계약 위반, astra 모델(대표 지시), 가리지 않은 이메일·ORCID·OpenReview 프로필 id·
-    신원 키. 사유만 남기고(값은 출력하지 않는다) 그 후보를 버린다.
+  - 받지 않는 것: 샘플 응답(sample), fixture·파이프라인 미연결·오류 결과(단계 impl fallback:fixture·fixture*·
+    fallback:pipeline_unavailable·fallback:pipeline_error, status error), manifest.llm_provider 없는 결과, 계약 위반,
+    astra 모델(대표 지시), 가리지 않은 이메일·ORCID·OpenReview 프로필 id·신원 키. 사유만 남기고(값은 출력하지 않는다)
+    그 후보를 버린다. 라이브 안의 부분 대체(fallback:rules.*, fallback:cards.rule_cards)는 받는다.
+  - mock provider·mock 카드 결과는 받되 대체(substitute)로 표시하고 서버를 "로컬 리허설(라이브 서버 아님)"으로 적는다.
+    같은 계획서 후보가 여럿이면 라이브(mock 아님)를 먼저, 그다음 generated_at이 늦은 것을 고른다.
   - 기본은 전부 아니면 쓰지 않음: 데모 계획서 하나라도 결과가 없으면 아무것도 쓰지 않고 exit 1(--allow-partial 제외).
+    --allow-partial이어도 가져올 결과가 0건이면 아무것도 쓰지 않는다(기존 매니페스트를 빈 것으로 덮지 않는다).
 """
 
 from __future__ import annotations
@@ -383,16 +388,15 @@ MAX_RESULT_BYTES = 64 * 1024 * 1024
 MAX_DEPTH = 6
 COMMIT_KEYS = ("run_commit", "server_commit", "git_commit", "commit")
 COMMIT_RE = re.compile(r"^[0-9a-f]{7,40}$")
-MODEL_KEYS = frozenset({"model", "llm_model", "model_id", "impl"})
-# 신원 키(models.IDENTITY_TOKENS 기준, 단계 JSON 키 "name"과 "author_response" 같은 출처 종류는 뺀다).
-# 결과의 자유 형식 칸에 이 이름의 키가 있으면 받지 않는다(키 이름 전체 또는 _로 나뉜 조각이 일치할 때).
-IDENTITY_KEY_TOKENS = frozenset({"email", "emails", "e_mail", "orcid", "author", "authors", "reviewer", "reviewer_id",
-                                 "reviewers", "affiliation", "affiliations", "institution", "signature", "signatures",
-                                 "handle", "profile", "phone"})
+MODEL_KEYS = frozenset({"model", "llm_model", "model_id", "impl", "model_name", "requested_model"})  # + *_model 키
+# 신원 키(models.IDENTITY_TOKENS 기준). 키를 _로 나눈 조각 중 하나라도 여기 있으면 받지 않는다.
+# 단계 JSON 키 "name"과 출처 종류 "author_response(s)"는 신원이 아니라 뺀다.
+IDENTITY_KEY_PARTS = frozenset({"email", "emails", "mail", "orcid", "author", "authors", "reviewer", "reviewers",
+                                "affiliation", "affiliations", "institution", "institutions", "signature", "signatures",
+                                "handle", "handles", "profile", "profiles", "phone"})
 IDENTITY_KEY_ALLOW = frozenset({"author_response", "author_responses"})
-IDENTITY_KEY_PARTS = frozenset({"email", "emails", "orcid", "signature", "signatures", "affiliation", "affiliations",
-                                "institution", "phone"})
-OPENREVIEW_PROFILE_RE = re.compile(r"~[A-Z][A-Za-z\-]+(?:_[A-Z][A-Za-z\-]+)+\d+")
+# 파이프라인 없이 만든 결과·실패 결과(받지 않는다). 라이브 안의 부분 대체(fallback:rules.*, fallback:cards.rule_cards)는 받는다
+REJECT_IMPLS = frozenset({"fallback:fixture", "fixture", "fallback:pipeline_unavailable", "fallback:pipeline_error"})
 
 
 @dataclass
@@ -480,17 +484,17 @@ def _iter_strings(obj: Any, pointer: str = "") -> Any:
 def privacy_problems(data: dict[str, Any]) -> list[str]:
     """가리지 않은 개인정보 위치(값은 넣지 않는다): 이메일·ORCID, OpenReview 프로필 id(~Name_Name1), 신원 키."""
     from neumann.models import contains_pii
+    from neumann.sources.researcharcade import PROFILE_ID_RE  # 수집 단계(E1)와 같은 프로필 id 규칙
 
     hits: list[str] = []
     for ptr, key, text in _iter_strings(data):
         if key is not None:
             low = key.lower().replace("-", "_")
-            if low not in IDENTITY_KEY_ALLOW and (low in IDENTITY_KEY_TOKENS or
-                                                  any(t in IDENTITY_KEY_PARTS for t in low.split("_"))):
+            if low not in IDENTITY_KEY_ALLOW and any(t in IDENTITY_KEY_PARTS for t in low.split("_")):
                 hits.append(f"신원 키 {ptr}")
         elif contains_pii(text):
             hits.append(f"이메일·ORCID {ptr}")
-        elif "~" in text and OPENREVIEW_PROFILE_RE.search(text):
+        elif "~" in text and PROFILE_ID_RE.search(text):
             hits.append(f"OpenReview 프로필 id {ptr}")
     return hits
 
@@ -502,7 +506,7 @@ def astra_models(data: dict[str, Any]) -> list[str]:
     def walk(obj: Any, ptr: str) -> None:
         if isinstance(obj, dict):
             for k, v in obj.items():
-                if k in MODEL_KEYS and isinstance(v, str) and "astra" in v.lower():
+                if (k in MODEL_KEYS or k.endswith("_model")) and isinstance(v, str) and "astra" in v.lower():
                     out.append(f"{ptr}/{k}")
                 elif isinstance(v, (dict, list)):
                     walk(v, f"{ptr}/{k}")
@@ -517,10 +521,18 @@ def astra_models(data: dict[str, Any]) -> list[str]:
 def vet_candidate(data: dict[str, Any]) -> tuple[PremortemResult | None, list[str], list[str]]:
     """(결과 또는 None, 거절 사유, 경고). 결과 내용은 바꾸지 않는다(모르는 최상위 키만 빼고 경고로 남긴다)."""
     reasons: list[str] = []
-    if data.get("sample") is True or any(
-        isinstance(s, dict) and str(s.get("impl") or "").startswith("fallback:sample") for s in data.get("stages") or []
-    ):
+    stages = [s for s in data.get("stages") or [] if isinstance(s, dict)]
+    impls = [str(s.get("impl") or "") for s in stages]
+    if data.get("sample") is True or any(i.startswith("fallback:sample") for i in impls):
         reasons.append("샘플 응답(파이프라인 미연결 — 분석 결과 아님)")
+    fixture = sorted({i for i in impls if i in REJECT_IMPLS or i.startswith("fixture:")})
+    if fixture:
+        reasons.append(f"fixture·파이프라인 미연결·오류 결과(단계 impl {', '.join(fixture)})")
+    if data.get("status") == "error":
+        reasons.append("오류 결과(status error)")
+    man = data.get("manifest") if isinstance(data.get("manifest"), dict) else {}
+    if not (isinstance(man.get("llm_provider"), str) and man["llm_provider"].strip()):
+        reasons.append("manifest.llm_provider 없음(생성 방식을 알 수 없다)")
     astra = astra_models(data)
     if astra:
         reasons.append(f"astra 모델 표기 {len(astra)}곳(대표 지시로 쓰지 않는다): {', '.join(astra[:3])}")
@@ -540,6 +552,17 @@ def vet_candidate(data: dict[str, Any]) -> tuple[PremortemResult | None, list[st
     if reasons:
         return None, reasons, warnings
     return result, [], warnings
+
+
+def substitute_reason(result: PremortemResult) -> str | None:
+    """실제 LLM 분석이 아닌 결과(mock provider·mock 카드)면 사유. 받되 대체로 표시한다."""
+    provider = str(llm_actual(result).get("provider") or "")
+    n_mock = cards_by_generator(result).get("mock", 0)
+    if provider == "mock":
+        return "mock provider 결과(가짜 LLM)"
+    if n_mock:
+        return f"mock 카드 {n_mock}장"
+    return None
 
 
 def generation_label(result: PremortemResult) -> str:
@@ -581,6 +604,7 @@ def import_live(
     """라이브 E2E 결과를 사전 계산본으로 옮긴다. 새 분석을 돌리지 않는다. (매니페스트, 실패 목록).
 
     실패가 있고 allow_partial이 아니면 아무것도 쓰지 않고 ({}, 실패)를 돌려준다.
+    allow_partial이어도 가져올 결과가 0건이면 쓰지 않는다(경로 오타로 기존 매니페스트가 비지 않게).
     """
     t_all = time.perf_counter()
     candidates, read_problems = collect_candidates(results)
@@ -615,12 +639,15 @@ def import_live(
             why = f"라이브 결과 없음(plan_id 일치 후보 {len(pool)}건" + (f", 거절 {len(rejected)}건: {rejected[0]}" if rejected else "") + ")"
             failures.append({"demo": spec.demo, "error": why})
             continue
-        good.sort(key=lambda g: g[0].generated_at)
+        # 라이브(mock 아님)를 먼저, 그다음 늦은 generated_at
+        good.sort(key=lambda g: (substitute_reason(g[0]) is None, g[0].generated_at))
         result, cand, warns = good[-1]
         picked.append((spec, plan_text, result, cand, warns, len(good), rejected))
 
     if failures and not allow_partial:
         return {}, failures
+    if not picked:
+        return {}, [*failures, {"demo": "*", "error": "가져올 결과 0건 — 아무것도 쓰지 않았다(기존 사전 계산본 그대로)"}]
 
     commits = {c.commit for _, _, _, c, *_ in picked if c.commit}
     if run_commit:
@@ -646,7 +673,11 @@ def import_live(
         if not llm_actual(result).get("model"):
             warnings.append("결과 manifest에 llm_model 없음(모델 미기록)")
         if n_good > 1:
-            warnings.append(f"같은 계획서 결과 {n_good}건 중 generated_at이 가장 늦은 것")
+            warnings.append(f"같은 계획서 결과 {n_good}건 중 라이브 우선·generated_at이 가장 늦은 것")
+        sub = substitute_reason(result)
+        rehearsal = sub is not None or server_port <= 0
+        if sub:
+            warnings.append(f"대체 결과: {sub} — 라이브 서버 결과로 표시하지 않는다")
         entry = {
             "plan_id": result.plan_id,
             "demo": spec.demo,
@@ -668,12 +699,15 @@ def import_live(
             "models": result_models(result),
             "llm_actual": llm_actual(result),
             "generation": generation_label(result),
+            "substitute": sub is not None,
+            "substitute_reason": sub,
             "degraded_stages": [s.stage for s in result.stages if s.state in ("degraded", "error")],
             "plan_text_included": with_plan,
             "live": {
                 "task": LIVE_TASK,
                 "server_port": server_port,
-                "server_label": server_label(server_port),
+                "server_label": REHEARSAL_LABEL if rehearsal else server_label(server_port),
+                "rehearsal": rehearsal,
                 "results_file": cand.file,
                 "results_pointer": cand.pointer,
                 "results_file_sha256": cand.file_sha256,
@@ -699,7 +733,9 @@ def import_live(
         "live_run": {
             "task": LIVE_TASK,
             "server_port": server_port,
-            "server_label": server_label(server_port),
+            "server_label": (REHEARSAL_LABEL if entries and all(e["live"]["rehearsal"] for e in entries)
+                             else server_label(server_port)),
+            "rehearsal_entries": [e["demo"] for e in entries if e["live"]["rehearsal"]],
             "run_commit": commit,
             "run_commit_source": commit_src,
             "import_commit": _git_head(),
@@ -764,7 +800,8 @@ def main(argv: list[str] | None = None) -> int:
         for f in failures:
             print(f"실패 {f['demo']}: {f['error']}")
         if args.from_results is not None:
-            print("가져오기 중단: 아무것도 쓰지 않았다(--allow-partial로 있는 것만 쓸 수 있다)")
+            print("가져오기 중단: 아무것도 쓰지 않았다(기존 사전 계산본 그대로)"
+                  + ("" if args.allow_partial else " — --allow-partial로 있는 것만 쓸 수 있다"))
         return 1
     problems = replay_check(out_dir, manifest)
     n = len(manifest["entries"])

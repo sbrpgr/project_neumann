@@ -114,6 +114,22 @@ def test_mock_and_rule_results_stay_labelled(tmp_path):
         ("OpenReview 프로필", lambda d: d["notices"].append("by ~Jane_Doe1"), "가리지 않은 개인정보"),
         ("신원 키", lambda d: d["manifest"].update(reviewer_id="r1"), "가리지 않은 개인정보"),
         ("계약 위반", lambda d: d["risk_cards"][0].update(evidence=["ex_missing"]), "결과 계약 위반"),
+        ("fixture 대체", lambda d: d["stages"].append({"name": "precompute_source", "status": "degraded",
+                                                      "impl": "fallback:fixture"}), "fixture·파이프라인 미연결·오류"),
+        ("fixture 단계", lambda d: d["stages"].append({"name": "retrieve", "impl": "fixture"}), "fixture·파이프라인"),
+        ("fixture:mock 단계", lambda d: d["stages"].append({"name": "cards", "impl": "fixture:mock"}), "fixture·파이프라인"),
+        ("파이프라인 미연결", lambda d: d["stages"].append({"name": "run_premortem", "status": "error",
+                                                         "impl": "fallback:pipeline_unavailable"}), "fixture·파이프라인"),
+        ("파이프라인 오류", lambda d: d["stages"].append({"name": "run_premortem", "status": "error",
+                                                       "impl": "fallback:pipeline_error"}), "fixture·파이프라인"),
+        ("status error", lambda d: d.update(status="error"), "오류 결과(status error)"),
+        ("provider 없음", lambda d: d["manifest"].pop("llm_provider"), "manifest.llm_provider 없음"),
+        ("astra model_name", lambda d: d["manifest"].update(model_name="gpt-6-astra"), "astra 모델 표기"),
+        ("astra requested_model", lambda d: d["manifest"].update(requested_model="gpt-6-astra"), "astra 모델 표기"),
+        ("프로필 id 점·아포스트로피", lambda d: d["notices"].append("~Geoffrey_E._Hinton1"), "가리지 않은 개인정보"),
+        ("프로필 id 소문자", lambda d: d["notices"].append("see ~conor_o'brien2"), "가리지 않은 개인정보"),
+        ("신원 키 조각", lambda d: d["manifest"].update(meta_reviewer_ids=["x"]), "가리지 않은 개인정보"),
+        ("저자 키", lambda d: d["manifest"].update(paper_authors=["x"]), "가리지 않은 개인정보"),
     ],
 )
 def test_bad_candidates_are_rejected_and_nothing_is_written(tmp_path, capsys, case, mutate, reason):
@@ -127,7 +143,7 @@ def test_bad_candidates_are_rejected_and_nothing_is_written(tmp_path, capsys, ca
     log = capsys.readouterr().out
     assert "실패 plan:" in log and reason in log, log
     assert "가져오기 중단" in log and not out.exists()  # 전부 아니면 쓰지 않는다
-    for secret in ("jane.doe@example.org", "0000-0002-1825-0097", "~Jane_Doe1"):
+    for secret in ("jane.doe@example.org", "0000-0002-1825-0097", "~Jane_Doe1", "~Geoffrey_E._Hinton1", "brien2"):
         assert secret not in log  # 찾은 값은 출력하지 않는다(위치만)
 
 
@@ -179,7 +195,7 @@ def test_wrapped_summary_latest_candidate_and_commit_from_results(tmp_path):
     e = _entries(manifest)["plan"]
     assert e["generated_at"] == "2026-09-30T12:31:00Z" and e["live"]["candidates"] == 2
     assert e["live"]["results_pointer"] == "/runs/1/result"
-    assert "같은 계획서 결과 2건 중 generated_at이 가장 늦은 것" in e["warnings"]
+    assert "같은 계획서 결과 2건 중 라이브 우선·generated_at이 가장 늦은 것" in e["warnings"]
     assert manifest["live_run"]["run_commit"] == "deadbeef12" and manifest["live_run"]["run_commit_source"] == "결과 파일"
     assert any("notes.json: JSON 아님" in m for m in logs)
 
@@ -230,3 +246,68 @@ def test_rehearsal_port_zero_is_not_called_live_server(tmp_path, capsys):
     assert manifest["live_run"]["server_label"] == "로컬 리허설(라이브 서버 아님)"
     assert {e["live"]["server_label"] for e in manifest["entries"]} == {"로컬 리허설(라이브 서버 아님)"}
     assert "라이브 서버(" not in json.dumps(manifest, ensure_ascii=False)
+
+
+def test_partial_fallbacks_inside_live_run_are_accepted(tmp_path):
+    """라이브 안의 부분 대체(규칙 비상 경로)는 받는다: fallback: 전체를 막지 않는다."""
+    res = _results(tmp_path, rule_cards=1)
+    path = res / "plan.result.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["stages"] += [{"name": "synthesize_cards", "status": "degraded", "impl": "fallback:cards.rule_cards"},
+                       {"name": "fitness", "status": "degraded", "impl": "fallback:rules.fitness"}]
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    manifest, failures = pd.import_live(pd.demo_specs(), res, tmp_path / "pre", log=_quiet)
+    assert failures == []
+    e = _entries(manifest)["plan"]
+    assert e["status"] == "degraded" and e["substitute"] is False and e["live"]["rehearsal"] is False
+    assert "규칙 대체 카드 1장(비상 경로)" in e["generation"] and "status degraded" in e["generation"]
+
+
+def test_zero_results_never_overwrite_existing_manifest(tmp_path, capsys):
+    """--allow-partial이어도 가져올 결과가 0건이면 쓰지 않는다(경로 오타로 기존 매니페스트가 사라지지 않게)."""
+    out = tmp_path / "pre"
+    assert pd.main(["--from-results", str(_results(tmp_path)), "--out", str(out)]) == 0
+    before = (out / "manifest.json").read_bytes()
+    capsys.readouterr()
+    for bad in (tmp_path / "오타_폴더", tmp_path / "empty"):
+        (tmp_path / "empty").mkdir(exist_ok=True)
+        assert pd.main(["--from-results", str(bad), "--out", str(out), "--allow-partial"]) == 1
+        log = capsys.readouterr().out
+        assert "가져올 결과 0건" in log and "기존 사전 계산본 그대로" in log
+        assert (out / "manifest.json").read_bytes() == before
+    manifest, failures = pd.import_live(pd.demo_specs(), tmp_path / "empty", out, allow_partial=True, log=_quiet)
+    assert manifest == {} and failures[-1]["demo"] == "*"
+
+
+def test_mock_results_are_substitute_and_rehearsal_whatever_the_port(tmp_path):
+    res = _results(tmp_path, provider="mock", model="mock-deterministic-v1")
+    manifest, failures = pd.import_live(pd.demo_specs(), res, tmp_path / "pre", server_port=8020, log=_quiet)
+    assert failures == []
+    for e in manifest["entries"]:
+        assert e["substitute"] is True and e["substitute_reason"] == "mock provider 결과(가짜 LLM)"
+        assert e["live"]["rehearsal"] is True and e["live"]["server_label"] == "로컬 리허설(라이브 서버 아님)"
+    assert manifest["live_run"]["server_label"] == "로컬 리허설(라이브 서버 아님)"
+    # provider는 openai여도 카드가 mock이면 대체
+    res2 = _results(tmp_path / "b")
+    path = res2 / "plan.result.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["risk_cards"][0]["generator"] = "mock"
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    m2, _ = pd.import_live(pd.demo_specs(), res2, tmp_path / "pre2", log=_quiet)
+    e = _entries(m2)["plan"]
+    assert e["substitute"] is True and e["substitute_reason"] == "mock 카드 1장" and e["live"]["rehearsal"] is True
+    assert _entries(m2)["protein_ligand_affinity"]["live"]["rehearsal"] is False
+    assert m2["live_run"]["server_label"] == "라이브 서버(8020)" and m2["live_run"]["rehearsal_entries"] == ["plan"]
+
+
+def test_live_result_preferred_over_later_mock(tmp_path):
+    """같은 계획서에 라이브(openai)와 더 늦은 mock 결과가 있으면 라이브를 고른다."""
+    res = _results(tmp_path)
+    late_mock = fake_live_result(PLANS[0], provider="mock", model="mock-deterministic-v1", when="2026-09-30T14:00:00Z",
+                                 session_id="sess_mock")
+    (res / "plan_mock.result.json").write_text(json.dumps(late_mock, ensure_ascii=False), encoding="utf-8")
+    manifest, failures = pd.import_live(pd.demo_specs(), res, tmp_path / "pre", log=_quiet)
+    assert failures == []
+    e = _entries(manifest)["plan"]
+    assert e["llm_actual"]["provider"] == "openai" and e["generated_at"] == LIVE_WHEN and e["live"]["candidates"] == 2
+    assert e["substitute"] is False
