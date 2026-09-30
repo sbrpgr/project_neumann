@@ -1,0 +1,180 @@
+{
+  "_note": "발표자료 숫자·표시의 단일 원본(E6-pres5). data/deck/build/pres5_build.py가 읽는다. 07:00에는 이 파일만 고치고 명령 한 번으로 다시 만든다. 값이 없으면 【측정 중】을 둔다. 출처는 _src. NUMBERS-AUDIT 후보: 원본을 덮어쓰지 않음. 추가 _audit는 빌드가 읽지 않는 감사 메타데이터.",
+  "frozen_at": "NUMBERS-AUDIT 후보 2026-10-01T04:19:38+09:00 (07:00 동결 전, PM 미적용)",
+  "merged": {
+    "_note": "main에 병합되고 화면에서 확인되면 true. true면 해당 【병합 후 확정】 표시를 뗀다.",
+    "rebirth": false,
+    "final_check": false
+  },
+  "live_full_flow": {
+    "_note": "시연 샘플 전체 흐름 라이브(decisions 03:1x, 샘플 2~3편 각 1회). null이면 【측정 중】. 11쪽 뒤 네 칸과 12쪽 E2E 줄에 들어간다.",
+    "revise": null,
+    "revise_sub": "거절 사유 해석 · 수정안",
+    "confirm": null,
+    "confirm_sub": "채택 · 수정 · 기각",
+    "final_check": null,
+    "final_check_sub": "도구 검증 · 그 자리 수정",
+    "draft": null,
+    "draft_sub": "변경 이력 · [확인 필요]",
+    "e2e_line": null
+  },
+  "s11_analysis": {
+    "_src": "task/E5-L1e2e 949d628 E5-L1e2e_live_summary.json(plan.md, 9/30 21:13, gpt-6.1-sol)",
+    "similar": "유사 연구 10편",
+    "sub": "카드 5장 · 85.0초",
+    "source": "시연 예시(선별) · 배터리 전해질 계획서 · 분석까지 9/30 21:13 v1 라이브 · gpt-6.1-sol  ",
+    "source_mark": "【v1 확정 전】"
+  },
+  "s11_shots": {
+    "_note": "11쪽 캡처 세 자리. src가 null이면 점선 자리표시(05:30 뒤 교체). crop은 [x0,y0,x1,y1].",
+    "1": {
+      "src": "C:/Users/User/Desktop/project_neumann/data/deck/build/src_v1_949d628/E5-L1e2e_live_plan_input.png",
+      "crop": [
+        0,
+        0,
+        1440,
+        837
+      ],
+      "title": [
+        "① 메인 화면  ",
+        "계획서 입력"
+      ]
+    },
+    "2": {
+      "src": "C:/Users/User/Desktop/project_neumann/data/deck/build/src_v1_949d628/E5-L1e2e_live_plan_cards.png",
+      "crop": [
+        0,
+        145,
+        804,
+        612
+      ],
+      "title": [
+        "② 핵심 기능 화면  ",
+        "위험카드와 근거"
+      ]
+    },
+    "3": {
+      "src": null,
+      "crop": null,
+      "title": [
+        "③ 재탄생 화면  ",
+        "최종 점검과 초안"
+      ],
+      "placeholder": "캡처 자리 — 수정 권고 → 연구자 확정 → 최종 점검(도구 검증) → 완성도를 높인 초안 (05:30 뒤 교체)",
+      "desc": "거절 사유 해석·수정안 → 채택·수정·기각 → 최종 점검 한 번 → 변경 이력·[확인 필요]"
+    }
+  },
+  "backtest": {
+    "_src": "data/eval/judge_n5v3/answers/J1~J3 + judge_n5v3_key/pairing.json에서 독립 재계산; NUMBERS-AUDIT.recomputed.json v3. v2는 민감도, posthoc는 별도.",
+    "baseline_p3": "26.7%",
+    "baseline_p3_ci": "[6.7, 46.7]",
+    "baseline_a_slots": "A 4/15자리",
+    "baseline_a_risks": "낸 위험 중 A 4/15",
+    "baseline_hit3": "논문 단위 hit@3 0.6",
+    "neumann_p3": "20.0%",
+    "neumann_p3_ci": "[0.0, 60.0]",
+    "neumann_a_slots": "A 3/15자리(빈 11)",
+    "neumann_a_risks": "낸 위험 중 A 3/4",
+    "neumann_hit3": "논문 단위 hit@3 0.2",
+    "posthoc_baseline": "A 1/3",
+    "posthoc_baseline_sub": "같은 1편 · hit@3 1.0",
+    "posthoc_neumann": "B 1/1",
+    "posthoc_neumann_sub1": "1/3편에서 카드 1장",
+    "posthoc_neumann_sub2": "hit@3 0",
+    "limits": "한계 — n=5(대표 결정, 비용 사유 30→15→5편) · 셔플 대조 없음(특이성 측정 안 함) → 통계적 결론 없음 · 사전 등록 앞 5편(거절 3·채택 2, PDE 4편 편중), 초록에서 결과 문장을 지운 계획서 · Neumann은 3편에서 위험 0개(빈 자리 11은 적중 아님) · 입력 3편(153·281·287자)은 지금 제품의 300자 미만 거절 대상(처음 결과는 사전 등록대로) · 판정 v3(주 결과) — Claude Sonnet 3명 블라인드 다수결, 단서 2종 제거, 3명 일치 18/19(94.7%), 남은 단서(설명 길이·어미) · v2(부분 블라인드) 민감도: Neumann A 4/4 · precision@3 0.267 · hit@3 0.4 · 대표 판정(사실상 비블라인드) 일치율 ",
+    "human_agreement": null,
+    "macro": "Macro-F1 — gpt-6-astra로 측정, 목표 0.70 미달 · 정답지 DISAPERE 148건(과반 합의), 1회 채점 · 빈도 기준선 0.3308보다 높음은 Macro에서만 · ICLR ML 심사평 기준, AI for Science 성능은 보장 안 함 · 사람 간 상한 0.725는 기획 문서 인용 · 재현 안 함",
+    "e2e": "E2E(분석→리포트, 전체 흐름 아님) — v0 참고: 데모 3건·라이브 검사 5/5(근거 검사 generator 미기록) · v1 카드 5·7·7장, API 근거 19/19·28/28·27/27 · 시연 1/3 통과, 무관 입력 차단 포함 총 2/4 ",
+    "e2e_mark": "【v1 확정 전】"
+  },
+  "stage_line": {
+    "_src": "역사값은 main 1436218: 236 commits, v0 1 tag, 936 passed/25 skipped(E6-pres2.verify.md). 07:00 main 스냅숏과 승인된 mock 검증 결과로 별도 확정.",
+    "reached": "v0 19:19 · v1·v2·v3 ",
+    "reached_mark": "【측정 중】",
+    "repo_tail": " · 커밋·태그·mock 테스트 수는 07:00 동결 시 확정【측정 중】"
+  },
+  "s14": {
+    "ops_note": "인건비: 월 약 800만 원을 가정한 절감액(연봉 8천만~1억 원대와 보험료 추정, 원천 보도·요율 미확인) · 운영비: 색인 1,128편에서 GPU 없는 서버 1대 기준 추정. 수정 권고·최종 점검 포함 전체 흐름 비용은 미측정",
+    "ops_value": "서버 1대(가정) · 분석 LLM 비용【측정 중】"
+  },
+  "_audit": {
+    "base_commit": "87d3597",
+    "branch": "codex/numbers-audit",
+    "audit_at": "2026-10-01T04:19:38+09:00",
+    "report": "docs/reports/NUMBERS-AUDIT.md",
+    "evidence": "docs/reports/NUMBERS-AUDIT.recomputed.json",
+    "default_judgment": "v3",
+    "confirmed": {
+      "baseline_precision_at_3": "4/15 = 26.7%",
+      "neumann_precision_at_3": "3/15 = 20.0%",
+      "baseline_a_rate": "4/15 = 26.7%",
+      "neumann_a_rate": "3/4 = 75.0%",
+      "baseline_hit_at_3": "3/5 = 0.6",
+      "neumann_hit_at_3": "1/5 = 0.2"
+    },
+    "observed_git_only": {
+      "base": "87d3597",
+      "base_count": 528,
+      "historic_count": 236,
+      "main_sha": "ac9723ae60438b9f5df5350c956a320be66a2079",
+      "main_count": 693,
+      "tags": [
+        "v0"
+      ]
+    },
+    "keep_unmeasured": [
+      "merged.rebirth",
+      "merged.final_check",
+      "live_full_flow.revise",
+      "live_full_flow.confirm",
+      "live_full_flow.final_check",
+      "live_full_flow.draft",
+      "live_full_flow.e2e_line",
+      "backtest.human_agreement"
+    ],
+    "manual_edits_not_controlled_by_frozen_json": [
+      {
+        "slide": 12,
+        "location": "왼쪽 표 근거 연결률",
+        "current": "100%, astra 10/10·13/13·20/20, sol 19/19·28/28·27/27",
+        "candidate": "v0 참고(generator 미기록 API 실행), v1 API 연결률. 화면 실행과 다른 호출이며 P2 달성 여부는 PM 확정"
+      },
+      {
+        "slide": 12,
+        "location": "왼쪽 표 시연 현장 측정",
+        "current": "3건 / astra 5/5 / sol 2/4",
+        "candidate": "v0 참고: 리포트까지 3/3, 검사는 5/5; v1 시연 1/3, 무관 입력 포함 2/4; 최종 초안·ZIP 완주는 미측정"
+      },
+      {
+        "slide": 13,
+        "location": "현장 구현 확인",
+        "current": "10/10·13/13·20/20, 차단 1/1",
+        "candidate": "v0 참고 API 대조 10/10·13/13·20/20, 무관 입력 차단 1/1(1회). 마스킹·문장 삭제 수는 별도 단위로 측정"
+      },
+      {
+        "slide": 5,
+        "location": "공개자료 규모",
+        "current": "기록 823,170건 · eLife 24,278편 · Europe PMC 약 81,693편 · 공개 심사 기록 10만 편 이상",
+        "candidate": "사전 조사 인용임을 본문에 표시. 로컬 원천이 없는 eLife·Europe PMC 값과 중복 제거 없는 합산 총량은 실측으로 주장하지 않음"
+      },
+      {
+        "slide": 14,
+        "location": "절감액·운영비 고정 칸",
+        "current": "약 800만 원, 연 20건, 약 1.6억 원, 월 수십만 원",
+        "candidate": "월 인건비 800만 원×재작업 1개월×20건=1.6억 원(가정). 서버 월 비용은 사양·요금표를 붙이거나 측정 중으로"
+      },
+      {
+        "slide": 17,
+        "location": "ppt/media/image7.png 일정 이미지",
+        "current": "v0 T+4, v1 T+9, v2 T+14, 10~15편, 2,000편+, 동시 5명 이하, 컷 T+5/T+10/T+15/T+17",
+        "candidate": "현 결정에 맞는 일정·n=5·전체 흐름 목표로 PM 재제작 또는 역사적 계획 표시. 현재 구현 성과로 사용 금지"
+      },
+      {
+        "slide": "11·12 노트 / 9·10·12·13 고정 칸",
+        "location": "pres5_content.py + 백업 content.json + 원본 PPTX에서 유지되는 수치",
+        "candidate": "07:00 숫자 파일 교체만으로 갱신되지 않음. 새 라이브를 적용할 때 85초·5장·E2E·노트 수치도 같은 실행으로 맞춤"
+      }
+    ],
+    "not_a_0700_measurement": true
+  }
+}

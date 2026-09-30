@@ -1,0 +1,597 @@
+{
+  "v3": {
+    "agreement": {
+      "unanimous": 18,
+      "risks": 19,
+      "rate": 0.9473684210526315
+    },
+    "systems": {
+      "baseline_llm": {
+        "n": 5,
+        "n_risks": 15,
+        "counts": {
+          "B": 11,
+          "A": 4
+        },
+        "empty_slots": 0,
+        "empty_works": 0,
+        "precision_at_3": 0.26666666666666666,
+        "precision_ci95": [
+          0.0667,
+          0.4667
+        ],
+        "hit_at_3": 0.6,
+        "hit_ci95": [
+          0.2,
+          1.0
+        ],
+        "a_rate": 0.26666666666666666,
+        "evidence_count": 0,
+        "per_work": {
+          "researcharcade_hf:SFCHv2G33F": [
+            "B",
+            "B",
+            "A"
+          ],
+          "researcharcade_hf:U3PBITXNG6": [
+            "B",
+            "A",
+            "B"
+          ],
+          "researcharcade_hf:VqEE9i6jhE": [
+            "A",
+            "B",
+            "A"
+          ],
+          "researcharcade_hf:ihHeqPLRDk": [
+            "B",
+            "B",
+            "B"
+          ],
+          "researcharcade_hf:o1IiiNIoaA": [
+            "B",
+            "B",
+            "B"
+          ]
+        }
+      },
+      "neumann": {
+        "n": 5,
+        "n_risks": 4,
+        "counts": {
+          "B": 1,
+          "A": 3
+        },
+        "empty_slots": 11,
+        "empty_works": 3,
+        "precision_at_3": 0.2,
+        "precision_ci95": [
+          0.0,
+          0.6
+        ],
+        "hit_at_3": 0.2,
+        "hit_ci95": [
+          0.0,
+          0.6
+        ],
+        "a_rate": 0.75,
+        "evidence_count": 4,
+        "per_work": {
+          "researcharcade_hf:SFCHv2G33F": [
+            null,
+            null,
+            null
+          ],
+          "researcharcade_hf:U3PBITXNG6": [
+            "B",
+            null,
+            null
+          ],
+          "researcharcade_hf:VqEE9i6jhE": [
+            "A",
+            "A",
+            "A"
+          ],
+          "researcharcade_hf:ihHeqPLRDk": [
+            null,
+            null,
+            null
+          ],
+          "researcharcade_hf:o1IiiNIoaA": [
+            null,
+            null,
+            null
+          ]
+        }
+      }
+    }
+  },
+  "v2": {
+    "agreement": {
+      "unanimous": 18,
+      "risks": 19,
+      "rate": 0.9473684210526315
+    },
+    "systems": {
+      "baseline_llm": {
+        "n": 5,
+        "n_risks": 15,
+        "counts": {
+          "B": 10,
+          "A": 5
+        },
+        "empty_slots": 0,
+        "empty_works": 0,
+        "precision_at_3": 0.3333333333333333,
+        "precision_ci95": [
+          0.1333,
+          0.5333
+        ],
+        "hit_at_3": 0.8,
+        "hit_ci95": [
+          0.4,
+          1.0
+        ],
+        "a_rate": 0.3333333333333333,
+        "evidence_count": 0,
+        "per_work": {
+          "researcharcade_hf:SFCHv2G33F": [
+            "B",
+            "B",
+            "A"
+          ],
+          "researcharcade_hf:U3PBITXNG6": [
+            "B",
+            "A",
+            "B"
+          ],
+          "researcharcade_hf:VqEE9i6jhE": [
+            "A",
+            "B",
+            "A"
+          ],
+          "researcharcade_hf:ihHeqPLRDk": [
+            "B",
+            "B",
+            "B"
+          ],
+          "researcharcade_hf:o1IiiNIoaA": [
+            "A",
+            "B",
+            "B"
+          ]
+        }
+      },
+      "neumann": {
+        "n": 5,
+        "n_risks": 4,
+        "counts": {
+          "A": 4
+        },
+        "empty_slots": 11,
+        "empty_works": 3,
+        "precision_at_3": 0.26666666666666666,
+        "precision_ci95": [
+          0.0,
+          0.6667
+        ],
+        "hit_at_3": 0.4,
+        "hit_ci95": [
+          0.0,
+          0.8
+        ],
+        "a_rate": 1.0,
+        "evidence_count": 4,
+        "per_work": {
+          "researcharcade_hf:SFCHv2G33F": [
+            null,
+            null,
+            null
+          ],
+          "researcharcade_hf:U3PBITXNG6": [
+            "A",
+            null,
+            null
+          ],
+          "researcharcade_hf:VqEE9i6jhE": [
+            "A",
+            "A",
+            "A"
+          ],
+          "researcharcade_hf:ihHeqPLRDk": [
+            null,
+            null,
+            null
+          ],
+          "researcharcade_hf:o1IiiNIoaA": [
+            null,
+            null,
+            null
+          ]
+        }
+      }
+    }
+  },
+  "posthoc": {
+    "agreement": {
+      "unanimous": 4,
+      "risks": 4,
+      "rate": 1.0
+    },
+    "systems": {
+      "baseline_llm": {
+        "n": 1,
+        "n_risks": 3,
+        "counts": {
+          "B": 2,
+          "A": 1
+        },
+        "empty_slots": 0,
+        "empty_works": 0,
+        "precision_at_3": 0.3333333333333333,
+        "precision_ci95": [
+          0.3333,
+          0.3333
+        ],
+        "hit_at_3": 1.0,
+        "hit_ci95": [
+          1.0,
+          1.0
+        ],
+        "a_rate": 0.3333333333333333,
+        "evidence_count": 0,
+        "per_work": {
+          "researcharcade_hf:SFCHv2G33F": [
+            "B",
+            "B",
+            "A"
+          ]
+        }
+      },
+      "neumann": {
+        "n": 1,
+        "n_risks": 1,
+        "counts": {
+          "B": 1
+        },
+        "empty_slots": 2,
+        "empty_works": 0,
+        "precision_at_3": 0.0,
+        "precision_ci95": [
+          0.0,
+          0.0
+        ],
+        "hit_at_3": 0.0,
+        "hit_ci95": [
+          0.0,
+          0.0
+        ],
+        "a_rate": 0.0,
+        "evidence_count": 1,
+        "per_work": {
+          "researcharcade_hf:SFCHv2G33F": [
+            "B",
+            null,
+            null
+          ]
+        }
+      }
+    }
+  },
+  "posthoc_runs": {
+    "researcharcade_hf:SFCHv2G33F": 1,
+    "researcharcade_hf:o1IiiNIoaA": 0,
+    "researcharcade_hf:ihHeqPLRDk": 0
+  },
+  "sample": {
+    "n": 5,
+    "outcomes": {
+      "reject": 3,
+      "accept": 2
+    },
+    "fields": {
+      "physics_pde_climate": 4,
+      "materials_chemistry_molecules": 1,
+      "protein_biology_drug": 1
+    },
+    "chars": {
+      "researcharcade_hf:VqEE9i6jhE": 869,
+      "researcharcade_hf:U3PBITXNG6": 281,
+      "researcharcade_hf:SFCHv2G33F": 510,
+      "researcharcade_hf:o1IiiNIoaA": 287,
+      "researcharcade_hf:ihHeqPLRDk": 153
+    },
+    "chars_under300": [
+      153,
+      281,
+      287
+    ]
+  },
+  "f1": {
+    "astra": {
+      "n": 148,
+      "macro_f1": 0.4864,
+      "micro_f1": 0.5644,
+      "macro_ci95": [
+        0.4276,
+        0.5394
+      ],
+      "micro_ci95": [
+        0.5125,
+        0.612
+      ],
+      "TP_FP_FN": [
+        160,
+        204,
+        43
+      ]
+    },
+    "baseline_freq": {
+      "n": 148,
+      "macro_f1": 0.3308,
+      "micro_f1": 0.5379,
+      "macro_ci95": [
+        0.298,
+        0.3623
+      ],
+      "micro_ci95": [
+        0.4871,
+        0.5861
+      ],
+      "TP_FP_FN": [
+        174,
+        270,
+        29
+      ]
+    },
+    "rule": {
+      "n": 148,
+      "macro_f1": 0.3234,
+      "micro_f1": 0.3344,
+      "macro_ci95": [
+        0.2434,
+        0.3871
+      ],
+      "micro_ci95": [
+        0.263,
+        0.4025
+      ],
+      "TP_FP_FN": [
+        52,
+        56,
+        151
+      ]
+    }
+  },
+  "e2e": {
+    "v0": {
+      "plans": [
+        {
+          "plan": "plan.md",
+          "cards": 5,
+          "ui_total_s": 69.645,
+          "passed": true,
+          "links": "10/10",
+          "drop": null,
+          "review_sentences": null,
+          "review_cites": null
+        },
+        {
+          "plan": "plan_elife_neuro.md",
+          "cards": 3,
+          "ui_total_s": 62.046,
+          "passed": true,
+          "links": "13/13",
+          "drop": null,
+          "review_sentences": null,
+          "review_cites": null
+        },
+        {
+          "plan": "plan_medimaging.md",
+          "cards": 5,
+          "ui_total_s": 65.096,
+          "passed": true,
+          "links": "20/20",
+          "drop": null,
+          "review_sentences": null,
+          "review_cites": null
+        },
+        {
+          "plan": "negative_recipe.md",
+          "cards": 0,
+          "ui_total_s": 4.433,
+          "passed": true,
+          "links": null,
+          "drop": null,
+          "review_sentences": null,
+          "review_cites": null
+        }
+      ],
+      "pass_count": 4,
+      "cases": 4
+    },
+    "v1": {
+      "plans": [
+        {
+          "plan": "plan.md",
+          "cards": 5,
+          "ui_total_s": 85.017,
+          "passed": true,
+          "links": "19/19",
+          "drop": {
+            "rate": 0.006289308176100629,
+            "dropped": 4,
+            "total": 636,
+            "source": "verification",
+            "available": true
+          },
+          "review_sentences": 8,
+          "review_cites": 23
+        },
+        {
+          "plan": "protein_ligand_affinity.md",
+          "cards": 7,
+          "ui_total_s": 140.757,
+          "passed": false,
+          "links": "28/28",
+          "drop": {
+            "rate": 0.014446227929373997,
+            "dropped": 9,
+            "total": 623,
+            "source": "verification",
+            "available": true
+          },
+          "review_sentences": 8,
+          "review_cites": 21
+        },
+        {
+          "plan": "neural_operator_weather.md",
+          "cards": 7,
+          "ui_total_s": 154.686,
+          "passed": false,
+          "links": "27/27",
+          "drop": {
+            "rate": 0.01195219123505976,
+            "dropped": 9,
+            "total": 753,
+            "source": "verification",
+            "available": true
+          },
+          "review_sentences": 8,
+          "review_cites": 19
+        },
+        {
+          "plan": "negative_recipe.md",
+          "cards": 0,
+          "ui_total_s": 4.329,
+          "passed": true,
+          "links": null,
+          "drop": null,
+          "review_sentences": null,
+          "review_cites": null
+        }
+      ],
+      "pass_count": 2,
+      "cases": 4
+    }
+  },
+  "corpus": {
+    "works": 1128,
+    "reviews": 5366,
+    "kinds": {
+      "official_review": 4298,
+      "meta_review": 1068
+    },
+    "excerpts": 133769,
+    "dense_dim": 1024,
+    "build_seconds": 76.578
+  },
+  "public": {
+    "papers_all": 49418,
+    "review_shards_present": 2,
+    "reviews_rows_present": 274390,
+    "iclr_reviewed": 13433,
+    "official_reviews": 53529,
+    "author_responses": 149854,
+    "decisions": {
+      "Rejected_Submission": 7806,
+      "ICLR 2025 Poster": 3111,
+      "ICLR 2025 Spotlight": 380,
+      "ICLR 2024 spotlight": 320,
+      "ICLR 2024 poster": 1509,
+      "Desk_Rejected_Submission": 22,
+      "ICLR 2025 Oral": 213,
+      "ICLR 2024 oral": 72
+    },
+    "accepted": 5605,
+    "disapere_reviews": 506,
+    "disapere_review_sentences": 9946,
+    "retraction_records": 72684
+  },
+  "git": {
+    "base": "87d3597",
+    "base_count": 528,
+    "historic_count": 236,
+    "main_sha": "ac9723ae60438b9f5df5350c956a320be66a2079",
+    "main_count": 693,
+    "tags": [
+      "v0"
+    ]
+  },
+  "source_sha256": {
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5v3_key\\pairing.json": "3042548fd6b3d89b5546568bec6a88c0bc8443561dc78173704a62a5e320b115",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5v3\\answers\\J1\\env_3b1ca162c804.json": "455af84c72e537b33b0d754405d6e4881dd350796572a6c3748467e90c16a02a",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5v3\\answers\\J2\\env_3b1ca162c804.json": "657439e458fd8f28508971f5a7d239501a11a052374fbeab8f9ec33c76b6a09c",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5v3\\answers\\J3\\env_3b1ca162c804.json": "2d757f875380ad690b0d4e5f5cc3832e965b400a86bbade3472c4db112e61839",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5v3\\answers\\J1\\env_e389885574b2.json": "74de87861813b91c3afdbcdb849b45549433351340e92ec8affd65751152d8c8",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5v3\\answers\\J2\\env_e389885574b2.json": "1c79181eac80ccf84b51c7d68bb7b383157c345c4c39b32c5dde270a16fd5437",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5v3\\answers\\J3\\env_e389885574b2.json": "5f50f47f6d09bb22b52f0c0586813cf7d082b42e9df15d5e6d9f250a03e777a9",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5v3\\answers\\J1\\env_f1938f8c91b7.json": "3f39e6ffbb378c7da9b0100541b3f8fe89526f4281e940286d5dddbade936de2",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5v3\\answers\\J2\\env_f1938f8c91b7.json": "bf66a98d7a0b08ecc0b4eed89770a12648dc3fbf1d0cb582d8ca1f4bce0f18d3",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5v3\\answers\\J3\\env_f1938f8c91b7.json": "c73cfb07d4cb2d30d33e3eb374405ab15466e35f88d881084dcdeecaca350adb",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5v3\\answers\\J1\\env_039215fc4773.json": "40b13d769f2d7e7e69ed63ca4bfd7abbcb63f114918f2e51b358bd199a659890",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5v3\\answers\\J2\\env_039215fc4773.json": "6354d13c7c83393a18741b147c3354d15a312113f8f7374fda6ec90395308b98",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5v3\\answers\\J3\\env_039215fc4773.json": "7db4d66932558cdec618e6bba2e4a3c8a9f1b09defd6c7456c608a7d0337bada",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5v3\\answers\\J1\\env_bf325c578a29.json": "79f87f71b26ed4f60dd583b93413b18b204a41f11ed71b1f1ae727887a302b33",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5v3\\answers\\J2\\env_bf325c578a29.json": "33598f0c390141a4ee22e3d05881aee2d194ed7365af14013bd5327d0bceeb70",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5v3\\answers\\J3\\env_bf325c578a29.json": "ddd5b308a349bcee923527aa00aeacf032b90f11e77901f0a574ada0d07c33eb",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5_key\\pairing.json": "5a25e1edbe44587ffc3967209a5fbd082664e5f8a3c610110cc2fd25aae199aa",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5\\answers\\J1\\env_3b1ca162c804.json": "75292e90d990857a56fdb1a740133aa9940b918125be85799900b56eb55b3e45",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5\\answers\\J2\\env_3b1ca162c804.json": "7ba4e8d19980ad623b57a80bd307fb45aa6ddccc0c4cdfb9e837e96fbc0bee00",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5\\answers\\J3\\env_3b1ca162c804.json": "4509dffd10c632f6fbcb95f218c855cfca17a4827f2023dd0132c1e456d25a5c",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5\\answers\\J1\\env_e389885574b2.json": "136e91baa5707e4384def6938fe3471a005ff45bcf5656510758d1b18c539600",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5\\answers\\J2\\env_e389885574b2.json": "bea89458d207cdcfd920980ac17d3a0aa82fdb0bf53893eeff0d350ee1b83182",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5\\answers\\J3\\env_e389885574b2.json": "be8b6084577b4f206711084cfd664eea392dcde4ece3a5f0eeb0b02aa28076e0",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5\\answers\\J1\\env_f1938f8c91b7.json": "55cdb925d8beb441285ca8ca07f15041324e9b853a04a9802b8e69236813a4f3",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5\\answers\\J2\\env_f1938f8c91b7.json": "ea72df30a510c43cb0731e2853c7ef6224e8784a2abd4f8452abbe14e5bfcf96",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5\\answers\\J3\\env_f1938f8c91b7.json": "ce51cdf243326ec82c353bc63518757bd75c54cef054eec0376a801243f787a7",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5\\answers\\J1\\env_039215fc4773.json": "959949b731b8511b66495c9c28bbe7e7240a8fd2724897e60e323f26b3119e1b",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5\\answers\\J2\\env_039215fc4773.json": "1f6bd3cfb0a4d4d1c671a80edc5e8fd076ac71afe224c49c6acb77eb7a0bf01c",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5\\answers\\J3\\env_039215fc4773.json": "36bd88f64d79a9c410ffeeedfd07d83e7e554819ed205def56814a34a5cfc816",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5\\answers\\J1\\env_bf325c578a29.json": "a79fe41e8b09ad44d0912ebf6e275caa3cb3bd72eeaade4a2a7fd78b91c1c026",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5\\answers\\J2\\env_bf325c578a29.json": "6c01a11aed9d2da63a20a3b09a1f78dd90d50f405a348d80be4ebd15ae44b0ed",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5\\answers\\J3\\env_bf325c578a29.json": "c9885dccc1bbef87ad295ac17f4954e6fa0ab57f855fe444e237ba0f97296859",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5_posthoc_key\\pairing.json": "10f3db6a4e39b3d084eadacdf1fec3d8ed8a07e0db98e81a42ed9caa9c6b543c",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5_posthoc\\answers\\J1\\env_f1938f8c91b7.json": "a1d9ecb46fd4fb8be81814222b1526a43ed112128aba0a05f44fa8d7de8656b6",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5_posthoc\\answers\\J2\\env_f1938f8c91b7.json": "d2b1f4015ef430825c757902252f165b4dc19b5f317762d9ee0ce7f8304576ac",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\judge_n5_posthoc\\answers\\J3\\env_f1938f8c91b7.json": "27c50d9dc2e9d43a830a3cd5e46dbd2cd9bbc7a631df2f4be354018c14f42111",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\riskset_neumann.sol.first5.jsonl": "f202155ae0c59c8f0e4d356733bd3226450d461cc105758625913b13f85f0cae",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\riskset_baseline_llm.sol.first5.jsonl": "62590865de45fc2bc4bdf48b64845c995cb8b26d35e899a1f5875a6179c3ee09",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\riskset_neumann.sol.posthoc_fix3.jsonl": "ac780c084ba1e44e3d9997dcdd99afc2211b8415ad6afc5fd50d5866a66b6e7e",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\backtest_sample.json": "574c5387fe6764fdbd4db19f16241a3633bf841639bc9d5744692dd5cbf3ac6c",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\backtest_plans.jsonl": "88f52c52ff75cf3c4f419bb66a4054203816f62b33653408107001dee6952e06",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\disapere_gold.jsonl": "ad25cb4ad5759350a3c5383f6fcdcc7c7daaf15ed88256815c4a109e55f6b74c",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\pred_astra_gold.jsonl": "711425e4e6ff5e18e3295ba36f8ce9d6925cfb82ace0086f5e943226754385eb",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\pred_baseline_freq.jsonl": "b85069dd49edc87970f4f3b22c16d6b15171da01b407a663bf02a0eb5fbedb1e",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\eval\\pred_rule_gold.jsonl": "13bb237817a97fd53fa3dc878107a102d8cc809cc949c354c6cb8f381b81de48",
+    "git:949d628:docs/reports/E5-L1e2e_live_summary.json": "d5b08fc149110e6bddf9e20c67d3f85daa3227237847e0488a688de680815037",
+    "docs\\reports\\E5-L0e2e_live_summary.json": "6b418df593db10b4af212e8bd7f11ed9938c5107f85ff39345bdae1e099e3cd3",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\processed\\reviews.jsonl": "b0ba375f72b2d81d156e0cf75821d831c6cd26bec46e354f07ef30837f55f348",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\processed\\works.jsonl": "317e966f38405215663b1161349df53320bcf84cd05fea2d5016ff8e6b89570a",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\index\\manifest.json": "a0d1cf8715570f448c2cba17a7b336b7a931924f51ce20e4f76c8484e7f38c62",
+    "docs\\reports\\numbers_frozen.json": "1b803775a2e2633bc03e3d2dd433fdea0ebb8a1ba2629d540ec7b67bf6f97424",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\deck\\build\\pres5_content.py": "b085ad7e3d8f900d8d93617118826b3036b28779e55658768472235a7976a9aa",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\deck\\build\\pres5_build.py": "4ff165b982d74cfc37b133662d7558a5cdf63d7734f973ae61c8f775af3ef743",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\deck\\build\\content.json": "083df01a59183ae91813ede0d05f07c3402bbf7fbb38eb3bab7d47a2c45ff2c3",
+    "C:\\Users\\User\\Desktop\\project_neumann\\data\\deck\\본선_발표자료_작업본.pptx": "f7480114e74af39de4e7558d6fc6902a91f0770983ec17dfd48a71327b9d4f91"
+  },
+  "example": {
+    "review_id": "ZQI2Fe4Q5j",
+    "work_id": "j7OAzA9DQd",
+    "fields": {
+      "Rating": 3,
+      "Soundness": 2,
+      "Confidence": 4
+    },
+    "counts": {
+      "official": 4,
+      "meta": 1,
+      "decision": 1
+    }
+  },
+  "audit_at": "2026-10-01T04:19:38+09:00",
+  "tests": {
+    "command": "python -m pytest -q tests/e5/test_macro_f1.py tests/e5/test_backtest_metrics.py",
+    "result": "24 passed in 0.22s"
+  }
+}
