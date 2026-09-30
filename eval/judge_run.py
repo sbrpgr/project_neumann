@@ -56,6 +56,8 @@ from eval.judge_envelope import (
 )
 
 JUDGES = ("J1", "J2", "J3")
+# 판정에 넣는 위험 묶음(전체 실행 결과). --limit 시험 파일(.firstN)·mock 파일은 기본으로 넣지 않는다.
+DEFAULT_RISKSET_FILES = ("riskset_neumann.jsonl", "riskset_baseline_llm.jsonl")
 CODEX_MODEL = "gpt-6-sol"
 CODEX_EFFORT = "high"
 PLACEHOLDER = re.compile(r"^<.*>$")
@@ -87,7 +89,10 @@ def build(base: Path | None = None, riskset_files: list[Path] | None = None) -> 
     plans = {r["work_id"]: r for r in read_jsonl(P["eval"] / "backtest_plans.jsonl")}
     view = load_corpus_view(data_dir())
     reviews = {it["work_id"]: [r.text for r in view.reviews_for(it["work_id"])] for it in sample["items"]}
-    files = riskset_files or sorted(P["eval"].glob("riskset_*.jsonl"))
+    files = riskset_files or [P["eval"] / f for f in DEFAULT_RISKSET_FILES]
+    missing = [str(f) for f in files if not Path(f).is_file()]
+    if missing:
+        raise FileNotFoundError(f"위험 묶음 파일이 없다: {missing}")
     rows = [r for f in files for r in read_jsonl(f)]
     envs, key = build_envelopes(sample, plans, reviews, rows)
     key["riskset_files"] = [str(f) for f in files]
@@ -428,7 +433,8 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="판정 실행기(모델 중립: Claude 서브에이전트 / Codex 비상)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     b = sub.add_parser("build", help="위험 묶음 → 봉투·짝 표·사람 판정 꾸러미")
-    b.add_argument("--risksets", nargs="*", type=Path, default=None, help="기본 data/eval/riskset_*.jsonl 전부")
+    b.add_argument("--risksets", nargs="*", type=Path, default=None,
+                   help="기본 data/eval/riskset_neumann.jsonl + riskset_baseline_llm.jsonl")
     br = sub.add_parser("briefs", help="Claude 경로: 판정자 지시문")
     br.add_argument("--batch-size", type=int, default=10)
     cx = sub.add_parser("codex", help="Codex 비상 경로(gpt-6-sol). 기본 dry-run")

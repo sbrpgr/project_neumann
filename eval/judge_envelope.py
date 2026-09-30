@@ -128,7 +128,12 @@ def build_envelopes(
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """(봉투 목록, 비밀 짝 표). 위험 묶음은 work_id(판정 논문) 기준으로 모은다."""
     by_work: dict[str, list[dict[str, Any]]] = {}
+    seen: set[tuple[str, str, str]] = set()
     for rs in risksets:
+        k = (rs["system"], rs["condition"], rs["work_id"])
+        if k in seen:
+            raise ValueError(f"위험 묶음 중복 {k}(같은 파일을 두 번 넣었거나 시험 파일이 섞였다)")
+        seen.add(k)
         by_work.setdefault(rs["work_id"], []).append(rs)
     targets = work_ids or [it["work_id"] for it in sample["items"]]
     envelopes: list[dict[str, Any]] = []
