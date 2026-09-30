@@ -88,6 +88,24 @@ for _mod_name in OPTIONAL_ROUTERS:
     except Exception as _exc:  # 라우터 하나가 깨져도 서버는 뜨게 하고, 상태로 드러낸다
         ROUTER_STATE[_mod_name] = f"error: {type(_exc).__name__}"
 
+def _server_commit() -> str:
+    """서버가 뜬 코드 커밋(짧은 해시). 환경변수 NEUMANN_BUILD_COMMIT가 있으면 그 값, 없으면 git, 실패하면 unknown."""
+    import os
+    import subprocess
+
+    env = os.environ.get("NEUMANN_BUILD_COMMIT", "").strip()
+    if env:
+        return env[:40]
+    try:
+        out = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=REPO_ROOT, capture_output=True, text=True, timeout=5)
+        return out.stdout.strip() or "unknown"
+    except Exception:  # noqa: BLE001
+        return "unknown"
+
+
+SERVER_COMMIT = _server_commit()
+SERVER_STARTED_AT = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
 _sem: asyncio.Semaphore | None = None
 
 
@@ -227,6 +245,8 @@ def health() -> dict[str, Any]:
     return {
         "status": "ok",
         "version": neumann.__version__,
+        "commit": SERVER_COMMIT,
+        "started_at": SERVER_STARTED_AT,
         "pipeline": {"state": state, "reason": reason, "mode": "pipeline" if state == "connected" else (
             "sample" if state == "unavailable" else "error"), "label": SAMPLE_LABEL if state == "unavailable" else ""},
         "stages": stages,
