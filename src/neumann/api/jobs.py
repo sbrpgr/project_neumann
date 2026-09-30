@@ -69,6 +69,7 @@ STAGE_LABELS: dict[str, str] = {
     "plan_normalize": "계획서 정리", "query_axes": "검색 질의 만들기", "search": "유사 연구 검색",
     "extract_issues": "지적 추출", "synthesize_cards": "위험카드 합성", "verify_evidence": "원문 대조",
     "assemble": "결과 정리",
+    "fitness": "적합성 판정", "expected_review": "예상 심사평", "checklist": "체크리스트", "semantic_validate": "2차 검증",
 }
 
 MESSAGES = {
@@ -119,36 +120,68 @@ class JobsConfig:
 
 # ───────────────────────── 진행 단계 보고 ─────────────────────────
 
-_PROGRESS: OrderedDict[str, tuple[str, float]] = OrderedDict()  # plan_id → (단계, 시각)
+@dataclass
+class _Progress:
+    running: list[str] = field(default_factory=list)                   # 시작했고 아직 안 끝난 단계(시작 순)
+    done: list[tuple[str, str, float | None]] = field(default_factory=list)  # 끝난 단계 (이름, 상태, 초)
+    t: float = field(default_factory=time.monotonic)                   # 마지막 보고 시각
+
+
+_PROGRESS: OrderedDict[str, _Progress] = OrderedDict()  # plan_id → 진행 기록
 _PROGRESS_LOCK = threading.Lock()
 
 
-def _set_progress(plan_id: str, stage: str, *_: Any, **__: Any) -> None:
+def _set_progress(plan_id: str, stage: str, state: str = "running", seconds: Any = None, *_: Any, **__: Any) -> None:
+    """단계 보고 한 건. ``state == "running"``이면 현재 단계로(시작), 그 밖이면 끝난 단계 목록에만 넣는다.
+
+    병렬 구간(예상 심사평 ∥ 체크리스트→2차 검증)에서 끝난 단계가 "현재 단계"로 남지 않게, 현재 단계는
+    아직 안 끝난 단계 중 가장 나중에 시작한 것이다.
+    """
     if not plan_id or not isinstance(stage, str):
         return
+    name = stage[:40]
     with _PROGRESS_LOCK:
-        _PROGRESS[plan_id] = (stage[:40], time.monotonic())
+        rec = _PROGRESS.get(plan_id) or _Progress()
+        if state == "running":
+            if name in rec.running:
+                rec.running.remove(name)
+            rec.running.append(name)
+        else:
+            if name in rec.running:
+                rec.running.remove(name)
+            secs = round(float(seconds), 3) if isinstance(seconds, (int, float)) else None
+            rec.done.append((name, str(state)[:20], secs))
+            del rec.done[:-50]
+        rec.t = time.monotonic()
+        _PROGRESS[plan_id] = rec
         _PROGRESS.move_to_end(plan_id)
         while len(_PROGRESS) > 256:
             _PROGRESS.popitem(last=False)
 
 
-def report_stage(stage: str, phase: str | None = None) -> None:
+def _reset_progress(plan_id: str) -> None:
+    with _PROGRESS_LOCK:
+        _PROGRESS.pop(plan_id, None)
+
+
+def report_stage(stage: str, state: str = "running", seconds: float | None = None) -> None:
     """파이프라인 안에서 부르면 지금 분석 중인 계획서의 진행 단계를 갱신한다(요청 문맥이 없으면 아무 일도 안 함).
 
-    ``asyncio.to_thread``가 문맥을 복사하므로 스레드에서 도는 동기 파이프라인에서도 부를 수 있다.
+    ``on_stage`` 콜백과 같은 뜻(시작은 state="running", 끝은 상태와 초). ``asyncio.to_thread``가 문맥을 복사하므로
+    스레드에서 도는 동기 파이프라인에서도 부를 수 있다.
     """
     ctx = serving.current_request()
     if ctx is not None and ctx.plan_id:
-        _set_progress(ctx.plan_id, stage)
+        _set_progress(ctx.plan_id, stage, state, seconds)
 
 
-def _progress(plan_id: str, since: float | None) -> str | None:
+def _progress(plan_id: str, since: float | None) -> tuple[str | None, list[tuple[str, str, float | None]]]:
+    """(현재 단계, 끝난 단계들). 이번 실행(``since`` 이후)의 기록이 아니면 (None, [])."""
     with _PROGRESS_LOCK:
-        item = _PROGRESS.get(plan_id)
-    if item is None or (since is not None and item[1] < since):
-        return None
-    return item[0]
+        rec = _PROGRESS.get(plan_id)
+        if rec is None or (since is not None and rec.t < since):
+            return None, []
+        return (rec.running[-1] if rec.running else None), list(rec.done)
 
 
 # ───────────────────────── 작업 ─────────────────────────
@@ -331,7 +364,8 @@ class JobStore:
             kw["filename"] = job.filename
         if "on_stage" in params:
             pid = job.plan_id
-            kw["on_stage"] = lambda stage, *a, **k: _set_progress(pid, stage)
+            kw["on_stage"] = lambda stage, state="running", seconds=None, *a, **k: _set_progress(pid, stage, state,
+                                                                                            seconds)
         return kw
 
     async def _run(self, job: Job, plan_text: str) -> None:
@@ -350,6 +384,8 @@ class JobStore:
                     self._finish_err(job, "unavailable", MESSAGES["unavailable"].format(ticket=ctx.ticket))
                 return
             raw = getattr(fn, "__wrapped_pipeline__", fn)
+            if job.plan_id not in srv.inflight:
+                _reset_progress(job.plan_id)  # 새 실행(또는 캐시 적중): 이전 실행의 단계 기록을 지운다
             kwargs = self._kwargs(raw, job)
             # 입장 때 캐시·합류라 자리 없이 들어왔는데 그새 캐시·진행 중 분석이 사라졌으면 Serving.run이 관문을
             # 다시 거친다(차단·속도 제한·예산·대기열). 거절이면 AdmissionRefused + ctx.refusal.
@@ -435,7 +471,7 @@ class JobStore:
             since = t.start_at if t is not None else None
             elapsed = now - since if since is not None else 0.0
             eta = round(max(gate.avg_run_s - elapsed, 1.0), 1)
-            stage = _progress(job.plan_id, since) if t is not None else None
+            stage, done_stages = _progress(job.plan_id, since) if t is not None else (None, [])
             label = STAGE_LABELS.get(stage or "", stage) if stage else None
             if t is not None and not job.started:  # 자리는 났고 작업 코루틴이 곧 시작한다
                 out.update(status="queued", stage="queued", position=0, eta_s=0.0, message=MESSAGES["starting"])
@@ -445,6 +481,9 @@ class JobStore:
                                     else MESSAGES["running_plain"].format(eta=int(round(eta)))))
             if stage:
                 out["stage_label"] = label
+            if done_stages:
+                out["stages_done"] = [{"stage": n, "label": STAGE_LABELS.get(n, n), "status": st, "elapsed_s": sec}
+                                      for n, st, sec in done_stages]
         else:
             out.update(status="queued", stage="queued", position=0, eta_s=0.0, message=MESSAGES["starting"])
         out.setdefault("stage_label", STAGE_LABELS.get(out["stage"], out["stage"]))
