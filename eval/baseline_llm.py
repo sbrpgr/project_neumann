@@ -10,7 +10,7 @@
 - 캐시: 키 = sha256(실효 provider|실효 모델|실효 추론 강도|프롬프트 버전|계획서 sha256). 같은 계획서는 다시 부르지 않는다.
   실효 모델은 호출 시점 가드(astra 금지 → sol) 뒤의 모델이다(B3). 캐시 항목은 기록(provider·요청 모델·effort·
   프롬프트·계획서·키)이 실효 값과 맞을 때만 재사용하고, 맞지 않는 옛 항목은 무시하고 새로 부른다.
-  SDK 호출 직전 가드로 모델이 바뀌면 실제로 보낸 모델의 키에 쓴다. 시도마다 모델이 다르면 쓰지 않고 실패로 둔다.
+  SDK 호출 직전 실효 값이 바뀌면 실제로 보낸 identity의 키에 쓴다. 시도마다 identity가 다르면 쓰지 않고 실패로 둔다.
   셔플 조건(논문 i의 심사평으로 판정, 계획서는 j)은 계획서 j의 결과를 그대로 쓴다(입력이 같다).
 - 잠금(SEC-3): 호출이 잠기면(재시도 전 승인 철회 포함) 앞 응답이 있어도 결과는 실패(ok=False·status=error)이고
   캐시에 쓰지 않는다(B3: 사전 고정 재시도 절차를 끝내지 못한 결과를 성공으로 적지 않는다).
@@ -172,7 +172,7 @@ class OpenAIBaseline:
     def generate(self, instructions: str, plan_text: str) -> dict[str, Any]:
         t0 = time.perf_counter()
         ident = self.effective_identity()
-        sent = {"model_requested": ident["model"], "effort": ident["effort"]}
+        sent = {"provider": ident["provider"], "model_requested": ident["model"], "effort": ident["effort"]}
         try:
             client = self._get_client()
         except LiveCallLocked as exc:
@@ -182,7 +182,7 @@ class OpenAIBaseline:
         try:
             # 생성 후·클라이언트 취득 중 Astra 권한이 철회된 경우도 반영한다(요청 모델 속성은 바꾸지 않는다).
             ident = self.effective_identity()
-            sent = {"model_requested": ident["model"], "effort": ident["effort"]}
+            sent = {"provider": ident["provider"], "model_requested": ident["model"], "effort": ident["effort"]}
             _require_live_call()  # 클라이언트 취득 중 권한이 바뀌어도 SDK 호출 직전에 다시 검사한다.
             resp = client.responses.create(
                 model=ident["model"],
@@ -285,9 +285,11 @@ def cache_entry_mismatch(entry: Any, ident: dict[str, str], prompt_version: str,
     attempts = entry.get("attempts")
     if not isinstance(attempts, list):
         return "attempts_mismatch"
-    for a in attempts:  # 새 형식은 시도마다 보낸 모델을 적는다(옛 형식은 이 칸이 없다)
-        if isinstance(a, dict) and a.get("model_requested", ident["model"]) != ident["model"]:
-            return "attempt_model_mismatch"
+    for a in attempts:  # 새 형식은 시도마다 전송 identity를 적는다(옛 형식은 이 칸이 없다).
+        if isinstance(a, dict):
+            for field, identity_field in (("provider", "provider"), ("model_requested", "model"), ("effort", "effort")):
+                if a.get(field, ident[identity_field]) != ident[identity_field]:
+                    return f"attempt_{identity_field}_mismatch"
     return None
 
 
@@ -312,20 +314,25 @@ def generate_cached(plan: dict[str, Any], provider: Provider, cache_dir: Path, p
     final: dict[str, Any] | None = None
     final_probs: list[str] = ["no attempt"]
     locked = False
-    sent_models: list[str] = []
+    sent_identities: list[dict[str, str]] = []
     for _ in range(MAX_ATTEMPTS):
+        attempt_ident = provider_identity(provider)
         g = provider.generate(instructions, plan["plan_text"])
-        sent = g.get("model_requested") or ident["model"]  # 모델을 적지 않는 provider는 조회 때 실효 모델
+        # SDK 직전 snapshot을 돌려주는 provider는 그 기록을 쓴다. 옛/mock provider는 시도 직전 값을 쓴다.
+        sent = {"provider": g.get("provider") or attempt_ident["provider"],
+                "model": g.get("model_requested") or attempt_ident["model"],
+                "effort": g.get("effort") or attempt_ident["effort"]}
+        sent_record = {"provider": sent["provider"], "model_requested": sent["model"], "effort": sent["effort"]}
         if g.get("locked"):
             locked = True
-            attempts.append({"ok": False, "error": g.get("error"), "locked": True, "model_requested": sent,
+            attempts.append({"ok": False, "error": g.get("error"), "locked": True, **sent_record,
                              "problems": [str(g.get("error"))]})
             final_probs = [str(g.get("error"))]
             break
-        sent_models.append(sent)
+        sent_identities.append(sent)
         probs = output_problems(g.get("data")) if g.get("ok") else [str(g.get("error", "error"))]
         attempts.append({k: g.get(k) for k in ("ok", "error", "latency_s", "usage", "model_actual", "response_status")}
-                        | {"model_requested": sent, "problems": probs})
+                        | {**sent_record, "problems": probs})
         # 형식이 깨진 응답(위험 3개가 아님 등)은 쓰지 않는다. 설명 2문장 초과만 있는 응답은 자르고 쓸 수 있다.
         usable = g.get("ok") and not [p for p in probs if "문장 >" not in p]
         if usable and (final is None or not probs):
@@ -334,18 +341,20 @@ def generate_cached(plan: dict[str, Any], provider: Provider, cache_dir: Path, p
             final_probs = probs
         if usable and not probs:
             break
-    models = set(sent_models)
-    mixed = len(models) > 1
-    if len(models) == 1 and sent_models[0] != ident["model"]:
-        # 조회 뒤 SDK 호출 직전 가드로 모델이 바뀌었다 → 실제로 보낸 모델의 키에 쓴다(요청 모델 키에 섞지 않는다)
-        ident = {**ident, "model": sent_models[0]}
+    models = {s["model"] for s in sent_identities}
+    mixed = any(s != sent_identities[0] for s in sent_identities)
+    mixed_reason = "effective_model_changed" if len(models) > 1 else "effective_identity_changed"
+    if sent_identities and not mixed:
+        # 조회 뒤 바뀐 모델·effort도 실제 SDK 전송 snapshot의 키에 저장한다.
+        ident = sent_identities[0]
         key = identity_cache_key(ident, version, plan["plan_id"])
         path = Path(cache_dir) / f"{key}.json"
     ok = final is not None and not locked and not mixed
     if locked:
         problems = final_probs
     elif mixed:
-        problems = ["effective_model_changed: " + ", ".join(sorted(models))]
+        problems = [mixed_reason + ": " + ", ".join(
+            f"{s['provider']}/{s['model']}/effort={s['effort']}" for s in sent_identities)]
     else:
         problems = final_probs
     entry = {
@@ -367,13 +376,13 @@ def generate_cached(plan: dict[str, Any], provider: Provider, cache_dir: Path, p
     if stale:
         entry["stale_cache"] = stale  # 기록이 맞지 않아 재사용하지 않은 옛 항목(덮어쓴다)
     if locked or mixed:
-        # 호출하지 못했거나(재시도 전 잠김 포함) 시도마다 모델이 달랐던 결과는 캐시에 쓰지 않는다
+        # 호출하지 못했거나(재시도 전 잠김 포함) 시도마다 identity가 달랐던 결과는 캐시에 쓰지 않는다
         # (나중에 승인받아 돌릴 때 실패·섞인 결과를 재사용하지 않게). 앞 응답이 있어도 성공으로 적지 않는다.
         if locked:
             entry["locked"] = True
-            entry["attempts_before_lock"] = len(sent_models)
+            entry["attempts_before_lock"] = len(sent_identities)
         else:
-            entry["cache_skipped"] = "effective_model_changed"
+            entry["cache_skipped"] = mixed_reason
         entry["cache_hit"] = False
         return entry
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -405,6 +414,8 @@ def riskset_from_entry(entry: dict[str, Any], *, condition: str, work_id: str) -
                      + (f"(재시도 전 잠김, 앞 시도 {before}회 응답은 쓰지 않음)" if before else ""))
     if entry.get("cache_skipped") == "effective_model_changed":
         notes.append("시도마다 실효 모델이 달라 결과를 쓰지 않음(캐시에 쓰지 않음)")
+    if entry.get("cache_skipped") == "effective_identity_changed":
+        notes.append("시도마다 실효 provider·effort가 달라 결과를 쓰지 않음(캐시에 쓰지 않음)")
     return make_riskset(
         system=SYSTEM, condition=condition, work_id=work_id, plan_work_id=entry["plan_work_id"], plan_id=entry["plan_id"],
         risks=risks, status=status, generator=generator, model=entry.get("model_actual") or entry.get("model_requested"),

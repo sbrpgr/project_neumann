@@ -24,7 +24,8 @@
 모두 계획서 줄 텍스트를 뺀 저장본이고, 적중 때 요청 본문으로 줄을 다시 붙인다. status가 ``ok``인 결과만 저장한다.
 
 설정(환경변수, 모두 선택). ``NEUMANN_PUBLIC=1``(scripts/serve.py --public)이면 공개 프로필: 속도 제한·결과 캐시·
-예열·일일 예산·/docs 숨김이 기본으로 켜진다. 없으면(테스트·개발) 이것들은 꺼지고 관문·상한·오류 문구·로그 위생만 켜진다.
+일일 예산·/docs 숨김이 기본으로 켜진다. 검색 예열은 모든 모드에서 기본 켜짐이며 NEUMANN_WARMUP=0으로 끈다.
+테스트·개발에서는 나머지는 꺼지고 관문·상한·오류 문구·로그 위생만 켜진다.
 키 목록은 ``ServingConfig.from_env``와 보고서 docs/reports/E4-L2c.md에 있다.
 
 프로세스 하나(uvicorn worker 1개)를 전제로 한다. 대기열·속도 제한 상태는 프로세스 메모리에 있다(예산은 파일에도 남김).
@@ -224,7 +225,7 @@ class ServingConfig:
     trust_xff: bool = True              # 공개 프로필 기본 False: X-Forwarded-For는 위조할 수 있다
     hide_docs: bool = False
     protected: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_PROTECTED))
-    warmup: bool = False
+    warmup: bool = True
     warmup_plans: tuple[Path, ...] = ()
     public: bool = False
 
@@ -293,7 +294,7 @@ class ServingConfig:
             trust_xff=_env_bool("NEUMANN_TRUST_XFF", not public),  # 공개: CF-Connecting-IP만 믿는다
             hide_docs=_env_bool("NEUMANN_HIDE_DOCS", public),
             protected=_parse_protected(_env("NEUMANN_PROTECTED_PATHS")),
-            warmup=_env_bool("NEUMANN_WARMUP", public),
+            warmup=_env_bool("NEUMANN_WARMUP", True),
             warmup_plans=warm,
             public=public,
         )
@@ -1200,8 +1201,10 @@ class Serving:
         self.inflight: dict[str, asyncio.Future[dict[str, Any]]] = {}
         self.counters = {"requests": 0, "cache_hits": 0, "joined": 0, "busy_503": 0, "rate_429": 0, "too_large_413": 0,
                          "budget_503": 0, "blocked_503": 0, "timeout_504": 0, "error_5xx": 0}
-        self.warmup_state: dict[str, Any] = {"state": "off" if not c.warmup else "pending", "plans": 0, "cached": 0,
-                                             "failed": 0}
+        self.warmup_state: dict[str, Any] = {
+            "state": "pending" if c.warmup else "done", "enabled": c.warmup, "elapsed_s": 0.0,
+        }
+        self._warm_started: float | None = None
         self._warm_task: asyncio.Task[Any] | None = None
         # 코드가 등록하는 보호 경로(E4-L2d: POST /premortem/jobs). 설정(NEUMANN_PROTECTED_PATHS)보다 우선한다.
         self.extra_protected: dict[str, str] = {}
@@ -1222,7 +1225,7 @@ class Serving:
 
     def kind_for(self, path: str) -> str | None:
         key = path.rstrip("/") or "/"
-        if key == "/premortem/revise/finalize":
+        if key in ("/premortem/finalize", "/premortem/revise/finalize"):
             return "analysis"  # mandatory even when configured protected paths omit it
         return self.extra_protected.get(key) or self.config.protected.get(key)
 
@@ -1359,6 +1362,9 @@ class Serving:
         ctx.waited_s = round(t0 - t.enq_at, 3)
         ok = False
         try:
+            await self.wait_warmup()
+            t0 = time.monotonic()
+            ctx.waited_s = round(t0 - t.enq_at, 3)
             if inspect.iscoroutinefunction(fn):
                 res = await fn(plan_text, **kwargs)
             else:
@@ -1395,7 +1401,7 @@ class Serving:
                 "counters": dict(self.counters, completed=g.completed),
                 "cache": {"enabled": self.cache.enabled, "memory_items": self.cache.memory_items,
                           "hits": self.cache.hits, "stores": self.cache.stores},
-                "warmup": dict(self.warmup_state),
+                "warmup": self.warmup_status(),
             })
         if ticket:
             if not _TICKET_RE.match(ticket):
@@ -1406,61 +1412,45 @@ class Serving:
         return out
 
     # 예열 ------------------------------------------------------------
+    @property
+    def warming(self) -> bool:
+        return self._warm_task is not None and not self._warm_task.done()
+
+    def warmup_status(self) -> dict[str, Any]:
+        out = dict(self.warmup_state)
+        if out["state"] == "running" and self._warm_started is not None:
+            out["elapsed_s"] = round(time.monotonic() - self._warm_started, 3)
+        return out
+
     async def warmup(self, pipeline: Callable[..., Any] | None = None) -> dict[str, Any]:
-        """색인·모델 로드(파이프라인 모듈의 warmup 훅이 있으면) + 데모 계획서 결과를 캐시에 채운다."""
+        """Warm only retrieval; the legacy pipeline argument is never called."""
+        from neumann.api.warmup import warm_search
+
         ws = self.warmup_state
-        ws.update(state="running", plans=len(self.config.warmup_plans), cached=0, failed=0)
-        fn = pipeline or _default_pipeline()
-        if fn is None:
-            ws.update(state="skipped", reason="pipeline unavailable")
-            log.info("예열 건너뜀: 파이프라인 없음")
-            return dict(ws)
-        fn = getattr(fn, "__wrapped_pipeline__", fn)
+        if not self.config.warmup:
+            return self.warmup_status()
+        self._warm_started = time.monotonic()
+        ws.update(state="running", elapsed_s=0.0)
         try:
-            hook = getattr(importlib.import_module(fn.__module__), "warmup", None)
-        except Exception:  # noqa: BLE001
-            hook = None
-        if callable(hook):
-            t0 = time.monotonic()
-            try:
-                await (hook() if inspect.iscoroutinefunction(hook) else asyncio.to_thread(hook))
-                log.info("예열: 모델·색인 로드 %.1fs", time.monotonic() - t0)
-            except Exception as exc:  # noqa: BLE001
-                log.warning("예열: warmup 훅 실패 (%s)", type(exc).__name__)
-        for path in self.config.warmup_plans:
-            try:
-                text = Path(path).read_text(encoding="utf-8")
-            except OSError as exc:
-                ws["failed"] += 1
-                log.warning("예열: 계획서 읽기 실패 %s (%s)", Path(path).name, type(exc).__name__)
-                continue
-            pid = plan_key(text)
-            if self.cache.has(pid):
-                ws["cached"] += 1
-                continue
-            if self.blocked() or self.budget.exhausted():
-                ws["failed"] += 1
-                log.info("예열: 차단 스위치·예산 때문에 plan_id=%s 건너뜀", pid[:12])
-                continue
-            t0 = time.monotonic()
-            token = _CTX.set(RequestCtx(ticket="warm_" + pid[:12], path="warmup", internal=True))
-            try:
-                await self.run(fn, text)
-                ws["cached"] += int(self.cache.has(pid))
-                log.info("예열: plan_id=%s chars=%d %.1fs cache=%s", pid[:12], len(text), time.monotonic() - t0,
-                         "stored" if self.cache.has(pid) else "not-stored")
-            except Exception as exc:  # noqa: BLE001
-                ws["failed"] += 1
-                log.warning("예열: plan_id=%s 실패 (%s)", pid[:12], type(exc).__name__)
-            finally:
-                _CTX.reset(token)
-        ws["state"] = "done"
-        return dict(ws)
+            ws.update(await asyncio.to_thread(warm_search))
+            ws["state"] = "done"
+        except Exception as exc:
+            ws.update(state="error", error_kind=type(exc).__name__)
+            log.warning("Search warmup failed kind=%s", type(exc).__name__)
+        finally:
+            ws["elapsed_s"] = round(time.monotonic() - self._warm_started, 3)
+        log.info("Search warmup state=%s elapsed_s=%.3f", ws["state"], ws["elapsed_s"])
+        return self.warmup_status()
 
     def start_warmup(self, pipeline: Callable[..., Any] | None = None) -> None:
-        """서버 시작 때 배경으로 예열한다(요청은 바로 받는다)."""
+        """Run retrieval warmup in the background, without analysis or LLM calls."""
         if self.config.warmup and self._warm_task is None:
-            self._warm_task = asyncio.ensure_future(self.warmup(pipeline))
+            self._warm_task = asyncio.ensure_future(self.warmup())
+
+    async def wait_warmup(self) -> None:
+        if self._warm_task is not None:
+            # Request cancellation must not cancel process-wide initialization.
+            await asyncio.shield(self._warm_task)
 
 
 _DEFAULT: Serving | None = None
@@ -2068,7 +2058,12 @@ def install(app: Any, serving: Serving | None = None, *, pipeline: Callable[...,
         install_log_filter()  # uvicorn이 핸들러를 다시 만든 뒤에도 붙게
         srv.start_warmup(pipeline)
 
+    async def _on_shutdown() -> None:
+        # Join this server's initialization thread before shutdown.
+        await srv.wait_warmup()
+
     app.router.on_startup.append(_on_startup)
+    app.router.on_shutdown.append(_on_shutdown)
     return srv
 
 

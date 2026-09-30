@@ -103,12 +103,23 @@ def verify_result(result: Any, sig: Any) -> bool:
     return hmac.compare_digest(expected.encode("ascii"), sig[len(SIG_VERSION) + 1:].encode("ascii"))
 
 
-def _payload_bytes(kind: str, data: Mapping[str, Any]) -> bytes:
+def _payload_bytes(kind: str, data: Mapping[str, Any], *, legacy: bool = False) -> bytes:
     """Separate revision signatures from the validated result signature domain."""
     if not isinstance(kind, str) or not re.fullmatch(r"[a-z][a-z0-9-]{0,31}", kind, re.ASCII) or kind == "result":
         raise ValueError("invalid payload signature kind")
     if not isinstance(data, Mapping):
         raise TypeError("signed payload must be a mapping")
+    if kind == "revised-plan" and not legacy:
+        from neumann.api.export_title import DEFAULT_TITLE, HISTORY_SUFFIX
+
+        # Only the user title and its display heading are unsigned. All document
+        # text, quotes and the rest of history remain covered by the signature.
+        data = {k: v for k, v in data.items() if k != "title"}
+        markdown = data.get("markdown")
+        if isinstance(markdown, Mapping) and isinstance(markdown.get("history"), str):
+            head, sep, tail = markdown["history"].partition("\n")
+            if head.startswith("# ") and head.endswith(HISTORY_SUFFIX):
+                data = {**data, "markdown": {**markdown, "history": f"# {DEFAULT_TITLE}{HISTORY_SUFFIX}{sep}{tail}"}}
     body = json.dumps(_norm(data, string_keys=True), ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
     return f"neumann-{kind}-v1\n".encode("ascii") + body.encode("utf-8")
 
@@ -119,6 +130,8 @@ def sign_payload(kind: str, data: Mapping[str, Any]) -> str:
     ``kind`` is a lowercase ASCII domain, up to 32 characters, excluding ``result``.
     Shares the result key and v1 format, but signatures cannot cross domains.
     Callers must validate their schema and enforce provenance before signing.
+    For ``revised-plan``, user ``title`` and the title part of the history heading
+    are excluded; document content and evidence remain signed.
     """
     digest = hmac.new(_KEY, _payload_bytes(kind, data), hashlib.sha256).hexdigest()
     return f"{SIG_VERSION}.{digest}"
@@ -132,7 +145,17 @@ def verify_payload(kind: str, data: Any, sig: Any) -> bool:
         expected = sign_payload(kind, data)
     except (TypeError, ValueError, OverflowError, RecursionError):
         return False
-    return hmac.compare_digest(expected.encode("ascii"), sig.encode("ascii"))
+    if hmac.compare_digest(expected.encode("ascii"), sig.encode("ascii")):
+        return True
+    # Existing v1 assemblies had no title metadata and signed the rendered heading.
+    # Accept those exact old bytes; a changed legacy document still fails closed.
+    if kind == "revised-plan" and isinstance(data, Mapping) and "title" not in data:
+        try:
+            old = hmac.new(_KEY, _payload_bytes(kind, data, legacy=True), hashlib.sha256).hexdigest()
+        except (TypeError, ValueError, OverflowError, RecursionError):
+            return False
+        return hmac.compare_digest(f"{SIG_VERSION}.{old}".encode("ascii"), sig.encode("ascii"))
+    return False
 
 
 __all__ = ["KEY_ENV", "canonical_bytes", "reset_key", "sign_result", "verify_result", "sign_payload", "verify_payload"]

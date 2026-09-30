@@ -422,7 +422,7 @@
   .fit.ok b { color: var(--green); }
   /* ===== E4-S06 입력 전송 고지(SEC-1 S-06). 자연 위치는 실행 버튼 바로 위, 첫 화면에서는 화면 아래에 붙어 보인다(sticky).
      입력칸을 덜 가리게 접힌 상태는 한 줄 요약, 펼치면 전문 두 줄 ===== */
-  .sendnote { position: sticky; bottom: 0; z-index: 2; margin-top: 16px; padding: 6px 0 7px 0; border-top: 3px double var(--line2); background: var(--card); font-size: 13px; line-height: 1.6; color: var(--text2); }
+  .sendnote { position: static; margin-top: 16px; padding: 6px 0 7px 0; border-top: 3px double var(--line2); background: var(--card); font-size: 13px; line-height: 1.6; color: var(--text2); }
   .sendnote summary { display: flex; align-items: baseline; gap: 12px; cursor: pointer; list-style: none; }
   .sendnote summary::-webkit-details-marker { display: none; }
   .sendnote summary b { flex-shrink: 0; font-family: var(--sans); font-weight: 700; color: var(--red); }
@@ -824,8 +824,8 @@
       '<div id="tplArea">' + tplInner() + '</div><div id="sampleArea">' + sampleInner() + '</div>' + area +
       (S.inErr ? '<div class="inerr" id="inErr">' + esc(S.inErr) + '</div>' : '') +
       '<div class="fit' + (FIT && FIT.fit === true ? ' ok' : '') + '" id="fitBox" role="status"' + (FIT ? '' : ' hidden') + '>' + fitInner() + '</div>' +
-      '<details class="sendnote" id="sendNote"></details>' +
-      '<div style="display:flex; align-items:center; justify-content:space-between; margin-top:18px; gap:14px; flex-wrap:wrap;"><span class="sm muted">최종 판단은 연구자에게</span><button class="btn dark lg" id="btnStart" type="button"' + (S.text.trim() ? '' : ' disabled') + '>Pre-mortem 실행 →</button></div></div></div>';
+      '<div style="display:flex; align-items:center; justify-content:space-between; margin-top:18px; gap:14px; flex-wrap:wrap;"><span class="sm muted">최종 판단은 연구자에게</span><button class="btn dark lg" id="btnStart" type="button"' + (S.text.trim() ? '' : ' disabled') + '>Pre-mortem 실행 →</button></div>' +
+      '<details class="sendnote" id="sendNote"></details></div></div>';
   }
 
   /* ---------- 1 입력 · 템플릿 선택기 · 예시 · 범위 안내 (GET /templates, E4-L1b) ---------- */
@@ -864,17 +864,16 @@
     if (GALLERY.err) return '<div class="tplmeta inerr" role="status">' + esc(GALLERY.err) + '</div>';
     if (!GALLERY.cat) return '<div class="tplmeta">공개 예시 목록 불러오는 중</div>';
     var cat = GALLERY.cat, rows = (cat.samples || []).filter(function (s) { return s.public_ok === true && (!GALLERY.field || s.field === GALLERY.field); });
-    return '<details id="sampleGallery" style="margin:12px 0 18px;"><summary>공개 예시 갤러리 · ' + rows.length + '건</summary>' +
-      '<p class="sm muted">' + esc(cat.notice || '공개 예시 입력과 저장 결과는 별도로 표시합니다.') + '</p>' +
-      '<label class="sm">세부 분야 <select id="sampleField" style="max-width:100%;font-size:16px;"><option value="">전체</option>' + (cat.fields || []).map(function (f) { return '<option value="' + esc(f.id) + '"' + (GALLERY.field === f.id ? ' selected' : '') + '>' + esc(f.name) + '</option>'; }).join('') + '</select></label>' +
+    return '<details id="sampleGallery" open style="margin:12px 0 16px;"><summary>연구계획서 선택 · ' + rows.length + '편</summary>' +
+      '<label class="sm">분야 <select id="sampleField" style="max-width:100%;font-size:16px;"><option value="">전체</option>' + (cat.fields || []).filter(function (f) { return (cat.samples || []).some(function (s) { return s.field === f.id; }); }).map(function (f) { return '<option value="' + esc(f.id) + '"' + (GALLERY.field === f.id ? ' selected' : '') + '>' + esc(f.name) + '</option>'; }).join('') + '</select></label>' +
       rows.map(function (s) { var id = esc(s.id), p = s.precomputed || {}; return '<article class="sampleCard" data-sample-id="' + id + '" style="padding:12px 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere;"><b>' + esc(s.title) + '</b>' +
-        '<div class="sm muted">' + esc(s.domain) + ' · 공개 승인된 예시 입력 · 분석 전' + (s.expect_gate && s.expect_gate !== 'ok' ? ' · 관문 예시: ' + esc(s.expect_gate) : '') + '</div>' +
+        '<div class="sm muted">' + esc(s.domain) + '</div>' +
         '<p class="sm">' + esc(s.summary) + '</p><div class="rvrow">' + (s.body_available ? '<button class="btn sm" type="button" data-sample="' + id + '">본문 불러오기</button>' : '<span class="sm muted">공개 본문 없음</span>') +
         Object.keys(s.documents || {}).filter(function (fmt) { return /^(pdf|docx|hwpx)$/.test(fmt); }).map(function (fmt) { return '<a class="btn sm" download href="templates/samples/' + encodeURIComponent(s.id) + '/document/' + fmt + '">' + esc(fmt.toUpperCase()) + '</a>'; }).join('') +
-        (p.available ? '<button class="btn sm" type="button" data-sample-view="' + id + '">' + esc(p.label || '사전 계산본 · 라이브 분석 아님') + '</button>' : '<span class="sm muted">사용 가능한 저장 결과 없음</span>') +
-        '</div><div class="sm muted">' + esc(s.license) + '</div></article>'; }).join('') + '</details>';
+        (p.available ? '<button class="btn sm" type="button" data-sample-view="' + id + '">' + esc(p.label || '사전 계산본 · 라이브 분석 아님') + '</button>' : '') +
+        '</div></article>'; }).join('') + '</details>';
   }
-  function paintSamples() { var area = $('sampleArea'); if (area) { var was = $('sampleGallery') && $('sampleGallery').open; area.innerHTML = sampleInner(); if ($('sampleGallery')) $('sampleGallery').open = !!was; } }
+  function paintSamples() { var area = $('sampleArea'); if (area) { var was = !$('sampleGallery') || $('sampleGallery').open; area.innerHTML = sampleInner(); if ($('sampleGallery')) $('sampleGallery').open = !!was; } }
   function loadSamples() {
     fetch('templates/samples', { cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(function (j) { if (!Array.isArray(j.samples)) throw new Error('목록 형식 오류'); GALLERY.cat = j; GALLERY.err = ''; paintSamples(); }).catch(function (e) { GALLERY.err = '공개 예시 목록을 불러오지 못함 · ' + e.message; paintSamples(); });
   }
@@ -957,9 +956,9 @@
      파일명·경고·서버 문구는 esc()로만 HTML에 넣는다. */
   var UP = { busy: '', api: window.NEUMANN_STATIC ? 'none' : '', warn: null };
   var UP_MAX = 10 * 1024 * 1024;
-  var UP_ACCEPT = '.txt,.md,.markdown,.pdf,.docx,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-  var UP_HINT = 'TXT · MD · PDF · DOCX · 최대 10 MB · 정리 뒤 50,000자 · HWP는 PDF·DOCX로 저장';
-  var UP_LIVE_ONLY = 'PDF·DOCX는 라이브 서버에서만 읽습니다 — 본문을 직접 입력에 붙여넣기';
+  var UP_ACCEPT = '.txt,.md,.markdown,.pdf,.docx,.hwpx,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/hwp+zip';
+  var UP_HINT = 'TXT · MD · PDF · DOCX · HWPX · 최대 10 MB · 정리 뒤 50,000자 · HWP는 HWPX·PDF로 저장';
+  var UP_LIVE_ONLY = 'PDF·DOCX·HWPX는 라이브 서버에서만 읽습니다 — 본문을 직접 입력에 붙여넣기';
   var UP_OFFLINE = '서버에 연결하지 못함';
   function upSize(n) { n = +n || 0; return n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : (n >= 1024 ? (n / 1024).toFixed(1) + ' KB' : n + ' B'); }
   function upExt(name) { return (String(name).toLowerCase().match(/\.([a-z0-9]+)$/) || ['', ''])[1]; }
@@ -988,7 +987,7 @@
   /* 정적 판·서버 연결 실패: md·txt만 브라우저에서 UTF-8로 읽는다. why = 왜 서버를 못 썼는지(화면에 그대로 남긴다) */
   function readLocal(file, name, why) {
     var ext = upExt(name);
-    if (ext === 'pdf' || ext === 'docx') { S.inErr = why + ' — ' + UP_LIVE_ONLY; render(); return; }
+    if (ext === 'pdf' || ext === 'docx' || ext === 'hwpx') { S.inErr = why + ' — ' + UP_LIVE_ONLY; render(); return; }
     if (!/^(md|txt|markdown)$/.test(ext)) { S.inErr = why + ' — ' + (ext ? ext.toUpperCase() : '이 형식') + ' 형식은 읽지 못함 · 브라우저에서는 TXT·MD만 읽습니다'; render(); return; }
     var rd = new FileReader();
     rd.onload = function () { upDone(String(rd.result || ''), name, ext.toUpperCase() + ' · ' + upSize(file.size) + ' · 브라우저 읽기', [why + ' · 브라우저에서 UTF-8로 읽음(서버 정리·인코딩 추정 없음)']); };
@@ -1303,7 +1302,7 @@
     return 'HTTP ' + code;
   }
   function expJson(r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error(expServerMsg(j, r.status)); return j; }); }
-  function expFileName(cd) { var m = /filename="?([^";]+)"?/.exec(cd || ''); var n = m ? m[1].replace(/[^0-9A-Za-z_.-]/g, '') : ''; return /\.zip$/i.test(n) ? n : 'neumann_package.zip'; }
+  function expFileName(cd) { var m = /filename\*=UTF-8''([^;]+)/i.exec(cd || '') || /filename="?([^";]+)"?/i.exec(cd || ''); var n = ''; try { n = m ? decodeURIComponent(m[1]).replace(/[^\p{L}\p{N}_. -]/gu, '').replace(/\s+/g, '_').slice(0, 120) : ''; } catch (_) {} return /\.zip$/i.test(n) && n.indexOf('..') < 0 ? n : 'neumann_package.zip'; }
   function expSave(blob, name) {
     var u = URL.createObjectURL(blob), a = document.createElement('a');
     a.href = u; a.download = name; a.style.display = 'none'; document.body.appendChild(a); a.click(); a.remove();
@@ -1317,7 +1316,7 @@
     var raw = expInline(d), decisions = expDecisions(d), n = decisions.length;
     expMsg('ZIP 만드는 중 · POST /premortem/package · 결정 ' + n + '건');
     var revisionPayload = window.NeumannRevise && !window.NeumannRevise.mock ? window.NeumannRevise.exportPayload() : {};
-    fetch('premortem/package', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ result: raw, result_sig: d.result_sig || null, decisions: decisions }, revisionPayload)) }).then(function (r) {
+    fetch('premortem/package', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ result: raw, result_sig: d.result_sig || null, decisions: decisions, title: String((d.plan || {}).title || '수정된 연구계획서').slice(0, 200) }, revisionPayload)) }).then(function (r) {
       if (!r.ok) return expJson(r);
       var name = expFileName(r.headers.get('Content-Disposition')), origin = r.headers.get('X-Neumann-Result-Origin') || '';
       return r.blob().then(function (b) { if (EXP.d !== d) return; expSave(b, name); e.busy = false; expMsg('내려받음 · ' + name + ' · ' + upSize(b.size) + ' · 결정 ' + n + '건' + (origin ? ' · ' + (EXP_ORIGIN[origin] || origin) : ''), origin === 'client_submitted_unverified'); });
@@ -1501,7 +1500,7 @@
   }
   function genCls(g) { g = String(g || '').toLowerCase(); return g === 'astra' || g === 'llm' || g === 'openai' ? 'astra' : (g === 'rule' || g === 'mock' || g === 'sample' ? g : 'unknown'); }
   function genEl(g, model, genl) { return el('span', 'gen ' + genCls(g), genText(g, model, genl)); }
-  function originText(raw) { if (RV.restored) return '브라우저 보존값 · 출처·서명 재검증 안 됨'; return raw && raw.origin === 'server_signed' ? '서버 응답: HMAC 무결성 확인됨 · ' + (raw.generator === 'mock' ? '생성: 모의(mock)' : '생성 방식 별도 확인') : (raw && raw.origin === 'client_submitted_unverified' ? '서버 서명 확인 안 됨 · 생성자·모델·근거 출처 미확인' : '출처 확인 정보 없음'); }
+  function originText(raw) { if (RV.restored) return '브라우저 보존값 · 출처·서명 재검증 안 됨'; var gen = raw && (raw.generator || (raw.finalization && raw.finalization.generator)); var genl = gen === 'mock' ? '생성: 모의(mock, 테스트용 가짜)' : (gen === 'rule' ? '생성: 규칙(비상 경로)' : (gen === 'astra' ? '생성: 제품 LLM' : '생성 방식 별도 확인')); if (raw && raw.text_source === 'researcher_confirmed') return '연구자 입력 문안 · 서버 서명 없음 · 새 내용의 출처 미확인 · ' + genl; return raw && raw.origin === 'server_signed' ? '서버 응답: HMAC 무결성 확인됨 · ' + genl : (raw && raw.origin === 'client_submitted_unverified' ? '서버 서명 확인 안 됨 · 생성자·모델·근거 출처 미확인' + (raw.provenance && raw.provenance.inputs_signed && !raw.provenance.coupled ? ' · 입력 결속 불일치' : '') : '출처 확인 정보 없음'); }
   function outcomeLabel(v, label) { if (label) return String(label); v = String(v || '').toLowerCase(); return OUTCOME[v] || (v ? v.slice(0, 24) : '미정'); }
 
   /* ---------- 새 발췌(records) → 기존 근거 패널에 번호를 이어 등록(인용은 서버가 원문 오프셋으로 자른 text 그대로) ---------- */
@@ -1820,7 +1819,7 @@
     if (!st.finalSubmission || st.finalSubmission.payload !== payload) st.finalSubmission = { payload: payload, id: (window.crypto && crypto.randomUUID ? crypto.randomUUID() : 'final_' + Date.now() + '_' + Math.random().toString(36).slice(2)) };
     body.submission_id = st.finalSubmission.id;
     var stamp = st.finalStamp || 0, gen = st.gen; st.finalBusy = true; st.finalMsg = '수정 확정·검증 중 · 실제 검사와 의미 검토'; st.finalCtrl = new AbortController(); paintViewerBar();
-    fetch('premortem/revise/finalize', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: st.finalCtrl.signal }).then(asJson).then(function (x) {
+    fetch('premortem/finalize', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: st.finalCtrl.signal }).then(asJson).then(function (x) {
       if (!x.ok) throw new RevError(serverMsg(x.body, x.code), x.code);
       if (state().gen !== gen || (st.finalStamp || 0) !== stamp) return;
       st.finalization = x.body; st.finalMsg = '수정 확정·검증 결과 · ' + T((x.body.finalization || {}).status) + ' · ' + originText(x.body);
@@ -1855,9 +1854,10 @@
     }).catch(function (e) { if (state().gen !== gen || st.asmStamp !== stamp) return; st.asm = null; var msg = e && e.message ? String(e.message) : '서버 연결 실패'; st.asmMsg = msg + (msg.indexOf('화면 조립') >= 0 ? '' : ' → 화면 조립'); paintViewer(); });
   }
   function saveBlob(blob, name) { var u = URL.createObjectURL(blob), a = document.createElement('a'); a.href = u; a.download = name; a.style.display = 'none'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(u); }, 5000); }
-  function downloadMd() { var final = state().finalization; if (final) { var result = final.finalization || {}; var text = '> 수정 확정·검증 · ' + T(result.status) + ' · ' + originText(final) + '\n\n' + T(final.final_text) + '\n\n## 변경 목록\n\n' + JSON.stringify(result.corrections || [], null, 2) + '\n\n## 잔여 쟁점\n\n' + JSON.stringify(result.issues || [], null, 2); saveBlob(new Blob([text], { type: 'text/markdown;charset=utf-8' }), 'neumann_final_plan.md'); U.toast('최종 수정 초안 내려받음'); return; } var asm = currentAsm(); if (!asm.counts.adopted) U.toast('채택한 수정안이 없어 수정본이 원본과 같음'); var name = asm.source === 'server' && asm.rid ? 'neumann_revised_plan_' + asm.rid.slice(0, 12) + '.md' : mdName('md'); saveBlob(new Blob([mdText(asm)], { type: 'text/markdown;charset=utf-8' }), name); U.toast('수정본 내려받음 · ' + name + (asm.source === 'server' ? ' · 서버 각주 판+이력' : ' · 화면 조립')); }
+  function revisedName(asm, ext) { var title = String((asm.raw || {}).title || '수정된 연구계획서').replace(/[^\p{L}\p{N} _-]/gu, '').trim().replace(/\s+/g, '_').slice(0, 60) || 'plan'; var id = String(asm.rid || 'plan').replace(/[^0-9A-Za-z_-]/g, '').slice(0, 12) || 'plan'; return 'neumann_revised_plan_' + title + '_' + id + '.' + ext; }
+  function downloadMd() { var final = state().finalization; if (final) { var result = final.finalization || {}; var text = '> 수정 확정·검증 · ' + T(result.status) + ' · ' + originText(final) + '\n\n' + T(final.final_text) + '\n\n## 변경 목록\n\n' + JSON.stringify(result.corrections || [], null, 2) + '\n\n## 잔여 쟁점\n\n' + JSON.stringify(result.issues || [], null, 2); saveBlob(new Blob([text], { type: 'text/markdown;charset=utf-8' }), 'neumann_final_plan.md'); U.toast('최종 수정 초안 내려받음'); return; } var asm = currentAsm(); if (!asm.counts.adopted) U.toast('채택한 수정안이 없어 수정본이 원본과 같음'); var name = asm.source === 'server' && asm.rid ? revisedName(asm, 'md') : mdName('md'); saveBlob(new Blob([mdText(asm)], { type: 'text/markdown;charset=utf-8' }), name); U.toast('수정본 내려받음 · ' + name + (asm.source === 'server' ? ' · 서버 각주 판+이력' : ' · 화면 조립')); }
   function docxMsg(m, err) { var st = state(); st.docxMsg = m; var e = $('rvDocxMsg'); if (e) { e.textContent = m; e.classList.toggle('inerr', !!err); } }
-  function fileNameOf(cd, fallback) { var m = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(cd || ''); var n = m ? decodeURIComponent(m[1]).replace(/[^0-9A-Za-z가-힣_.-]/g, '') : ''; return n || fallback; }
+  function fileNameOf(cd, fallback) { var m = /filename\*=UTF-8''([^;]+)/i.exec(cd || '') || /filename="?([^";]+)"?/i.exec(cd || ''); var n = ''; try { n = m ? decodeURIComponent(m[1]).replace(/[^\p{L}\p{N}_. -]/gu, '').replace(/\s+/g, '_').slice(0, 120) : ''; } catch (_) {} return n && n.indexOf('..') < 0 ? n : fallback; }
   /* .docx는 서버가 만든다(assemble format=docx: 본문 + 미주 + 수정 이력 표 + 근거 부록) */
   function downloadDocx() {
     var st = state(), b = $('rvDocx'); if (st.docxBusy) return;
@@ -2325,7 +2325,7 @@
   document.addEventListener('focusout', function (ev) { var t = ev.target.closest && ev.target.closest('[data-rvtip]'); if (t && !state().pin) hideTip(); });
 
   /* E4-L2f 내보내기(POST /premortem/package) 연결용: body에 exportPayload()를 펼치면 ZIP에 revision.json·revised_plan.md가 덧붙는다(export_revision.py) */
-  function exportPayload() { var st = state(), rev = mergedRevision(); if (!rev) return {}; return { revision: rev, revision_decisions: serverDecisions(), revised_plan: st.asm && st.asm.source === 'server' ? st.asm.raw : null, revision_sig: rev.revision_sig || null }; }
+  function exportPayload() { var st = state(), rev = mergedRevision(); if (!rev) return {}; var plan = st.asm && st.asm.source === 'server' ? st.asm.raw : null; return { title: String((plan && plan.title) || D().plan.title || '수정된 연구계획서').slice(0, 200), revision: rev, revision_decisions: serverDecisions(), revised_plan: plan, revision_sig: rev.revision_sig || null }; }
   window.NeumannRevise = { open: goRevise, decisions: decisionsLog, serverDecisions: serverDecisions, undo: undoLast, forget: forget, mock: MOCK, assemble: currentAsm, assembleLocal: assembleLocal, markdown: function () { return mdText(currentAsm()); }, exportPayload: exportPayload, openViewer: openViewer, closeViewer: closeViewer, config: REV, state: state };
   paintSteps();
   if (MOCK) bootMock();

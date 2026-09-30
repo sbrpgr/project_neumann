@@ -615,7 +615,7 @@ def make_llm(settings: Any = None, provider: str | None = None) -> LLMProvider:
         return OpenAIProvider(api_key=key, model=model, default_timeout_s=timeout)
     if name in ("mock", "rules"):
         from neumann.analyze.mock_responders import default_responders
-        from neumann.analyze.finalize import mock_assessment, mock_correction
+        from neumann.analyze.finalize_demo import mock_assessment, mock_correction  # 시연 대본 + 정직한 기본 mock
 
         return MockProvider({**default_responders(), "final_assessment": mock_assessment,
                              "final_correction": mock_correction})

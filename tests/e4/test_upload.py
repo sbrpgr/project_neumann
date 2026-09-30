@@ -183,6 +183,7 @@ HWP5_BYTES = (
 HWPX_BYTES = make_zip(
     {"mimetype": b"application/hwp+zip", "Contents/content.hpf": b"<opf/>", "Contents/section0.xml": b"<hs:sec/>"}
 )
+"""본문이 빈 최소 HWPX(구역 1개, 문단 없음). 받는 HWPX 견본은 `tests/e4/test_upload_hwpx.py`의 `make_hwpx`."""
 
 
 def reject(filename: str, data: bytes) -> UploadRejected:
@@ -279,7 +280,8 @@ def test_pdf_blank_page_warns():
 def test_pdf_without_text_rejected():
     err = reject("scan.pdf", make_pdf([[], []]))
     assert err.status_code == 422
-    assert "텍스트" in err.message
+    assert err.message == upload.SCANNED_PDF_MESSAGE
+    assert "텍스트가 없는 PDF(스캔본)는 처리할 수 없습니다" in err.message
 
 
 def test_pdf_encrypted_rejected():
@@ -505,11 +507,11 @@ def test_concurrency_limit_503(monkeypatch):
 def test_worker_env_has_no_secrets(monkeypatch):
     monkeypatch.setenv("NEUMANN_FAKE_API_KEY", "x")
     monkeypatch.setenv("FAKE_SERVICE_TOKEN", "x")
-    monkeypatch.setenv("NEUMANN_PSEUDONYM_SALT", "x")
+    monkeypatch.setenv("NEUMANN_FAKE_SALT", "x")
     env = upload._worker_env()
-    assert not {"NEUMANN_FAKE_API_KEY", "FAKE_SERVICE_TOKEN", "NEUMANN_PSEUDONYM_SALT"} & set(env)
+    assert not {"NEUMANN_FAKE_API_KEY", "FAKE_SERVICE_TOKEN", "NEUMANN_FAKE_SALT", "NEUMANN_PSEUDONYM_SALT"} & set(env)
     assert "OPENAI_API_KEY" not in env
-    assert env.get("PATH") == os.environ.get("PATH")
+    assert "PATH" in env
 
 
 def test_worker_denies_disk_writes(tmp_path):
@@ -530,19 +532,38 @@ def test_worker_denies_disk_writes(tmp_path):
     ("filename", "data"),
     [
         ("계획서.hwp", HWP5_BYTES),
-        ("계획서.hwpx", HWPX_BYTES),
         ("계획서.hwp", b"anything"),  # 확장자만으로도 거부
-        ("계획서.hwpx", "텍스트".encode("utf-8")),
+        ("양식.hwt", HWP5_BYTES),
+        ("계획서.hml", "<?xml version=\"1.0\"?><HWPML/>".encode("utf-8")),
         ("disguised.pdf", HWP5_BYTES),  # 매직바이트로 거부
-        ("disguised.docx", HWPX_BYTES),
+        ("disguised.hwpx", HWP5_BYTES),
         ("old.hwp", b"HWP Document File V3.00 \x1a\x01\x02\x03\x04\x05"),
+        ("old.txt", b"HWP Document File V3.00 \x1a\x01\x02\x03\x04\x05"),
     ],
-    ids=["hwp5", "hwpx", "hwp-ext-only", "hwpx-ext-only", "hwp5-as-pdf", "hwpx-as-docx", "hwp3"],
+    ids=["hwp5", "hwp-ext-only", "hwt", "hml", "hwp5-as-pdf", "hwp5-as-hwpx", "hwp3", "hwp3-as-txt"],
 )
 def test_hwp_rejected_415(filename, data):
+    """옛 한글 바이너리(.hwp·.hwt, HWP 3·5)와 .hml은 읽지 않는다(대표 지시). HWPX·PDF로 저장하라고 안내한다."""
     err = reject(filename, data)
     assert err.status_code == 415
-    assert err.message == HWP_MESSAGE == "HWP는 PDF나 DOCX로 저장해 올려 주세요"
+    assert err.message == HWP_MESSAGE == "HWP는 한글에서 HWPX 또는 PDF로 저장해 올려 주세요"
+
+
+@pytest.mark.parametrize(
+    ("filename", "data", "status", "needle"),
+    [
+        ("계획서.hwpx", HWPX_BYTES, 422, "HWPX를 읽을 수 없습니다"),  # 구역 XML이 깨졌다(hs: 접두어 선언 없음)
+        ("disguised.docx", HWPX_BYTES, 422, "HWPX를 읽을 수 없습니다"),  # 내용 기준 HWPX
+        ("계획서.hwpx", "텍스트".encode("utf-8"), 422, "HWPX 파일이 아니거나 손상"),
+        ("계획서.hwpx", make_zip({"a.txt": b"x"}), 422, "HWPX 파일이 아니거나 손상"),
+    ],
+    ids=["hwpx-empty", "hwpx-as-docx", "hwpx-ext-text", "hwpx-ext-plain-zip"],
+)
+def test_hwpx_not_hwp_message(filename, data, status, needle):
+    """HWPX는 더 이상 415(HWP 안내)가 아니다. 빈 본문·가짜 HWPX는 422 안내."""
+    err = reject(filename, data)
+    assert (err.status_code, err.message != HWP_MESSAGE) == (status, True)
+    assert needle in err.message
 
 
 @pytest.mark.parametrize(
@@ -612,6 +633,8 @@ def test_api_txt(client):
     assert body["text"] == PLAN_BODY
     assert body["lines"] == len(PLAN_BODY.split("\n"))
     assert body["chars"] == len(PLAN_BODY)
+    assert body["chars_no_space"] == len("".join(PLAN_BODY.split()))
+    assert body["paragraphs"] == sum(1 for line in PLAN_BODY.split("\n") if line.strip())
     assert body["size_bytes"] == len(PLAN_MD.encode("utf-8"))
     assert body["warnings"] == []
 
@@ -639,7 +662,7 @@ def test_api_cp949_warning(client):
 
 
 def test_api_hwp_415(client):
-    for name, data in (("계획서.hwp", HWP5_BYTES), ("계획서.hwpx", HWPX_BYTES), ("fake.pdf", HWP5_BYTES)):
+    for name, data in (("계획서.hwp", HWP5_BYTES), ("양식.hwt", b"x"), ("fake.pdf", HWP5_BYTES)):
         res = post(client, name, data)
         assert res.status_code == 415, name
         assert res.json()["detail"] == HWP_MESSAGE

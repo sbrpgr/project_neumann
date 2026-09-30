@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from eval import baseline_llm as bl
+from neumann import config
 
 PLAN = {"work_id": "ns:P1", "plan_id": "a" * 64, "plan_text": "We propose a graph model for protein stability."}
 
@@ -88,9 +89,9 @@ class _FakeResponses:
 
 
 def test_openai_request_shape_plan_only(monkeypatch):
-    # 합성 SDK만 쓴다. Astra 요청 모양 검사는 명시적으로 두 권한을 승인한다.
-    monkeypatch.setenv("NEUMANN_LIVE_LLM_OK", "1")
-    monkeypatch.setenv("NEUMANN_ALLOW_ASTRA", "1")
+    # 합성 SDK만 쓴다. 권한은 로컬 함수로 mock하고 프로세스 live 플래그는 켜지 않는다.
+    monkeypatch.setattr(config, "live_llm_allowed", lambda: True)
+    monkeypatch.setattr(config, "astra_allowed", lambda: True)
     fake = _FakeResponses()
     prov = bl.OpenAIBaseline(model="gpt-6-astra", client=SimpleNamespace(responses=fake))
     instructions, _ = bl.load_prompt()

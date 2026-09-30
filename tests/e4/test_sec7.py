@@ -153,7 +153,7 @@ def test_public_health_is_small_and_local_health_keeps_diagnostics(monkeypatch):
         resp = TestClient(app).get("/health")
         body = resp.json()
         if public:
-            assert set(body) == {"status", "version", "commit", "pipeline", "llm", "accepting"}
+            assert set(body) == {"status", "version", "commit", "pipeline", "llm", "accepting", "warmup"}
             assert set(body["llm"]) == {"effective", "model", "live_llm_ok"}
             assert "private-path" not in resp.text and "key_present" not in resp.text
         else:
@@ -322,7 +322,7 @@ def test_pdf_page_character_budget_and_empty_heavy_document():
     assert err.status_code == 413 and err.message == upload.PAGE_CHARS_MESSAGE
     err = pytest.raises(upload.UploadRejected, upload.extract_plan_isolated, "heavy.pdf",
                         pdf_with_streams([b"%" + b"x" * upload.MAX_PDF_PAGE_STREAM])).value
-    assert err.status_code == 422 and "텍스트를 찾지 못했습니다" in err.message
+    assert err.status_code == 422 and err.message == upload.SCANNED_PDF_MESSAGE
 
 
 @pytest.mark.parametrize("deferred", [False, True])

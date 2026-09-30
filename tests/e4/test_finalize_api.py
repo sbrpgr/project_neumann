@@ -105,12 +105,13 @@ def test_http_protected_even_custom_config_and_preflight_refunds(tmp_path, monke
 
 def test_http_timeout_is_explicit_and_replay_does_not_repeat(tmp_path, monkeypatch):
     srv, app = setup(tmp_path, monkeypatch)
-    monkeypatch.setenv("NEUMANN_REVISE_TIMEOUT_S", "0.05")
     calls = []
     monkeypatch.setattr(finalize, "finalize_plan", engine(calls, .2))
     async def go():
         async with client(app) as c:
             bundle = await _bundle(c)
+            # The 50 ms limit applies to the finalization request only; building the bundle above must not race it.
+            monkeypatch.setenv("NEUMANN_REVISE_TIMEOUT_S", "0.05")
             body = {"plan_text": PLAN, "revision": bundle, "submission_id": "timeout_request"}
             response = await c.post(finalize.FINALIZE_PATH, json=body)
             assert response.status_code == 504 and response.json()["error_code"] == "timeout"

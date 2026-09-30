@@ -26,8 +26,8 @@ ROOT = Path(__file__).resolve().parents[2]
 INDEX = ROOT / "src" / "neumann" / "webui" / "index.html"
 
 UI_FIELDS = {"text", "filename", "kind", "pages", "encoding", "warnings"}
-DROP_HINT = "TXT · MD · PDF · DOCX · 최대 10 MB · 정리 뒤 50,000자 · HWP는 PDF·DOCX로 저장"
-LIVE_ONLY = "PDF·DOCX는 라이브 서버에서만 읽습니다 — 본문을 직접 입력에 붙여넣기"
+DROP_HINT = "TXT · MD · PDF · DOCX · HWPX · 최대 10 MB · 정리 뒤 50,000자 · HWP는 HWPX·PDF로 저장"
+LIVE_ONLY = "PDF·DOCX·HWPX는 라이브 서버에서만 읽습니다 — 본문을 직접 입력에 붙여넣기"
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 PLAN_LINES = [
     "연구계획서 — 전해액 이온전도도 예측 대리모델",
@@ -68,7 +68,7 @@ def _ui_shape(body: dict) -> None:
     assert UI_FIELDS <= body.keys(), body.keys()
     assert isinstance(body["text"], str) and body["text"]
     assert isinstance(body["filename"], str) and body["filename"]
-    assert body["kind"] in {"txt", "md", "pdf", "docx"}
+    assert body["kind"] in {"txt", "md", "pdf", "docx", "hwpx"}
     assert body["pages"] is None or isinstance(body["pages"], int)
     assert body["encoding"] is None or isinstance(body["encoding"], str)
     assert isinstance(body["warnings"], list) and all(isinstance(w, str) for w in body["warnings"])
@@ -123,11 +123,28 @@ def test_pdf_response_has_pages_and_empty_page_warning(client):
     assert any("텍스트가 없는 쪽" in w for w in j["warnings"])
 
 
-@pytest.mark.parametrize(("name", "data"), [("계획서.hwp", HWP5_BYTES), ("계획서.hwpx", HWPX_BYTES)])
+@pytest.mark.parametrize(("name", "data"), [("계획서.hwp", HWP5_BYTES), ("양식.hwt", HWP5_BYTES)])
 def test_hwp_is_415_with_server_message(client, name, data):
+    """옛 한글 바이너리는 계속 415(대표 지시 E4-L2h). 안내 문구는 HWPX·PDF로 저장하라는 것."""
     r = _post(client, name, data)
     assert r.status_code == 415
     assert r.json() == {"detail": HWP_MESSAGE}  # 화면은 이 detail을 그대로 S.inErr에 쓴다
+    assert HWP_MESSAGE == "HWP는 한글에서 HWPX 또는 PDF로 저장해 올려 주세요"
+
+
+def test_hwpx_response_shape(client):
+    """HWPX는 받는다(E4-L2h). 화면이 읽는 필드 + E3-L1s 분량 필드(chars_no_space·paragraphs)."""
+    from tests.e4.test_upload_hwpx import make_hwpx, p, section
+
+    r = _post(client, "계획서.hwpx", make_hwpx([section(*(p(x) for x in PLAN_LINES))]))
+    assert r.status_code == 200, r.text
+    j = r.json()
+    _ui_shape(j)
+    assert (j["kind"], j["pages"], j["encoding"]) == ("hwpx", None, None)
+    assert j["text"].splitlines() == PLAN_LINES
+    assert j["paragraphs"] == len(PLAN_LINES) and j["chars_no_space"] == len("".join("".join(PLAN_LINES).split()))
+    broken = _post(client, "깨짐.hwpx", HWPX_BYTES)  # 구역 XML이 깨진 HWPX는 422 + 사용자 문구
+    assert broken.status_code == 422 and "HWPX" in broken.json()["detail"]
 
 
 @pytest.mark.parametrize(
@@ -196,8 +213,9 @@ def test_drop_hint_and_accept():
     src = _html()
     assert _const(src, "UP_HINT") == DROP_HINT
     accept = _const(src, "UP_ACCEPT").split(",")
-    for want in (".txt", ".md", ".pdf", ".docx", "text/plain", "text/markdown", "application/pdf", DOCX_MIME):
+    for want in (".txt", ".md", ".pdf", ".docx", ".hwpx", "text/plain", "text/markdown", "application/pdf", DOCX_MIME):
         assert want in accept
+    assert ".hwp" not in accept and ".hwt" not in accept  # 옛 한글 바이너리는 받지 않는다(415 안내)
     drop = _function(src, "dropHtml")
     assert "UP_HINT" in drop and "accept=\"' + UP_ACCEPT + '\"" in drop
     assert "area = dropHtml() +" in _function(src, "renderInput")

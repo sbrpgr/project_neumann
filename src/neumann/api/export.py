@@ -47,6 +47,8 @@ from neumann.analyze.gate import EvidenceIndex, MALFORMED, NO_EVIDENCE_FAMILY, S
 from neumann.api.view import display_generator, display_text
 from neumann.api.plan_limits import check_embedded_plan, check_payload_plan
 from neumann.api import export_revision  # E3-L2r: ZIP에 덧붙이는 수정 권고·통합본 파일(선택)
+from neumann.api import export_finalization
+from neumann.api.export_title import content_disposition, plan_title
 from neumann.models import (
     SCHEMA_VERSION,
     Excerpt,
@@ -348,6 +350,7 @@ class _Ctx:
     extra_files: list[str] = field(default_factory=list)  # E3-L2r: 덧붙인 파일 이름(revision.json·revised_plan.md)
     extra_summary: list[str] = field(default_factory=list)
     composition: export_revision.Composition = field(default_factory=export_revision.Composition)  # B1-pairing 결합 판정
+    final_composition: export_finalization.FinalComposition = field(default_factory=export_finalization.FinalComposition)
 
     @property
     def n_cards(self) -> int:
@@ -719,10 +722,12 @@ def _readme(c: _Ctx) -> bytes:
         "|---|---|",
     ]
     L += [f"| `{name}` | {FILE_ROLES[name]} |" for name in FILE_NAMES]
-    L += [f"| `{name}` | {export_revision.FILE_ROLES[name]} |" for name in c.extra_files]  # E3-L2r(있을 때만)
+    extra_roles = {**export_revision.FILE_ROLES, **export_finalization.FILE_ROLES}
+    L += [f"| `{name}` | {extra_roles[name]} |" for name in c.extra_files]
     L += ["", JSON_GENERATOR_NOTE if c.verified else JSON_GENERATOR_NOTE_UNVERIFIED]
     if c.extra_summary:
         L += ["", "## 수정 권고(E3-L2r)", "", *c.extra_summary]
+    L += export_finalization.summary_of(c.final_composition)
     L += ["", "## 생성 방식", ""]
     L += [f"- **{_gen_short(c, g)}** {c.gen_counts[g.value]}장: {_gen_desc(c, g)}" for g in Generator]
     if c.refs:
@@ -1119,7 +1124,7 @@ def _decision_log_json(c: _Ctx) -> bytes:
     )
 
 
-def _manifest_json(c: _Ctx, files: Mapping[str, bytes], created_at: datetime) -> bytes:
+def _manifest_json(c: _Ctx, files: Mapping[str, bytes], created_at: datetime, title: str) -> bytes:
     r = c.result
     return _json_bytes(
         {
@@ -1127,6 +1132,8 @@ def _manifest_json(c: _Ctx, files: Mapping[str, bytes], created_at: datetime) ->
             "schema_version": SCHEMA_VERSION,
             "created_at": _iso(created_at),
             "result_origin": c.origin,
+            "title": title,
+            "title_origin": "user_input_unsigned",
             **_plan_metadata(c),
             "result": {
                 "session_id": r.session_id,
@@ -1152,13 +1159,15 @@ def _manifest_json(c: _Ctx, files: Mapping[str, bytes], created_at: datetime) ->
             "files": [
                 {"path": name, "sha256": _sha256(files[name]), "bytes": len(files[name]),
                  **({"result_origin": c.origin, **_plan_metadata(c)} if name in FILE_NAMES
-                    else {"origin": c.composition.origin_of(name)})}  # B1-pairing: 덧붙인 파일은 결합 판정을 거친 출처
+                    else {"origin": (c.final_composition.origin if name in export_finalization.FILE_ROLES
+                                     else c.composition.origin_of(name))})}
                 for name in (*FILE_NAMES, *c.extra_files)
                 if name != "manifest.json"
             ],
             "extra_files": list(c.extra_files),  # E3-L2r: 9파일 밖에 덧붙인 것(없으면 빈 목록)
             # B1-pairing: 결과·수정 권고·통합본·결정의 결합 검증(계약 밖 패키지 메타데이터). 덧붙인 파일이 없으면 null.
             "composition": c.composition.metadata(),
+            **({"finalization": c.final_composition.metadata()} if c.final_composition.envelope is not None else {}),
         }
     )
 
@@ -1188,24 +1197,37 @@ def build_package_files(
     revised_plan: Mapping[str, Any] | None = None,
     revision_sig: str | None = None,
     result_sig: str | None = None,
+    finalization: Mapping[str, Any] | None = None,
+    finalization_sig: str | None = None,
+    final_text: str | None = None,
     meta: dict[str, Any] | None = None,
+    title: str | None = None,
 ) -> dict[str, bytes]:
     """9개 파일 {이름: 바이트}(FILE_NAMES 순서). 입력이 계약을 어기면 ValueError(ValidationError 포함).
 
     E3-L2r: `revision`(수정 권고)·`revised_plan`(통합본)이 오면 `revision.json`·`revised_plan.md`를 뒤에 덧붙인다(10·11번째).
+    PKG-FINAL: `finalization`은 finalize 응답 전체다. B1 결합과 최종 문안·해시·수정 이력을 검사해
+    `final_draft.md`·`finalization.json`을 덧붙인다. 별도 `finalization_sig`·`final_text`는 응답과 같아야 한다.
     B1-pairing: 세 객체와 결정의 결합을 한 번 판정(`export_revision.compose`)해 파일·README·manifest가 같은 출처를 쓴다.
-    결합 모순은 ValueError(API 422). `meta`(dict)를 넘기면 결합 판정을 `meta["composition"]`에 담아 준다(응답 헤더용).
+    결합 모순은 ValueError(API 422). `meta`(dict)에 composition·finalization 판정을 담는다(응답 헤더용).
     """
     _guard_export_plan(result, plan_text)
     if not isinstance(result, PremortemResult):
         result = PremortemResult.model_validate(result)
     c = _make_ctx(result, plan_text, decisions, result_origin)
+    # The full finalization response includes its assembly; reuse the B1 chain.
+    if revised_plan is None and finalization is not None and "finalization" in finalization:
+        revised_plan = finalization.get("assembled")
     c.composition = export_revision.compose(result, revision, revision_decisions, revised_plan, revision_sig, result_sig)
-    extras = export_revision.render_files(c.composition, result)
+    c.final_composition = export_finalization.compose(result, c.composition, finalization, finalization_sig, final_text)
+    export_title = plan_title(revised_plan, title)
+    extras = export_revision.render_files(c.composition, result, title=export_title)
+    extras.update(export_finalization.render_files(c.final_composition))
     c.extra_files = list(extras)
     c.extra_summary = export_revision.summary_of(c.composition)
     if meta is not None:
         meta["composition"] = c.composition
+        meta["finalization"] = c.final_composition
     files: dict[str, bytes] = {
         "README.md": _readme(c),
         "risk_cards.json": _risk_cards_json(c),
@@ -1222,8 +1244,11 @@ def build_package_files(
         head, separator, tail = files[name].decode("utf-8").partition("\n")
         files[name] = (head + separator + "\n" + _plan_authority_text(c) + "\n" + tail).encode("utf-8")
     files.update(extras)
+    # Title is user metadata: never imply the result/assembly signature covers it.
+    files["README.md"] += (f"\n## 계획서 제목\n\n{_one_line(export_title)}\n\n"
+                            "제목은 사용자 입력이며 서버 서명 대상이 아닙니다.\n").encode("utf-8")
     when = created_at or datetime.now(UTC).replace(microsecond=0)
-    files["manifest.json"] = _manifest_json(c, files, when)
+    files["manifest.json"] = _manifest_json(c, files, when, export_title)
     return {name: files[name] for name in (*FILE_NAMES, *c.extra_files)}
 
 
@@ -1348,13 +1373,17 @@ class PackageRequest(BaseModel):
     result: dict[str, Any] | None = None
     result_sig: str | None = Field(default=None, max_length=200, description="화면 응답의 서버 서명(v1.<hex>)")
     plan_text: str | None = Field(default=None, max_length=MAX_PLAN_CHARS)
+    title: str | None = Field(default=None, max_length=200, description="사용자 제목(서명 대상 아님)")
     decisions: list[dict[str, Any]] | None = None
     # E3-L2r(선택): 수정 권고·연구자 결정·통합본 → revision.json·revised_plan.md
     revision: dict[str, Any] | None = None
     revision_decisions: list[dict[str, Any]] | None = None
     revised_plan: dict[str, Any] | None = None
     revision_sig: str | None = Field(default=None, max_length=200)
-    result_sig: str | None = Field(default=None, max_length=200)
+    # Complete finalize response, including assembled and inspection (optional).
+    finalization: dict[str, Any] | None = Field(default=None, description="finalize 응답 전체(assembled·finalization·final_text·origin·서명 포함)")
+    finalization_sig: str | None = Field(default=None, max_length=200)
+    final_text: str | None = Field(default=None, max_length=MAX_PLAN_CHARS)
 
 
 def _errors(exc: ValidationError) -> list[dict[str, Any]]:
@@ -1362,10 +1391,6 @@ def _errors(exc: ValidationError) -> list[dict[str, Any]]:
         {"loc": list(e.get("loc", ())), "msg": e.get("msg", ""), "type": e.get("type", "")}
         for e in exc.errors(include_input=False, include_url=False)
     ]
-
-
-def _safe_filename_part(plan_id: str) -> str:
-    return re.sub(r"[^0-9A-Za-z_-]", "", plan_id)[:12] or "plan"
 
 
 @router.post(
@@ -1416,22 +1441,26 @@ def premortem_package(request: Request, payload: dict[str, Any] = Body(...)) -> 
                              result_origin=origin,
                              revision=req.revision, revision_decisions=req.revision_decisions,
                              revised_plan=req.revised_plan, revision_sig=req.revision_sig, result_sig=req.result_sig,
-                             meta=meta)
+                             finalization=req.finalization, finalization_sig=req.finalization_sig, final_text=req.final_text,
+                             meta=meta, title=req.title)
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=_errors(exc)) from None
     except ValueError as exc:  # 계약 위반·plan_id 불일치·없는 edit_id·결합 모순(B1-pairing PairingConflict)
         raise HTTPException(status_code=422, detail=str(exc)) from None
 
-    filename = f"neumann_package_{_safe_filename_part(result.plan_id)}.zip"
+    disposition = content_disposition("neumann_package", result.plan_id, plan_title(req.revised_plan, req.title), "zip")
     comp: export_revision.Composition = meta.get("composition") or export_revision.Composition()
     # B1-pairing: 덧붙인 파일의 출처는 결과 서명과 별개다(결합 검증을 거친 값). 화면은 이 헤더로 파일별 출처를 보일 수 있다.
     extra_headers = {name: value for name, value in (("X-Neumann-Revision-Origin", comp.revision_origin),
                                                      ("X-Neumann-Assembly-Origin", comp.assembly_origin)) if value}
+    final_comp = meta.get("finalization")
+    if final_comp is not None and final_comp.origin:
+        extra_headers["X-Neumann-Finalization-Origin"] = final_comp.origin
     return Response(
         content=data,
         media_type="application/zip",
         headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Disposition": disposition,
             "X-Neumann-Status": result.status,
             "X-Neumann-Cards": str(len(result.risk_cards)),
             "X-Neumann-Result-Origin": origin,

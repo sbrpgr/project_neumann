@@ -66,16 +66,16 @@ def test_samples_route_precedes_generic_template_and_hides_curation(client):
     response = client.get("/templates/samples")
     assert response.status_code == 200
     data = response.json()
-    assert len(data["samples"]) == 5
+    assert len(data["samples"]) == 3
     assert all(s["public_ok"] and s["precomputed"]["available"] is False for s in data["samples"])
-    assert all(not s["documents"] for s in data["samples"])  # Pending files are not offered.
+    assert all(set(s["documents"]) == {"pdf", "docx", "hwpx"} for s in data["samples"])
     blob = json.dumps(data)
     for internal in ("curation", "intended_weaknesses", "result_file", "result_hint", "keywords", "path"):
         assert '"' + internal + '"' not in blob
     assert client.get("/templates/materials-gnn").status_code == 200
 
 
-@pytest.mark.parametrize("index", range(5))
+@pytest.mark.parametrize("index", range(3))
 def test_public_body_verbatim(client, index):
     item = registry()["samples"][index]
     response = client.get("/templates/samples/" + item["id"])
@@ -84,7 +84,7 @@ def test_public_body_verbatim(client, index):
     assert response.json()["chars"] == len(response.json()["text"])
 
 
-@pytest.mark.parametrize("index", range(5))
+@pytest.mark.parametrize("index", range(3))
 def test_original_sample_gate_expectations_without_llm(index):
     from neumann.analyze.fitness import rule_fitness
 

@@ -49,7 +49,7 @@ def synthetic_sdk_only(monkeypatch):
     monkeypatch.setattr(config, "get_settings", forbidden)
     monkeypatch.delenv("NEUMANN_ALLOW_ASTRA", raising=False)
     monkeypatch.delenv("NEUMANN_LLM_MODEL", raising=False)  # 셸에 남은 모델 설정과 무관하게 기본 모델에서 시작
-    monkeypatch.setenv("NEUMANN_LIVE_LLM_OK", "1")
+    monkeypatch.setattr(config, "live_llm_allowed", lambda: True)  # 합성 SDK의 로컬 권한만 mock
 
 
 def _expected_key(model: str, provider: str = "openai", effort: str = bl.EFFORT) -> str:
@@ -66,7 +66,7 @@ def _files(tmp_path) -> list[str]:
 
 def test_retry_locked_after_usable_first_response_is_not_success(monkeypatch, tmp_path):
     """첫 응답은 설명 3문장(자르면 쓸 수 있음) → 재시도 전에 승인 철회 → 재시도 잠김."""
-    sdk = FakeResponses("a. b. c.", on_call=lambda: monkeypatch.setenv("NEUMANN_LIVE_LLM_OK", "0"))
+    sdk = FakeResponses("a. b. c.", on_call=lambda: monkeypatch.setattr(config, "live_llm_allowed", lambda: False))
     p = bl.OpenAIBaseline(client=SimpleNamespace(responses=sdk))
     entry = bl.generate_cached(PLAN, p, tmp_path, prompt=PROMPT)
     assert len(sdk.calls) == 1 and len(entry["attempts"]) == 2

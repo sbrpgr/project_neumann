@@ -285,7 +285,9 @@ plan.hwp(HWP 매직바이트) → 415 {"detail": "HWP는 PDF나 DOCX로 저장�
 | 422 | `file` 필드 없음, 빈 파일, 손상·암호 PDF, 텍스트 없음 |
 | 503 | 동시 처리 상한 초과 |
 
-## 최종 초안 검사·교정 — POST /premortem/revise/finalize
+## 최종 초안 검사·교정 — POST /premortem/finalize
+
+결정된 경로는 `/premortem/finalize`다. 옛 경로 `/premortem/revise/finalize`는 같은 핸들러·같은 보호 관문의 alias로 남겨 두었다(계약 추가만). 응답 최상위에 `generator`·`model`(결과별 생성 방식), `text_source`(`server_assembled`/`researcher_confirmed`), `provenance`{inputs_signed, coupled, coupling, researcher_text}가 추가됐다.
 
 수정본 뷰어의 `수정 확정·검증`은 기존 수정 권고와 연구자 결정을 조립하고, 최종 의미 검사·제한된 도구 검사·교정 1묶음·대상 도구 재검사를 수행해 초안을 반환한다. 같은 제출 안에서 전체 검색을 반복하거나 임의 생성 코드를 실행하지 않는다.
 
@@ -293,6 +295,8 @@ plan.hwp(HWP 매직바이트) → 415 {"detail": "HWP는 PDF나 DOCX로 저장�
 - 선택 `checks`: 원문에 연결된 도구 검사 최대 16개. Z3 제약·Pint 단위·NetworkX 명시된 선행 관계를 계산한다. 불명확한 조건·없는 도구·범위 밖 입력은 미검사다.
 - 직접 편집된 전체 문안은 `confirmed_text`와 `confirmed_base_id`를 함께 보낸다. base id는 해당 결정을 조립한 revised_plan_id와 같아야 한다. 연구자 문안의 새 내용은 출처 미확인으로 표시한다.
 - 출력 계약: `contracts/finalization.schema.json`. `assembled`, `finalization`, `final_text`, `origin`, `finalization_sig`를 포함한다. finalization은 단계 완료 상태·문안 식별값·적용/거절된 교정·미해결/미확인·도구 전후 결과·호출 상한을 담는다. 결과는 최종 **초안**이며 모든 오류의 부재를 뜻하지 않는다.
+- `finalization.issues[]`의 `status`는 `resolved`(고친 줄의 도구 재검사 통과) · `unresolved`(도구 검사 실패가 남음) · `unchecked`이고, `unchecked`에는 `unchecked_reason`이 붙는다: `no_tool_check`(도구로 검사할 명시 조건이 없는 의미 검토 항목 = **판단 보류**), `도구 실행 불가`·`tool_unavailable`·`cancelled`·`ambiguous_or_ungrounded_number` 등(= **미검사**), `review_incomplete`(검토 중단). `corrected_lines`는 그 쟁점의 줄 가운데 교정이 적용된 줄이다(FIN-ENGINE).
+- 교정 게이트(FIN-ENGINE): 교정문의 낱말·수치는 해당 쟁점의 `plan_lines`와 연결된 도구 검사 `sources` 발췌 안에 있어야 한다. 도구가 실제로 계산한 값(예: 항목 합)은 `[확인 필요: …]` 자리표시 안에서만 쓸 수 있고 본문 사실로 단정하면 `unsupported_number`로 거절된다. 새 기관·달성 주장·범위 밖 줄의 사실·개인정보·마크업은 거절되며 거절된 제안문은 응답에 남지 않는다. 시연용 계획서(`neumann.analyze.finalize_demo.DEMO_PLAN`)에는 scripted mock이 실제 Z3·Pint·NetworkX 검사와 교정을 내고(`generator: mock` 유지), 다른 계획서에는 기존 정직한 mock(교정 0·검사 0)이 나온다. 시연 fixture: `docs/reports/FIN-ENGINE_demo.json`(`python scripts/finalize_demo.py`).
 - 수정권고/분석의 서명이 검증된 경우 전체 최종 결과에 서버 무결성 서명을 붙인다. 내용의 과학적 타당성과 무결성 서명은 구분한다.
 - 같은 제출 id와 같은 입력은 프로세스 안에서 재실행 없이 같은 결과를 돌려준다. 같은 id의 다른 입력은 409다. 캐시는 64건·10분이며 프로세스 재시작 뒤의 중복 방지는 보장하지 않는다.
 - 기존 analysis 보호 관문·입력/예산/동시 실행 상한·취소를 따른다. 계약/문안 불일치 422, 중복 id 충돌 409, 시간 초과 504, 실행 실패는 실패 결과로 반환한다.
