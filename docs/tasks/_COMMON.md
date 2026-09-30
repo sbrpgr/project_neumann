@@ -15,7 +15,7 @@
 실행할 때 환경변수:
 
 ```bash
-export PYTHONIOENCODING=utf-8 PYTHONPATH="src:." HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
+export PYTHONIOENCODING=utf-8 PYTHONPATH="src;." HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1   # Windows Python이라 구분자는 ; (Git Bash에서도)
 export NEUMANN_RAW_DIR="C:/Users/User/Desktop/노이만_본선자료/공개자료"
 export NEUMANN_DATA_DIR="C:/Users/User/Desktop/project_neumann/data"
 export NEUMANN_EMBED_MODEL="C:/Users/User/Desktop/노이만_본선자료/공개자료/models/bge-m3"
