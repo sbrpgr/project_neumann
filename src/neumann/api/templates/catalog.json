@@ -1,45 +1,45 @@
 {
-  "version": 1,
+  "version": 2,
   "scope": {
     "label": "AI 활용 과학 연구 계획서 전용",
-    "domains": ["소재·화학·분자", "단백질·생물·신약", "물리·PDE·기후", "신경과학", "의료영상"]
+    "domains": ["소재·화학·분자", "단백질·생물·신약", "물리·PDE·기후"]
   },
   "required_sections": ["연구 목표", "방법", "데이터", "평가", "일정"],
   "templates": [
     {
       "id": "materials-gnn",
-      "name": "재료·배터리 GNN 대리모델",
+      "name": "소재·배터리 GNN 대리모델",
       "domain": "소재·화학·분자",
       "summary": "분자·결정 구조로 물성을 예측하는 그래프 신경망 대리모델",
       "file": "materials_gnn.md"
     },
     {
-      "id": "protein-molecule",
-      "name": "단백질·분자",
+      "id": "molecule-reaction",
+      "name": "분자·화학 반응 예측",
+      "domain": "소재·화학·분자",
+      "summary": "반응 생성물·역합성·수율 예측과 분자 물성 모델",
+      "file": "molecule_reaction.md"
+    },
+    {
+      "id": "protein-binding",
+      "name": "단백질 구조·결합 예측(신약)",
       "domain": "단백질·생물·신약",
-      "summary": "단백질 서열·구조, 분자 결합·생성 모델",
-      "file": "protein_molecule.md"
+      "summary": "단백질 구조, 단백질-리간드 결합 친화도·포즈 예측",
+      "file": "protein_binding.md"
     },
     {
-      "id": "physics-pde-climate",
-      "name": "물리·PDE·기후",
+      "id": "pde-operator",
+      "name": "PDE 신경 연산자·물리 시뮬레이션",
       "domain": "물리·PDE·기후",
-      "summary": "편미분방정식·기후 시뮬레이션 신경 대리모델",
-      "file": "physics_pde_climate.md"
+      "summary": "편미분방정식 해를 배우는 신경 연산자·물리 시뮬레이션 대리모델",
+      "file": "pde_operator.md"
     },
     {
-      "id": "neuro-fmri",
-      "name": "신경과학 fMRI",
-      "domain": "신경과학",
-      "summary": "fMRI 신호 디코딩·분류와 뇌 연결성 분석",
-      "file": "neuro_fmri.md"
-    },
-    {
-      "id": "medical-imaging",
-      "name": "의료영상",
-      "domain": "의료영상",
-      "summary": "X선·CT·MRI 영상 검출·분류·분할 모델",
-      "file": "medical_imaging.md"
+      "id": "climate-emulator",
+      "name": "기후·지구과학 에뮬레이터",
+      "domain": "물리·PDE·기후",
+      "summary": "재분석·기후 모델 자료로 학습한 기상 예보·기후 에뮬레이터",
+      "file": "climate_emulator.md"
     }
   ],
   "examples": [
@@ -51,18 +51,18 @@
       "path": "tests/fixtures/plans/plan.md"
     },
     {
-      "id": "example-fmri",
-      "name": "fMRI 인지과제 분류",
-      "domain": "신경과학",
-      "template_id": "neuro-fmri",
-      "path": "tests/fixtures/plans/plan_elife_neuro.md"
+      "id": "example-binding",
+      "name": "단백질-리간드 결합 친화도 예측",
+      "domain": "단백질·생물·신약",
+      "template_id": "protein-binding",
+      "path": "src/neumann/api/templates/examples/protein_ligand_affinity.md"
     },
     {
-      "id": "example-medimaging",
-      "name": "흉부 X선 폐렴 검출",
-      "domain": "의료영상",
-      "template_id": "medical-imaging",
-      "path": "tests/fixtures/plans/plan_medimaging.md"
+      "id": "example-operator",
+      "name": "신경 연산자 대기 유체 대리모델",
+      "domain": "물리·PDE·기후",
+      "template_id": "pde-operator",
+      "path": "src/neumann/api/templates/examples/neural_operator_weather.md"
     }
   ]
 }
