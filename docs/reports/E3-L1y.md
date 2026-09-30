@@ -105,7 +105,7 @@ python -m tests.e3.test_pipeline_parallel_sim 1.0
 
 - 설정: `NEUMANN_EXTRACT_PARALLEL`(기본 `extract.DEFAULT_PARALLEL=24`), 묶음 `NEUMANN_EXTRACT_BATCH`(기본 50).
 - E3-L0 실측(실색인): 1,356문장 → **32묶음**, 동시 24 → 2번에 나눠 나감(24+8), extract 39.4초. 동시 10에서는 42묶음 85초. 걸린 시간이 대략 "묶음 수 ÷ 동시 수(올림) × 묶음 지연"을 따른다.
-- 지금 기본 24는 흔한 32묶음을 두 번에 보낸다. **제안: 서버 기동 값에 `NEUMANN_EXTRACT_PARALLEL=32`**(한 번에 나감, 추출 구간 약 절반 기대). 단 E3-L0 이후 429(속도 제한)는 본 적이 없을 뿐 32에서 확인하지 않았다 — 대표 승인 확인 테스트 때 429·시간 초과 묶음 수를 같이 본다. 코드 기본값 변경은 extract.py(E3, 이번 과제 소유 밖) 몫이라 하지 않았다.
+- 지금 기본 24는 흔한 32묶음을 두 번에 보낸다. **제안: 서버 기동 값에 `NEUMANN_EXTRACT_PARALLEL=32`**(→ 후속: PM 결정으로 하지 않음, 기본 24 유지)(한 번에 나감, 추출 구간 약 절반 기대). 단 E3-L0 이후 429(속도 제한)는 본 적이 없을 뿐 32에서 확인하지 않았다 — 대표 승인 확인 테스트 때 429·시간 초과 묶음 수를 같이 본다. 코드 기본값 변경은 extract.py(E3, 이번 과제 소유 밖) 몫이라 하지 않았다.
 - 체크리스트·검증 묶음 동시 수(`checklist.MAX_PARALLEL_CALLS=3`, 3장씩)는 카드 9장까지 한 번에 나가므로 충분하다.
 
 ## 완료 기준별 측정 (명령·출력)
@@ -134,7 +134,7 @@ python -m tests.e3.test_pipeline_parallel_sim 1.0
 - **실제 sol 지연은 재지 않았다**(실제 API 금지). 표는 지시한 모의 지연으로 잰 것이다. 실서버에서 줄어드는 폭은 대략 `min(예상 심사평, 체크리스트+2차 검증)` — E3-L1a·b 실측(12.5초·16.4초·12.4초)으로 치면 약 12초다. 80초 전체에서 v1 외 구간(검색어·추출·카드)은 그대로다.
 - 병렬 구간에서는 OpenAI로 동시에 나가는 요청이 늘어난다(예상 심사평 1 + 체크리스트 묶음 최대 3). 추출(24 동시)보다 작아 속도 제한 위험은 낮다고 봤지만 실측하지 않았다.
 - 체크리스트·검증 안의 묶음 병렬(모듈 기존 동작)은 같은 `llm_call`을 여러 스레드가 같이 쓴다 → 그 단계 안의 `last_error`는 마지막으로 끝난 묶음 값이다(E3-L1w와 같은 동작, 이번 변경과 무관). 단계 사이에는 섞이지 않는다(테스트).
-- 기존 `tests/e3/test_pipeline_l1w.py::test_mock_all_stages_attached_in_order_with_results`는 LLM 호출 순서 `expected_review < checklist`를 단언한다. 병렬에서는 두 호출이 동시에 나가므로 이 순서는 보장이 아니다. 제출 순서(심사평 먼저)와 GIL 때문에 300회 돌려 0회 뒤집혔지만(아래 명령) 원리상 경쟁이다. 소유 밖 파일이라 고치지 않았다 → 제안 1.
+- 기존 `tests/e3/test_pipeline_l1w.py::test_mock_all_stages_attached_in_order_with_results`는 LLM 호출 순서 `expected_review < checklist`를 단언한다. 병렬에서는 두 호출이 동시에 나가므로 이 순서는 보장이 아니다. 제출 순서(심사평 먼저)와 GIL 때문에 300회 돌려 0회 뒤집혔지만(아래 명령) 원리상 경쟁이다. 소유 밖 파일이라 고치지 않았다 → 제안 1. **(후속②에서 PM 승인으로 반영)**
 
 ## 결정
 
@@ -145,17 +145,64 @@ python -m tests.e3.test_pipeline_parallel_sim 1.0
 
 ## 제안 (PM·E3·E4)
 
-1. `tests/e3/test_pipeline_l1w.py` 한 줄: `tasks.index("expected_review") < tasks.index("checklist") < …` → `tasks.index("checklist") < tasks.index("semantic_validate")`(실제 의존만). 지금은 통과하지만 원리상 경쟁.
+1. `tests/e3/test_pipeline_l1w.py` 한 줄: `tasks.index("expected_review") < tasks.index("checklist") < …` → `tasks.index("checklist") < tasks.index("semantic_validate")`(실제 의존만). 지금은 통과하지만 원리상 경쟁. → **후속②에서 반영**
 2. 운영 스위치가 필요하면 `NEUMANN_V1_PARALLEL`(기본 1)을 `.env.example`에 넣고 pipeline이 읽게 한다.
 3. 적합성 ∥ 검색어: 둘 다 계획서만 읽는다. 동시에 돌리면 약 3~6초(짧은 쪽) 더 줄지만, unfit 입력에도 검색어 호출·캐시 쓰기가 생긴다. unfit이면 검색어 결과를 버리고 `skipped`로 적고 캐시는 쓰지 않게(queries.py에 "쓰기 미루기" 인자) 하면 결과는 같게 할 수 있다 — 비용 증가를 받아들일지 PM 판단.
 4. 2차 검증을 "카드 판정"(체크리스트 불필요)과 "행동 판정"으로 쪼개면 카드 판정은 체크리스트와 동시에 돌 수 있다. 호출이 늘고 지시문이 바뀌므로(품질 재측정 필요) validate.py 과제로.
-5. 캐시 쓰기(`extract._cache_write`, `queries._cache_write`)는 임시 파일 이름이 `{key}.tmp`로 고정이다. 같은 키를 두 스레드·프로세스가 동시에 쓰면(같은 계획서 동시 분석, 같은 문장 묶음) 임시 파일이 겹칠 수 있다(읽기는 깨진 JSON을 적중 실패로 넘기므로 결과는 안전). `{key}.{uuid}.tmp`로 바꾸기를 제안. 이번 병렬화는 캐시를 쓰지 않는 단계만 동시에 돌리므로 새 경합은 없다(`test_v1_workers_never_write_caches`).
+5. 캐시 쓰기(`extract._cache_write`, `queries._cache_write`)는 임시 파일 이름이 `{key}.tmp`로 고정이다. 같은 키를 두 스레드·프로세스가 동시에 쓰면(같은 계획서 동시 분석, 같은 문장 묶음) 임시 파일이 겹칠 수 있다(읽기는 깨진 JSON을 적중 실패로 넘기므로 결과는 안전). `{key}.{uuid}.tmp`로 바꾸기를 제안. 이번 병렬화는 캐시를 쓰지 않는 단계만 동시에 돌리므로 새 경합은 없다(`test_v1_workers_never_write_caches`). → **후속④에서 반영**
 6. jobs.py 연결: 위 "on_stage 형태"의 1·2.
+
+## 후속 (PM 결정 ②·④, ③은 하지 않음)
+
+PM 결정: ② l1w 테스트 단언 정리 + 병렬=순차 고정, ④ 캐시 임시 파일 고유화, ③(추출 동시 32)은 **하지 않는다 — 기본 24 유지**.
+모든 명령 `NEUMANN_LLM_PROVIDER=mock`, stash 없음.
+
+### ② `tests/e3/test_pipeline_l1w.py` (PM 승인으로 이 파일만)
+
+- `test_mock_all_stages_attached_in_order_with_results`: `expected_review < checklist` 단언을 뺐다. 남긴 것은 실제 의존인
+  "체크리스트 호출(묶음 전부) → 2차 검증 호출"이다.
+- 대신 `test_parallel_equals_sequential_full_json_on_demo_plans[demo:plan.md, corpus:battery, corpus:imaging]`를 더했다.
+  순차(`V1_PARALLEL=False`, 지연 없음) 결과 JSON과 병렬 결과 JSON이 **시간 값(`elapsed_s`·`latency_s`·`total_s`·`timings_s`·
+  `v1_wall_s`·`v1_parallel`·`generated_at`) 외 전부** 같아야 한다. 병렬은 호출마다 무작위 지연(0~30ms, 시드 0~3) 4회, 순차도
+  지연을 넣어 1회 더. 데모 계획서는 공용 fixture `tests/fixtures/plans/plan.md` + fixture 코퍼스, 나머지 둘은 E3 가짜 코퍼스
+  계획서(카드가 나오는 것). `plan_medimaging.md`·`plan_elife_neuro.md`는 공용 fixture 코퍼스로는 카드가 0장이라 뺐다
+  (카드가 있어야 v1 단계가 실제로 돈다). 실제 적합성 모듈이 도는 경로다(`_load_fitness`를 막지 않음).
+
+### ④ 캐시 임시 파일 고유화 (`analyze/queries.py`·`analyze/extract.py`, PM 승인)
+
+- `_cache_write`가 `_atomic_write(final, text)`를 부른다: `{key}.{pid}.{thread_id}.{uuid4 앞 8자}.tmp`에 쓰고 `os.replace`로
+  원자 교체. 교체가 Windows 공유 위반(`PermissionError`: 다른 쪽이 같은 파일을 교체·읽는 중)으로 거부되면 짧게 늘려 가며 다시
+  시도(`_REPLACE_TRIES=40`, 최대 약 1.4초). 끝내 실패하면 임시 파일을 지우고 OSError로 올려 기존처럼 경고 로그(예외 종류만)만
+  남긴다. 읽기 함수는 그대로.
+- 5회 재시도로 처음 짰을 때 12스레드 동시 쓰기 + 읽기 2스레드에서 교체 거부로 쓰기를 포기하는 경우가 나와 40회로 늘렸다.
+- 테스트 `tests/e3/test_pipeline_parallel_cache.py`(7개):
+  - 같은 키를 12스레드 × 25회 동시에 쓰고(스레드마다 길이가 다른 내용) 2스레드가 계속 읽는다(모듈 2개): 쓰기 예외 0,
+    읽은 내용이 늘 한 쓰기의 온전한 JSON(빈·반쯤 쓴 파일 0), "캐시 쓰기 실패" 경고 0, 최종 파일 온전, 임시 파일 남지 않음.
+  - 임시 파일 이름 형식 `^{key}\.{pid}\.\d+\.[0-9a-f]{8}\.tmp$`, 쓰는 쪽마다 다름, 대상은 `{key}.json`.
+  - 교체가 계속 거부되면: 예외가 밖으로 안 나옴, 재시도 횟수 = `_REPLACE_TRIES`, 임시 파일 정리, 로그에 경로 없음.
+  - 새 방식으로 쓴 파일을 기존 읽기 함수가 읽는다.
+- 변이 검사(일회성 스크립트): `_atomic_write`를 옛 방식(`{key}.tmp` 고정)으로 바꿔 동시 쓰기 테스트를 돌리면
+  `extract old-style failures 3 / 3`, `queries old-style failures 3 / 3`(교체 실패 경고 908건) — 테스트가 옛 결함을 잡는다.
+
+### 후속 측정
+
+| 기준 | 명령 | 출력 |
+|---|---|---|
+| ② l1w | `python -m pytest -q tests/e3/test_pipeline_l1w.py` | `28 passed` |
+| ④ 캐시 동시 쓰기 | `python -m pytest -q tests/e3/test_pipeline_parallel_cache.py` (5회 반복) | `7 passed` × 5 |
+| E3 전체 | `python -m pytest -q tests/e3` | `411 passed, 12 skipped` |
+| verify | `python scripts/verify.py` | `1206 passed, 27 skipped in 125.58s` · `보안: 파일 395개` · `계약: 2개` · `테스트: 통과` · `verify 통과` |
+
+### 후속 커밋
+
+- `e88f9e5` ② l1w 단언 정리 + 병렬=순차 고정 테스트
+- `ed9b6b7` ④ 캐시 임시 파일 고유화(queries·extract)
+- `a24764f` ④ 동시 쓰기 테스트
 
 ## 못 한 것
 
 - 실제 sol 지연 측정(금지).
-- 위 제안 1~6(소유 밖 또는 PM 판단).
+- 위 제안 2·3·4·6(소유 밖 또는 PM 판단). 1·5는 후속②·④에서 했다. 추출 동시 32는 PM 결정으로 하지 않는다(기본 24).
 
 ## 다음
 
