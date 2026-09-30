@@ -1,4 +1,101 @@
-# E4-L1g 보고서 — 첫 화면 샘플 갤러리 + 문서 샘플 (WIP, Codex 인수)
+# E4-L1g 보고서 — 샘플 API·선별 도구 구현 완료, PM 통합·독립검증 대기
+
+## 최신 배정 범위와 실행 정보 (2026-10-01 02:17 KST)
+
+- 역할: builder. 실제 모델: **gpt-6.1-sol**(PM 최신 배정 명시), 커밋 라벨 `builder: codex-gpt-6.1-sol`.
+- worktree: `C:/Users/User/Desktop/project_neumann/.claude/worktrees/s2-E4-L1g`.
+- branch: `task/E4-L1g`. 시작 HEAD: `a97a165a2bbac5d9eafdd5cf8d2cfa0e1b8bd0a9`.
+- 보고서 작성 시 구현 HEAD: `8666244a387780db22509a28402692b207ff994d`(API b10d125·API 검사 b9701ee·선별/검사 8666244). 최종 HEAD는 최종 응답에 기록한다(보고서 자체 커밋의 해시는 문서 안에 넣을 수 없음).
+- **OpenAI 실제 호출 0**. 명령마다 provider=mock, NEUMANN_LIVE_TESTS=0, NEUMANN_LIVE_LLM_OK 제거. 기본 pytest conftest는 자체적으로 이 플래그를 0으로 닫는다. `.env`·인증 키·전체 환경변수는 열거나 출력하지 않았다.
+- `00_구현_계획서.md`, AGENTS, 공통 task/verify 지시, 기존 인수 보고서를 읽음. E4-L1g 전용 task/verify 파일은 현재 트리에 없음. 최신 PM 지시가 이전 인수 계획의 UI·문서 생성·전체 verify 요구보다 우선한다.
+- 서버 기동·8020/8099/8010 호출·프로세스 종료·원본 데이터 변경·외부 웹·arXiv 다운로드·하위 에이전트 없음.
+- 02:19 KST 종료 전 점검: stop-request.txt 없음; 마지막 diff는 아래 소유 파일 7개뿐. 후속 커밋 뒤 작업 트리 청결 여부를 최종 응답으로 보고한다.
+
+## 한 일
+
+- `src/neumann/api/samples.py`: 레지스트리 스키마·중복 ID·분야 참조·본문 plan_id·허용 디렉터리 검사를 구현. 목록은 **featured + public_ok=true**만 제공한다. 후보·비공개·retired는 모든 단건 경로에서 404. 내부 curation·의도한 약점·결과 경로는 API에 내지 않는다.
+- GET 목록·본문·문서·사전 계산 view의 네 경로 구현. 본문은 기존 허용 파일 그대로, 문서는 레지스트리 파일 이름만 사용한다. 파일이 없으면 문서 목록에 넣지 않고 다운로드 404. case에는 본문·문서·view를 제공하지 않는다.
+- 사전 계산본은 기존 로더의 sha256·계약 검사를 거친다. 매니페스트 source=fixture 또는 결과의 mock/fixture 흔적이 있으면 배지·view를 제공하지 않는다. rule·생성 출처 불명도 즉시 결과로 제공하지 않는다. view는 `사전 계산본 · 라이브 분석 아님`을 표시하며 기존 강등/오류 표지도 보존한다.
+- `src/neumann/api/sample_curation.py`: 가중 채점과 기록된 생성 방식 판정. `astra` 계약 값만 보고 실모델을 추정하지 않는다. offline manifest는 **Claude/Codex 오프라인**으로 기록·목록·view에 표시한다. 이 작업은 제품 분석 결과를 새로 생성하지 않았다.
+- `scripts/curate_samples.py`: `score`, `score --apply`, `feature ID --confirm-human`, `suggest`. 결과 계약을 검사하고 plan_id 우선으로 짝짓는다. 파일 이름 hint는 plan_id가 없을 때만 사용하며 중복 짝은 오류. 결과 폴더에서는 `*.result.json`을 우선 읽는다.
+- `score --apply`는 curation만 갱신하며 status/public_ok/본문 경로를 보존한다. `feature`는 공개 승인·사람 확인·현재 결과 sha256·현재 채점 통과를 다시 검사한다. mock/rule/출처 불명·강등·근거 누락은 선별 불가. 자동 라이선스 승인 없음.
+- 로컬 출력: curation.json·curation.md·사람 확인용 summary.html(제목·근거 수·검사를 통과한 심사평 첫 문장·의도한 약점 대조). HTML 문자열은 escape. 미등록 제안은 candidate/public_ok=false로 유지하며 본문·인용을 담지 않는다.
+- `docs/reports/E4-L1g_main.patch`: OPTIONAL_ROUTERS에 samples를 templates **앞에** 추가하는 한 줄 패치. `main.py`, `templates.py`, `index.html`, `samples.json`은 최종 diff에서 변경 없음.
+
+## 완료 기준별 측정값
+
+Python: 공통 과제 지시의 `C:/Users/User/.venvs/neumann/Scripts/python.exe` 사용.
+
+최종 대상 시험 명령(매번 새 basetemp 사용):
+
+```powershell
+$env:NEUMANN_LLM_PROVIDER='mock'
+$env:NEUMANN_LIVE_TESTS='0'
+Remove-Item Env:NEUMANN_LIVE_LLM_OK -ErrorAction SilentlyContinue
+$env:PYTHONIOENCODING='utf-8'
+$env:HF_HUB_OFFLINE='1'
+$env:TRANSFORMERS_OFFLINE='1'
+& C:/Users/User/.venvs/neumann/Scripts/python.exe -m pytest -q --tb=short --basetemp C:/Users/User/Desktop/project_neumann/out/codex/E4-L1g-pytest-04 tests/e4/test_samples.py tests/e4/test_curate_samples.py tests/e4/test_templates.py
+```
+
+실제 출력: **123 passed, 3 skipped in 1.87s**. 3 skip은 Windows 심볼릭 링크 생성 권한이 없는 경우의 PDF/DOCX/HWPX 탈출 검사다. 다른 경로 조작 검사는 실행·통과했다. 통과 수는 기존 templates 회귀 시험을 포함한다.
+
+| 완료 기준 | 측정·시험 | 결과 |
+|---|---|---|
+| 기존 선별·공개 정직성 보존 | registry_errors, 목록, public_ok/status 조합 및 12개 case의 3개 경로 검사 | 검사 오류 0; 17개 중 공개 featured 5개·비공개 candidate 12개. 후보 노출 0 |
+| API 네 경로와 라우트 순서 | samples router → templates router인 TestClient에서 GET; 기존 template도 GET | 모두 기대 상태; `/templates/samples` 200, 기존 template 200. PM 패치 전 실제 main에는 아직 연결되지 않음 |
+| 내부 정보 비공개 | API 키 allowlist 및 응답 검사 | curation·intended_weaknesses·result_file·result_hint·keywords·path 노출 0 |
+| 허용 본문과 관문 | 공개 5편 원문 일치; 300자 규칙 + 로컬 rule_fitness | 예시 3편 ok, 짧은 초안 reject, 여행 글 unfit |
+| 문서 파일·경로 | 임시 테스트 바이트만 사용하여 PDF 다운로드 MIME/파일 이름 및 없는 파일·미허용 형식·폴더 탈출 검사 | 정상 응답/404/500 기대값 통과. 문서 자체 추출·렌더 시험은 미실행 |
+| fixture 배지 금지 | fixture source, pipeline source 아래 mock 결과, 변조 JSON | 배지 available=false, view 404 |
+| 사전 계산본 표시 | 임시 구조 변형 fixture로 live/offline 분기·ui_view 계약·degraded 분기 검사 | 계약 오류 0; offline 생성 방식 및 강등 표시 보존. 실제 live 실행 아님 |
+| 선별 점수와 필수 조건 | 관문·강등·카드 수·근거 연결·심사평·체크리스트·분야·수정 권고 각각 조작 | 각 실패 시 점수 하락·eligible=false; 완전한 테스트 변형 100점 |
+| 선별 변경 안전성 | --apply 보존, 사람 확인·공개 승인·hash 재검사, mock 점수 위조 | 보존/차단 통과; 바뀐 결과는 사람 확인 무효화 |
+| 실패를 숨기지 않음 | 깨진 레지스트리·잘못된 결과·빈 폴더·짝 없는 결과 | API 500 또는 CLI exit 1; 거부된 본문은 오류에 출력하지 않음 |
+| 외부 호출 없음 | socket.socket.connect를 실패하도록 바꿔 API 목록/본문/view와 CLI 실행 | 모두 통과. 실제 OpenAI 호출 0 |
+
+CLI 예행 명령(실제 제품 레지스트리 쓰기 없음):
+
+```powershell
+$env:PYTHONPATH='src;.'
+& C:/Users/User/.venvs/neumann/Scripts/python.exe scripts/curate_samples.py score tests/fixtures/premortem_result.json --output C:/Users/User/Desktop/project_neumann/out/codex/E4-L1g-curation
+```
+
+실제 순위 행: `example-battery | 15.79 | mock | False`. 산출물은 저장소 밖 out/codex에만 있으며 커밋하지 않는다. --apply/feature는 임시 테스트 레지스트리로만 시험했다.
+
+추가 검사: `git apply --check docs/reports/E4-L1g_main.patch` exit 0; `git diff --check` exit 0. git hook의 staged/message 보안 검사는 통과. **전체 python scripts/verify.py는 최신 지시대로 실행하지 않음(PM 큐 담당)**. 독립 gpt-6-sol 검증은 아직 없음.
+
+원문 분량 실측(파일 끝 개행 포함): battery 645자/27줄, binding 926자/27줄, operator 901자/28줄, short 127자/4줄, off-scope 539자/26줄. 이전 인수 기록의 숫자는 끝 개행 제외. short의 rule_fitness 단독 결과는 fit이지만 300자 미만 관문이 먼저 reject하며 이 순서를 시험했다.
+
+실행 안전 상태 실측: `provider_is_mock: True; live_tests: False; live_llm_allowed: False`(선택한 참·거짓만 출력, 설정 객체/키 출력 없음).
+
+## 실패·제약 및 PM 결정 제안
+
+- 최초 시험: `1 failed, 91 passed, 21 errors`. 1 fail은 인수 보고서의 총 16개 표기를 그대로 시험에 옮긴 오류(실제 17개), 21 errors는 기본 Temp/pytest-of-User 접근 거부. 항목은 보존하고 실측으로 수정; 허용된 out/codex의 새 basetemp로 해결했다.
+- 최초 git add/commit은 공유 `.git/worktrees/.../index.lock` 쓰기 권한이 없어 실패. 같은 소유 파일만 명시한 승인 범위 커밋을 권한 확장으로 실행했고 훅을 유지한 채 통과했다. force/reset/stash/clean/전체 add 없음.
+- 필수 채점 항목 모두 통과해야 선별 가능한 보수적 기준을 택했다. 수정 권고가 없으면 95점 가중 분모를 100점으로 정규화한다. 현재 수정 권고 검사 대상은 `plan_checks.revision_advice.items[].evidence`; 다른 E3 계약으로 연결한다면 PM/E3 합의 후 조정 필요.
+- 타인 사례를 public_ok=false면 요약까지 목록에서 숨기는 최신 지시를 적용했다. 라이선스 승인이나 featured/candidate 재배치는 수행하지 않았다.
+- fixture/mock뿐 아니라 rule·출처 불명 사전 계산본도 즉시 배지를 막았다. 완성도 점수는 과학적 정확도·성능 측정이 아니다.
+- 공통 HANDOFF/QUEUE/decisions를 수정하지 않았다. 위 기준과 범위 축소는 PM이 필요하면 decisions에 반영할 제안이다.
+
+## 후속 UI 통합 제안 (코드 변경 없음)
+
+- 먼저 main 패치를 적용해 samples를 generic templates보다 앞에 등록한다. 중복 include_router는 추가하지 않는다.
+- 현 index.html의 toast(447행)와 기존 script(448행) 사이에 독립 gallery script/style를 붙이는 기존 제안을 유지. 실제 병합 후 줄 번호보다 DOM/함수 이름으로 위치를 찾는다.
+- `renderInput()`의 `.card#inCard` 앞에 gallery 자리 제안. 577행 `window.NeumannInput`에 setPlan/start/readFile/showView 훅을 한 번만 통합. 이 작업에서는 아무 훅도 추가하지 않았다.
+- `/templates/samples`의 notice·body_available·documents·precomputed.available/generation을 그대로 사용. available=false이면 즉시 버튼 금지; 문서 목록이 비어 있으면 업로드 체험 버튼도 만들지 않는다. 기존 tplList/exList 유지.
+
+## 남은 일 (5줄)
+
+1. PM이 E4-L1g_main.patch를 통합해 실제 main의 라우트 순서를 확인한다.
+2. 독립 gpt-6-sol 검증 후 PM 큐에서 전체 verify를 실행한다.
+3. 후속 UI 담당이 gallery·NeumannInput 훅을 한 번만 통합하고 반응형/키보드 시험을 한다.
+4. 문서 담당이 허용 텍스트로 PDF/DOCX/HWPX를 생성할 때 관련 SKILL을 읽고 추출·렌더 검사를 한다.
+5. PM이 승인된 기존 실결과를 이 도구로 채점·사람 확인하고 사전 계산본을 연결한다(새 API 실행 없음).
+
+---
+
+## 이하: 인수 당시 기록 (현재 완료/범위는 위 최신 보고가 우선)
 
 ## 남은 일 (인수 시점, 우선순위 순)
 
