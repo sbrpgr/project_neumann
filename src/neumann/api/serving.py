@@ -76,6 +76,7 @@ KINDS = {"analysis", "export", "upload", "gated"}
 DOC_PATHS = frozenset({"/docs", "/redoc", "/openapi.json", "/docs/oauth2-redirect"})
 TICKET_HEADER = "x-neumann-ticket"
 JOB_POLL_PREFIX = "/premortem/jobs/"  # 작업 폴링 GET(jobs.py가 따로 IP별 상한을 건다)
+JOB_POLL_PATH_RE = re.compile(re.escape(JOB_POLL_PREFIX) + r"[^/]+")  # jobs의 /{job_id} 한 구간만
 _TICKET_RE = re.compile(r"^[A-Za-z0-9_\-]{6,64}$")
 _PLAN_ID_RE = re.compile(r"^[0-9a-f]{64}$")
 
@@ -1614,7 +1615,8 @@ class ServingMiddleware:
         """
         srv, cfg = self.serving, self.serving.config
         raw = scope.get("raw_path") or path.encode("utf-8", "surrogateescape")
-        size = len(raw) + len(scope.get("query_string") or b"") + 1
+        query = scope.get("query_string") or b""
+        size = len(raw) + (1 + len(query) if query else 0)
         if cfg.max_request_line > 0 and size > cfg.max_request_line:
             rid = uuid.uuid4().hex[:16]
             return 414, _err("uri_too_long", user_message("uri_too_long", limit=cfg.max_request_line), rid), {
@@ -1622,7 +1624,7 @@ class ServingMiddleware:
         method = scope.get("method", "GET")
         if cfg.get_rate_per_min <= 0 or (method == "POST" and srv.kind_for(path) is not None):
             return None
-        if method == "GET" and path.startswith(JOB_POLL_PREFIX):
+        if method == "GET" and JOB_POLL_PATH_RE.fullmatch(path):
             return None
         ok, retry = srv.get_limiter.hit(ip_key(client_ip(scope, cfg.trust_proxy, cfg.xff_pick, cfg.trust_xff)))
         if ok:
