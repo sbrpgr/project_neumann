@@ -12,6 +12,9 @@
 
 정직성 규칙(AGENTS.md):
 - 근거가 하나도 연결되지 않는 카드와 예상 심사평 문장은 화면에 내보내지 않고 ``_status``에 개수를 남긴다.
+- 체크리스트 항목도 같다(E3-L1e): 근거 번호로 풀리지 않는 항목은 내보내지 않는다. 앞 단계(체크리스트 생성·2차 검증)의
+  근거 게이트가 뺀 수와 합쳐 ``checklist_audit``(``note`` = "근거 없는 항목 k개 제외")에, 심사평은 ``review.audit``의
+  ``no_evidence``·``note``에 싣는다.
 - 인용문은 결과의 ``text``를 그대로 쓴다. 이 모듈은 문장을 만들지 않는다.
 - 생성 방식(``generator``)과 강등 단계는 그대로 화면까지 전달한다.
 """
@@ -803,6 +806,10 @@ def _build_review(res: Mapping[str, Any], ctx: _Ctx, has_works: bool) -> dict[st
         ctx.drop("review_sentences_without_evidence", dropped_n)
     # pass = 화면에 실제로 나가는 문장 수. 게이트가 뺀 것과 화면이 뺀 것이 모두 drop에 들어간다.
     out["audit"] = {"gen": gen, "pass": kept, "drop": max(0, gen - kept), "dropped": dropped}
+    # E3-L1e: 근거 연결 실패로 뺀 문장 수(생성 게이트 + 화면) — 화면 표시 문구 note
+    no_ev = (_int(audit.get("no_evidence")) or 0) + dropped_n
+    out["audit"]["no_evidence"] = no_ev
+    out["audit"]["note"] = excluded_note(no_ev)
     gate = _text(audit.get("gate"))
     if gate:
         out["audit"]["gate"] = gate
@@ -841,6 +848,9 @@ def _build_checklist(res: Mapping[str, Any], ctx: _Ctx | None = None) -> list[di
             evs = [ctx.ev_num[e] for e in (_text(x) for x in _list(_get(it, "evidence", "evidence_ids")))
                    if e in ctx.ev_num]
             item["ev"] = list(dict.fromkeys(evs))
+            if not item["ev"]:  # E3-L1e: 근거 번호로 풀리지 않는 항목은 화면에 내보내지 않는다
+                ctx.drop("checklist_items_without_evidence")
+                continue
             rank = ctx.card_rank.get(_text(it.get("card_id")))
             if rank is not None:
                 item["card"] = rank
@@ -851,6 +861,23 @@ def _build_checklist(res: Mapping[str, Any], ctx: _Ctx | None = None) -> list[di
                 item[key] = v[:300]
         out.append(item)
     return out
+
+
+def excluded_note(n: int) -> str:
+    """근거 게이트 제외 수의 화면 문구(E3-L1e). 0이면 빈 문자열(화면이 그리지 않는다)."""
+    return f"근거 없는 항목 {n}개 제외" if n else ""
+
+
+def _checklist_audit(res: Mapping[str, Any], shown: int, ctx: _Ctx) -> dict[str, Any]:
+    """체크리스트 근거 게이트 제외 수(E3-L1e): 생성 직후 + 2차 검증 + 화면. 수만 싣고 뺀 문구는 싣지 않는다."""
+    ver = _as_dict(res.get("verification"))
+    at_build = _int(_as_dict(ver.get("checklist_evidence")).get("dropped")) or 0
+    at_validate = _int(_as_dict(_as_dict(ver.get("semantic")).get("counts")).get("actions_no_evidence")) or 0
+    at_view = ctx.dropped.get("checklist_items_without_evidence", 0)
+    total = max(0, at_build) + max(0, at_validate) + at_view
+    return {"shown": shown, "excluded": total,
+            "by_stage": {"checklist": max(0, at_build), "semantic_validate": max(0, at_validate), "view": at_view},
+            "note": excluded_note(total)}
 
 
 def _build_pipeline(res: Mapping[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]], float | None]:
@@ -908,6 +935,8 @@ def empty_view() -> dict[str, Any]:
         "pipeline": [], "works": [], "fams": [], "corpus": [], "ev": {}, "cards": [], "others": [],
         "review": {"strength": [], "weakness": [], "request": [], "audit": {"gen": 0, "pass": 0, "drop": 0, "dropped": []}},
         "checklist": [],
+        "checklist_audit": {"shown": 0, "excluded": 0, "by_stage": {"checklist": 0, "semantic_validate": 0, "view": 0},
+                            "note": ""},
         "kpi": {"n_works": 0, "n_reject": 0, "n_accept": 0, "n_evidence": 0, "n_cards_total": 0, "review_count": 0,
                 "model_id": None, "model_provider": None, "elapsed_s": None},
     }
@@ -1013,6 +1042,8 @@ def _build(result: Any, *, filename: str | None, sample: bool, pipeline_state: s
         "pipeline": pipeline, "works": works, "fams": ctx.fams, "corpus": [None] * len(ctx.fams),
         "ev": ev, "cards": cards, "others": [], "review": review, "checklist": checklist,
     })
+    view["checklist_audit"] = section("checklist_audit", lambda: _checklist_audit(res, len(checklist), ctx),
+                                      view["checklist_audit"])
     plan_text_for_id = "\n".join(line["t"] for line in view["plan"]["lines"])
     view["plan_id"] = _text(res.get("plan_id")) or (
         "sha256:" + hashlib.sha256(plan_text_for_id.encode("utf-8")).hexdigest()[:16] if plan_text_for_id else "")
