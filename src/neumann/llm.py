@@ -34,10 +34,15 @@ MOCK_MODEL = "mock-deterministic-v1"
 EFFORTS = frozenset({"none", "minimal", "low", "medium", "high", "xhigh"})
 
 # 호출(task)별 기본값. 설정 키로 덮어쓴다(`llm_effort_<task>` 속성 또는 NEUMANN_LLM_EFFORT_<TASK> 환경변수).
+# v1 단계(적합성·예상 심사평·체크리스트·2차 검증)의 상한은 실측 지연(E3-L1a·b·c 보고서: 5~7s·12.5s·16.4s·12.4s)의 약 5배.
 TASK_DEFAULTS: dict[str, dict[str, Any]] = {
+    "fitness": {"effort": "low", "timeout_s": 30.0},
     "query_axes": {"effort": "low", "timeout_s": 45.0},
     "extract_issues": {"effort": "low", "timeout_s": 90.0},
     "synthesize_cards": {"effort": "medium", "timeout_s": 120.0},
+    "expected_review": {"effort": "medium", "timeout_s": 90.0},
+    "checklist": {"effort": "medium", "timeout_s": 90.0},
+    "semantic_validate": {"effort": "medium", "timeout_s": 90.0},
 }
 
 # 실패 분류. 호출부는 reason()을 StageStatus.detail에 옮긴다.
@@ -109,8 +114,26 @@ class LLMResult:
         return f"{self.provider}:{self.model} 호출 실패({label}{extra}) [{self.error}]"
 
 
+# provider 이름 → 생성 주체(models.Generator 값). 여기 없는 이름은 추정하지 않는다(provider_generator가 거부).
+PROVIDER_GENERATOR: dict[str, str] = {"openai": "astra", "mock": "mock", "off": "rule"}
+
+
 def generator_for(provider: str) -> str:
     return {"openai": "astra", "mock": "mock"}.get(provider, "rule")
+
+
+def provider_generator(provider: Any) -> str:
+    """provider 객체의 생성 주체. `generator` 속성 → 이름 대응(openai→astra, mock→mock, off→rule).
+
+    둘 다 없거나 모르는 값이면 ValueError. 무엇이 호출됐는지 모르는 provider를 astra로 적지 않는다(추정 금지).
+    """
+    gen = getattr(provider, "generator", None)
+    if gen is None:
+        gen = PROVIDER_GENERATOR.get(str(getattr(provider, "name", "") or "").lower())
+    if gen not in ("astra", "mock", "rule"):
+        name = getattr(provider, "name", None) or type(provider).__name__
+        raise ValueError(f"provider {name!r}의 생성 주체를 알 수 없다(generator 속성 없음, 이름 대응 없음)")
+    return str(gen)
 
 
 class LLMProvider(Protocol):
@@ -171,6 +194,11 @@ class OpenAIProvider:
     """OpenAI Responses API. 스키마는 strict json_schema로 보내고, 받은 뒤 로컬에서 다시 검사한다."""
 
     name = "openai"
+
+    @property
+    def generator(self) -> str:
+        """이 provider가 만든 결과의 생성 주체(파이프라인 어댑터가 읽는다). 이름 대응을 따른다."""
+        return PROVIDER_GENERATOR[self.name]
 
     def __init__(
         self,
@@ -333,6 +361,11 @@ class MockProvider:
 
     name = "mock"
 
+    @property
+    def generator(self) -> str:
+        # 이름을 따른다: 이름만 openai로 바꾼 시험용 하위 클래스는 LLMResult.generator와 같게 astra가 된다.
+        return PROVIDER_GENERATOR.get(self.name, "mock")
+
     def __init__(
         self,
         responders: dict[str, Responder] | None = None,
@@ -370,6 +403,7 @@ class DisabledProvider:
     """끈 상태. 모든 호출이 실패로 돌아가 호출부가 비상 경로로 간다."""
 
     name = "off"
+    generator = "rule"  # 꺼진 provider로 만든 결과는 모두 규칙 경로다
 
     def __init__(self, reason: str = "LLM provider 꺼짐") -> None:
         self.model = "none"
@@ -437,11 +471,13 @@ __all__ = [
     "LLMResult",
     "MockProvider",
     "OpenAIProvider",
+    "PROVIDER_GENERATOR",
     "TASK_DEFAULTS",
     "check_strict_schema",
     "setting",
     "generator_for",
     "make_llm",
+    "provider_generator",
     "task_options",
     "validate_output",
 ]
