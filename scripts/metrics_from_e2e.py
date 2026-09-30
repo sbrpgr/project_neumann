@@ -25,7 +25,8 @@
 - 샘플 모드 요약(mode != live)이나 파이프라인 미연결 요약은 거부한다(성능 수치가 아니다).
 - 요약에 적힌 비율이 개수와 다르거나, 요약 문자열의 개수와 필드의 개수가 다르면 멈춘다(어느 쪽을 믿을지 정할 수 없다).
 - 비율은 소수 4자리로 적되, 1.0이 아닌 값을 1.0으로, 0이 아닌 값을 0으로 반올림하지 않는다. 정확한 개수는 detail에 둔다.
-- 요약에는 모델 이름이 없다. 모델은 `--model`로 받아 조건 칸에 적는다(기본값 없음).
+- 모델은 `--model`로 받아 조건 칸에 적는다(기본값 없음). 요약에 `plans[*].models.llm_model`(E5-L1e2e 이후)이 있으면
+  대조해서 다르면 멈추고, 없으면 조건 칸에 "모델은 명령행 값(요약에 기록 없음)"이라고 적는다.
 """
 
 from __future__ import annotations
@@ -127,6 +128,23 @@ def _plan_linkage(name: str, entry: dict[str, Any]) -> dict[str, Any] | None:
     return {"links": links, "cards": cards, "drop": drop, "verdict": lk.get("verdict"), "gens": gens}
 
 
+def model_source(demo: dict[str, Any], model: str) -> str:
+    """`--model`을 요약의 `plans[*].models.llm_model`(E5-L1e2e 이후 기록)과 대조한다. 다르면 멈춘다."""
+    recorded = {
+        n: (e.get("models") or {}).get("llm_model")
+        for n, e in demo.items() if isinstance(e, dict) and isinstance(e.get("models"), dict)
+        and (e.get("models") or {}).get("llm_model")
+    }
+    wrong = {n: m for n, m in recorded.items() if m != model}
+    if wrong:
+        raise InputError(f"--model {model!r}이 요약의 models.llm_model과 다르다: {wrong}")
+    if not recorded:
+        return "모델은 명령행 값(요약에 기록 없음)"
+    if len(recorded) == len(demo):
+        return f"요약 models.llm_model {len(recorded)}/{len(demo)}건과 일치"
+    return f"요약 models.llm_model {len(recorded)}/{len(demo)}건과 일치, 나머지는 명령행 값(요약에 기록 없음)"
+
+
 def linkage_system(measured: dict[str, dict[str, Any]]) -> tuple[str, str, str]:
     """연결 검사 실행의 카드 generator로 (시스템, 약속 칸 병기 문구, 한계 문구 머리)를 정한다."""
     missing = [n for n, v in measured.items() if v["gens"] is None]
@@ -172,7 +190,7 @@ def convert(summary: dict[str, Any], *, model: str, product_model: str | None = 
         raise InputError("데모 계획서 결과가 없다")
     run = (
         f"라이브 E2E {summary.get('base_url', '?')} {summary.get('started_at', '?')}~{summary.get('finished_at', '?')}, "
-        f"1회 실행, 평가 모델 {model}"
+        f"1회 실행, 평가 모델 {model}({model_source(demo, model)})"
     )
     measured: dict[str, dict[str, Any]] = {}
     unmeasured: list[str] = []

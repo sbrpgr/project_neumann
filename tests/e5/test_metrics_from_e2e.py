@@ -61,7 +61,7 @@ def test_live_summary_converts_to_counts_from_file():
     lr = by[("linkage_rate", REF_SYS)]
     assert (lr["value"], lr["n"]) == (1.0, 43)
     assert lr["detail"].startswith("43/43; plan.md 10/10 · plan_elife_neuro.md 13/13 · plan_medimaging.md 20/20")
-    assert "평가 모델 gpt-6-astra" in lr["conditions"]
+    assert "평가 모델 gpt-6-astra(모델은 명령행 값(요약에 기록 없음))" in lr["conditions"]
     assert "generator가 요약에 없다" in lr["limits"] and "약속 P2 판정에 쓰지 않는" in lr["limits"]
     assert lr["detail"].endswith("검사 실행 카드 generator 미기록")  # 약속 표(P2) 칸에도 보이게
     cp = by[("card_pass_rate", REF_SYS)]
@@ -104,6 +104,34 @@ def test_inconsistent_summary_refused(patch, msg):
     patch(s)
     with pytest.raises(mfe.InputError, match=msg):
         mfe.convert(s, model="gpt-6-astra")
+
+
+def test_model_checked_against_recorded_llm_model():
+    """요약에 models.llm_model이 있으면(E5-L1e2e 이후) --model과 대조: 다르면 거부, 같으면 일치 표기."""
+    s = _summary()
+    for e in s["plans"].values():
+        if "linkage" in e:
+            e["models"] = {"llm_model": "gpt-6.1-sol"}
+    with pytest.raises(mfe.InputError, match="models.llm_model과 다르다"):
+        mfe.convert(s, model="gpt-6-astra")
+    ok = _by(mfe.convert(s, model="gpt-6.1-sol"))
+    assert "평가 모델 gpt-6.1-sol(요약 models.llm_model 2/2건과 일치)" in ok[("linkage_rate", "neumann")]["conditions"]
+    del s["plans"]["b.md"]["models"]
+    part = _by(mfe.convert(s, model="gpt-6.1-sol"))
+    assert "1/2건과 일치, 나머지는 명령행 값" in part[("demo_e2e", "all")]["conditions"]
+
+
+def test_e5_l1e2e_summary_shape_stays_reference():
+    """task/E5-L1e2e 요약 모양(plans[*].models.llm_model 있음, linkage.card_generators 없음)이면
+    모델은 대조되고 P2·P6는 참고 행으로 남는다(그쪽에 linkage.card_generators 한 줄이 필요하다)."""
+    s = _summary(**{"a.md": _plan(link_gens=None), "b.md": _plan(link_gens=None)})
+    for e in s["plans"].values():
+        if "linkage" in e:
+            e["models"] = {"llm_model": "gpt-6.1-sol"}
+            e["card_generators"] = {"astra:gpt-6.1-sol": 3}  # 계획서 단위 "generator:model" 키는 읽지 않는다
+    by = _by(mfe.convert(s, model="gpt-6.1-sol"))
+    assert ("linkage_rate", "neumann") not in by and ("demo_e2e", "all") not in by
+    assert by[("demo_e2e", REF_SYS)]["detail"].endswith("generator 미기록 실행")
 
 
 def test_model_required():
@@ -204,6 +232,26 @@ def test_one_plan_without_generators_makes_all_linkage_reference():
     by = _by(mfe.convert(s, model="m"))
     assert ("linkage_rate", "neumann") not in by and "(b.md)" in by[("linkage_rate", REF_SYS)]["limits"]
     assert ("demo_e2e", "all") not in by and by[("demo_e2e", REF_SYS)]["value"] == 2
+
+
+def test_report_card_eval_model_marks_neumann_promise_rows(tmp_path):
+    """--eval-model(검증 권고): 약속 표의 Neumann 행(P1) 측정값 옆과 머리에 평가 모델을 적는다. 없으면 표기 없음."""
+    macro = {
+        "metric": "review-level multilabel Tier-1 Macro-F1", "n": 148, "macro_f1": 0.4864, "micro_f1": 0.5644,
+        "macro_f1_ci95": {"low": 0.4276, "high": 0.5394}, "micro_f1_ci95": {"low": 0.5125, "high": 0.612},
+        "predictions": {"generator_counts": {"astra": 148}}, "scored_classes": [], "excluded_classes": [],
+    }
+    f = tmp_path / "score_astra.json"
+    f.write_text(json.dumps(macro), encoding="utf-8")
+    md = rc.build([f], now="T", commit="c", command="x", eval_model="gpt-6-astra")
+    assert "| P1 | 지적 추출 Macro-F1 | ≥ 0.70 | 0.4864 (gpt-6-astra) | [0.4276, 0.5394] | 148 | **미달** |" in md
+    assert "- Neumann 행의 평가 모델: `gpt-6-astra` (명령행 `--eval-model` 값" in md
+    assert "| P4 | 표본 연결 | ≥ 300편 | 측정 전 |" in md  # 측정 전·Neumann 아닌 행은 그대로
+    plain = rc.build([f], now="T", commit="c", command="x")
+    assert "| 0.4864 | [0.4276, 0.5394] |" in plain and "평가 모델: `" not in plain
+    out = tmp_path / "rc.md"
+    assert rc.main(["--inputs", str(f), "--out", str(out), "--eval-model", "gpt-6-astra"]) == 0
+    assert "--eval-model gpt-6-astra`" in out.read_text(encoding="utf-8")
 
 
 def test_report_card_backtest_limit_and_label():
