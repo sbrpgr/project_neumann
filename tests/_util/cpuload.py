@@ -38,6 +38,25 @@ _BURN = (
     "        x = x * 1.0000001 + 1e-9\n"
 )
 
+# 설정 로더보다 먼저 실제 호출을 닫는다. .env/인증값을 읽지 않고 pytest만 실행한다.
+_PYTEST_BOOTSTRAP = (
+    "import os,sys,socket\n"
+    "os.environ['NEUMANN_LLM_PROVIDER']='mock'\n"
+    "os.environ['NEUMANN_LIVE_TESTS']='0'\n"
+    "os.environ.pop('NEUMANN_LIVE_LLM_OK',None)\n"
+    "os.environ.pop('OPENAI_API_KEY',None)\n"
+    "sys.path[:0]=['src','.']\n"
+    "def audit(event,args):\n"
+    "    if event=='socket.connect':\n"
+    "        if sys._getframe(1).f_code is socket.socketpair.__code__ and args[1][0] in {'127.0.0.1','::1'}: return\n"
+    "        raise RuntimeError('CPU load test forbids network connections')\n"
+    "sys.addaudithook(audit)\n"
+    "from neumann.config import Settings\n"
+    "Settings.model_config['env_file']=None\n"
+    "import pytest\n"
+    "raise SystemExit(pytest.main(sys.argv[1:]))\n"
+)
+
 
 class CpuLoad:
     """with 블록 동안 `workers`개(기본: 코어 수)의 계산 프로세스를 돌린다."""
@@ -71,12 +90,21 @@ def _pytest_once(nodeids: list[str], extra: list[str], env: dict[str, str]) -> d
     """pytest를 한 번 돌려 {시험 id: (결과, 실패 요약)}를 돌려준다. 결과: passed·failed·skipped."""
     with tempfile.TemporaryDirectory() as td:
         xml = Path(td) / "r.xml"
-        cmd = [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-q", "--tb=line", f"--junitxml={xml}", *extra, *nodeids]
-        subprocess.run(cmd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
+        cmd = [sys.executable, "-c", _PYTEST_BOOTSTRAP, "-p", "no:cacheprovider", "-q", "--tb=line",
+               f"--junitxml={xml}", f"--basetemp={Path(td) / 'pytest'}", *extra, *nodeids]
+        try:
+            proc = subprocess.run(cmd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                  stdin=subprocess.DEVNULL, timeout=180)
+        except subprocess.TimeoutExpired:
+            return {"pytest-run": ("failed", "pytest watchdog timeout (180s)")}
         out: dict[str, tuple[str, str]] = {}
         if not xml.exists():
-            return out
-        for tc in ET.parse(xml).getroot().iter("testcase"):
+            return {"pytest-run": ("failed", f"pytest exit {proc.returncode}: JUnit XML missing")}
+        try:
+            cases = list(ET.parse(xml).getroot().iter("testcase"))
+        except ET.ParseError:
+            return {"pytest-run": ("failed", f"pytest exit {proc.returncode}: invalid JUnit XML")}
+        for tc in cases:
             name = f"{tc.get('classname', '').replace('.', '/')}.py::{tc.get('name')}"
             bad = tc.find("failure")
             if bad is None:
@@ -87,29 +115,35 @@ def _pytest_once(nodeids: list[str], extra: list[str], env: dict[str, str]) -> d
                 out[name] = ("skipped", "")
             else:
                 out[name] = ("passed", "")
+        if not out or (proc.returncode and not any(state == "failed" for state, _ in out.values())):
+            out["pytest-run"] = ("failed", f"pytest exit {proc.returncode}: no reported test failure")
         return out
 
 
-def measure(nodeids: list[str], reps: int, modes: tuple[str, ...], workers: int | None, extra: list[str]) -> dict:
+def measure(nodeids: list[str], reps: int, modes: tuple[str, ...], workers: int | None, extra: list[str],
+            max_s: float = 900.0) -> dict:
     """모드(none·load)마다 reps회씩 돌려 시험별 {실패, 횟수, 사유}를 모은다."""
-    env = {**os.environ, "NEUMANN_LLM_PROVIDER": "mock", "PYTHONUTF8": "1"}
-    result: dict[str, dict[str, dict]] = {m: defaultdict(lambda: {"fail": 0, "n": 0, "why": []}) for m in modes}
+    env = {**os.environ, "NEUMANN_LLM_PROVIDER": "mock", "NEUMANN_LIVE_TESTS": "0", "PYTHONUTF8": "1"}
+    env.pop("NEUMANN_LIVE_LLM_OK", None)
+    env.pop("OPENAI_API_KEY", None)
+    result: dict[str, dict[str, dict]] = {m: defaultdict(lambda: {"fail": 0, "n": 0, "skip": 0, "why": []}) for m in modes}
     for mode in modes:
         for rep in range(reps):
             if mode == "load":
-                with CpuLoad(workers):
+                with CpuLoad(workers, max_s):
                     got = _pytest_once(nodeids, extra, env)
             else:
                 got = _pytest_once(nodeids, extra, env)
             for tid, (state, why) in got.items():
-                if state == "skipped":
-                    continue
                 cell = result[mode][tid]
+                if state == "skipped":
+                    cell["skip"] += 1
+                    continue
                 cell["n"] += 1
                 if state == "failed":
                     cell["fail"] += 1
                     cell["why"].append(why)
-            print(f"[{mode} {rep + 1}/{reps}] " + " ".join(f"{'F' if s == 'failed' else '.'}" for s, _ in got.values()),
+            print(f"[{mode} {rep + 1}/{reps}] " + " ".join({"failed": "F", "skipped": "S", "passed": "."}[s] for s, _ in got.values()),
                   file=sys.stderr, flush=True)
     return {m: dict(v) for m, v in result.items()}
 
@@ -124,7 +158,7 @@ def table(res: dict, modes: tuple[str, ...], only_failing: bool = False) -> str:
         cells = []
         for m in modes:
             c = res[m].get(tid)
-            cells.append("-" if not c else f"{c['fail']}/{c['n']}")
+            cells.append("-" if not c else f"{c['fail']}/{c['n']}" + (f" (skip {c['skip']})" if c.get("skip") else ""))
         rows.append(f"| `{tid}` | " + " | ".join(cells) + " |")
     return "\n".join(rows)
 
@@ -140,11 +174,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--run", action="store_true", help="`--` 뒤 명령을 부하 아래에서 한 번 실행하고 종료 코드를 돌려준다")
     ap.add_argument("rest", nargs="*", help="pytest 시험 id(--run이면 실행할 명령)")
     args = ap.parse_args(argv)
+    if args.reps < 1 or (args.workers is not None and args.workers < 1) or args.max_s <= 0:
+        ap.error("reps/workers/max-s must be positive")
+    if not args.rest:
+        ap.error("targeted test ids (or --run command) are required")
     if args.run:
         with CpuLoad(args.workers, args.max_s):
             return subprocess.run(args.rest).returncode
     modes = ("none", "load") if args.mode == "both" else (args.mode,)
-    res = measure(args.rest, args.reps, modes, args.workers, [])
+    res = measure(args.rest, args.reps, modes, args.workers, [], args.max_s)
     print(table(res, modes, args.only_failing))
     for m in modes:
         for tid, c in sorted(res[m].items()):
@@ -152,7 +190,8 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"- [{m}] {tid}: {why}")
     if args.json:
         args.json.write_text(json.dumps(res, ensure_ascii=False, indent=2), encoding="utf-8")
-    return 0
+    return int(any(c["fail"] for rows in res.values() for c in rows.values())
+               or not any(c["n"] for rows in res.values() for c in rows.values()))
 
 
 if __name__ == "__main__":
