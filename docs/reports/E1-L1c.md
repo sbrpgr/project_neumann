@@ -1,5 +1,30 @@
 # E1-L1c 보고서 — eLife(신경과학·의료영상) 코퍼스를 검색에 합치기
 
+> **서비스 전환 금지 — E1-L1b 재작업 PASS 뒤 같은 명령으로 재빌드.**
+> E1-L1b(eLife·Europe PMC 수집)가 검증에서 리뷰어 실명 잔존으로 FAIL했다(PM 재작업 중). `data/index_elife/`·`data/index_elife_epmc/`는 재작업 **전** 입력(`elife_reviews.jsonl` sha256 `6cc05a1e…`)으로 빌드됐으므로 실명이 남아 있을 수 있다. 두 폴더에 `DO_NOT_SERVE.txt`를 넣고 `manifest.json`에 `do_not_serve: {flag: true, reason, rebuild_command}`를 남겼다. `NEUMANN_INDEX_DIR`를 이 두 폴더로 두지 않는다.
+>
+> 재빌드 명령(저장소 루트, E1-L1b 재작업 PASS 뒤):
+> ```
+> python scripts/build_index_elife.py --batch 8 --include researcharcade,elife --out C:/Users/User/Desktop/project_neumann/data/index_elife
+> python scripts/build_index_elife.py --batch 8 --include researcharcade,elife,europepmc --out C:/Users/User/Desktop/project_neumann/data/index_elife_epmc
+> python scripts/build_index_elife_compare.py --new C:/Users/User/Desktop/project_neumann/data/index_elife        # 비교 다시
+> ```
+> 재빌드는 폴더를 새로 쓰므로 `DO_NOT_SERVE.txt`는 손으로 지운다(재작업 PASS 확인 뒤에만). 입력 해시 대조가 재작업 후 manifest와 맞아야 rc 0이다.
+>
+> **색인 문장 속 실명 패턴 건수**(재작업 전 입력, `index_elife_epmc` 문장 214,061개 전량, 이름 자체는 옮겨 적지 않음. `index_elife`는 같은 입력이라 eLife·OpenReview 행이 같다):
+>
+> | 패턴(그 패턴이 있는 문장 수) | eLife 33,655문장 | Europe PMC 46,637문장 | OpenReview 133,769문장 |
+> |---|---|---|---|
+> | **원본 캐시 명단의 리뷰어·편집자 전체 이름**(eLife `reviewers` 489명, JATS sub-article 기여자 409명) | **3** | **2** | - |
+> | 원본 캐시 명단의 저자 전체 이름(6,248명, 리뷰어 신원은 아님) | 4 | 11 | - |
+> | 이메일 · ORCID | 0 · 0 | 0 · 0 | 0 · 0 |
+> | `Reviewer #N (이름 … signed)` · `reveal … identity: 이름` · `Dear 이름`(역할어·`[NAME]` 제외) | 0 · 0 · 0 | 0 · 0 · 0 | - |
+> | 참고: `Dear …` 전체(역할어 포함, 대부분 "Dear Editor/Authors") · 맺음말 줄(`Sincerely,` 등) | 0 · 0 | 36 · 19 | 1 · 0 |
+> | 참고: `reveal … identity` 문구(이름은 가려짐) · `Reviewer #N (… signed` 문구 | 177 · 0 | 0 · 6 | 0 · 0 |
+> | 참고: 가림 표시 `[NAME]`가 있는 문장 | 497 | 56 | 0 |
+>
+> → 정규식 서명·인사·공개 문구는 모두 가려져 있지만, **원본 명단과 글자 그대로 맞는 리뷰어·편집자 이름이 eLife 3문장·Europe PMC 2문장에 남아 있다**(E1-L1b FAIL 사유와 맞는다). 잰 스크립트는 세션 임시 폴더에서 돌렸다(이름 명단은 원본 캐시 `data/cache/{elife,europepmc}`에서 읽고 출력하지 않음).
+
 - 브랜치 `task/E1-L1c`(main b05de3c 기준) · 빌더 Claude Opus 5.5 · 검증 Sonnet 5.5 · 2026-09-30
 - 입력: 공유 `data/processed/` 의 E1-L0 `works.jsonl` 등 + E1-L1b `elife_*.jsonl` · 출력: 공유 **`data/index_elife/`**(커밋 안 함)
 - **`data/index/`·`data/index_l3/`는 건드리지 않았다**(빌드 전후 `manifest.json` sha256 `a0d1cf87…c38c62`·`22e5ec50…ec93` 같음, 두 폴더 파일 목록·크기·시각 같음).
@@ -181,32 +206,66 @@ $ python scripts/build_index_elife_compare.py --json compare_elife.json --md com
 **판정(눈으로 본 것)**
 
 1. **데모 2(fMRI)는 확실히 좋아진다.** 두 질의 모두 상위 10편이 **전부 eLife fMRI·신경영상 논문**으로 바뀐다(현재 색인은 fMRI 논문이 없어 세포 분류·PINN·GNN 논문이 나왔다). 1등 점수도 0.358 → 0.395(계획서), 0.466 → 0.604(영어)로 오른다. 과제 fMRI 연구뿐 아니라 Neuroscout(재현 가능한 fMRI 분석 플랫폼)·단일 시행 fMRI 반응 추정 같은 방법 논문도 이웃으로 온다(제목 기준). 그 심사평 문장이 근거 후보가 된다.
-2. **데모 3(의료영상)은 조금 좋아진다.** eLife 2~3편(뇌 추출 네트워크 BEN·MRI 뇌 성장 차트·µGUIDE 정량 영상·MEG CNN·EEG CNN)이 들어오지만, **흉부 X선·폐렴 분류 논문은 eLife에 없다**(E1-L1b 보고: eLife는 의료영상+기계학습 논문이 드물다). 데모 3번의 주 보강원은 Europe PMC(PLOS Digital Health·PLOS ONE)다 → 아래 "참고" 참조.
+2. **데모 3(의료영상)은 조금 좋아진다.** eLife 2~3편(뇌 추출 네트워크 BEN·MRI 뇌 성장 차트·µGUIDE 정량 영상·MEG CNN·EEG CNN)이 들어오지만, **흉부 X선·폐렴 분류 논문은 eLife에 없다**(E1-L1b 보고: eLife는 의료영상+기계학습 논문이 드물다). 데모 3번의 주 보강원은 Europe PMC(PLOS Digital Health·PLOS ONE)다 → 아래 4b 참조.
 3. **데모 1(전해액)은 그대로다.** eLife가 끼어들지 않고, 점수 변화는 BM25 idf·평균 길이 변화에서 오는 0.001~0.013이다. 같은 논문의 dense 점수 차는 최대 0.00037(fp16 저장 오차 수준).
 4. **무관한 글**(조리법) 1등 0.243은 변하지 않았다(eLife 논문이 끼어들지 않음). 관련 질의(0.36 이상)와의 간격은 유지된다.
 
-**참고 실험: Europe PMC(PLOS) 388편까지 넣으면** (스펙 밖. 공유 `data/`에 쓰지 않고 세션 임시 폴더에 빌드한 뒤 지웠다)
+### 4b. Europe PMC 포함 색인 `data/index_elife_epmc/` (PM 추가 지시)
+
+처음엔 세션 임시 폴더에서 참고 실험으로 돌렸고(19:42, 해시 대조 True, 뒤에 지움), PM 지시로 공유 폴더에 다시 빌드했다. `data/index`·`index_l3`·`index_elife`는 건드리지 않았다(빌드 전후 manifest sha256 `a0d1cf87…`·`22e5ec50…`·`084bbcae…` 같음. `index_elife`는 그 뒤 위의 DO_NOT_SERVE 표시만 더했다).
 
 ```
-$ python scripts/build_index_elife.py --batch 8 --include researcharcade,elife,europepmc --out <임시>/idx_epmc
-[build_index_elife] 입력 검사 통과: 레코드 24932, 출처 URL 1.0, 원문 해시 1.0, 신원 키 0, ...
-[build_index] 입력 processed: 논문 2016편, 심사평 7435건 · 문장 214061개 · 오프셋 (메모리) 214061/214061, (디스크) 214061/214061 · 161.37MB, 총 113.7s
-[build_index_elife] 소스별 오프셋 재대조 214061/214061 · 소스 manifest 해시 대조: True
-$ python scripts/build_index_elife_compare.py --new <임시>/idx_epmc
-[plan/plan] 겹침 10/10, 1등 0.37036 → 0.372503 (researcharcade)
-[plan/en] 겹침 9/10, 새로 든 1 {'researcharcade': 1}
-[plan_elife_neuro/plan] 겹침 0/10, 새로 든 10 {'elife': 5, 'europepmc': 5}, 1등 0.357768 → 0.394392 (elife)
-[plan_elife_neuro/en] 겹침 0/10, 새로 든 10 {'elife': 3, 'europepmc': 7}, 1등 0.465887 → 0.639876 (europepmc)
-[plan_medimaging/plan] 겹침 0/10, 새로 든 10 {'europepmc': 10}, 1등 0.36224 → 0.410311 (europepmc)
-[plan_medimaging/en] 겹침 0/10, 새로 든 10 {'europepmc': 10}, 1등 0.408281 → 0.642168 (europepmc)
-[negative_recipe/unrelated] 겹침 9/10, 새로 든 1 {'europepmc': 1}, 1등 0.243076 → 0.243116
+$ nvidia-smi --query-gpu=memory.used,memory.free --format=csv,noheader
+1229 MiB, 4696 MiB                      # 배치 8
+$ python scripts/build_index_elife.py --batch 8 --include researcharcade,elife,europepmc --out C:/Users/User/Desktop/project_neumann/data/index_elife_epmc
+[build_index_elife] 입력 검사 통과: 레코드 24932, 출처 URL 1.0, 원문 해시 1.0, 신원 키 0, eLife 결정 {'decisions': {'accept': 245, 'assessment_raw_preserved': 254, 'no_binary_decision': 254}, 'violations': 0}
+[build_index] 입력 processed: 논문 2016편, 심사평 7435건 (4.8s)
+[build_index] 임베딩 bge-m3 on cuda (로드 14.4s)
+[build_index] 문장 214061개 (12.7s), 태그 15668개 (93.5s), BM25 1.2s, 임베딩 44.5s
+[build_index] 오프셋 대조(메모리) 214061/214061, (디스크) 214061/214061
+[build_index] 색인 ...\data\index_elife_epmc 161.37MB, 총 183.8s
+[build_index_elife] 소스별 {'elife': {..., 'excerpts': 33655, 'excerpt_offsets_ok': 33655, 'reviews': 1224, 'works': 500},
+                            'europepmc': {..., 'excerpts': 46637, 'excerpt_offsets_ok': 46637, 'reviews': 845, 'works': 388},
+                            'researcharcade': {..., 'excerpts': 133769, 'excerpt_offsets_ok': 133769, 'reviews': 5366, 'works': 1128}}
+[build_index_elife] 소스별 오프셋 재대조 214061/214061
+[build_index_elife] 소스 manifest 해시 대조: False (대조 못 한 파일 [])
+[build_index_elife] 실패: 색인 입력 해시가 소스 manifest와 다르다
+rc=1
+$ nvidia-smi ... → 1229 MiB, 4696 MiB   (프로세스 종료, 최대 할당 1.247GB, OOM 없음)
 ```
 
-- 데모 3(의료영상) 상위 10편이 **전부 Europe PMC 흉부 X선·폐렴·의료영상 CNN 논문**으로 바뀐다. 계획서 전문 상위: Attention based automated radiology report generation using CNN and LSTM · Quantitative evaluation model of variable diagnosis for chest X-ray images using deep learning · CNNs trained with adult data are useful in pediatrics. A pneumonia classification example · Automated detection of COVID-19 through CNN using chest x-ray images · A hybrid dense convolutional network and fuzzy inference system for pneumonia diagnosis. 영어 질의 1등 0.408 → 0.642.
-- 데모 2(fMRI)는 eLife와 Europe PMC가 반씩 섞인다. 데모 1은 그대로다(겹침 10/10). 무관한 글 1등은 0.243 그대로이고 Europe PMC 1편(흉부 CT 나이 추정)이 7위에 들어온다.
-- **데모 3번까지 살리려면 Europe PMC를 넣은 색인이 필요하다.** 스펙 출력은 `data/index_elife`(eLife만)라 공유 폴더에는 만들지 않았다. PM이 원하면 `python scripts/build_index_elife.py --include researcharcade,elife,europepmc --out C:/Users/User/Desktop/project_neumann/data/index_elife_epmc`(약 2분, GPU 최대 할당 약 1.3GB) 한 번이면 된다.
+| 검사 | 결과 |
+|---|---|
+| 편수 · 심사평 · 문장 | **2,016편**(OpenReview 1,128 + eLife 500 + Europe PMC 388) · 7,435건 · **214,061개**(Europe PMC 46,637) |
+| 오프셋 대조 | 메모리 214,061/214,061 · 디스크 214,061/214,061 · 소스별 재대조 214,061/214,061 · 비교 스크립트 재로드 214,061/214,061 → **100%** |
+| 출처 URL · 딥링크 · 원문 해시 · 신원 키 | 24,932레코드 1.0 · 1.0 · 1.0 · **0건**, 위반 0 |
+| eLife 결정 매핑 | no_binary_decision 254 = 원문 어휘 보존 254, accept 245, 위반 0 |
+| **입력 해시 대조** | **불일치 → rc 1.** works 3종·OpenReview reviews는 일치, `elife_reviews.jsonl`(색인 `6cc05a1e…` vs 현재 manifest `b45045c3…`)·`europepmc_reviews.jsonl`(`cab0f50d…` vs `d11e4d67…`)이 다르다. 공유 `processed/`의 eLife·Europe PMC 파일이 **19:47에 다시 쓰였다**(E1-L1b 재작업). 색인은 그 전 파일을 읽었다(`index_elife`와 같은 eLife 입력). 검사기가 의도대로 잡은 것이고, 이 색인이 재작업 전 데이터라는 증거다 → DO_NOT_SERVE |
+| 크기 · 빌드 | 161.4MB · 183.8s(태깅 93.5s: 다른 작업과 CPU 공유) |
+
+```
+$ python scripts/build_index_elife_compare.py --new C:/Users/User/Desktop/project_neumann/data/index_elife_epmc
+[old] ...\data\index: 논문 1128편, 문장 133769, 오프셋 133769/133769
+[new] ...\data\index_elife_epmc: 논문 2016편 {'elife': 500, 'europepmc': 388, 'researcharcade': 1128}, 문장 214061, 로드 2.87s, 오프셋 214061/214061
+```
+
+| 데모 | 질의 | 겹침 | 새로 든 논문(eLife / Europe PMC / OpenReview) | Europe PMC 포함 상위 10 소스 | 1등 점수 현재→Europe PMC 포함 | 1등 소스 |
+|---|---|---|---|---|---|---|
+| 1 전해액 | 계획서 | 10/10 | 0 | OpenReview 10 | 0.3704 → 0.3725 | OpenReview |
+| 1 전해액 | 영어 | 9/10 | 1 (0 / 0 / 1) | OpenReview 10 | 0.4871 → 0.5072 | OpenReview |
+| 2 fMRI | 계획서 | 0/10 | 10 (5 / 5 / 0) | eLife 5 · Europe PMC 5 | 0.3578 → 0.3944 | eLife |
+| 2 fMRI | 영어 | 0/10 | 10 (3 / 7 / 0) | eLife 3 · Europe PMC 7 | 0.4659 → 0.6399 | Europe PMC |
+| **3 의료영상** | 계획서 | **0/10** | **10 (0 / 10 / 0)** | **Europe PMC 10** | 0.3622 → **0.4103** | Europe PMC |
+| **3 의료영상** | 영어 | **0/10** | **10 (0 / 10 / 0)** | **Europe PMC 10** | 0.4083 → **0.6422** | Europe PMC |
+| 무관한 글 | 조리법 | 9/10 | 1 (0 / 1 / 0) | OpenReview 9 · Europe PMC 1(7위) | 0.2431 → 0.2431 | OpenReview |
+
+- 데모 3(의료영상) 상위 10편이 **전부 Europe PMC의 흉부 X선·폐렴·의료영상 CNN 논문**으로 바뀐다. 계획서 전문 상위: Attention based automated radiology report generation using CNN and LSTM · A deep learning AI model for determining the relationship between X-Ray detectors and patient p… · Quantitative evaluation model of variable diagnosis for chest X-ray images using deep learning · CNNs trained with adult data are useful in pediatrics. A pneumonia classification example · Automated detection of COVID-19 through convolutional neural network using chest x-ray images.
+- 데모 2(fMRI)는 eLife와 Europe PMC가 섞이고(Europe PMC: 3D CNN fMRI 설명가능성, fMRIPrep 잡음 제거 평가 등), 1등 점수가 eLife만 넣었을 때보다 더 오른다(영어 0.604 → 0.640).
+- 데모 1은 그대로다(계획서 10/10). 무관한 글 1등 0.243은 그대로이고 Europe PMC 1편(흉부 CT 나이 추정)이 7위(0.232)에 들어온다.
 
 ### 5. 전환 방법 (설정으로만)
+
+**지금은 전환하지 않는다**(맨 위 DO_NOT_SERVE). E1-L1b 재작업 PASS → 재빌드 → 해시 대조 rc 0 확인 뒤에 아래처럼 바꾼다.
 
 코드 기본값은 그대로 `{NEUMANN_DATA_DIR}/index`다. eLife 포함 색인을 쓰려면 프로세스 환경변수(또는 main `.env`)에:
 
@@ -266,7 +325,8 @@ verify 통과
 
 ## 다음 과제에 넘길 것 / 제안
 
-- **PM**: 데모 2번(fMRI)을 살리려면 `NEUMANN_INDEX_DIR=…/data/index_elife` 한 줄 + 서버 재시작. 주 데모(1번)는 상위 10편이 같다. `.env.example`에 `NEUMANN_INDEX_DIR` 이름 추가 제안(비밀값 아님, E2-L0·E2-L3 제안과 같음).
-- **데모 3번(흉부 X선)**: eLife만으로는 같은 주제 논문이 없다. Europe PMC를 넣은 색인을 따로 만들 수 있다(`python scripts/build_index_elife.py --include researcharcade,elife,europepmc --out <새 폴더>`). 아래 참고 실험 참조.
+- **PM**: E1-L1b 재작업 PASS 뒤 맨 위 명령으로 두 색인을 재빌드하고 `DO_NOT_SERVE.txt`를 지운 다음에만 전환한다. 데모 2번(fMRI)은 `NEUMANN_INDEX_DIR=…/data/index_elife`, 데모 2·3번을 함께 살리려면 `…/data/index_elife_epmc` 한 줄 + 서버 재시작. 주 데모(1번)는 상위 10편이 같다. `.env.example`에 `NEUMANN_INDEX_DIR` 이름 추가 제안(비밀값 아님, E2-L0·E2-L3 제안과 같음).
+- **데모 3번(흉부 X선)**: eLife만으로는 같은 주제 논문이 없고, Europe PMC 포함 색인(`data/index_elife_epmc`, 4b)에서 상위 10편이 모두 흉부 X선·폐렴 CNN 논문이 된다.
+- **E1-L1b 재작업 검증**: 재빌드 뒤 이 보고서 맨 위 실명 패턴 표를 다시 재면 된다(원본 캐시 명단의 리뷰어·편집자 전체 이름이 문장에 0이어야 한다).
 - **E2(L3 확대 색인과 합치기)**: `data/processed_l3`에 eLife 파일을 두면 같은 스크립트로 `--processed …/processed_l3 --out …/index_l3_elife`가 된다(단 `processed_l3`의 corpus_manifest 해시 대조가 함께 돈다).
 - **E3·E5**: eLife 심사평 종류가 새로 들어온다(`public_review`·`editor_assessment`·`decision_letter`). 결정은 신모델 `no_binary_decision`(원문 어휘 보존)이라 채택률·백테스트에서 따로 다뤄야 한다.
