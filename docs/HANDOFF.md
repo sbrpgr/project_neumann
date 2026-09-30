@@ -63,7 +63,7 @@ PM이 병합할 때마다 갱신한다. Claude 한도가 다 되면 이 문서�
 - **대표 지시: astra 금지.** 제품·평가 모두 `gpt-6.1-sol`. SEC-3(task/SEC-3, 검증 중)이 병합되면
   - 실제 OpenAI 호출은 프로세스 환경변수 `NEUMANN_LIVE_LLM_OK=1`이 있을 때만 된다(.env에서는 읽지 않음). 없으면 mock으로 강등
   - 모델명에 astra가 있으면 `NEUMANN_ALLOW_ASTRA=1` 없이는 sol로 바뀐다
-  - 실서버 기동: `NEUMANN_LIVE_LLM_OK=1 NEUMANN_LLM_PROVIDER=openai NEUMANN_LLM_MODEL=gpt-6.1-sol python -m uvicorn neumann.api.main:app --host 127.0.0.1 --port 8020` → `/health`의 `llm.effective=openai`, `llm.model=gpt-6.1-sol` 확인
+  - 실서버 기동: `OPENBLAS_NUM_THREADS=1 NEUMANN_LIVE_LLM_OK=1 NEUMANN_LLM_PROVIDER=openai NEUMANN_LLM_MODEL=gpt-6.1-sol python -m uvicorn neumann.api.main:app --host 127.0.0.1 --port 8020`(공개는 `scripts/serve.py --public` 또는 `scripts\serve_public.cmd`) → `/health`의 `llm.effective=openai`, `llm.model=gpt-6.1-sol` 확인
 - **이미 떠 있는 Claude·Codex 앱 프로세스는 옛 사용자 환경변수(provider=openai, model=gpt-6-astra)를 물려받았다.** 21:40 인수 때 앱을 재시작하면 사라진다. 그 전까지 모든 명령에 `NEUMANN_LLM_PROVIDER=mock`을 명시한다
 - **터널 공개 금지**: E4-L2c(재작업 재검증 중) → E4-L2d(재작업 재검증 중) → SEC-2 → 공개. 공개 기동 때 `NEUMANN_MAX_CONCURRENT=6`(E4-L2e 부하 시험), 같은 와이파이 심사위원 대비(기본값이면 5명 중 2명 거절, 아래 값이면 10명 접수) `NEUMANN_JOB_PER_IP=10 NEUMANN_JOB_RATE_PER_MIN=30 NEUMANN_RATE_PER_MIN=30 NEUMANN_JOB_POLL_PER_MIN=1200`, `NEUMANN_DAILY_BUDGET=0`, `NEUMANN_REQUEST_TIMEOUT_S=90`
 - 공개 전 필수: SEC-4(이메일 정규식 ReDoS 선형화, 검증 중), SEC-5(검색 상태 스레드별·OpenAI 동시 요청 상한, 빌드 중), E4-L2d(L2c 포함), SEC-2
