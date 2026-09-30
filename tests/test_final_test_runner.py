@@ -40,7 +40,7 @@ def test_unapproved_cli_makes_no_network_call(monkeypatch, capsys):
 
 def test_samples_are_public_catalog_entries():
     assert [s[0] for s in ft.samples(ft.DEFAULT_SAMPLES)] == ft.DEFAULT_SAMPLES
-    assert len(ft.samples(["plan.md", "protein_ligand_affinity.md"])) == 2
+    assert len(ft.samples(["electrolyte_gnn.md", "protein_ligand_affinity.md"])) == 2  # SAMPLES 5158382: example-battery 파일명
     for names in (["../.env", "example-binding"], ["example-battery"], ["example-battery"] * 2):
         with pytest.raises(ft.Failure):
             ft.samples(names)
