@@ -332,6 +332,21 @@ def _walk_strings(obj: Any, fn: Callable[[str], str]) -> Any:
     return obj
 
 
+# 정상 응답에서 가리는 곳: 진단 문구 필드만. 근거 인용·계획서 줄은 글자 그대로 둔다(인용은 원문과 같아야 한다).
+DIAG_KEYS = frozenset({"notices", "reason", "detail", "error", "errors", "message", "log", "warnings", "stages_not_ok",
+                       "contract_errors", "section_errors", "empty_reason", "note"})
+
+
+def _walk_diag(obj: Any, fn: Callable[[str], str], under: bool = False) -> Any:
+    if isinstance(obj, str):
+        return fn(obj) if under else obj
+    if isinstance(obj, list):
+        return [_walk_diag(x, fn, under) for x in obj]
+    if isinstance(obj, dict):
+        return {k: _walk_diag(v, fn, under or k in DIAG_KEYS) for k, v in obj.items()}
+    return obj
+
+
 def _scrub_ok_str(s: str) -> str:
     if _TRACE_RE.search(s):
         kind = _exc_kind(s)
@@ -1362,7 +1377,7 @@ class ServingMiddleware:
                 data = _walk_strings(data, lambda s: _sanitize_error_str(s, msg))
                 data.setdefault("request_id", ctx.ticket)
         elif isinstance(data, (dict, list)) and ctx.mode == "analysis":
-            data = _walk_strings(data, _scrub_ok_str)
+            data = _walk_diag(data, _scrub_ok_str)
         if isinstance(data, dict) and isinstance(data.get("_status"), dict):
             data["_status"]["serving"] = self._serving_info(ctx)
         if data is not None:
