@@ -124,7 +124,7 @@ def test_view_without_pipeline_is_contract_valid_and_labelled(client, no_pipelin
     # 샘플이라도 카드마다 근거 인용과 원문 링크가 있다
     assert view["cards"], "샘플 카드가 비었다"
     for card in view["cards"]:
-        assert card["gen"] == "sample"
+        assert card["gen"] == "mock"  # 공용 fixture 카드는 mock 생성
         assert card["ev"]
         for n in card["ev"]:
             ev = view["ev"][str(n)]

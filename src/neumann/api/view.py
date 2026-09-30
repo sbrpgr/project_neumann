@@ -28,6 +28,7 @@ from collections.abc import Iterable, Mapping
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 SCHEMA_PATH = Path(__file__).resolve().parents[3] / "contracts" / "ui_view.schema.json"
 
@@ -196,6 +197,8 @@ class _Ctx:
         self.fams: list[dict[str, str]] = []
         self.fam_index: dict[tuple[str, str], int] = {}
         self.plan_line_ns: set[int] = set()
+        self.ev_work: dict[str, str] = {}  # 발췌 id → 논문 id(명시 필드 > URL 대조 > 카드의 유일한 논문)
+        self.ev_line: dict[str, int] = {}  # 발췌 id → 계획서 줄(명시 필드가 없으면 인용한 카드의 첫 줄)
         self.section_errors: dict[str, str] = {}
         self.dropped: dict[str, int] = {}
 
@@ -220,11 +223,17 @@ class _Ctx:
         return self.fam_for(code)
 
 
+MD_HEADING = re.compile(r"^\s{0,3}(#{1,6})\s+\S")
+
+
 def _build_plan(res: Mapping[str, Any], filename: str | None, ctx: _Ctx) -> dict[str, Any]:
-    ps = _as_dict(_get(res, "plan_stats", "plan") or {})
-    raw_lines = _list(ps.get("lines")) or _list(res.get("lines"))
+    """계획서 줄. 줄 번호는 결과의 번호를 그대로 쓴다(카드가 그 번호를 가리킨다). 빈 줄은 화면에서 뺀다."""
+    ps = _as_dict(res.get("plan_stats"))
+    plan = _as_dict(res.get("plan"))
+    raw_lines = _list(ps.get("lines")) or _list(plan.get("lines")) or _list(res.get("lines"))
     lines: list[dict[str, Any]] = []
     seen: set[int] = set()
+    has_title = False
     for i, raw in enumerate(raw_lines, 1):
         if isinstance(raw, str):
             n, t, h = i, raw, None
@@ -241,19 +250,23 @@ def _build_plan(res: Mapping[str, Any], filename: str | None, ctx: _Ctx) -> dict
             ctx.drop("plan_lines")
             continue
         seen.add(n)
+        if not t.strip():
+            continue  # 빈 줄: 번호는 유지하되 화면 목록에는 싣지 않는다
         item: dict[str, Any] = {"n": n, "t": t}
         hv = _text(h).lower() if not isinstance(h, bool) else ("h" if h else "")
-        if hv == "title":
+        md = MD_HEADING.match(t)
+        if hv == "title" or (not hv and md and len(md.group(1)) == 1 and not has_title):
             item["h"] = "title"
-        elif hv in {"h", "heading", "h1", "h2", "h3", "h4", "h5", "h6", "section"}:
+            has_title = True
+        elif hv in {"h", "heading", "h1", "h2", "h3", "h4", "h5", "h6", "section"} or (not hv and md):
             item["h"] = "h"
         lines.append(item)
-    ctx.plan_line_ns = seen
+    ctx.plan_line_ns = {line["n"] for line in lines}
     body = "\n".join(line["t"] for line in lines)
     n_bytes = _int(_get(ps, "size_bytes", "bytes")) or len(body.encode("utf-8"))
     title = _text(_get(ps, "title"))
     if not title:
-        first = next((line["t"] for line in lines if line["t"].strip()), "")
+        first = next((line["t"] for line in lines if line.get("h") == "title"), "") or (lines[0]["t"] if lines else "")
         title = first.strip().lstrip("#").strip()
     file = filename or _text(_get(ps, "file", "filename")) or ("직접 입력" if lines else "")
     meta = f"정규화 {len(lines)}줄" if lines else "계획서 줄 없음"
@@ -319,6 +332,32 @@ def _ev_refs(refs: Any, ctx: _Ctx) -> list[str]:
     return out
 
 
+def _same_page(url: str, work_url: str) -> bool:
+    """근거 URL(심사평 딥링크)이 논문 랜딩 페이지를 가리키는지. 같은 host·path에 같은 id 파라미터, 또는 접두어."""
+    if not url or not work_url:
+        return False
+    if url == work_url or url.startswith(work_url.rstrip("/") + "/") or url.startswith(work_url + "&") \
+            or url.startswith(work_url + "#"):
+        return True
+    a, b = urlparse(url), urlparse(work_url)
+    if (a.netloc, a.path) != (b.netloc, b.path):
+        return False
+    ida, idb = parse_qs(a.query).get("id"), parse_qs(b.query).get("id")
+    return bool(ida and ida == idb)
+
+
+def _resolve_work(e: Mapping[str, Any], ctx: _Ctx) -> str:
+    """발췌 → 논문 id. 명시 필드(work_id)가 없으면 원문 URL로 유사 연구 목록과 맞춘다. 못 찾으면 ''."""
+    wid = _text(_get(e, "work_id", "paper_id", "forum_id"))
+    if wid:
+        return wid
+    url = _text(_get(e, "source_url", "url"))
+    for w in ctx.works_by_id.values():
+        if _same_page(url, w.get("u", "")):
+            return w["id"]
+    return ""
+
+
 def _number_ev(eid: str, ctx: _Ctx) -> int | None:
     if eid not in ctx.evidence:
         return None
@@ -371,6 +410,7 @@ def _build_cards(res: Mapping[str, Any], works: list[dict[str, Any]], ctx: _Ctx)
         raw_cards.sort(key=lambda c: (_int(c.get("rank")) is None, _int(c.get("rank")) or 0))
     n_similar = len(works)
     reject_ids = {w["id"] for w in works if w["d"] == REJECT_LABEL}
+    decisions_known = any(w["d"] not in NEUTRAL_DECISIONS for w in works)
     cards: list[dict[str, Any]] = []
     for c in raw_cards:
         eids = [e for e in _ev_refs(_get(c, "evidence", "evidence_ids", "excerpt_ids", "ev"), ctx) if e in ctx.evidence]
@@ -386,8 +426,19 @@ def _build_cards(res: Mapping[str, Any], works: list[dict[str, Any]], ctx: _Ctx)
                 if (v := _num(score.get(key))) is not None]
         lines, desc = _card_plan_lines(c, ctx)
         ev_nums = [n for e in eids if (n := _number_ev(e, ctx)) is not None]
-        ev_work_ids = {_text(_get(ctx.evidence[e], "work_id", "paper_id", "forum_id")) for e in eids}
-        card_works = {_text(w) for w in _list(_get(c, "works", "work_ids", "supporting_work_ids"))} | ev_work_ids
+        listed_works = [w for w in dict.fromkeys(_text(w) for w in _list(_get(c, "works", "work_ids",
+                                                                                "supporting_work_ids"))) if w]
+        for e in eids:
+            if e not in ctx.ev_work:
+                wid = _resolve_work(ctx.evidence[e], ctx) or (listed_works[0] if len(listed_works) == 1 else "")
+                if not wid:  # 카드의 논문 id와 원문 URL의 id 파라미터가 같으면 그 논문(제목은 모른다)
+                    ids = parse_qs(urlparse(_text(ctx.evidence[e].get("source_url"))).query).get("id") or []
+                    wid = next((w for w in listed_works for i in ids
+                                if w == i or w.endswith(":" + i) or w.endswith("/" + i)), "")
+                ctx.ev_work[e] = wid
+            if lines and e not in ctx.ev_line:
+                ctx.ev_line[e] = lines[0]
+        card_works = set(listed_works) | {ctx.ev_work[e] for e in eids}
         card_works.discard("")
         in_similar = card_works & set(ctx.work_n)
         freq_d = _as_dict(c.get("frequency")) if isinstance(c.get("frequency"), Mapping) else {}
@@ -395,8 +446,10 @@ def _build_cards(res: Mapping[str, Any], works: list[dict[str, Any]], ctx: _Ctx)
         k = len(in_similar) if k is None else k
         r = _int(_get(freq_d, "n_reject", "rejected")) if freq_d else None
         r = len(in_similar & reject_ids) if r is None else r
-        if n_similar:
+        if n_similar and decisions_known:
             freq = f"유사 {n_similar}편 중 {k}편 지적 · 그중 {r}편 거절"
+        elif n_similar:
+            freq = f"유사 {n_similar}편 중 {k}편 지적 · 결정 정보 없음"
         else:
             freq = f"근거 논문 {len(card_works)}편"
         gen = _text(_get(c, "generator", "derivation", "gen")).lower()
@@ -429,7 +482,7 @@ def _build_ev(ctx: _Ctx, card_fam_of: dict[str, int]) -> dict[str, dict[str, Any
     ev: dict[str, dict[str, Any]] = {}
     for eid, n in sorted(ctx.ev_num.items(), key=lambda kv: kv[1]):
         e = ctx.evidence[eid]
-        wid = _text(_get(e, "work_id", "paper_id", "forum_id"))
+        wid = ctx.ev_work.get(eid) or _resolve_work(e, ctx)
         w = ctx.works_by_id.get(wid)
         code = _code(_get(e, "risk_code", "code"))
         fam = card_fam_of.get(eid)
@@ -449,10 +502,12 @@ def _build_ev(ctx: _Ctx, card_fam_of: dict[str, int]) -> dict[str, dict[str, Any
             "rt": _rating(_get(e, "rating", "rt")),
             "rv": rv if PSEUDONYM.match(rv) else "",
             "id": wid,
-            "ln": _int(_get(e, "plan_line", "ln")),
+            "ln": _int(_get(e, "plan_line", "ln")) or ctx.ev_line.get(eid),
             "u": _text(_get(e, "source_url", "url")) or (w or {}).get("u", ""),
             "eid": eid,
         }
+        if not item["p"]:
+            item["p"] = "논문 미상"
         if item["ln"] is not None and item["ln"] not in ctx.plan_line_ns:
             item["ln"] = None
         if w is not None:

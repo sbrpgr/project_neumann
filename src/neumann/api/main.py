@@ -10,7 +10,8 @@
 - ``POST /premortem/view``   같은 입력 → 화면 데이터 계약(ui_view) JSON + ``_status``
 
 분석은 E3의 ``neumann.pipeline.run_premortem``을 요청 때마다 지연 import 한다. 모듈이 아직 없으면
-목업 DATA에서 옮긴 샘플을 돌려주되, 응답(``sample``·``status``·``notices``·``_status.label``)과 화면에
+공용 fixture(``tests/fixtures/premortem_result.json``, 가짜 데이터)로 만든 샘플을 돌려주되,
+응답(``sample``·``status``·``notices``·``_status.label``)과 화면에
 "분석 파이프라인 미연결(샘플 데이터)"을 표시한다. 모듈은 있는데 import나 실행이 실패하면 샘플로 숨기지 않고
 500과 오류 상태를 돌려준다.
 """
@@ -43,7 +44,9 @@ from neumann.api.view import SAMPLE_LABEL, build_ui_view
 log = logging.getLogger("neumann.api")
 
 WEBUI_DIR = Path(__file__).resolve().parent.parent / "webui"
-SAMPLE_PATH = Path(__file__).resolve().with_name("sample_result.json")
+REPO_ROOT = Path(__file__).resolve().parents[3]
+# 파이프라인 미연결 때 쓰는 샘플: E0b 공용 fixture(plan.md 기준 PremortemResult 1건, 내용은 전부 [FAKE])
+SAMPLE_PATH = REPO_ROOT / "tests" / "fixtures" / "premortem_result.json"
 PIPELINE_MODULE = "neumann.pipeline"
 PIPELINE_FUNC = "run_premortem"
 MAX_PLAN_CHARS = 200_000
@@ -150,7 +153,14 @@ def _failure_reason(exc: BaseException) -> str:
 
 
 def _sample_result(reason: str) -> dict[str, Any]:
+    """공용 fixture 결과를 계약 모델로 검증한 뒤, 샘플임을 드러내는 표시를 붙인다."""
     data = json.loads(SAMPLE_PATH.read_text(encoding="utf-8"))
+    try:
+        from neumann.models import PremortemResult
+    except ImportError:  # models가 없으면 JSON 그대로(계약 스키마 검사는 테스트가 한다)
+        pass
+    else:
+        data = PremortemResult.model_validate(data).model_dump(mode="json")
     data.update({
         "status": "degraded",
         "sample": True,
@@ -161,7 +171,8 @@ def _sample_result(reason: str) -> dict[str, Any]:
             "reason": f"{reason} — 샘플 데이터", "impl": "fallback:sample", "degraded": True,
             "elapsed_s": 0.0, "counts": {}, "details": {},
         }],
-        "notices": [f"{SAMPLE_LABEL}: 입력한 계획서는 분석되지 않았다. 아래 값은 기획 키트 목업 DATA에서 옮긴 샘플이다."],
+        "notices": [f"{SAMPLE_LABEL}: 입력한 계획서는 분석되지 않았다. 아래 값은 공용 fixture(가짜 데이터)다.",
+                    *data.get("notices", [])],
     })
     return data
 

@@ -13,7 +13,7 @@ from neumann.api.view import SAMPLE_LABEL, build_ui_view, validate_ui_view
 
 ROOT = Path(__file__).resolve().parents[2]
 UI_SCHEMA = json.loads((ROOT / "contracts" / "ui_view.schema.json").read_text(encoding="utf-8"))
-SAMPLE = json.loads((ROOT / "src" / "neumann" / "api" / "sample_result.json").read_text(encoding="utf-8"))
+FIXTURE = json.loads((ROOT / "tests" / "fixtures" / "premortem_result.json").read_text(encoding="utf-8"))
 
 
 def errors(view: dict) -> list[str]:
@@ -74,25 +74,45 @@ def test_never_raises_and_always_valid(bad):
     assert "_status" in view
 
 
-def test_sample_maps_fully():
-    view = build_ui_view(SAMPLE, sample=True, pipeline_state="unavailable")
+def test_premortem_result_fixture_maps_fully():
+    """E0b 공용 fixture(PremortemResult 모델 모양)를 그대로 넣는다."""
+    view = build_ui_view(FIXTURE, sample=True, pipeline_state="unavailable")
     assert errors(view) == []
-    assert len(view["works"]) == 12
-    assert len(view["cards"]) == 6
-    assert len(view["ev"]) == 16
+    fx_cards, fx_ev = FIXTURE["risk_cards"], FIXTURE["evidence"]
+    assert len(view["works"]) == len(FIXTURE["similar_works"])
+    assert len(view["cards"]) == len(fx_cards)
+    assert len(view["ev"]) == len({e for c in fx_cards for e in c["evidence"]})
     assert view["_status"]["label"] == SAMPLE_LABEL
     assert view["_status"]["source"] == "sample"
-    # 카드의 근거 번호는 모두 ev에 있다
-    for card in view["cards"]:
-        for n in card["ev"]:
-            assert str(n) in view["ev"]
+    assert view["_status"]["generators"] == {"mock": len(fx_cards)}
+    # 인용은 결과의 text 그대로, 카드 순서대로 번호가 붙는다
+    quotes = {e["excerpt_id"]: e["text"] for e in fx_ev}
+    first = view["ev"][str(view["cards"][0]["ev"][0])]
+    assert first["q"] == quotes[fx_cards[0]["evidence"][0]]
+    assert first["eid"] == fx_cards[0]["evidence"][0]
+    # 계획서: 빈 줄은 빠지고 번호는 원래 번호, 마크다운 제목은 h
+    ns = [line["n"] for line in view["plan"]["lines"]]
+    assert ns == [ln["no"] for ln in FIXTURE["plan"]["lines"] if ln["text"].strip()]
+    assert view["plan"]["lines"][0]["h"] == "title"
+    assert view["plan"]["title"] == FIXTURE["plan"]["lines"][0]["text"].lstrip("#").strip()
     # 카드가 가리키는 계획서 줄은 f(표시) 되어 있다
     flagged = {line["n"] for line in view["plan"]["lines"] if line.get("f")}
-    assert flagged == {n for c in view["cards"] for n in c["lines"]}
-    # 지도 칸 수 = fams 수
+    assert flagged == {n for c in fx_cards for n in c["why_applies"]["plan_lines"]}
+    # 원문 URL로 발췌 → 유사 연구 대조(Excerpt에는 work_id가 없다)
+    mapped = [e for e in view["ev"].values() if "map" in e]
+    assert mapped and all(view["works"][e["map"] - 1]["id"] == e["id"] for e in mapped)
+    # 지도 칸 수 = fams 수, 결정 정보가 없으면 거절 수를 지어내지 않는다
     assert all(len(w["f"]) == len(view["fams"]) for w in view["works"])
     assert len(view["corpus"]) == len(view["fams"])
-    assert view["review"]["audit"]["pass"] == 10
+    assert all(w["d"] == "미정" for w in view["works"])
+    assert all("결정 정보 없음" in c["freq"] for c in view["cards"])
+
+
+def test_pydantic_premortem_result_object_is_accepted():
+    from neumann.models import PremortemResult
+
+    model = PremortemResult.model_validate(FIXTURE)
+    assert build_ui_view(model)["cards"] == build_ui_view(FIXTURE)["cards"]
 
 
 def test_small_result_mapping_and_generator_honesty():
