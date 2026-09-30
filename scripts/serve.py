@@ -183,9 +183,19 @@ def preflight_public(settings: object | None = None) -> tuple[bool, str]:
         has_key = bool(getattr(settings, "has_openai_key", False))
     if not has_key:
         return False, "공개 모드인데 OPENAI_API_KEY가 없다(값은 보지 않고 있음/없음만 확인)"
-    index_dir = Path(os.getenv("NEUMANN_INDEX_DIR") or Path(getattr(settings, "data_dir", ROOT / "data")) / "index")
-    if (index_dir / "DO_NOT_SERVE.txt").exists():  # SEC-2r: 서비스 금지 표시 색인(예: 리뷰어 실명 잔존 index_elife*)
-        return False, f"색인 폴더 {index_dir.name}에 DO_NOT_SERVE.txt가 있다(서비스 금지 색인). NEUMANN_INDEX_DIR를 확인한다"
+    # SEC-2r: 서비스 금지 표시 색인(예: 리뷰어 실명 잔존 index_elife*)이면 거부. 서버가 실제로 읽을 경로(.env 포함,
+    # index.settings.resolved_index_dir)와 환경변수·기본 경로를 모두 본다. 경로를 못 구하면 닫힌 쪽(거부).
+    candidates: list[Path] = [Path(os.getenv("NEUMANN_INDEX_DIR") or Path(getattr(settings, "data_dir", ROOT / "data")) / "index")]
+    try:
+        from neumann.index.settings import get_index_settings
+
+        get_index_settings.cache_clear()
+        candidates.append(Path(get_index_settings().resolved_index_dir()))
+    except Exception as exc:  # noqa: BLE001
+        return False, f"색인 경로를 확인하지 못했다({type(exc).__name__}). 공개를 멈춘다"
+    for index_dir in candidates:
+        if (index_dir / "DO_NOT_SERVE.txt").exists():
+            return False, f"색인 폴더 {index_dir.name}에 DO_NOT_SERVE.txt가 있다(서비스 금지 색인). NEUMANN_INDEX_DIR를 확인한다"
     return True, f"provider=openai model={getattr(settings, 'llm_model', '?')} key=있음"
 
 
