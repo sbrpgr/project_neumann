@@ -17,6 +17,15 @@ LIVE = ROOT / "docs" / "reports" / "E5-L0e2e_live_summary.json"
 SAMPLE = ROOT / "docs" / "reports" / "E5-L0e2e_sample_summary.json"
 PRODUCT_SYS = "Neumann 제품 기본 모델(gpt-6.1-sol)"
 REF_SYS = mfe.UNRECORDED_SYSTEM
+MIX_SYS = mfe.RULE_MIXED_SYSTEM
+# 카드 표시 이름은 eval.report_card 상수에서 읽는다(하드코딩하면 표시 이름 변경 DISP-1과 병합할 때 깨진다).
+NEU = rc.SYSTEM_LABELS["neumann"]
+LLM_BASE = rc.SYSTEM_LABELS["llm_baseline"]
+ALL = rc.SYSTEM_LABELS["all"]
+
+
+def L(mid):  # noqa: N802 — 지표 표시 이름
+    return rc.METRIC_LABELS[mid][0]
 _RECORDED = object()  # 기본값: 연결 검사 카드 수만큼 astra로 기록
 
 
@@ -231,14 +240,14 @@ def test_output_feeds_report_card(tmp_path):
     md = rc.build([p], now="T", commit="c", command="cmd")
     assert "| P2 | 근거 연결률 (폐기율 병기) | 100% | 측정 전 | — | — | **측정 전** | — |" in md
     assert "달성(폐기율 병기)" not in md
-    assert f"| 근거 연결률 (링크 단위) | {REF_SYS} | 1.0 (43/43;" in md
-    assert "| 근거 연결률 (링크 단위) | Neumann (astra) | 측정 전 | — | — | — | — | 입력 없음 |" in md
-    assert f"| 폐기율 (버린 지적 / 전체 지적) | {REF_SYS} | 0.0034 (7/2033;" in md
+    assert f"| {L('linkage_rate')} | {REF_SYS} | 1.0 (43/43;" in md
+    assert f"| {L('linkage_rate')} | {NEU} | 측정 전 | — | — | — | — | 입력 없음 |" in md
+    assert f"| {L('drop_rate')} | {REF_SYS} | 0.0034 (7/2033;" in md
     assert "| P6 | 대표 계획 end-to-end 시연 | 3건 | 측정 전 | — | — | **측정 전** | — |" in md
-    assert f"| 대표 계획 end-to-end 시연 | {REF_SYS} | 3 (3/3; generator 미기록 실행) |" in md
+    assert f"| {L('demo_e2e')} | {REF_SYS} | 3 (3/3; generator 미기록 실행) |" in md
     assert "**달성" not in md
-    assert f"| 지적 추출 Macro-F1 (리뷰 단위) | {PRODUCT_SYS} | 측정 전 |" in md
-    assert "| 라이브 E2E 화면 위험카드 수 (데모 계획서 합) | Neumann (astra) | 13 (" in md
+    assert f"| {L('macro_f1')} | {PRODUCT_SYS} | 측정 전 |" in md
+    assert f"| {L('e2e_cards')} | {NEU} | 13 (" in md
     assert "(기타)" not in md
 
 
@@ -246,7 +255,7 @@ def test_output_feeds_report_card(tmp_path):
     "link_gens, system, note, p2, p6",
     [
         ({"astra": 3}, "neumann", "검사 실행 카드 generator {'astra': 9}", "**달성(폐기율 병기)**", "**달성**"),
-        ({"astra": 2, "rule": 1}, "neumann", "비상 규칙 카드 3/9장 포함", "**달성(폐기율 병기)**", "**달성**"),
+        ({"astra": 2, "rule": 1}, MIX_SYS, "규칙 카드 3/9장 포함", "**측정 전**", "**달성**"),
         ({"rule": 3}, "neumann_rule", "비상 규칙 카드 9/9장", "**측정 전**", "**달성**"),
         ({"astra": 3, "other": 1}, "mixed", "검사 실행 카드 generator", "**측정 전**", "**달성**"),
         ({}, REF_SYS, "검사 실행 카드 generator 미기록", "**측정 전**", "**측정 전**"),
@@ -270,10 +279,36 @@ def test_generator_model_keys_accepted_and_model_checked():
     """tests/e2e card_generators() 형식("generator:model")도 받는다. 모델이 --model과 다르면 멈춘다."""
     s = _summary(**{n: _plan(link_gens={"astra:gpt-6.1-sol": 2, "rule:-": 1}) for n in ("a.md", "b.md", "c.md")})
     by = _by(mfe.convert(s, model="gpt-6.1-sol"))
-    assert "비상 규칙 카드 3/9장 포함" in by[("linkage_rate", "neumann")]["detail"]
+    assert ("linkage_rate", "neumann") not in by  # 규칙 카드가 섞이면 LLM 행과 분리(PM 결정)
+    assert "규칙 카드 3/9장 포함" in by[("linkage_rate", MIX_SYS)]["detail"]
     assert by[("demo_e2e", "all")]["value"] == 3
     with pytest.raises(mfe.InputError, match="카드 모델"):
         mfe.convert(s, model="gpt-6-astra")
+
+
+def test_rule_cards_kept_out_of_neumann_llm_rows(tmp_path):
+    """PM 결정: 규칙 카드(경고 단계·비상 경로)는 성적표에서 LLM 카드와 분리한다.
+    화면 카드 수는 generator별 행으로 나뉘고, 연결 검사에 규칙 카드가 섞이면 Neumann(LLM) 행·P2를 채우지 않는다."""
+    s = _summary(**{n: _plan(n_cards=5, gens={"astra": 4, "rule": 1}, link_gens={"astra": 2, "rule": 1})
+                    for n in ("a.md", "b.md", "c.md")})
+    out = mfe.convert(s, model="m")
+    by = _by(out)
+    assert by[("e2e_cards", "neumann")]["value"] == 12 and by[("e2e_cards", "neumann_rule")]["value"] == 3
+    assert ("linkage_rate", "neumann") not in by and by[("linkage_rate", MIX_SYS)]["value"] == 1.0
+    p = tmp_path / "m.json"
+    p.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
+    md = rc.build([p], now="T", commit="c", command="x")
+    assert _cells_of(md, "| P2 |")[6] == "**측정 전**"
+    assert _cells_of(md, f"| {L('e2e_cards')} | {rc.SYSTEM_LABELS['neumann_rule']} |")[2].startswith("3 (")
+    only_llm = _by(mfe.convert(_summary(), model="m"))
+    assert ("e2e_cards", "neumann_rule") not in only_llm  # 규칙 카드가 없으면 행을 만들지 않는다
+
+
+def test_view_generators_must_account_for_cards():
+    for gens, msg in (({"astra": 4}, "generator 기록 합"), ({"astra": 4, "mock": 1}, "LLM·규칙이 아닌")):
+        s = _summary(**{"a.md": _plan(n_cards=5, gens=gens)})
+        with pytest.raises(mfe.InputError, match=msg):
+            mfe.convert(s, model="m")
 
 
 def test_mock_or_malformed_card_generators_refused():
@@ -327,10 +362,10 @@ def test_model_column_from_each_input_record(tmp_path):
     assert _cells_of(md, "| P1 |")[3] == "0.4864" and _cells_of(md, "| P1 |")[8] == "gpt-6-astra"
     assert _cells_of(md, "| P3 |")[3] == "0.4" and _cells_of(md, "| P3 |")[8] == "gpt-6.1-sol"
     assert _cells_of(md, "| P4 |")[8] == "—"  # 측정 전
-    assert _cells_of(md, "| 백테스트 Top-3 적중 hit@3 | 일반 LLM 기준선 |")[8] == "(모델 기록 없음)"
-    assert _cells_of(md, "| 백테스트 적중률 precision@3 (A 비율) | Neumann (astra) |")[8] == "—"  # null 값
-    assert _cells_of(md, "| 지적 추출 Macro-F1 (리뷰 단위) | Neumann (astra) |")[8] == "gpt-6-astra"
-    assert "| 판정 일치율 (대표 10편 vs AI 다수결, A/B/C) | 전체 | 측정 전 | — | — | — | — | 입력 없음 | — |" in md
+    assert _cells_of(md, f"| {L('bt_hit_at_3')} | {LLM_BASE} |")[8] == "(모델 기록 없음)"
+    assert _cells_of(md, f"| {L('bt_precision_at_3')} | {NEU} |")[8] == "—"  # null 값
+    assert _cells_of(md, f"| {L('macro_f1')} | {NEU} |")[8] == "gpt-6-astra"
+    assert f"| {L('judge_human_agreement')} | {ALL} | 측정 전 | — | — | — | — | 입력 없음 | — |" in md
     assert "--eval-model" not in md
 
 
@@ -358,7 +393,7 @@ def test_report_card_backtest_limit_and_label():
     md = rc.build([], now="T", commit="c", command="x")
     assert "백테스트는 n=5(대표 결정, 비용 사유; real 대 기준선, 셔플 없음, sol)" in md
     assert "n=30" not in md
-    assert rc.METRIC_LABELS["e2e_cards"] == ("라이브 E2E 화면 위험카드 수 (데모 계획서 합)", "count")
+    assert rc.METRIC_LABELS["e2e_cards"][1] == "count" and not L("e2e_cards").startswith("(기타)")
 
 
 def test_cli_error_exit_code(tmp_path):

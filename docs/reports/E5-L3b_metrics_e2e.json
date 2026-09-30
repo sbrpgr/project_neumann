@@ -37,8 +37,8 @@
       "value": 13,
       "n": 3,
       "detail": "plan.md 5 · plan_elife_neuro.md 3 · plan_medimaging.md 5",
-      "conditions": "라이브 E2E http://127.0.0.1:8010/ 2026-09-30T10:19:48+00:00~2026-09-30T10:25:34+00:00, 1회 실행, 평가 모델 gpt-6-astra(모델은 명령행 값(요약에 기록 없음)). 화면(/premortem/view)에 나온 위험카드 수, 데모 계획서 합. 화면 카드 generator {'astra': 13}",
-      "limits": "개수일 뿐 품질 지표가 아니다. 연결 검사 카드 수(card_pass_rate의 n)와 다른 실행이라 다를 수 있다"
+      "conditions": "라이브 E2E http://127.0.0.1:8010/ 2026-09-30T10:19:48+00:00~2026-09-30T10:25:34+00:00, 1회 실행, 평가 모델 gpt-6-astra(모델은 명령행 값(요약에 기록 없음)). 화면(/premortem/view)에 나온 LLM(astra) 위험카드 수, 데모 계획서 합. 화면 카드 generator {'astra': 13}",
+      "limits": "개수일 뿐 품질 지표가 아니다. 연결 검사 카드 수(card_pass_rate의 n)와 다른 실행이라 다를 수 있다. 규칙 카드는 세지 않는다(따로 적는다)"
     },
     {
       "id": "demo_e2e",

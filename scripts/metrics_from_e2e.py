@@ -10,7 +10,7 @@
 - `linkage_rate`/<연결 시스템>   근거 연결률 = 데모 계획서들의 링크 합 ok / 합 total (계획서별 개수는 detail)
 - `card_pass_rate`/<연결 시스템> 모든 근거가 연결된 카드 / 검사 카드
 - `drop_rate`/<연결 시스템>      폐기율 = 버린 지적 / 전체 지적 (연결 요약 문자열의 `폐기율 a/b`에서 읽는다)
-- `e2e_cards`/neumann            화면에 나온 위험카드 수(데모 계획서 합)
+- `e2e_cards`/neumann            화면에 나온 LLM(astra) 위험카드 수(데모 계획서 합). 규칙 카드는 `e2e_cards`/neumann_rule로 따로
 - `demo_e2e`/all                 실패 0으로 끝까지 통과한 데모 계획서 수(신청서 약속 P6). 통과 조건에 근거 연결
                                  검사가 들어 있어, 연결 시스템이 미기록(참고)이면 이것도 참고 행으로 간다
 - `--product-model`을 주면, 그 모델로는 재지 않은 헤드라인 지표를 값 null(= 측정 전) 행으로 적는다.
@@ -20,7 +20,7 @@
 계획서 단위 `card_generators`·`models.card_generators`는 읽지 않는다(약속 판정 입력은 `linkage` 한 곳).
 `eval.report_card`의 연결 보고서 규칙과 같다.
 - 한 계획서라도 기록이 없으면 → UNRECORDED_SYSTEM(참고 행, 약속 P2 판정에 안 씀. PM 결정 2026-09-30)
-- 전부 astra(계약 이름 "제품 LLM") 또는 astra+rule → neumann(규칙 카드 수를 detail에 병기)
+- 전부 astra(계약 이름 "제품 LLM") → neumann. astra+rule → RULE_MIXED_SYSTEM(LLM 카드와 분리, 약속 판정 제외. PM 결정)
 - 전부 rule → neumann_rule. mock이 한 장이라도 있으면 거부. 그 밖의 generator → mixed
 
 정직 규칙:
@@ -56,6 +56,9 @@ PRODUCT_UNMEASURED: tuple[tuple[str, str], ...] = (
 DECISION_REF = "docs/decisions.md 2026-09-30 19:38(평가 모델·제품 모델 구분)·19:42(실제 호출 동결)"
 # 연결 검사 실행의 카드 generator가 기록되지 않았을 때의 시스템. 약속 표는 system "neumann"만 보므로 P2는 측정 전으로 남는다.
 UNRECORDED_SYSTEM = "Neumann 참고(검사 실행 generator 미기록, 약속 판정 제외)"
+# LLM 카드와 규칙 카드(경고 단계 "분야 수준 참고 · 계획서와 대조 안 됨"·비상 경로)가 섞인 연결 검사. 요약에 generator별 링크 수가
+# 없어 LLM 카드만의 값을 나눌 수 없으므로 Neumann(LLM) 행과 분리한다(PM 결정 2026-09-30: 성적표에서 LLM 카드와 분리).
+RULE_MIXED_SYSTEM = "Neumann LLM+규칙 카드 혼합(LLM만 분리 불가, 약속 판정 제외)"
 
 _FRAC = re.compile(r"^\s*(\d+)\s*/\s*(\d+)\s*$")
 _SUM_LINK = re.compile(r"근거 연결률 (\d+)/(\d+)")
@@ -192,8 +195,9 @@ def linkage_system(measured: dict[str, dict[str, Any]]) -> tuple[str, str, str]:
         return "neumann_rule", f"비상 규칙 카드 {total}/{total}장", "전부 비상 규칙(비LLM) 카드다"
     if set(gens) <= {"astra", "rule"}:
         if gens.get("rule"):
-            return ("neumann", f"비상 규칙 카드 {gens['rule']}/{total}장 포함",
-                    "비상 규칙(비LLM) 카드가 들어 있다. astra 카드만의 값이 아니다")
+            return (RULE_MIXED_SYSTEM, f"규칙 카드 {gens['rule']}/{total}장 포함",
+                    "규칙(비LLM) 카드가 섞여 있다. 요약에 generator별 링크 수가 없어 LLM 카드만의 값을 나눌 수 없으므로 "
+                    "Neumann(LLM) 행과 분리한다(PM 결정 2026-09-30)")
         return "neumann", f"검사 실행 카드 generator {gens or '없음'}", ""
     return "mixed", f"검사 실행 카드 generator {gens}", "카드 generator가 astra·규칙이 아니다. 약속 판정에 쓰지 않는다"
 
@@ -298,13 +302,33 @@ def convert(summary: dict[str, Any], *, model: str, product_model: str | None = 
         metrics.append({"id": "linkage_rate", "system": "neumann", "value": None,
                         "conditions": run, "limits": f"데모 {len(unmeasured)}건 모두 연결 검사를 하지 않았다"})
 
+    # 화면 카드 수는 generator별로 나눈다: LLM(astra) 카드는 Neumann 행, 규칙 카드는 비상 규칙 행(PM 결정: LLM 카드와 분리).
+    per_gen: dict[str, dict[str, int]] = {"astra": {}, "rule": {}}
+    for n, e in demo.items():
+        g = {str(k): int(v) for k, v in (e.get("generators") or {}).items() if v}
+        bad = set(g) - {"astra", "rule"}
+        if bad:
+            raise InputError(f"plans[{n}].generators에 LLM·규칙이 아닌 generator {sorted(bad)}가 있다(mock 등은 성능이 아니다)")
+        if sum(g.values()) != shown[n]:
+            raise InputError(f"plans[{n}]: 화면 카드 {shown[n]}장인데 generator 기록 합이 {sum(g.values())}다(나눌 수 없다)")
+        for k in per_gen:
+            per_gen[k][n] = g.get(k, 0)
     metrics.append({
-        "id": "e2e_cards", "system": "neumann", "value": sum(shown.values()), "n": len(demo),
-        "detail": " · ".join(f"{n} {c}" for n, c in shown.items()),
-        "conditions": f"{run}. 화면(/premortem/view)에 나온 위험카드 수, 데모 계획서 합. 화면 카드 generator {gens or '없음'}",
-        "limits": "개수일 뿐 품질 지표가 아니다. 연결 검사 카드 수(card_pass_rate의 n)와 다른 실행이라 다를 수 있다",
+        "id": "e2e_cards", "system": "neumann", "value": sum(per_gen["astra"].values()), "n": len(demo),
+        "detail": " · ".join(f"{n} {c}" for n, c in per_gen["astra"].items()),
+        "conditions": f"{run}. 화면(/premortem/view)에 나온 LLM(astra) 위험카드 수, 데모 계획서 합. 화면 카드 generator {gens or '없음'}",
+        "limits": "개수일 뿐 품질 지표가 아니다. 연결 검사 카드 수(card_pass_rate의 n)와 다른 실행이라 다를 수 있다. "
+                  "규칙 카드는 세지 않는다(따로 적는다)",
         **({"model": rec_view} if rec_view else {}),
     })
+    if sum(per_gen["rule"].values()):
+        metrics.append({
+            "id": "e2e_cards", "system": "neumann_rule", "value": sum(per_gen["rule"].values()), "n": len(demo),
+            "detail": " · ".join(f"{n} {c}" for n, c in per_gen["rule"].items()),
+            "conditions": f"{run}. 화면에 나온 규칙(비LLM) 위험카드 수, 데모 계획서 합",
+            "limits": "규칙 카드(경고 단계 '분야 수준 참고 · 계획서와 대조 안 됨' 또는 비상 경로)다. LLM 카드 수와 분리해 적는다"
+                      "(PM 결정 2026-09-30)",
+        })
 
     passed = [
         n for n, e in demo.items()
