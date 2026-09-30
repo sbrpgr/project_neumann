@@ -1,6 +1,7 @@
 """E4-L2f 화면 "IV 내보내기": 정적·서버 검사(항상) + Playwright 1440×900(``NEUMANN_UI_TESTS=1``일 때만).
 
-원결과는 화면 응답(``build_ui_view`` → ``/premortem/view``·jobs 화면 결과)의 ``result``로 온다. 내보내기 때 재분석하지 않는다.
+원결과는 화면 응답(``build_ui_view`` → jobs 화면 결과·``/premortem/view``)의 ``result``·``result_sig``(서버 서명)로 온다.
+내보내기 때 재분석하지 않는다. 서명 확인·변조·재기동은 ``test_export_ui_sign.py``가 본다.
 
     python -m pytest tests/e4/test_export_ui.py -q                              # 정적 검사
     NEUMANN_UI_TESTS=1 NEUMANN_LLM_PROVIDER=mock python -m pytest tests/e4/test_export_ui.py -q -s
@@ -8,9 +9,10 @@
 
 Playwright 흐름(서버는 하위 프로세스 uvicorn, 기본 8149번, ``NEUMANN_LLM_PROVIDER=mock``·OpenAI 키 없이 띄우고 끝나면 종료.
 8010·8020은 쓰지 않는다):
-A. 첫 화면: 단계 IV 비활성·사유(분석 결과 없음) → 계획서 분석(mock) → 리포트에서 결정 3건(뷰에 실린 결정·메모 1건 +
-   클릭 2건) → 단계 IV 누르면 내보내기 섹션으로 → ZIP 내려받기(POST /premortem 재분석 요청 0건) → ZIP을 열어 9파일·
-   decision_log.json 내용 확인 → 스크린샷 ``docs/reports/E4-L2f_export.png`` 한 장 → 서버 오류(가로챈 422·429)의 문구가
+A. 첫 화면: 단계 IV 비활성·사유(분석 결과 없음) → 계획서 분석(mock, POST /premortem/jobs → GET 폴링) → 리포트에서 결정
+   4건(뷰에 실린 결정·메모 1건 + 클릭 3건, 그중 하나는 한 바퀴 돌려 "보류"로 되돌림 → hold) → 단계 IV 누르면 내보내기
+   섹션으로 → ZIP 내려받기(POST는 jobs·package 두 건, 재분석 0) → ZIP을 열어 9파일·decision_log.json·
+   result_origin=server_signed 확인 → 스크린샷 ``docs/reports/E4-L2f_export.png`` 한 장 → 서버 오류(가로챈 422·429)의 문구가
    textContent로 보이는지(태그 안 만듦).
 B. 샘플 결과: 버튼·단계 IV 비활성, 사유 "샘플".
 C. 화면 응답에 원결과(result)가 없으면(옛 서버를 흉내 내 가로챔) 버튼 비활성·사유, 요청 없음.
@@ -89,7 +91,7 @@ def test_package_request_shape_matches_export_py():
     src = _src()
     do = _func(src, "doExport")
     assert "fetch('premortem/package'" in do
-    body_keys = set(re.findall(r"JSON\.stringify\(\{ (result): raw, (decisions): decisions \}\)", do)[0])
+    body_keys = set(re.findall(r"JSON\.stringify\(\{ (result): raw, (result_sig): d\.result_sig \|\| null, (decisions): decisions \}\)", do)[0])
     assert body_keys <= set(PackageRequest.model_fields), body_keys
 
     dec = _func(src, "expDecisions")
@@ -139,8 +141,9 @@ def test_view_carries_contract_result_that_packages():
     view = build_ui_view(res, records=None)
     assert validate_ui_view(view) == [], "result를 붙여도 ui_view 계약을 지킨다"
     raw = view["result"]
-    assert view["_status"]["export"] == {"result": True, "reason": None}
-    assert raw == PremortemResult.model_validate(res).model_dump(mode="json")
+    assert view["_status"]["export"] == {"result": True, "signed": True, "reason": None, "dropped_keys": []}
+    assert isinstance(view["result_sig"], str) and view["result_sig"].startswith("v1.")
+    assert raw == PremortemResult.model_validate(res).model_dump(mode="json")  # fixture는 뺄 키·가릴 진단 문구 없음
     assert raw["plan_id"] == view["plan_id"] and raw["session_id"] == view["session_id"]
     # 화면과 같은 값: 계획서 줄(빈 줄은 화면이 뺀다) 번호·문구가 뷰와 같다
     assert [(ln["no"], ln["text"]) for ln in raw["plan"]["lines"] if ln["text"].strip()] ==         [(ln["n"], ln["t"]) for ln in view["plan"]["lines"]]
@@ -254,13 +257,33 @@ def _analyze(page, base: str, plan_text: str) -> None:
     page.wait_for_selector("#s-export")
 
 
-def _patch_view(route, _req) -> None:
+JOBS_GLOB = "**/premortem/jobs/**"   # GET /premortem/jobs/{id} 폴링(끝나면 result = 화면 뷰)
+FETCH_TIMEOUT_MS = 180_000            # F7: 부하 중에도 가로챈 요청이 먼저 끊기지 않게
+
+
+def _on_done_view(edit):
+    """jobs 폴링 응답이 done이면 그 안의 화면 뷰(result)를 ``edit(view)``로 바꿔 돌려주는 route 처리기."""
+
+    def handler(route, _req) -> None:
+        resp = route.fetch(timeout=FETCH_TIMEOUT_MS)
+        try:
+            body = resp.json()
+        except Exception:  # noqa: BLE001 - JSON이 아니면 그대로
+            route.fulfill(response=resp)
+            return
+        if isinstance(body, dict) and body.get("status") == "done" and isinstance(body.get("result"), dict):
+            edit(body["result"])
+            route.fulfill(response=resp, json=body)
+        else:
+            route.fulfill(response=resp)
+
+    return handler
+
+
+def _memo_on_first(view: dict) -> None:
     """뷰의 첫 체크리스트 항목에 결과에 실린 결정·메모가 있는 것처럼(E3 checklist decision·note) 바꾼다."""
-    resp = route.fetch()
-    view = resp.json()
     if view.get("checklist"):
         view["checklist"][0].update({"s": "채택", "set": True, "m": MEMO})
-    route.fulfill(response=resp, json=view)
 
 
 def run_ui(base: str, out: Path, tmp: Path) -> dict:
@@ -285,24 +308,25 @@ def run_ui(base: str, out: Path, tmp: Path) -> dict:
             assert "분석 결과 없음" in (stp.get_attribute("title") or "")
             info["step_iv_before"] = stp.get_attribute("title")
 
-            page.route("**/premortem/view", _patch_view)
+            page.route(JOBS_GLOB, _on_done_view(_memo_on_first))
             _analyze(page, base, plan_text)
-            page.unroute("**/premortem/view")
+            page.unroute(JOBS_GLOB)
             view_plan_id = page.locator("#s-trace .mono").first.inner_text().split(" · ")[-1].strip()
             assert page.locator("#stpExport").is_enabled(), "리포트에서 단계 IV가 켜져야 한다"
             assert page.locator("#btnExport").is_enabled()
             n_items = page.locator("#s-check .dec").count()
-            assert n_items >= 3, n_items
+            assert n_items >= 4, n_items
 
             page.click('#s-check .dec[data-i="1"]')          # 보류 → 기각
             page.click('#s-check .dec[data-i="2"]')          # 보류 → 기각
             page.click('#s-check .dec[data-i="2"]')          # 기각 → 채택
-            # 클릭마다 집계는 다음 틱에 다시 그린다 — 중간 상태("결정 3건 · 채택 1 · 기각 2")가 아니라 최종 값을 기다린다
-            page.wait_for_function("document.getElementById('expDec').textContent.indexOf('채택 2 · 보류 0 · 기각 1') >= 0")
+            for _ in range(3):                               # 보류 → 기각 → 채택 → 보류(명시적으로 되돌림 → hold, PM 결정 ③)
+                page.click('#s-check .dec[data-i="3"]')
+            # 클릭마다 집계는 다음 틱에 다시 그린다 — 중간 상태가 아니라 최종 값을 기다린다
+            page.wait_for_function("document.getElementById('expDec').textContent.indexOf('결정 4건 · 채택 2 · 보류 1 · 기각 1') >= 0")
             info["exp_dec"] = page.locator("#expDec").inner_text()
-            assert [page.locator(f'#s-check .dec[data-i="{i}"]').text_content() for i in range(3)] == ["채택", "기각", "채택"]
-            assert "채택 2 · 보류 0 · 기각 1" in info["exp_dec"], info["exp_dec"]
-            assert f"결정 전 {n_items - 3}건은 싣지 않음" in info["exp_dec"], info["exp_dec"]
+            assert [page.locator(f'#s-check .dec[data-i="{i}"]').text_content() for i in range(4)] == ["채택", "기각", "채택", "보류"]
+            assert f"결정 전 {n_items - 4}건은 싣지 않음" in info["exp_dec"], info["exp_dec"]
 
             page.evaluate("window.scrollTo(0, 0)")
             page.click("#stpExport")
@@ -318,8 +342,9 @@ def run_ui(base: str, out: Path, tmp: Path) -> dict:
             page.wait_for_function("document.getElementById('expMsg').textContent.indexOf('내려받음') >= 0")
             info["download"] = dl.suggested_filename
             info["posts"] = list(w.posts)
-            assert w.posts == ["/premortem/view", "/premortem/package"], w.posts  # 재분석(POST /premortem) 없음
+            assert w.posts == ["/premortem/jobs", "/premortem/package"], w.posts  # 재분석(POST /premortem) 없음
             info["exp_msg"] = page.locator("#expMsg").inner_text()
+            assert "서버 서명 확인됨" in info["exp_msg"], info["exp_msg"]
             info["exp_src"] = page.locator("#expSrc").inner_text()
             assert re.fullmatch(r"neumann_package_[0-9A-Za-z_-]+\.zip", dl.suggested_filename), dl.suggested_filename
 
@@ -341,14 +366,18 @@ def run_ui(base: str, out: Path, tmp: Path) -> dict:
             info["decision_log"] = log["decisions"]
             assert log["plan_id"] == view_plan_id, (log["plan_id"], view_plan_id)
             by_id = {d["item_id"]: d for d in log["decisions"]}
-            assert set(by_id) == {"C1", "C2", "C3"}, by_id
+            assert set(by_id) == {"C1", "C2", "C3", "C4"}, by_id
             assert by_id["C1"]["decision"] == "adopt" and by_id["C1"]["decided_at"] is None
             assert by_id["C1"]["note"].startswith("표본 크기 근거 보강") and "a.kim@example.org" not in by_id["C1"]["note"]
             assert "[EMAIL]" in by_id["C1"]["note"]
             assert by_id["C2"]["decision"] == "reject" and by_id["C2"]["decided_at"]
             assert by_id["C3"]["decision"] == "adopt" and by_id["C3"]["decided_at"]
+            assert by_id["C4"]["decision"] == "hold" and by_id["C4"]["decided_at"]  # 되돌린 보류는 시각과 함께 기록
             assert all(d["card_id"] is None for d in log["decisions"])
-            assert manifest["counts"]["decisions"] == 3
+            assert manifest["counts"]["decisions"] == 4
+            assert manifest["result_origin"] == "server_signed", manifest["result_origin"]
+            info["result_origin"] = manifest["result_origin"]
+            assert not files["README.md"].decode("utf-8").startswith("**주의")
             assert "## 결정 로그" in report and "행동 `C2`: 기각" in report and "행동 `C3`: 채택" in report
             assert "a.kim@example.org" not in "".join(f.decode("utf-8", "replace") for f in files.values())
             assert not w.errors, w.errors
@@ -379,13 +408,10 @@ def run_ui(base: str, out: Path, tmp: Path) -> dict:
             page = ctx.new_page()
             w = Watch(page, base)
 
-            def sample_view(route, _req):
-                resp = route.fetch()
-                view = resp.json()
+            def sample_view(view: dict) -> None:
                 view["_status"].update({"source": "sample", "label": "분석 파이프라인 미연결(샘플 데이터)"})
-                route.fulfill(response=resp, json=view)
 
-            page.route("**/premortem/view", sample_view)
+            page.route(JOBS_GLOB, _on_done_view(sample_view))
             _analyze(page, base, plan_text)
             assert page.locator("#btnExport").is_disabled()
             assert "샘플" in page.locator("#expWhy").inner_text()
@@ -399,14 +425,12 @@ def run_ui(base: str, out: Path, tmp: Path) -> dict:
             page = ctx.new_page()
             w = Watch(page, base)
 
-            def no_result_view(route, _req):
-                resp = route.fetch()
-                view = resp.json()
+            def no_result_view(view: dict) -> None:
                 view.pop("result", None)
+                view.pop("result_sig", None)
                 view["_status"].pop("export", None)
-                route.fulfill(response=resp, json=view)
 
-            page.route("**/premortem/view", no_result_view)
+            page.route(JOBS_GLOB, _on_done_view(no_result_view))
             _analyze(page, base, plan_text)
             assert page.locator("#btnExport").is_disabled()
             info["no_result_why"] = page.locator("#expWhy").inner_text()
@@ -414,7 +438,7 @@ def run_ui(base: str, out: Path, tmp: Path) -> dict:
             assert "원결과" in (page.locator("#stpExport").get_attribute("title") or "")
             page.locator("#btnExport").click(force=True)
             page.wait_for_timeout(300)
-            assert w.posts == ["/premortem/view"], w.posts
+            assert w.posts == ["/premortem/jobs"], w.posts
             assert not w.errors, w.errors
             page.close()
         finally:
