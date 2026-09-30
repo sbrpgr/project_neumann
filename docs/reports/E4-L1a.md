@@ -57,6 +57,20 @@ $ python -m pytest tests/e4/test_upload.py -q --durations=8
 
 남은 것(PM·E4-L2c): `/upload/plan`을 `serving.py`의 속도 제한 보호 경로에 넣는 일. 작업자 메모리 상한은 걸지 않았다(Windows에 RLIMIT 없음. 입력 10MB·zip 20MB·글자 상한으로 간접 제한).
 
+## 검증 지적 반영(PASS-조건부 → 1건)
+
+- 지적: `MultipartParser(...)` 생성이 `try` 밖이라 경계(boundary)가 256자를 넘으면 `FormParserError`가 그대로 올라가 500.
+- 수정: 생성을 `try` 안으로 옮기고 `FormParserError`·`ValueError`를 400 `"multipart 본문을 해석할 수 없습니다"`로 바꾼다.
+- 테스트 `test_api_overlong_boundary_400`: 256자 경계 200, 257자·4,000자 경계 400 + 문구. 대조로 수정 전(HEAD) 코드에 257자 경계를 보내면 500이었다.
+
+```
+$ python -m pytest tests/e4/test_upload.py -q
+58 passed in 10.59s
+$ python scripts/verify.py
+243 passed in 11.71s
+verify 통과
+```
+
 ## main.py 연결용 인터페이스
 
 ```python

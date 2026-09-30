@@ -544,11 +544,15 @@ def test_empty_rejected():
 # ── HTTP: POST /upload/plan ─────────────────────────────────────────────────
 
 
-@pytest.fixture
-def client() -> TestClient:
+def _app() -> FastAPI:
     app = FastAPI()
     app.include_router(router)
-    return TestClient(app)
+    return app
+
+
+@pytest.fixture
+def client() -> TestClient:
+    return TestClient(_app())
 
 
 def post(client: TestClient, filename: str, data: bytes, mime: str = "application/octet-stream"):
@@ -673,6 +677,24 @@ def test_api_request_shape_errors(client):
     assert two.status_code == 400
     empty = post(client, "empty.txt", b"", "text/plain")
     assert empty.status_code == 422
+
+
+def test_api_overlong_boundary_400():
+    """경계 문자열이 python-multipart 상한(256자)을 넘으면 500이 아니라 400 + 사용자 문구(검증 지적)."""
+    client = TestClient(_app(), raise_server_exceptions=False)
+
+    def send(boundary: str):
+        body = (
+            f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"plan.txt\"\r\n"
+            f"Content-Type: text/plain\r\n\r\n연구 목표\r\n--{boundary}--\r\n"
+        ).encode("utf-8")
+        return client.post("/upload/plan", content=body, headers={"content-type": f"multipart/form-data; boundary={boundary}"})
+
+    assert send("b" * 256).status_code == 200  # 상한 안은 그대로 받는다
+    for n in (257, 4000):
+        res = send("b" * n)
+        assert res.status_code == 400, (n, res.text)
+        assert res.json()["detail"] == "multipart 본문을 해석할 수 없습니다"
 
 
 # ── 디스크 미저장 ────────────────────────────────────────────────────────────

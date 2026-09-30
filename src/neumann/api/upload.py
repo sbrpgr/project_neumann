@@ -603,16 +603,17 @@ async def _read_file_part(request: Request) -> tuple[str, bytes]:
         raise UploadRejected(413, TOO_LARGE_MESSAGE)
 
     collector = _FilePartCollector()
-    parser = MultipartParser(boundary, collector.callbacks())
     received = 0
     try:
+        # 경계가 너무 길면(python-multipart 상한 256자) 생성자가 FormParserError를 낸다 → 아래에서 400
+        parser = MultipartParser(boundary, collector.callbacks())
         async for chunk in request.stream():
             received += len(chunk)
             if received > limit:
                 raise UploadRejected(413, TOO_LARGE_MESSAGE)
             parser.write(chunk)
         parser.finalize()
-    except FormParserError as exc:
+    except (FormParserError, ValueError) as exc:
         raise UploadRejected(400, "multipart 본문을 해석할 수 없습니다") from exc
     if collector.filename is None:
         raise UploadRejected(422, "file 필드에 계획서 파일이 없습니다")
