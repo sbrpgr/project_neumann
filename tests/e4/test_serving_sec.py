@@ -598,6 +598,60 @@ def test_ip_tag_is_salted_hmac_and_hides_env_salt(monkeypatch):
     assert serving._ip_tag("198.51.100.7") != a  # 솔트가 없으면 프로세스마다 무작위
 
 
+def test_serve_public_preflight_refuses_do_not_serve_index(monkeypatch, tmp_path):
+    """SEC-2r: 서비스 금지 표시(DO_NOT_SERVE.txt)가 있는 색인으로는 공개 기동을 거부한다."""
+    from neumann.config import Settings
+
+    monkeypatch.setenv("NEUMANN_LLM_PROVIDER", "openai")
+    monkeypatch.setenv("OPENAI_API_KEY", "not-a-real-key-for-tests")
+    bad, good = tmp_path / "index_elife", tmp_path / "index"
+    bad.mkdir()
+    good.mkdir()
+    (bad / "DO_NOT_SERVE.txt").write_text("DO NOT SERVE", encoding="utf-8")
+    monkeypatch.setenv("NEUMANN_INDEX_DIR", str(bad))
+    ok, why = serve_script.preflight_public(Settings(_env_file=None))
+    assert not ok and "DO_NOT_SERVE" in why and "not-a-real" not in why
+    monkeypatch.setenv("NEUMANN_INDEX_DIR", str(good))
+    ok, why = serve_script.preflight_public(Settings(_env_file=None))
+    assert ok, why
+    monkeypatch.delenv("NEUMANN_INDEX_DIR")  # 지정이 없으면 <data_dir>/index를 본다
+    monkeypatch.setenv("NEUMANN_DATA_DIR", str(tmp_path))
+    (good / "DO_NOT_SERVE.txt").write_text("x", encoding="utf-8")
+    ok, why = serve_script.preflight_public(Settings(_env_file=None))
+    assert not ok and "DO_NOT_SERVE" in why
+
+
+def test_serve_public_preflight_checks_effective_index_dir(monkeypatch, tmp_path):
+    """.env에만 적힌 NEUMANN_INDEX_DIR처럼 서버가 실제로 읽는 경로(index.settings)에 DO_NOT_SERVE가 있어도 거부한다."""
+    from types import SimpleNamespace
+
+    import neumann.index.settings as idx_settings
+    from neumann.config import Settings
+
+    monkeypatch.setenv("NEUMANN_LLM_PROVIDER", "openai")
+    monkeypatch.setenv("OPENAI_API_KEY", "not-a-real-key-for-tests")
+    good, bad = tmp_path / "index", tmp_path / "index_elife_epmc"
+    good.mkdir()
+    bad.mkdir()
+    (bad / "DO_NOT_SERVE.txt").write_text("x", encoding="utf-8")
+    monkeypatch.setenv("NEUMANN_INDEX_DIR", str(good))  # 환경변수 쪽은 정상
+
+    fake = SimpleNamespace(resolved_index_dir=lambda: bad)  # 실효 경로(.env 등)는 금지 색인
+    fake_get = lambda: fake  # noqa: E731
+    fake_get.cache_clear = lambda: None
+    monkeypatch.setattr(idx_settings, "get_index_settings", fake_get)
+    ok, why = serve_script.preflight_public(Settings(_env_file=None))
+    assert not ok and "DO_NOT_SERVE" in why
+
+    def boom():
+        raise RuntimeError("x")
+
+    boom.cache_clear = lambda: None
+    monkeypatch.setattr(idx_settings, "get_index_settings", boom)
+    ok, why = serve_script.preflight_public(Settings(_env_file=None))
+    assert not ok and "색인 경로" in why  # 경로를 못 구하면 닫힌 쪽
+
+
 def test_serve_public_preflight_refuses_whitespace_key(monkeypatch):
     from neumann.config import Settings
 
