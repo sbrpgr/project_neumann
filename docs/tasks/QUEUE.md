@@ -2,7 +2,7 @@
 
 인계 받는 쪽(Codex PM)은 이 표 위에서부터 진행한다. 실행은 `bash scripts/codex_task.sh build <과제ID>`, 검증은 `bash scripts/codex_task.sh verify <과제ID>`, 병합은 PM 규칙(`AGENTS.md`)대로. 상태: ✅ main 병합 · 🔍 검증 대기/중 · ⏳ 빌더 작업 중 · ⬜ 대기(착수 전) · ⛔ 막힘
 
-마지막 갱신: 2026-09-30 21:2x (PM "로컬 세팅") — Codex 인계 취소(Claude 계속). 열린 브랜치 머리는 HANDOFF 맨 위 표 참고
+마지막 갱신: 2026-10-01 00:5x (PM "로컬 세팅") — PM 인수 완료. HANDOFF 맨 위 "PM 인수 완료" 절이 최신
 
 ## ⚠ 최종 마감: 발표자료 제출 10/01 09:00 (HANDOFF 표). 발표 작업(E6)을 모든 L3 확장보다 앞에 둔다
 
@@ -56,26 +56,26 @@
 
 | ID | 내용 | 산출 | 상태 |
 |---|---|---|---|
-| SEC-8 | 공개 직전 보안 재감사(Fable, 읽기 전용) | docs/reports/SEC-8.md | ⏳ |
-| DOC-1 | 심사위원용 README·ARCHITECTURE·API·RUNNING | 문서 4개 | ⏳ |
-| LIC-1 | 라이선스·출처 점검, 고지 문구 | docs/LICENSES.md | ⏳ |
-| A11Y-1 | 화면 접근성 감사(보고서만) | docs/reports/A11Y-1.md | ⏳ |
-| E2E-2 | jobs 경로 다중 사용자 E2E(mock) | tests/e2e/test_jobs_multiuser* | ⏳ |
-| MCP-demo | 외부 에이전트 MCP 연결 시연 | scripts/mcp_demo.py, docs/MCP_DEMO.md | ⏳ |
-| E5-L1c | P1 Macro-F1 sol 재측정 준비(실행 안 함) | docs/reports/E5-L1c_plan.md | ⏳ |
-| PERF-2 | 분석 지연 단축 연구(모의) | scripts/perf_sim_pipeline.py | ⏳ |
-| QA-1 | 시연 흐름 QA(보고서만) | docs/reports/QA-1.md | ⏳ |
-| REL-1 | 07:00 동결 시트·태그 절차 | scripts/release_check.py, docs/RELEASE.md | ⏳ |
-| E5-L3c | 지표 generator 분리(rule ≠ LLM 적중) | eval/, tests/e5 | ⏳ |
-| JUDGE-H | 대표 블라인드 판정 HTML 양식 | eval/human_form.py | ⏳ |
-| CFG-1 | .env 읽기 일관화(SEC-3 플래그 제외) | config.py | ⏳ |
-| OBS-1 | 운영 사용량·비용 보고 | scripts/ops_report.py | ⏳ |
-| PRIV-1 | 개인정보·보존 감사(보고서만) | docs/reports/PRIV-1.md | ⏳ |
-| DATA-CARD | 코퍼스·색인 데이터 카드 | docs/DATA_CARD.md | ⏳ |
-| SYSTEM-CARD | 시스템 카드(모델·한계) | docs/SYSTEM_CARD.md | ⏳ |
-| PROMPT-AUDIT | 제품 프롬프트 감사(보고서만) | docs/reports/PROMPT-AUDIT.md | ⏳ |
-| FUZZ-1 | 공개 API 퍼징 테스트 | tests/e4/test_fuzz_api.py | ⏳ |
-| UXC-1 | 화면 문구 정직성·용어(보고서만) | docs/reports/UXC-1.md | ⏳ |
+| SEC-8 | 공개 직전 보안 재감사(Fable, 읽기 전용) | docs/reports/SEC-8.md | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| DOC-1 | 심사위원용 README·ARCHITECTURE·API·RUNNING | 문서 4개 | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| LIC-1 | 라이선스·출처 점검, 고지 문구 | docs/LICENSES.md | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| A11Y-1 | 화면 접근성 감사(보고서만) | docs/reports/A11Y-1.md | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| E2E-2 | jobs 경로 다중 사용자 E2E(mock) | tests/e2e/test_jobs_multiuser* | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| MCP-demo | 외부 에이전트 MCP 연결 시연 | scripts/mcp_demo.py, docs/MCP_DEMO.md | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| E5-L1c | P1 Macro-F1 sol 재측정 준비(실행 안 함) | docs/reports/E5-L1c_plan.md | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| PERF-2 | 분석 지연 단축 연구(모의) | scripts/perf_sim_pipeline.py | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| QA-1 | 시연 흐름 QA(보고서만) | docs/reports/QA-1.md | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| REL-1 | 07:00 동결 시트·태그 절차 | scripts/release_check.py, docs/RELEASE.md | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| E5-L3c | 지표 generator 분리(rule ≠ LLM 적중) | eval/, tests/e5 | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| JUDGE-H | 대표 블라인드 판정 HTML 양식 | eval/human_form.py | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| CFG-1 | .env 읽기 일관화(SEC-3 플래그 제외) | config.py | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| OBS-1 | 운영 사용량·비용 보고 | scripts/ops_report.py | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| PRIV-1 | 개인정보·보존 감사(보고서만) | docs/reports/PRIV-1.md | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| DATA-CARD | 코퍼스·색인 데이터 카드 | docs/DATA_CARD.md | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| SYSTEM-CARD | 시스템 카드(모델·한계) | docs/SYSTEM_CARD.md | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| PROMPT-AUDIT | 제품 프롬프트 감사(보고서만) | docs/reports/PROMPT-AUDIT.md | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| FUZZ-1 | 공개 API 퍼징 테스트 | tests/e4/test_fuzz_api.py | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| UXC-1 | 화면 문구 정직성·용어(보고서만) | docs/reports/UXC-1.md | ⏸ 인수 신호로 WIP 정지(검증 전) |
 
 모든 과제는 빌드 뒤 다른 모델(Sonnet) 검증이 병합 조건. 보고서만 쓰는 과제는 내용 검토 뒤 docs 병합.
 

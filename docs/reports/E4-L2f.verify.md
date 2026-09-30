@@ -1,6 +1,61 @@
 # E4-L2f 검증 보고서 (독립 검증자: Claude Sonnet 5.5)
 
-VERDICT: PASS-조건부
+VERDICT: PASS-조건부 (재검증 d332e78 기준. 1차 552e9de도 PASS-조건부)
+
+## 재검증 (HEAD d332e78, main 29d96ee 병합 포함) — F1 서버 서명 중심
+
+환경: 모든 명령 mock, `NEUMANN_LIVE_*` 해제, `.env` 미열람, worktree `git status` 0줄(코드·git 쓰기 없음). 시험은 scratchpad `v_l2f/r2/`의 `git clone`(`l2f2` = d332e78 그대로). 시험 서버 8149·8188, 끝나면 종료. 시험에 쓴 키는 시험용 값(`VERIFIER-TEST-KEY-…`)뿐.
+
+| 항목 | 명령·측정 | 결과 |
+|---|---|---|
+| verify | worktree `scripts/verify.py` | `1383 passed, 27 skipped in 217.68s`, `보안: 파일 445개`, `verify 통과` |
+| verify --security | 〃 | 통과 |
+| L2f 테스트·Playwright | `NEUMANN_UI_TESTS=1 pytest tests/e4/test_export_ui.py tests/e4/test_export_ui_sign.py` (l2f2) | `32 passed in 71.40s`(jobs 경로 POST `jobs`·`package`, `route.fetch` 180초). F7 조치 확인 |
+| 소유 밖 변경 | `git diff main...HEAD --stat` | `serving.py` +3줄(413 문구 분기만), `.env.example` +4줄(`NEUMANN_RESULT_HMAC_KEY=` 값 비움). 계약·`models.py` 변경 0 |
+| 서명 변조 시험 | `sig_adv1.py`(실제 `/premortem/view` 결과, 서빙 미들웨어 통과) | 정상 서명 → `server_signed`(헤더·manifest 일치, README에 경고 없음). 카드 제목·generator(mock→astra)·점수·알림·상태·계획서 줄·카드 삭제·manifest·근거 text(sha 맞춤)·유사연구 제목·공백·제로폭 문자·NFD 정규화·시각 오프셋 14종 모두 `client_submitted_unverified` + README/리포트/ai_context 첫 줄 경고 |
+| 정규화 우회 | 〃 | 키 순서 뒤집기·들여쓰기 JSON: 같은 내용이라 서명 유지(정상). 자유형 dict의 정수↔실수 22곳: 서명 유지(값이 같아 설계 의도, 표기만 다름). `1`→`true`, 2^53+1 정수 추가: 깨짐. 중복 키: 파서가 마지막 값을 쓰고 서명·렌더가 같은 dict를 쓰므로 원본이 마지막이면 signed, 다른 값이 마지막이면 unverified. `result` 두 번(원본 뒤 위조): unverified. `result_sig` 중복도 마지막 값 기준 |
+| 서명 재사용 | 〃 | 다른 계획서 결과·fixture·같은 계획서 재분석 결과에 옛 서명: 모두 unverified. `reset_key()`(재기동): 옛 서명 unverified |
+| 키 누출·설정 여부 | `sig_adv2.py`, 키 설정/미설정 두 번(응답 본문·헤더·ZIP 9파일·`/health`·`/openapi.json`·`/docs`·jobs·422·413·500 경로·로그·stdout/stderr 전부 검색) | 키 값·`NEUMANN_RESULT_HMAC_KEY`·`hmac` 언급 0건. 설정/미설정 응답 구조(`/health`, `_status.export`, 뷰 최상위 키, 패키지 상태·헤더) 전부 동일 |
+| jobs·진단 가림 뒤 서명 | `sig_adv3.py`(경로·키·트레이스를 심은 결과) | `/premortem/view`·jobs 둘 다 `server_signed`, jobs 결과의 `notices`·`stages`가 뷰와 동일(가림이 멱등), 경로→`[경로]`·키→`[가림]`·트레이스→종류만. ZIP에 경로·키 0건. 서빙 캐시 적중(`NEUMANN_PUBLIC=1`, 임시 데이터 폴더) 3회·jobs 2회 모두 `server_signed` |
+| 서명 없는 결과 | 〃 | jobs `format=result`, raw `POST /premortem`(감싼 것·감싸지 않은 것), precomputed 항목, 서명 붙은 뷰 서명을 scrub 전 raw 결과에 붙인 경우: 모두 `client_submitted_unverified` + 경고. `result_origin` 주입(server_signed·in_process)은 422(extra=forbid), `in_process`는 API로 못 감(직접 호출 전용, 다른 호출자 없음) |
+| 화면 표시 | `ui_sig.py`(Playwright) | 정상: "서버 서명 확인됨". 결과 조작·서명 없음: 다운로드는 되고 "서버 서명 확인 안 됨(서버 재기동 등) · ZIP에 경고가 적힘"이 오류 색으로 표시, ZIP README 첫 줄 경고, manifest `client_submitted_unverified` |
+| F2 화이트리스트 | `sig_adv3.py` | `manifest`·`checklist[]`의 모르는 키(`data_dir`, `env`, `reviewer_name`, `contact`, `email`, `path` 등)가 제거되고 `_status.export.dropped_keys`에 키 이름만 나옴(값 없음). 진짜 mock 결과는 `dropped_keys: []`(정상 키 손실 없음) |
+| F4 서식 | `f4_adv.py` | 마크다운의 HTML 이스케이프 1회(`&amp;amp;`는 원문 `&amp;`를 한 번 이스케이프한 것이라 정상). 리포트 JSON 블록 왕복 동일, ai_context 인용 8/8 왕복 동일, `evidence_pack.json`·`risk_cards.json` 원문 그대로. CSV `= + - @ TAB CR` 시작 칸 0건(앞에 `'`) |
+| F6 | `f6.py` | 내보내기 413: "내보낼 결과가 너무 큽니다(최대 4MB)." 분석 경로 413은 옛 문구 유지 |
+| F5 | `ui_adv2` 재확인은 안 함, 빌더 테스트 `되돌린 보류=hold` 통과 | 결정한 보류는 `hold`로 기록(연구자가 안 건드린 기본값만 제외). 의도한 설계로 명시됨 |
+| 변이 시험 | 사본 M7~M11 | M7(verify 항상 True)·M9(서명 전 가림 제거)·M11(origin 항상 signed)은 테스트가 잡음. M8(`compare_digest`→`==`)·M10(정수 실수 정규화 제거)은 통과함 — M8은 동작 동치, M10은 오프라인 테스트가 못 잡고 실제 브라우저 왕복에서만 드러남(낮음) |
+
+### 재검증 발견
+
+| # | 심각도 | 내용 | 재현 |
+|---|---|---|---|
+| R1 | **중간(병합 전 필수)** | **비ASCII 서명(64자 이상)이 500을 낸다.** `verify_result`가 `hmac.compare_digest(expected, mac)`에 문자열을 넘기는데 `mac`에 비ASCII 글자가 있으면 `TypeError`(try 밖). 실패-닫힘(ZIP 안 만들어짐)이지만 "형식 오류 서명 → unverified" 계약을 어기고 500·오류 카운터·서버 경고 로그를 유발한다 | `POST /premortem/package {"result": <정상>, "result_sig": "v1." + "é"*64}` → 500(`internal`, `kind=TypeError`). 전각 숫자 64자도 동일. 화면에서는 "처리 중 문제가 생겼습니다…". 고침: `mac.isascii()` 확인하거나 양쪽을 `.encode()` 바이트로 비교 |
+| R2 | 낮음 | 서명 키 최소 길이 검사가 없다. `NEUMANN_RESULT_HMAC_KEY=1234`도 받아들이고, 화면 응답 하나(결과+서명)로 키를 0.01초에 오프라인 복원할 수 있다 → 그 키면 임의 결과에 서명 위조 가능 | `sig_adv3.py` 끝부분. 고침: 16바이트 미만이면 기동 때 무시하고 무작위 키 + 경고(값은 로그에 쓰지 않음), `.env.example`에 "32자 이상 무작위" 문구 |
+| R3 | 낮음 | F2 화이트리스트는 `manifest`·`checklist[]`뿐이다. `expected_review`·`verification`·`post_status`·`plan_checks` 등 다른 자유형 칸은 그대로라, 그 칸에 심은 값은 `server_signed` 결과·ZIP(리포트의 `expected_review` 덤프)에 실린다. 진짜 결과에는 0건. 즉 서명은 "서버를 거쳤다"이지 "값이 안전하다"가 아니다 | `sig_adv3.py`: `expected_review.secret_field`·`reviewer_name` → 리포트에 실림 |
+| R4 | 낮음(정보) | F4 잔여: ① ai_context의 정상이 아닌 단계 줄은 단계 이름을 이스케이프하지 않아(`_stage_line`) `<b>`가 그대로 나온다(README·리포트 표는 이스케이프됨). ② 마크다운 링크·이미지 문법(`![](http://…)`, `](javascript:…)`)은 무력화하지 않는다 — 뷰어에 따라 원격 이미지를 불러올 수 있다(심사평 원문 인용에 이미 있는 문법일 수 있음) | `f4_adv.py` 1·6번 |
+| R5 | 낮음(정보) | 서명은 결과 값 기준(표기 무관)이며 `plan_text`·`decisions`는 서명 밖이다. 서버 결과는 항상 `plan`을 가지므로 `plan_text`는 쓰이지 않고, 결정은 연구자 본인 값이라 설계상 문제 없음 | — |
+
+### 재검증 병합 전 필수 조치
+
+1. **R1 고침**(`signing.verify_result`: 비ASCII·형식 오류 서명은 `False`). 회귀 테스트로 `"v1." + "é"*64` 넣기.
+2. (강력 권고, 공개 전) R2: 키 최소 길이. 행사 서버 기동 지침에 "`NEUMANN_RESULT_HMAC_KEY`는 32자 이상 무작위(또는 비워서 재기동마다 새 키)" 명시.
+3. DISP-1 병합에 따른 export.py 충돌 해결은 PM이 따로 확인(이 재검증 범위 밖). 서명 관련 줄(`result_origin`, `verify_result`)이 충돌 해결에서 남는지 병합 뒤 `tests/e4/test_export_ui_sign.py`로 확인.
+
+### 1차 검증 발견(F1~F7) 조치 확인
+
+| # | 1차 발견 | 조치 확인(d332e78) |
+|---|---|---|
+| F1 | 조작 result를 서버가 만든 것처럼 패키지화 | **조치됨**: HMAC 서명·`result_origin`·미확인 경고. 위 표대로 변조·재사용·중복 키·정규화·키 누출 시험 통과. 단 R1(500)·R2(약한 키) 남음 |
+| F2 | 자유형 dict 통과 | **부분 조치**: `manifest`·`checklist[]`만 화이트리스트, 나머지 칸은 그대로(R3) |
+| F3 | 본문 상한 없음 | main에 L2d가 병합됨(4MiB 상한). 1차에서 병합본 확인 |
+| F4 | HTML·CSV 방어 없음 | **조치됨**(R4 잔여 정보성) |
+| F5 | 보류 기록 | 설계로 명시(hold 기록, 테스트 고정) |
+| F6 | 413 문구 | **조치됨** |
+| F7 | Playwright 30초 | **조치됨**(jobs 경로·180초, 32 passed) |
+
+---
+
+## 1차 검증 (HEAD 552e9de)
 
 - 대상: worktree `.claude/worktrees/s2-E4-L2f`, 브랜치 `task/E4-L2f`, HEAD `552e9de`(main 4cbf0f0 병합 포함). 코드·git 쓰기 없음(worktree `git status` 0줄 확인).
 - 환경: 모든 명령 `NEUMANN_LLM_PROVIDER=mock`, `NEUMANN_LIVE_LLM_OK`·`NEUMANN_LIVE_TESTS` 해제(OpenAI 호출 0), `.env` 미열람. 시험 서버는 8149·8183·8185·8186·8187(끝나면 종료, LISTEN 0 확인), 8020·8099 미접촉.

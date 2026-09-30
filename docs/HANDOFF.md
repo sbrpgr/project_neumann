@@ -2,6 +2,16 @@
 
 PM이 병합할 때마다 갱신한다. Claude 한도가 다 되면 이 문서를 Codex에 주고 PM 역할을 넘긴다.
 
+## ★ PM 인수 완료 (2026-10-01 00:5x, 대표 지시 "인수인계 준비·작업 마무리") — 이 절이 최신
+
+- **main HEAD는 `git log -1 main`** (이 커밋 직후, push됨). 되받을 때는 이 절 → 아래 "Codex 인수 시 첫 30분" → 대시보드 메시지함 "인수 종료" 요약 순서로 읽는다.
+- **이번 창에서 병합한 것(20:00 이후):** E3-L1w(v1 파이프라인), E1-L1c(코드), E4-L1e, E4-L1f, E6-docs+README, E3-L1x, SEC-3(실제 호출 잠금+astra 금지), SEC-4(ReDoS), E4-L2e, SEC-5, E4-L2d(+E4-L2c, 패치 2개), E3-L1y, E5-L2c(판정 경로+블라인드 v3), DISP-1, E3-L1z, SEC-2r DO_NOT_SERVE 가드(cherry-pick+실효 경로 보강), E5-L3b(4354284), SEC-6, 테스트 안정화 2건, 리포트 카드 재생성.
+- **결과:** 백테스트 n=5 판정 완료 — 주 결과 블라인드 v3 `docs/reports/E5-L2b_n5_results.md`(Neumann A 3/4·hit@3 0.2, 기준선 A 4/15·hit@3 0.6, 통계적 결론 없음).
+- **검증 대기(PASS 나면 병합):** E3-L1s(47acaba 재검증)·E3-L1e(b64abeb 조건 반영) = v2 관문 → E4-L2f(서명, DISP-1 충돌 해결) → E4-L3m(8803fdd) → E4-L1g(샘플 갤러리) → E3-L2r·E4-L4r. 공개 전: PERF-pk, E4-L2g, OPS-tun, SEC-7. 그 밖: E4-L2h, E3-L1z2, TEST-1, E2-L5, E5-L3b 후속(5c84c88·bb3c129).
+- **PM 과제 20개:** 인수 신호로 WIP 커밋 + 보고서 "남은 일" 5줄 뒤 정지. 목록·산출물은 QUEUE "PM 세션 과제 20개" 표. 브랜치는 `git log --all --oneline --grep '^\[<ID>\]'`. 모두 **검증 전**이며 병합하지 않았다.
+- **막힌 것·대표 대기:** 라이브 묶음(v1 확인·원문 복원 7편·E2-L5 분야 6편)은 E3-L1s·E3-L1e 병합 뒤. E1-L1b는 병합 보류(대표 결정 대기). 대표 블라인드 판정(`data/eval/judge_n5v3/human`, JUDGE-H 양식은 검증 뒤). 터널은 공개 전 필수 묶음 뒤.
+- **되받기:** 02:39 초기화 뒤 구축 세션이 되받는다(예약). PM 세션도 이 절과 메시지함부터 읽는다.
+
 ## ★ Codex 인수 시 첫 30분 (00:4x 준비, 사용량 92%에 구축 세션이 인수 신호)
 
 실행 방법·첫 메시지·체크리스트: `out/dashboard/codex_kickoff.md`(gitignore). 진행 중 작업 표: `out/dashboard/handoff_agents.md`. 대시보드 http://127.0.0.1:8099 메시지함을 먼저 읽는다. Codex는 개발용(gpt-6-astra 빌드 → gpt-6-sol 검증, 구독)이고 **제품 API는 gpt-6.1-sol만**(astra 금지, 코드가 막음).
