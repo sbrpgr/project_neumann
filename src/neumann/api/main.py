@@ -55,12 +55,13 @@ MAX_CONCURRENT = 2
 # /health가 보고하는 단계별 구현 모듈(계획서 §4.0 골격). import가 되면 available.
 STAGE_MODULES: dict[str, list[str]] = {
     "pipeline": [PIPELINE_MODULE],
-    "INPUT": ["neumann.analyze.plan"],
-    "EVIDENCE": ["neumann.index.hybrid", "neumann.analyze.retrieve"],
+    # 실제 모듈 이름(E2·E3 병합 뒤 기준)
+    "INPUT": ["neumann.analyze.queries"],
+    "EVIDENCE": ["neumann.index.search", "neumann.index.store", "neumann.analyze.extract"],
     "RISK": ["neumann.analyze.cards"],
-    "REVIEW": ["neumann.analyze.review"],
-    "ACTION": ["neumann.analyze.checklist"],
-    "TRACE": [PIPELINE_MODULE],
+    "REVIEW": ["neumann.analyze.review", "neumann.analyze.gate"],
+    "ACTION": ["neumann.analyze.checklist", "neumann.analyze.validate"],
+    "TRACE": ["neumann.api.export"],
     "llm": ["neumann.llm"],
     "models": ["neumann.models"],
     "config": ["neumann.config"],

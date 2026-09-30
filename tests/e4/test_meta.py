@@ -1,7 +1,7 @@
 """E4-L1d 메타 API: GET /api · GET /taxonomy · GET /config/weights.
 
 router를 임시 FastAPI 앱에 붙여서 잰다(main.py 연결은 PM). 데이터 폴더는 tmp_path로 바꾼다.
-매니페스트 있음·없음·일부 없음·깨짐·필드 누락, 가중치 설정 있음·없음·오류, 파이프라인 모듈 대조를 본다.
+매니페스트 있음·없음·일부 없음·깨짐·필드 누락, 위험점수 공식(곱, 가중치 없음 — PM 결정 19:15)과 파이프라인 모듈 대조를 본다.
 공유 데이터 폴더에 실제 매니페스트가 있으면 응답 숫자가 매니페스트 원값과 같은지도 잰다(없으면 skip).
 """
 
@@ -65,11 +65,10 @@ def write(data_dir: Path, rel: str, obj: Any) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def make_client(data_dir: Path, weights: Any = None, pipeline: dict[str, Any] | None = None) -> TestClient:
+def make_client(data_dir: Path, pipeline: dict[str, Any] | None = None) -> TestClient:
     app = FastAPI()
     app.include_router(meta.router)
     app.dependency_overrides[meta.get_data_dir] = lambda: data_dir
-    app.dependency_overrides[meta.get_weights_setting] = lambda: weights
     pipe = pipeline if pipeline is not None else meta.pipeline_scoring("neumann_test_absent_module_xyz")
     app.dependency_overrides[meta.get_pipeline_scoring] = lambda: pipe
     return TestClient(app)
@@ -249,83 +248,99 @@ def test_taxonomy_r0_to_r9(tmp_path: Path) -> None:
 
 # ───────────────────────── GET /config/weights ─────────────────────────
 
+E3_FORMULA = "product_v1: similarity * frequency * severity * confidence"  # task/E3-L0 cards.py와 같은 모양
 
-def test_weights_default_when_not_configured(tmp_path: Path) -> None:
-    r = make_client(tmp_path, weights=None).get("/config/weights")
+
+def test_weights_shows_product_without_weights(tmp_path: Path) -> None:
+    """PM 결정(docs/decisions.md 19:15): 곱, 가중치 없음. 0.3/0.3/0.3/0.1은 현재 값으로 보이면 안 된다."""
+    r = make_client(tmp_path).get("/config/weights")
     assert r.status_code == 200
     d = r.json()
-    assert d["weights"] == {"similarity": 0.3, "frequency": 0.3, "severity": 0.3, "confidence": 0.1}
-    assert d["source"] == "default" and d["is_default"] is True and d["label"] == "기본값"
-    assert "기본값" in d["reason"] and d["config_error"] is None
-    assert d["display"] == "0.3 / 0.3 / 0.3 / 0.1"
-    assert d["order"] == ["similarity", "frequency", "severity", "confidence"]
+    assert d["formula"] == "product" and d["weighted"] is False and d["weights"] is None
+    assert d["formula_expr"] == "similarity * frequency * severity * confidence"
+    assert "곱" in d["formula_ko"] and "가중치 없음" in d["formula_ko"]
+    assert d["display"] == "곱 · 가중치 없음"
+    assert d["components"] == ["similarity", "frequency", "severity", "confidence"]
     assert d["labels_ko"]["similarity"] == "유사도"
+    assert "docs/decisions.md" in d["decision"]["source"] and "19:15" in d["decision"]["source"]
+    # 옛 설계값은 따로, "쓰지 않음"으로만 남는다
+    legacy = d["legacy_design_weights"]
+    assert legacy["used_in_product"] is False and "쓰지 않는" in legacy["status"]
+    assert legacy["values"] == {"similarity": 0.3, "frequency": 0.3, "severity": 0.3, "confidence": 0.1}
+    # 현재 값 자리(legacy·decision 설명 밖)에 0.3이 나오지 않는다
+    current = {k: v for k, v in d.items() if k not in ("legacy_design_weights", "decision")}
+    assert "0.3" not in json.dumps(current, ensure_ascii=False)
+    assert "기본값" not in json.dumps(current, ensure_ascii=False)
     assert d["pipeline"]["state"] == "missing" and d["pipeline"]["matches"] is None
 
 
-def test_weights_real_settings_dependency_defaults() -> None:
-    """config.py에 risk_weights 키가 없으면(현재) 실제 의존성도 None → 기본값."""
-    from neumann.config import get_settings
-
-    if getattr(get_settings(), "risk_weights", None) is not None:
-        pytest.skip("설정에 risk_weights가 들어왔다")
-    assert meta.get_weights_setting() is None
-    assert meta.build_weights(meta.get_weights_setting())["is_default"] is True
+def test_weights_response_is_not_mutated_between_calls(tmp_path: Path) -> None:
+    client = make_client(tmp_path)
+    a = client.get("/config/weights").json()
+    a["legacy_design_weights"]["values"]["similarity"] = 9
+    b = client.get("/config/weights").json()
+    assert b["legacy_design_weights"]["values"]["similarity"] == 0.3
 
 
-@pytest.mark.parametrize(
-    "raw",
-    [
-        {"similarity": 0.4, "frequency": 0.2, "severity": 0.3, "confidence": 0.1},
-        "0.4/0.2/0.3/0.1",
-        "similarity=0.4, frequency=0.2, severity=0.3, confidence=0.1",
-    ],
-)
-def test_weights_from_config(tmp_path: Path, raw: Any) -> None:
-    d = make_client(tmp_path, weights=raw).get("/config/weights").json()
-    assert d["weights"] == {"similarity": 0.4, "frequency": 0.2, "severity": 0.3, "confidence": 0.1}
-    assert d["source"] == "config" and d["is_default"] is False and d["label"] == "설정값"
-    assert d["reason"] == "" and d["display"] == "0.4 / 0.2 / 0.3 / 0.1"
+def _fake_module(monkeypatch: pytest.MonkeyPatch, name: str, formula: Any, weights: Any) -> dict[str, Any]:
+    fake = types.ModuleType(name)
+    if formula is not None:
+        fake.SCORE_FORMULA = formula
+    if weights is not None:
+        fake.SCORE_WEIGHTS = weights
+    monkeypatch.setitem(sys.modules, name, fake)
+    return meta.pipeline_scoring(name)
 
 
-@pytest.mark.parametrize(
-    ("raw", "fragment"),
-    [
-        ("0.3/0.3/0.3", "4개"),
-        ("0.3/0.3/0.3/1.5", "0~1"),
-        ({"similarity": 0.3, "frequency": 0.3, "severity": 0.3}, "키 불일치"),
-        ("similarity=abc,frequency=0.3,severity=0.3,confidence=0.1", "숫자"),
-        (42, "지원하지 않는 형식"),
-    ],
-)
-def test_weights_invalid_config_falls_back_with_reason(tmp_path: Path, raw: Any, fragment: str) -> None:
-    d = make_client(tmp_path, weights=raw).get("/config/weights").json()
-    assert d["weights"] == meta.DEFAULT_WEIGHTS
-    assert d["is_default"] is True and d["label"] == "기본값"
-    assert d["config_error"] and fragment in d["config_error"]
-    assert "형식 오류" in d["reason"]
+ONES = {"similarity": 1.0, "frequency": 1.0, "severity": 1.0, "confidence": 1.0}
 
 
-def test_pipeline_scoring_reports_module_weights(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    fake = types.ModuleType("neumann_test_fake_cards")
-    fake.SCORE_FORMULA = "product_v1: similarity * frequency * severity * confidence"
-    fake.SCORE_WEIGHTS = {"similarity": 1.0, "frequency": 1.0, "severity": 1.0, "confidence": 1.0}
-    monkeypatch.setitem(sys.modules, "neumann_test_fake_cards", fake)
-    info = meta.pipeline_scoring("neumann_test_fake_cards")
-    assert info["state"] == "ok" and info["formula"].startswith("product_v1")
+def test_pipeline_e3_product_module_matches(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    info = _fake_module(monkeypatch, "neumann_test_fake_cards", E3_FORMULA, dict(ONES))
+    assert info["state"] == "ok" and info["formula"] == E3_FORMULA and info["weights"] == ONES
     d = make_client(tmp_path, pipeline=info).get("/config/weights").json()
-    assert d["pipeline"]["matches"] is False and d["pipeline"]["note"]
-    assert d["pipeline"]["weights"] == fake.SCORE_WEIGHTS
+    assert d["pipeline"]["matches"] is True
+    assert "곱" in d["pipeline"]["note"]
 
-    same = dict(info, weights=dict(meta.DEFAULT_WEIGHTS))
-    d2 = make_client(tmp_path, pipeline=same).get("/config/weights").json()
-    assert d2["pipeline"]["matches"] is True
+
+@pytest.mark.parametrize(
+    ("formula", "weights", "fragment"),
+    [
+        (E3_FORMULA, {"similarity": 0.3, "frequency": 0.3, "severity": 0.3, "confidence": 0.1}, "1.0이 아닌"),
+        ("weighted_sum_v1", dict(ONES), "곱(product)이 아니다"),
+        (E3_FORMULA, {"similarity": 1.0, "frequency": 1.0}, "항목"),
+    ],
+)
+def test_pipeline_mismatch_is_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, formula: str, weights: dict[str, float], fragment: str
+) -> None:
+    info = _fake_module(monkeypatch, "neumann_test_fake_cards2", formula, weights)
+    d = make_client(tmp_path, pipeline=info).get("/config/weights").json()
+    assert d["pipeline"]["matches"] is False
+    assert fragment in d["pipeline"]["note"]
+    assert d["weights"] is None and d["formula"] == "product"  # 응답 본문은 결정대로
+
+
+def test_pipeline_without_formula_or_weights_is_unknown(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    info = _fake_module(monkeypatch, "neumann_test_fake_cards3", None, None)
+    assert info["state"] == "ok"
+    assert meta.pipeline_matches(info)[0] is None
 
 
 def test_pipeline_scoring_import_error_is_state(monkeypatch: pytest.MonkeyPatch) -> None:
     assert meta.pipeline_scoring("neumann_test_absent_module_xyz")["state"] == "missing"
     monkeypatch.setitem(sys.modules, "neumann_test_blocked_mod", None)  # import 차단
     assert meta.pipeline_scoring("neumann_test_blocked_mod")["state"] == "missing"
+    assert meta.pipeline_matches({"state": "error: ImportError"})[0] is None
+
+
+def test_real_pipeline_module_if_present() -> None:
+    """실제 점수 모듈(neumann.analyze.cards)이 병합돼 있으면 결정과 일치해야 한다. 없으면 skip."""
+    info = meta.get_pipeline_scoring()
+    if info["state"] == "missing":
+        pytest.skip("neumann.analyze.cards 미병합")
+    assert info["state"] == "ok", info["state"]
+    assert meta.pipeline_matches(info)[0] is True
 
 
 # ───────────────────────── router ─────────────────────────

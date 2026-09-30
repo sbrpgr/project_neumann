@@ -1,7 +1,7 @@
 # E4-L2a 보고서: 내보내기 패키지(ZIP 9파일)
 
 - 브랜치: `task/E4-L2a` · 빌더: claude-opus-5.5 · 검증 예정: Claude Sonnet 5.5
-- 스펙: `docs/tasks/E4-L2a.md`. 참고: 계획서 §2 TRACE·§3 L2·§4 E4 L2, `01_구조_뼈대` §1·§5(파일 목록과 역할만)
+- 스펙: `docs/tasks/E4-L2a.md`. 참고: 계획서 §2 TRACE·§3 L2·§4 E4 L2, 기획 참고 문서(파일 목록과 역할만)
 
 ## 무엇을 했나
 
@@ -145,7 +145,7 @@ app.include_router(export_router)          # POST /premortem/package
 
 ## 다음 과제에 넘길 것
 
-- E4-L0/PM: 위 두 줄로 `main.py`에 연결. 화면의 "내보내기" 버튼은 이 라우트를 부르고, 목업의 클라이언트 JSZip 조립은 쓰지 않는다(`01_구조_뼈대` §6: 서버 정본).
+- E4-L0/PM: 위 두 줄로 `main.py`에 연결. 화면의 "내보내기" 버튼은 이 라우트를 부르고, 목업의 클라이언트 JSZip 조립은 쓰지 않는다(기획 참고 문서: 서버 정본).
 - E3-L1b(체크리스트): 항목에 `id`(또는 `item_id`/`action_id`), `text`, `card_id`, `plan_lines`, `generator`를 두면 리포트가 그대로 읽는다. 목업 키(`t`·`r`·`s`·`m`)도 읽는다.
 - E3: 카드 0장일 때 사유를 `notices`나 단계 `reason`에 넣으면 README·리포트가 그대로 옮긴다.
 - 제안(계약 변경 아님): `PremortemResult`에 결정 로그 칸이 생기면 `decisions` 인자 대신 그것을 읽게 바꾸면 된다.
