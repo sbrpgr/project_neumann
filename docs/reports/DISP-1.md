@@ -133,8 +133,35 @@ python scripts/verify.py                → 1230 passed, 28 skipped in 294.47s �
 
 ## 다른 브랜치와 겹칠 수 있는 파일·헝크
 
-`git merge-tree --write-tree`로 최신 머리와 확인: E4-L2f(552e9de)·E4-L3m(88f1b51)·E5-L3b(849cdaa)·main(aed34b7) 모두 **텍스트 충돌 없음**.
-임시 worktree에서 E4-L2f를 합친 상태로 `tests/e4/test_export_ui.py`·이번 테스트·e2e 검사를 돌려 통과(98 passed, 8 skipped).
+처음 확인(E4-L2f 552e9de·E4-L3m 88f1b51·E5-L3b 849cdaa·main aed34b7)에서는 모두 텍스트 충돌이 없었다. 검증 반영 뒤(9c2eef8)
+최신 머리로 다시 확인한 결과(임시 worktree에서 실제 `git merge --no-commit` 후 되돌림):
+
+| 상대 | 머리 | 결과 |
+|---|---|---|
+| main | 29d96ee | 충돌 없음 |
+| E4-L3m | 58191fc | 충돌 없음. 합친 트리에서 `test_responsive.py`·이번 테스트 19 passed, 2 skipped |
+| E5-L3b | 4cb5f39 | 충돌 없음. 합친 트리에서 `tests/e5` 213 passed, 4 skipped(아래 의미 충돌은 E5-L3b가 `rc.SYSTEM_LABELS`를 쓰게 바꿔 해소됨) |
+| E4-L2f | a5d053f | **`src/neumann/api/export.py` 텍스트 충돌 8헝크**(view.py·index.html·test_export.py는 자동 병합) |
+
+**E4-L2f 충돌(a5d053f, b2471dc "서명 확인 → result_origin")**: E4-L2f가 같은 자리에 `_gen_short(c, g)`·`_gen_desc(c, g)`·
+`_gen_label(c, card)`(서명 미확인이면 "결과에 적힌 표기, 미확인"), `_code(...)`, `_json_md(...)`, `_one_line(item_id)`를 넣었다.
+충돌 자리: `_checklist_line`의 "생성 …" 줄, `_gen_label`·`_gen_summary` 정의, README "## 생성 방식"·카드별 줄, `_card_legend`,
+리포트 "## 생성 방식과 단계"·카드 "생성:" 줄, 예상 심사평 JSON 블록 머리, ai_context 카드 "generator:" 줄.
+나중에 병합하는 쪽의 해소 방법(두 쪽 의미를 다 살림): E4-L2f 구조를 그대로 두고 표시 이름만 DISP-1 함수로 바꾼다.
+
+- `_gen_short(c, g)`: 서명 확인이면 `_gen_name(c, g)`(DISP-1, "LLM (모델명)"·LLM 0장이면 모델 없음), 미확인이면
+  `f"{display_generator(g.value)}(결과에 적힌 표기, 미확인)"`. `_gen_summary`는 E4-L2f 판 그대로(`_gen_short` 사용).
+- `_gen_label(c, card)`: 서명 확인이면 `display_generator(card.generator.value, _one_line(card.model or '') or _result_model(c.result))`,
+  미확인이면 `_gen_short(c, card.generator)`(+ 모델이 있으면 `, 모델 …`).
+- README·리포트 생성 방식 목록: `f"- **{_gen_short(c, g)}** {c.gen_counts[g.value]}장: {_gen_desc(c, g)}"`.
+- 예상 심사평: DISP-1의 `생성: …` 줄 + E4-L2f의 `_json_md(...)` 블록. 체크리스트 줄: E4-L2f의 `_one_line(item_id)` + DISP-1의 `display_generator`.
+- ai_context 카드 줄: `f"- 생성: {_gen_label(c, card)}" + ("" if c.verified else " — 결과에 적힌 표기, 미확인")`.
+- 정책 확인 필요(PM): E4-L2f의 `_gen_desc` 미확인 문구 "결과에 generator={g.value}로 적힌 카드"와 그 테스트
+  (`tests/e4/test_export_ui_sign.py` 138행 `"결과에 generator=astra로 적힌 카드"`)는 JSON 값을 인용하는 문구라 astra가 남는다.
+  JSON 값 인용으로 허용할지, "결과에 LLM(generator 값 astra)로 적힌…"처럼 바꿀지 PM이 정한다. 같은 테스트의
+  `"astra(LLM)" not in readme`는 DISP-1 뒤에도 참이다.
+
+E4-L2f가 먼저 main에 들어가면 DISP-1의 export.py를 그 위에 다시 얹는 작업(위 방법, 30분 안팎)을 이 브랜치에서 할 수 있다.
 
 - `src/neumann/webui/index.html`(E4-L2f·E4-L3m): 460(GEN, 주석 2줄 추가), 470(genLabel → genName + genLabel), 558(FITGEN),
   754(카드), 762(심사평 머리), 767~768(체크리스트·genTxt), 786(panelWarn), 808(근거 패널 카드) — 모두 한 줄짜리 치환.
@@ -144,10 +171,9 @@ python scripts/verify.py                → 1230 passed, 28 skipped in 294.47s �
   `_attach_result`와 떨어져 있다. E4-L2f가 붙이는 `view["result"]`(원결과 JSON)의 astra는 계약 값이라 그대로(테스트도 제외).
 - `eval/report_card.py`(E5-L3b): import, `SYSTEM_LABELS["neumann"]`, macro·linkage 조건 문구, `_gens_text`(새), `_cell`.
   E5-L3b의 `METRIC_LABELS`·`EXPECTED_DETAIL`·`BACKTEST_LIMIT` 헝크와 떨어져 있다.
-- **의미 충돌 1건(텍스트 충돌 아님):** E5-L3b의 `tests/e5/test_metrics_from_e2e.py::test_output_feeds_report_card`가
-  `"| … | Neumann (astra) | …"`를 2줄에서 기대한다. 두 브랜치를 합친 임시 트리에서 이 1건만 실패했다(나머지 e5 200 통과).
-  나중에 병합하는 쪽이 그 2줄의 `Neumann (astra)`를 `Neumann (LLM)`으로 바꾸면 된다. E5-L3b가 커밋한 `docs/reports/report_card.md`는
-  병합 뒤 다시 생성해야 새 이름이 반영된다.
+- **의미 충돌(해소됨):** E5-L3b 849cdaa의 `tests/e5/test_metrics_from_e2e.py::test_output_feeds_report_card`가
+  `"Neumann (astra)"`를 기대해 합친 트리에서 1건 실패했으나, E5-L3b 4cb5f39가 `rc.SYSTEM_LABELS["neumann"]`을 쓰게 바뀌어
+  합친 트리 `tests/e5` 213 passed. E5-L3b가 커밋한 `docs/reports/report_card.md`는 병합 뒤 다시 생성해야 새 이름이 반영된다.
 
 ## 못 한 것
 
@@ -158,4 +184,5 @@ python scripts/verify.py                → 1230 passed, 28 skipped in 294.47s �
 
 - E6: `build_static_site._model_of`에서 `neumann.api.view.display_generator`를 쓰면 정적 판도 같은 이름이 된다.
 - E3(선택): `pipeline.MOCK_NOTICE`·`FITNESS_MISSING`·queries 캐시 알림의 "astra"를 "LLM"으로 바꾸면 원문도 맞는다(화면은 이미 변환).
-- E5: 병합 뒤 `python -m eval.report_card …`로 `docs/reports/report_card.md` 재생성, 위 의미 충돌 2줄 수정.
+- E5: 병합 뒤 `python -m eval.report_card …`로 `docs/reports/report_card.md` 재생성.
+- PM: E4-L2f와의 export.py 충돌 해소(위 방법) 또는 병합 순서 지정, 서명 미확인 문구의 astra 허용 여부 결정.
