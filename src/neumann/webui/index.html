@@ -442,10 +442,16 @@
     .panel { height: auto; visibility: hidden; transition: transform .25s, visibility 0s linear .25s; }
     body.popen .panel { visibility: visible; transition: transform .25s; }
     .ptabs { align-items: center; }
-    .ptabs .pclose { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--text2); }
+    .ptabs button { height: 44px; }  /* 터치 대상 44px(탭·닫기) */
+    .ptabs .pclose { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; padding: 0 4px; color: var(--text2); }
     .ptabs .pclose:hover { color: var(--ink); }
     .pfab { display: inline-flex; position: fixed; right: 16px; bottom: 16px; z-index: 25; box-shadow: 0 2px 10px rgba(20,22,26,.16); }
+    .btn.sm.pfab { height: 44px; padding: 0 16px; }  /* 터치 대상 44px(.btn.sm 32px를 이긴다) */
     body.popen .pfab { display: none; }
+    body[data-view="report"] .foot { padding-bottom: 84px; }  /* 맨 아래에서 떠 있는 버튼(16+44px)이 푸터를 가리지 않게 */
+    /* 추적: 64자 세션 해시가 칸을 밀어 601~1180px에서 가로로 넘치던 것 */
+    .trace { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .trace .mono { word-break: break-all; }
   }
   @media (max-width: 900px) {
     .top { height: auto; min-height: 60px; flex-wrap: wrap; gap: 4px 18px; padding: 8px 16px; }
@@ -466,7 +472,7 @@
     .top .r { margin-left: auto; gap: 10px; }
     .top .r > * + * { padding-left: 10px; }
     .steps { gap: 2px 14px; }
-    .stp { font-size: 12.5px; letter-spacing: .03em; }
+    .stp { font-size: 12.5px; letter-spacing: .03em; padding: 12px 0; }  /* 터치 대상 44px 가까이 */
     .doc section { scroll-margin-top: 12px; }
     .wrap { padding: 16px 16px 72px 16px; }
     /* 입력 */
@@ -480,7 +486,7 @@
     .tprow .optl { width: auto; }
     .tpls { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; }
     .exs { flex-direction: column; align-items: flex-start; gap: 6px; }
-    textarea.ta { min-height: 240px; padding: 12px; }
+    textarea.ta { min-height: 240px; padding: 12px; font-size: 16px; }  /* iOS는 16px 미만 입력칸에 초점이 가면 화면을 확대한다 */
     .drop { padding: 16px 14px; }
     .sendnote summary { gap: 10px; }
     html { scroll-padding-bottom: 96px; }
@@ -521,9 +527,11 @@
     .ck > :nth-child(2) { grid-column: 2 / -1; }
     .ck > :nth-child(3) { grid-column: 2; grid-row: 2; }
     .ck > :nth-child(4) { grid-column: 3; grid-row: 2; }
-    .dec { height: 30px; }
+    .dec { height: 44px; padding: 0 14px; }
+    /* 근거 번호·행 번호: 글줄은 그대로 두고 누르는 자리만 위아래 12px 넓힌다(20px → 44px) */
+    .cite, .lref { position: relative; }
+    .cite::after, .lref::after { content: ""; position: absolute; left: 0; right: 0; top: -12px; bottom: -12px; }
     .trace { grid-template-columns: minmax(0, 1fr); }
-    .trace .mono { word-break: break-all; }
     /* 근거 패널: 화면 전체 서랍 */
     .panel { width: 100%; max-width: none; border-left: none; }
     .pbody { padding: 14px 4px 24px 4px; }
@@ -1003,8 +1011,28 @@
     document.body.dataset.ready = '1';
   }
   function newAnalysis() { closeAll(); D = null; S.text = ''; S.filename = ''; S.fileMeta = ''; S.inErr = ''; S.job = null; S.ev = null; S.line = null; S.ptab = 'plan'; S.maxStep = 0; go(0); }
-  function openPanel() { document.body.classList.add('popen'); }
-  function closeAll() { document.body.classList.remove('popen'); }
+  /* 좁은 화면(패널이 fixed 서랍일 때만): 열면 현재 탭으로 초점, 열린 동안 Tab은 서랍 안에서 돈다, 닫으면 연 요소로 되돌린다 */
+  var opener = null;
+  function drawer() { var p = document.querySelector('.panel'); return !!p && getComputedStyle(p).position === 'fixed'; }
+  function panelFocusables(p) { return Array.prototype.filter.call(p.querySelectorAll('button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'), function (el) { return el.getClientRects().length > 0; }); }
+  function openPanel() {
+    var was = document.body.classList.contains('popen');
+    document.body.classList.add('popen');
+    if (was || !drawer()) return;
+    var p = document.querySelector('.panel'), a = document.activeElement;
+    opener = a && a !== document.body && !p.contains(a) ? a : null;
+    p.setAttribute('role', 'dialog'); p.setAttribute('aria-modal', 'true'); p.setAttribute('aria-label', '근거 패널');
+    var t = p.querySelector('.ptabs button.on') || p.querySelector('.ptabs button');
+    if (t) t.focus({ preventScroll: true });
+  }
+  function closeAll() {
+    var was = document.body.classList.contains('popen'), dr = was && drawer();
+    document.body.classList.remove('popen');
+    var p = document.querySelector('.panel');
+    if (p) { p.removeAttribute('role'); p.removeAttribute('aria-modal'); p.removeAttribute('aria-label'); }
+    var o = opener && document.contains(opener) ? opener : document.querySelector('.pfab'); opener = null;
+    if (dr && o) o.focus({ preventScroll: true });
+  }
   document.addEventListener('click', function (ev) {
     var t;
     if (ev.target.closest('[data-pclose]')) { closeAll(); return; }
@@ -1018,7 +1046,15 @@
     if ((t = ev.target.closest('.dec'))) { var it = D.checklist[+t.dataset.i]; it.s = order[(order.indexOf(it.s) + 1) % 3]; t.dataset.s = it.s; t.textContent = it.s; var c = ckCounts(), sum = $('ckSum'); if (sum) sum.innerHTML = '채택 <strong>' + c['채택'] + '</strong> · 보류 <strong>' + c['보류'] + '</strong> · 기각 <strong>' + c['기각'] + '</strong>'; return; }
   });
   $('scrim').addEventListener('click', closeAll);
-  document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') closeAll(); });
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape') { closeAll(); return; }
+    if (ev.key !== 'Tab' || !document.body.classList.contains('popen') || !drawer()) return;
+    var p = document.querySelector('.panel'), f = panelFocusables(p), a = document.activeElement;
+    if (!f.length) return;
+    if (!p.contains(a)) { ev.preventDefault(); f[0].focus(); }
+    else if (ev.shiftKey && a === f[0]) { ev.preventDefault(); f[f.length - 1].focus(); }
+    else if (!ev.shiftKey && a === f[f.length - 1]) { ev.preventDefault(); f[0].focus(); }
+  });
   renderSteps(); render(); loadHealth(); loadTemplates();
 })();
 </script>
