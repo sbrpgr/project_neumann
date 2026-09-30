@@ -390,25 +390,22 @@ def test_cache_skips_degraded_and_other_variant(tmp_path):
     assert not serving.ResultCache(tmp_path, enabled=False).put("d" * 64, {"status": "ok"})
 
 
-def test_warmup_fills_cache_from_demo_plans(tmp_path):
-    p1, p2 = tmp_path / "demo1.md", tmp_path / "demo2.md"
-    p1.write_text(plan("demo1"), encoding="utf-8")
-    p2.write_text(plan("demo2"), encoding="utf-8")
-    calls = []
+def test_warmup_does_not_analyze_demo_plans(tmp_path, monkeypatch):
+    from neumann.api import warmup
 
-    def quick(plan_text: str) -> dict[str, Any]:
-        calls.append(1)
-        return fake_result(plan_text)
+    calls = []
+    monkeypatch.setattr(warmup, "warm_search", lambda: {"backend": "hybrid", "n_works": 2})
+
+    def quick(plan_text):
+        calls.append(plan_text)
+        raise AssertionError("Warmup must not call the product pipeline")
 
     cfg = serving.ServingConfig(cache_enabled=True, cache_dir=tmp_path / "results", warmup=True,
-                                warmup_plans=(p1, p2, tmp_path / "missing.md"),
-                                disk_allow=frozenset(serving.public_plan_ids([p1, p2])))
+                                warmup_plans=(tmp_path / "missing.md",))
     srv = serving.Serving(cfg)
     ws = asyncio.run(srv.warmup(quick))
-    assert ws["state"] == "done" and ws["cached"] == 2 and ws["failed"] == 1 and len(calls) == 2
-    assert srv.cache.has(serving.plan_key(plan("demo1")))
-    ws2 = asyncio.run(serving.Serving(cfg).warmup(quick))  # 디스크 캐시가 있으면 다시 안 돌린다
-    assert ws2["cached"] == 2 and len(calls) == 2
+    assert ws["state"] == "done" and ws["elapsed_s"] >= 0
+    assert calls == [] and srv.cache.memory_items == 0 and srv.budget.used == 0
 
 
 # ───────────────────────── 시간 상한·오류 문구 ─────────────────────────
@@ -542,7 +539,7 @@ def test_config_defaults_and_public_profile(monkeypatch):
         monkeypatch.delenv(k, raising=False)
     c = serving.ServingConfig.from_env()
     assert (c.max_concurrent, c.queue_max, c.max_plan_chars) == (2, 20, 50_000)
-    assert (c.rate_per_min, c.cache_enabled, c.warmup) == (0, False, False)  # 테스트·개발: 꺼짐
+    assert (c.rate_per_min, c.cache_enabled, c.warmup) == (0, False, True)  # 검색 예열은 기본 켜짐
     assert c.daily_budget == 0 and not c.hide_docs and c.trust_xff
     assert (c.request_timeout_s, c.queue_max) == (300.0, 20)
     assert c.protected == {"/premortem": "analysis", "/premortem/view": "analysis",

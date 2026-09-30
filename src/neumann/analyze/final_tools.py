@@ -9,11 +9,18 @@ from __future__ import annotations
 import importlib
 import math
 import re
+import threading
 from decimal import Decimal
+from fractions import Fraction
 
 MAX_CHECKS = 16
 MAX_FACTS = 32
 SOLVER_TIMEOUT_MS = 200
+# Z3 is not thread-safe through its global main context: concurrent calls crashed the
+# process (VER-FIN C-1). Every Z3 path runs under this process-wide lock with a fresh
+# per-call Context. Other modules that touch Z3 must take the same lock.
+Z3_LOCK = threading.Lock()
+_UNIT_GRAMMAR = re.compile(r"[A-Za-zµ°]+(?:\^[1-3])?(?:[*/][A-Za-zµ°]+(?:\^[1-3])?)*")
 # Korean particles can attach directly to a numeral (``3이다``). ASCII
 # identifiers/exponents and fragments of signed or dotted tokens cannot.
 _NUMBER = re.compile(r"(?<![A-Za-z0-9_.+-])[-+]?[0-9]+(?:\.[0-9]+)?(?![A-Za-z0-9_.])")
@@ -66,7 +73,9 @@ def _fact(fact, sources, units=False):
     _require(len(matches) == 1, "ambiguous_or_ungrounded_number")
     if units:
         unit = _string(fact["unit"], 48)
-        _require(bool(re.fullmatch(r"[A-Za-zµ°]+(?:[*/][A-Za-zµ°]+|\^[1-3])*", unit)), "unsupported_unit")
+        # One optional ^1..^3 per factor (C-3): chains like m^3^3^3^3 made Pint compute a right-associative
+        # integer tower that never finished while holding the GIL.
+        _require(bool(_UNIT_GRAMMAR.fullmatch(unit)), "unsupported_unit")
         _require(bool(re.match(r"\s*" + re.escape(unit) + r"(?![A-Za-zµ°])", quote[matches[0].end():])), "ungrounded_unit")
     return value
 
@@ -84,20 +93,97 @@ def _constraint(params, sources):
     markers = {"le": r"이하|최대|<=|≤|at most", "ge": r"이상|최소|>=|≥|at least", "eq": r"같다|equal|(?<![<>])="}
     _require(bool(re.search(markers[comparator], _source(params["limit"]["source"], sources), re.I)), "ungrounded_comparator")
     z3 = importlib.import_module("z3")
-    values = [z3.RealVal(str(v)) for v in terms]
-    expr = z3.Sum(values) if operation == "sum" else values[0]
-    if operation == "product":
-        for value in values[1:]:
-            expr = expr * value
-    rhs = z3.RealVal(str(limit))
-    relation = {"le": lambda: expr <= rhs, "ge": lambda: expr >= rhs, "eq": lambda: expr == rhs}[comparator]()
-    solver = z3.Solver()
-    solver.set(timeout=SOLVER_TIMEOUT_MS)
-    solver.add(relation)
-    answer = solver.check()
+    with Z3_LOCK:
+        ctx = z3.Context()
+        values = [z3.RealVal(str(v), ctx) for v in terms]
+        expr = z3.Sum(values) if operation == "sum" else values[0]
+        if operation == "product":
+            for value in values[1:]:
+                expr = expr * value
+        rhs = z3.RealVal(str(limit), ctx)
+        if comparator == "le":
+            relation = expr <= rhs
+        elif comparator == "ge":
+            relation = expr >= rhs
+        else:
+            relation = expr == rhs
+        solver = z3.Solver(ctx=ctx)
+        solver.set(timeout=SOLVER_TIMEOUT_MS)
+        solver.add(relation)
+        answer = solver.check()
+        # Release every Z3 reference (and finally the context) while the lock is held.
+        del solver, relation, expr, values, rhs
+        value = None
+        del ctx
     if answer == z3.unknown:
         raise _Unchecked("solver_timeout_or_unknown")
-    return answer == z3.sat, {"operation": operation, "comparator": comparator, "scope": "anchored_numeric_relation"}
+    # Arithmetic belongs to the tool boundary, never the correction engine. Exact
+    # rational output avoids Decimal's default precision for long product chains.
+    computed = Fraction(0) if operation == "sum" else Fraction(1)
+    for term in terms:
+        computed = computed + Fraction(term) if operation == "sum" else computed * Fraction(term)
+    value = computed.numerator if computed.denominator == 1 else float(computed)
+    return answer == z3.sat, {"operation": operation, "comparator": comparator,
+                            "scope": "anchored_numeric_relation", "computed": value}
+
+
+_QUANTITY_UNIT = re.compile(r"\s*(만원|억원|천원|원|개월|시간|분|초|년|월|일|명|건|개|회|%|[A-Za-zµ°]+(?:[*/][A-Za-zµ°]+|\^[1-3])*)")
+_CONCEPTS = (
+    ("money", re.compile(r"예산|비용|금액|인건비|재료비|budget|cost", re.I)),
+    ("time", re.compile(r"기간|일정|시간|duration|schedule", re.I)),
+    ("capacity", re.compile(r"용량|capacity", re.I)),
+    ("temperature", re.compile(r"온도|temperature", re.I)),
+    ("sample", re.compile(r"표본|샘플|sample", re.I)),
+    ("experiment", re.compile(r"실험|experiment", re.I)),
+)
+_GENERIC_CONCEPT = re.compile(r"합계|합산|추가|항목|최대|최소|총계|상한|하한|이하|이상|같다|총|곱|sum|total|item|maximum|minimum|at most|at least", re.I)
+
+
+def _constraint_grounding(params, sources, lines):
+    """Bind each operand to a distinct occurrence, then require a common sum concept.
+
+    Unitless generic arithmetic remains supported. Distinct explicit labels need
+    a shared concept or unit; unsupported semantic relationships stay unchecked.
+    Inspect full lines so cropped quotes cannot erase units or concept labels.
+    """
+    _keys(params, ("sources", "operation", "terms", "comparator", "limit"))
+    facts = _list(params["terms"]) + [params["limit"]]
+    seen, units, concepts, labels = set(), [], [], []
+    for fact in facts:
+        value = _fact(fact, sources)
+        source = sources[fact["source"]]
+        full = lines[source["line"] - 1]
+        quote = source["quote"]
+        start = full.find(quote)
+        _require(full.find(quote, start + 1) < 0, "ambiguous_source_occurrence")
+        match = next(m for m in _NUMBER.finditer(quote) if Decimal(m.group()) == value)
+        offset = start + match.start()
+        _require(any(m.start() == offset and m.end() == start + match.end()
+                     for m in _NUMBER.finditer(full)), "cropped_numeric_token")
+        identity = (source["line"], offset)
+        _require(identity not in seen, "duplicate_numeric_fact")
+        seen.add(identity)
+        # Only the local clause preceding this number can describe its concept.
+        previous = [m.end() for m in _NUMBER.finditer(full[:offset])]
+        prefix = re.split(r"[,;:，；]", full[previous[-1] if previous else 0:offset])[-1]
+        unit = _QUANTITY_UNIT.match(full[start + match.end():])
+        token = unit.group(1) if unit else ""
+        if token in ("이다", "이며", "이하", "이상"):
+            token = ""
+        units.append(token.lower())
+        concepts.append({name for name, pattern in _CONCEPTS if pattern.search(prefix)})
+        label = _GENERIC_CONCEPT.sub(" ", prefix)
+        labels.append(set(re.findall(r"[A-Za-z]+|[가-힣]{2,}", label.lower())) - {"은", "는", "추가", "항목은"})
+    if params["operation"] == "sum":
+        explicit_units = {u for u in units if u}
+        _require(len(explicit_units) <= 1 and (not explicit_units or all(units)), "mixed_or_missing_quantity_unit")
+        explicit_concepts = [c for c in concepts if c]
+        _require(not explicit_concepts or bool(set.intersection(*explicit_concepts)), "mixed_quantity_concepts")
+        if explicit_concepts and not explicit_units:
+            _require(all(c or not label for c, label in zip(concepts, labels)), "ambiguous_sum_concept")
+        explicit_labels = [label for label in labels if label]
+        if not explicit_units and not explicit_concepts and len(explicit_labels) > 1:
+            _require(bool(set.intersection(*explicit_labels)), "ambiguous_sum_concept")
 
 
 def _units(params, sources):
@@ -186,6 +272,8 @@ def run_tool_checks(plan_text: str, checks: list[dict], cancel_event=None) -> li
                 # A cropped quote must not erase a qualification on the source line.
                 if kind == "dependency":
                     _require(not re.search(r"feedback|피드백|반복|iteration|optional|선택|않|아니|불필요|\bnot\b", lines[line - 1], re.I), "non_hard_dependency")
+            if kind == "constraint":
+                _constraint_grounding(params, sources, lines)
             passed, details = {"constraint": _constraint, "units": _units, "dependency": _dependency}[kind](params, sources)
             _require(cancel_event is None or not cancel_event.is_set(), "cancelled")
             result.update(status="passed" if passed else "failed", message="bounded_check_passed" if passed else "bounded_check_failed", details=details)

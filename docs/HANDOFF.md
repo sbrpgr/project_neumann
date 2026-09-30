@@ -1,3 +1,59 @@
+## ★ 현재 상태 — 2026-10-01 05:0x KST, PM(Claude) · 이 절이 가장 최신
+
+### 운영 규칙
+- **병합 작업 폴더:** PM은 `C:/Users/User/Desktop/pn_pm2`(브랜치 `pm/integ2`)에서 병합·검증하고 `git push origin pm/integ2:main`으로 올린다. 이전 폴더는 `pn_pm`(`pm/integ`)이다.
+- **main 작업 폴더(`project_neumann`)는 8020 재기동 직전에만 `git merge --ff-only origin/main`으로 감는다.**
+  - 이유: 8020이 이 폴더에서 돌고, `GET /`가 `webui/index.html`을 요청마다 디스크에서 읽는다. 감으면 화면만 바뀌고 서버 코드는 옛것으로 남는다.
+  - 07:30 녹화 전 마지막 재기동 뒤에는 감지 않는다.
+- **8020 재기동:** 구축 세션이 한다.
+  - 조건: `NEUMANN_LIVE_LLM_OK=1`, 키는 사용자 환경에서 상속(값 출력 금지), `MAX_CONCURRENT=1`, `--timeout-keep-alive 30`(LS2-R1: 폴링 keep-alive 경합).
+  - 재기동 뒤 `/health`에서 commit·effective=openai·key_present=true·warmup 상태를 확인한다.
+- **Codex 샌드박스는 .git 쓰기가 막혀 있다.** Codex는 파일만 고치고, 커밋은 구축 세션의 자동 커밋기가 대신 한다.
+
+### main에 들어간 것(05:0x)
+- **FIN-COMBINE:**
+  - b34e0b8: main + codex/fin-combine acaa263. 코드는 acaa263과 diff 0이다.
+  - ad1bf3e: f7ade06을 이력만 병합했다.
+  - 판정: V-COMBINED(같은 모델 gpt-6.1-sol, 별도 작업 판정, acaa263 기준).
+  - PM 전체 pytest(mock, 키 제거): **2668 통과·56 건너뜀·실패 0**.
+- **Codex 후보 11개 + FINAL-TEST**(모두 Codex 자체 관련 테스트 통과, **독립 판정 없음**, PM 재측정):
+  1. FIX-ASSEMBLE f64f713: '전부 채택' 422 해소, 다른 카드 인용은 계속 422.
+  2. PKG-FINAL 4c6ea07: ZIP에 final_draft·finalization.json.
+  3. PROV-LABEL 63e4940: LS-2·LS-3 표기 정정.
+  4. WARMUP 48ad0ef: 검색 예열만 하고 LLM은 안 부른다.
+  5. EXPORT-TITLE 4717468: export.py 충돌 3곳을 양쪽 유지로 풀었다. e4 내보내기 219 통과.
+  6. HWPX-UPLOAD e02a593
+  7. SAMPLES 5158382
+  8. README-FINAL e9c65fc
+  9. FIX-B3 c35f7e0
+  10. STATIC-FINAL bf99f45: 06:30 선별 뒤 최종화한다.
+  11. FINAL-TEST eacfe8c: scripts/final_test.py 순차 실행기. 라이브는 --i-have-approval과 프로세스 NEUMANN_LIVE_LLM_OK=1이 둘 다 있어야 돈다. 테스트 샘플 파일명은 9363eed에서 SAMPLES에 맞췄고 34 통과.
+  - 0dddb0a 전체 pytest: 2883 통과·62 건너뜀·2 실패. 2 실패는 test_pipeline_parallel이 LS-3 버그를 정상으로 기대한 것이다. 17b5b8c에서 기대값을 고쳤고 해당 파일 51 통과.
+
+### 남은 병합
+- **UI-FINAL-3**: 구축 세션이 ui-final worktree에서 origin/main을 병합하는 중이다. index.html 충돌 1덩어리이고, 마감은 05:15다.
+  - 보존 필수: DISP-1 genl, E3-L1e 제외 수, E4-L3m 서랍 초점·44px, E4-L2f 서명 전송, FINAL-API-UI 확정, L4r-UI-connect.
+  - 병합 뒤 8020을 한 번 재기동한다(~05:25).
+- **ASSEMBLE-MERGE**: 같은 줄 충돌로 채택분이 조용히 빠지는 것을 0으로 만들고, 편집별 적용 상태를 넣는다. 병합 뒤 화면 후속이 필요할 수 있다.
+
+### 공개 전 필수(터널 열지 않음, 대표 승인 사항)
+- SEC-PUBLIC은 **공개 불가**다: 짧은 입력 관문, 환불, DO_NOT_SERVE.
+- V-B1-C는 **FAIL**이다: 422 응답에 card_id·edit_id·risk_code 입력값 반사 3종.
+- SEC-PUBLIC-PUB가 PUB-A f5715b9·PUB-B 959b0a0·PUB-C 2deb405로 필요한 최소 병합 목록을 판정하는 중이다.
+
+### LIVE-SMOKE(대표 승인, 8020 ac9723a, 보고서 codex/live-smoke 0725fdc)
+- 1차: 키 없이 기동해서 규칙 강등, 호출 0건.
+- 3차: 분석 ok(카드 7·근거 27·원문 대조 27/27·강등 0), 수정 권고 200·$0.13. '전부 채택' 조립은 422 → FIX-ASSEMBLE.
+- 4차: 최대 채택 12개로 조립·확정·패키지 200. 다만 확정 partial, **도구 실행 0건**(ac9723a에는 FIN-TOOLS 없음), ZIP에 최종 초안 없음 → PKG-FINAL.
+- 합계 $1 미만 추정(분석 usage 미확정).
+
+### 05:30 라이브 최종 확인에서 반드시 볼 것
+- 확정 단계에서 z3·pint·networkx 실제 실행 수가 0보다 크다.
+- '전부 채택'이 통과한다.
+- ZIP에 final_draft.md가 있다.
+- 예열이 끝난 뒤 첫 분석 시간.
+- 화면 머리 표시와 generator 표기가 실제와 맞는다.
+
 ## 최신 핵심 판정 — 2026-10-01 02:20 KST (이 절이 현재 상태)
 
 - main은 아직 17c8058이며 기능 병합·push는 보류다. root 제품 디스크는 그대로 유지한다. 고정 core cfec213은 C:/Users/User/Desktop/project_neumann/out/codex/core-final에 있고, 후속 callguard 포함 후보709494a는 out/codex/integration에 분리돼 있다.

@@ -24,7 +24,7 @@ def test_single_action_final_text_and_invalidation(tmp_path):
             browser = playwright.chromium.launch()
             context = browser.new_context(accept_downloads=True, locale="ko-KR")
             page = context.new_page()
-            page.on("request", lambda r: requests.append(r) if urlparse(r.url).path == "/premortem/revise/finalize" else None)
+            page.on("request", lambda r: requests.append(r) if urlparse(r.url).path == "/premortem/finalize" else None)
             page.goto(base, wait_until="networkidle")
             page.locator("#sampleGallery").evaluate("node => node.open = true")
             page.click("[data-sample='example-battery']")
@@ -46,7 +46,7 @@ def test_single_action_final_text_and_invalidation(tmp_path):
                 page.click("#rvOpen")
             assert assembled.value.status == 200
             page.wait_for_function("window.NeumannRevise.state().asm && window.NeumannRevise.state().asm.source === 'server'", timeout=90_000)
-            with page.expect_response(lambda r: urlparse(r.url).path == "/premortem/revise/finalize" and r.request.method == "POST", timeout=90_000) as finalized:
+            with page.expect_response(lambda r: urlparse(r.url).path == "/premortem/finalize" and r.request.method == "POST", timeout=90_000) as finalized:
                 page.click("#rvFinalize")
             assert finalized.value.status == 200, finalized.value.text()[:300]
             body = finalized.value.json()

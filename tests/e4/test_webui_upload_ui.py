@@ -8,7 +8,7 @@
   ``NEUMANN_LIVE_TESTS``는 지운다(사용자 환경 변수가 openai여도 실제 호출 없음). 업로드 경로는 LLM을 부르지 않는다.
   끝나면(실패해도) 종료한다. 8010(대표 점검)·8020(라이브 점검) 포트는 쓰지 않는다.
 - 흐름: ① docx 업로드 → 본문 반영(스크린샷 ``E4-L1f_upload.png``) ② 빈 쪽 있는 pdf → 쪽수·경고
-  ③ hwp → 서버 415 문구 그대로 ④ 파일명 ``<img onerror>`` → 글자로만 보임
+  ③ hwp → 서버 415 문구 그대로(③' hwpx → 본문 반영, E4-L2h) ④ 파일명 ``<img onerror>`` → 글자로만 보임
   ⑤ 올리는 중 "읽는 중…"·두 번째 파일 무시(요청 1건) ⑥ 네트워크 실패 → "서버에 연결하지 못함"
   ⑦ 정적 판(404) → md는 브라우저 읽기, docx는 라이브 서버 안내.
 - 콘솔 오류는 둘로 나눈다: 브라우저가 4xx·차단 응답마다 찍는 "Failed to load resource" 줄(의도한 415·404·차단)과
@@ -33,7 +33,7 @@ ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "docs" / "reports"
 PREFIX = "E4-L1f"
 DEFAULT_PORT = 8131
-FORBIDDEN_PORTS = {8010, 8020}
+FORBIDDEN_PORTS = {8010, 8020, 8099, 8171}
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 NET_LOG = "Failed to load resource"
@@ -49,13 +49,15 @@ def _port_free(port: int) -> bool:
 def start_server(port: int) -> subprocess.Popen:
     import httpx
 
-    if port in FORBIDDEN_PORTS:
+    if port in FORBIDDEN_PORTS or not 8100 <= port <= 8199:
         raise SystemExit(f"{port}는 점검 서버 포트다. 다른 포트를 써라")
     if not _port_free(port):
         raise SystemExit(f"포트 {port}가 이미 쓰이고 있다")
     env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONPATH=os.pathsep.join([str(ROOT / "src"), str(ROOT)]))
     env["NEUMANN_LLM_PROVIDER"] = "mock"  # 실제 OpenAI 호출 금지(대표 상시 규칙)
     env.pop("NEUMANN_LIVE_TESTS", None)
+    for name in ("OPENAI_API_KEY", "NEUMANN_PSEUDONYM_SALT", "NEUMANN_LIVE_LLM_OK"):
+        env.pop(name, None)
     proc = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "neumann.api.main:app", "--host", "127.0.0.1", "--port", str(port),
          "--log-level", "warning"],
@@ -89,6 +91,7 @@ def stop_server(proc: subprocess.Popen, port: int) -> None:
 
 def _samples() -> dict[str, dict]:
     from tests.e4.test_upload import HWP5_BYTES, make_pdf
+    from tests.e4.test_upload_hwpx import make_hwpx, p, section
     from tests.e4.test_webui_upload import PLAN_LINES, make_docx
 
     md = "# 연구계획서 — 정적 판 확인\n\n1. 목표: 브라우저에서 읽는다.\n".encode()
@@ -96,6 +99,8 @@ def _samples() -> dict[str, dict]:
         "docx": {"name": "계획서_전해액.docx", "mimeType": DOCX_MIME, "buffer": make_docx()},
         "pdf": {"name": "계획서_전해액.pdf", "mimeType": "application/pdf", "buffer": make_pdf([PLAN_LINES, []])},
         "hwp": {"name": "계획서.hwp", "mimeType": "application/x-hwp", "buffer": HWP5_BYTES},
+        "hwpx": {"name": "계획서_전해액.hwpx", "mimeType": "application/hwp+zip",
+                 "buffer": make_hwpx([section(*(p(x) for x in PLAN_LINES))])},
         "xss": {"name": "<img src=x onerror=window.__xss=1>.txt", "mimeType": "text/plain", "buffer": "본문 한 줄".encode()},
         "md": {"name": "계획서_정적.md", "mimeType": "text/markdown", "buffer": md},
     }
@@ -192,6 +197,15 @@ def shoot(base: str, out: Path) -> dict:
             return {**_card(page), "server_message": HWP_MESSAGE}
         phase("hwp", hwp)
 
+        # ③' hwpx → 본문 반영(E4-L2h)
+        def hwpx() -> dict:
+            _upload(page, sm["hwpx"])
+            _wait_name(page, sm["hwpx"]["name"])
+            page.evaluate("document.getElementById('drop').scrollIntoView({block: 'start'})")
+            page.screenshot(path=str(out / f"{PREFIX}_hwpx.png"))
+            return _card(page)
+        phase("hwpx", hwpx)
+
         # ④ 파일명에 HTML → 글자로만
         def xss() -> dict:
             _upload(page, sm["xss"])
@@ -282,13 +296,15 @@ def check(res: dict) -> list[str]:
             problems.append(what)
 
     need(res["drop_hint"] == DROP_HINT, "드롭존 안내 문구")
-    need(all(x in res["accept"].split(",") for x in (".pdf", ".docx", "application/pdf", DOCX_MIME)), "accept")
+    need(all(x in res["accept"].split(",") for x in (".pdf", ".docx", ".hwpx", "application/pdf", DOCX_MIME)), "accept")
     d = ph["docx"]
     need(d["prev"][:3] == PLAN_LINES and d["fm"].startswith("DOCX · ") and d["start_enabled"] and not d["err"], "docx 본문 반영")
     p = ph["pdf"]
     need(p["prev"][:3] == PLAN_LINES and p["fm"].startswith("PDF · ") and "2쪽" in p["fm"], "pdf 본문·쪽수")
     need(any("텍스트가 없는 쪽" in w for w in p["warn"]), "pdf 경고 표시")
     need(ph["hwp"]["err"] == HWP_MESSAGE, "hwp 415 서버 문구")
+    hx = ph["hwpx"]
+    need(hx["prev"][:3] == PLAN_LINES and hx["fm"].startswith("HWPX · ") and hx["start_enabled"] and not hx["err"], "hwpx 본문 반영")
     x = ph["xss"]
     need(x["fn"] == "<img src=x onerror=window.__xss=1>.txt" and not x["xss_ran"] and not x["img_in_card"], "파일명 이스케이프")
     b = ph["busy"]
@@ -304,7 +320,7 @@ def check(res: dict) -> list[str]:
     need(s["requests"] == 1, "정적 판 판단 뒤 추가 요청 없음")
     for k in ("console_other_errors", "page_errors", "external_requests"):
         need(not res[k], f"{k}: {res[k]}")
-    main_flow = [t for n in ("docx", "pdf", "xss") for t in ph[n]["_console"]]
+    main_flow = [t for n in ("docx", "pdf", "hwpx", "xss") for t in ph[n]["_console"]]
     need(not main_flow, f"본 흐름 콘솔 오류: {main_flow}")
     need(all("415" in t for t in ph["hwp"]["_console"]), "hwp 단계 콘솔은 415 응답 기록뿐이어야 한다")
     return problems

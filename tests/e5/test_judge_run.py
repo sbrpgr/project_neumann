@@ -166,6 +166,8 @@ def test_claude_briefs_isolated(tmp_path):
         for other in set(jr.JUDGES) - {j}:
             assert f"answers/{other}/" not in text.replace("\\", "/")
         assert "pairing.json" not in text  # 짝 표 경로를 알려 주지 않는다
+        # 파일 경로 검사는 위에서 끝냈다. 내용 누출 검사에서 호스트 임시 디렉터리만 뺀다.
+        text = text.replace("\\", "/").replace(tmp_path.as_posix(), "")
         for bad in ("neumann", "baseline", "astra"):
             assert bad not in text.lower()
 

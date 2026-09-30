@@ -255,10 +255,19 @@ def validate_cards(
     else:
         status, reason = "ok", None
 
+    # 설정 라벨은 요청 대상이다. 외피 출처는 최종 판정의 실제 judge로 정한다.
+    # verification은 확장 가능한 dict 계약이므로 mixed는 카드 Generator enum을 바꾸지 않는다.
+    judges: dict[str, int] = {}
+    for row in [*card_rows, *action_rows]:
+        judges[row["judge"]] = judges.get(row["judge"], 0) + 1
+    generated = sum(judges.get(g, 0) for g in ("astra", "mock"))
+    actual_gen = (gen if len(judges) == 1 else "mixed") if generated else "rule"
+
     report = {
         "method": "semantic_v1",
-        "generator": gen,
-        "model": mdl,
+        "generator": actual_gen,
+        "generators": judges,
+        "model": mdl if generated else None,
         "effort": effort,
         "status": status,
         "reason": reason,
@@ -326,6 +335,11 @@ def apply_validation(result: PremortemResult, report: dict[str, Any], *, elapsed
     gate_only = bool(n_gate) and str(report.get("reason") or "").startswith("근거 없는 체크리스트 항목")
     if report["status"] == "degraded" and not gate_only:  # 게이트 폐기만이면 위 한 줄로 충분하다
         notices.append(f"2차 의미검증 일부 미검증(강등): {report['reason']}")
+    if report["generator"] in ("rule", "mixed") and report["status"] != "skipped":
+        labels = {"astra": "LLM", "mock": "모의(mock)", "rule": "비상 규칙", "none": "미검증"}
+        parts = " · ".join(f"{labels.get(g, g)} {n}건" for g, n in report.get("generators", {}).items())
+        origin = "혼합" if report["generator"] == "mixed" else "비상 규칙"
+        notices.append(f"2차 의미검증 출처: {origin}({parts}).")
     verification = {**result.verification, "semantic": report}
     stage = validation_stage(report, elapsed_s=elapsed_s)
     return with_stage(result, stage, checklist=checklist, notices=notices, verification=verification)
