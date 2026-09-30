@@ -45,6 +45,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 from neumann.analyze.checklist import gate_checklist_items
 from neumann.analyze.gate import EvidenceIndex, MALFORMED, NO_EVIDENCE_FAMILY, SECTIONS, review_evidence_problem
 from neumann.api.view import display_generator, display_text
+from neumann.api.plan_limits import check_embedded_plan, check_payload_plan
 from neumann.api import export_revision  # E3-L2r: ZIP에 덧붙이는 수정 권고·통합본 파일(선택)
 from neumann.models import (
     SCHEMA_VERSION,
@@ -198,7 +199,10 @@ def _review_for_report(er: Mapping[str, Any]) -> dict[str, Any]:
     """리포트에 싣는 예상 심사평(E3-L1e): 게이트가 뺀 문장 원문(audit.dropped·dropped_detail)은 빼고 사유 코드·개수만 남긴다.
     뺀 문장은 분석 결과가 아니므로 라벨 없이 문서에 나가지 않게 한다. 결과 JSON 원본은 바꾸지 않는다."""
     out = dict(er)
-    audit = dict(out.get("audit") or {})
+    raw_audit = out.get("audit")
+    if raw_audit is not None and not isinstance(raw_audit, Mapping):
+        raise ValueError("expected_review.audit는 JSON 객체여야 합니다.")
+    audit = dict(raw_audit or {})
     drops = [d for d in (audit.pop("dropped", None) or []) if isinstance(d, (list, tuple)) and d]
     audit.pop("dropped_detail", None)
     if drops or "drop" in audit:
@@ -1070,6 +1074,12 @@ def _sha256(data: bytes) -> str:
 # ── 공개 함수 ─────────────────────────────────────────────────────────────
 
 
+def _guard_export_plan(result: Any, plan_text: str | None) -> None:
+    check_payload_plan({"result": result, "plan_text": plan_text})
+    if isinstance(result, PremortemResult) and result.plan is not None:
+        check_embedded_plan(result.plan.lines)
+
+
 def build_package_files(
     result: PremortemResult | Mapping[str, Any],
     *,
@@ -1087,6 +1097,7 @@ def build_package_files(
 
     E3-L2r: `revision`(수정 권고)·`revised_plan`(통합본)이 오면 `revision.json`·`revised_plan.md`를 뒤에 덧붙인다(10·11번째).
     """
+    _guard_export_plan(result, plan_text)
     if not isinstance(result, PremortemResult):
         result = PremortemResult.model_validate(result)
     c = _make_ctx(result, plan_text, decisions, result_origin)
@@ -1131,6 +1142,7 @@ def build_package(
     - created_at: 패키지 생성 시각(manifest). 없으면 지금. 넘기면 출력 전체가 결정적이다.
     - result_origin: 결과 출처(manifest·README). API는 서버 서명을 확인해 정한다. 직접 부르면 "in_process".
     """
+    _guard_export_plan(result, plan_text)
     if not isinstance(result, PremortemResult):
         result = PremortemResult.model_validate(result)
     date_time = _zip_date(result.generated_at)  # reject unsupported dates before rendering; never substitute a date
@@ -1251,6 +1263,7 @@ def premortem_package(request: Request, payload: dict[str, Any] = Body(...)) -> 
     srv = getattr(request.app.state, "serving", None)
     limits = {} if srv is None else {"max_plan_lines": srv.config.max_plan_lines,
                                     "max_plan_chars": srv.config.max_plan_chars}
+    check_payload_plan(payload, max_lines=limits.get("max_plan_lines", 5_000))
     refusal = package_limit_refusal(payload, **limits)
     if refusal:
         status, code, message = refusal
