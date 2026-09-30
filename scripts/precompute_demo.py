@@ -180,15 +180,23 @@ def result_models(result: PremortemResult) -> list[str]:
     return sorted(models)
 
 
-def llm_settings() -> dict[str, str] | None:
-    """파이프라인이 쓸 provider·모델 이름(비밀값 아님). 설정을 못 읽으면 None."""
+def llm_settings() -> dict[str, Any] | None:
+    """설정이 요청한 provider·모델과 실제 호출 허용 여부(비밀값 아님). 실제로 쓴 값은 항목별 `llm_actual`. 못 읽으면 None."""
     try:
-        from neumann.config import get_settings
+        from neumann.config import get_settings, live_llm_allowed
 
         s = get_settings()
-        return {"provider": s.llm_provider, "model": s.llm_model}
+        return {"provider_requested": s.llm_provider, "model_requested": s.llm_model, "live_llm_ok": live_llm_allowed()}
     except Exception:  # noqa: BLE001
         return None
+
+
+def llm_actual(result: PremortemResult) -> dict[str, Any]:
+    """결과 manifest에 적힌, 파이프라인이 실제로 쓴 provider·모델(SEC-3 강등이면 mock)."""
+    man = getattr(result, "manifest", None) or {}
+    if not isinstance(man, dict):
+        man = getattr(man, "model_dump", lambda: {})()
+    return {"provider": man.get("llm_provider"), "model": man.get("llm_model")}
 
 
 def entry_warnings(result: PremortemResult) -> list[str]:
@@ -293,6 +301,7 @@ def build(
             "cards_total": len(result.risk_cards),
             "cards_by_generator": by_gen,
             "models": result_models(result),
+            "llm_actual": llm_actual(result),
             "degraded_stages": [s.stage for s in result.stages if s.state in ("degraded", "error")],
             "plan_text_included": with_plan,
             "warnings": entry_warnings(result),

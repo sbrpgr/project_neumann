@@ -243,11 +243,15 @@ def _llm_state() -> dict[str, Any]:
         s = get_settings()
         allowed = live_llm_allowed()
         requested = s.llm_provider
+        key_present = s.has_openai_key
+        live = requested == "openai" and allowed
         return {
             "provider_requested": requested,
             "live_llm_ok": allowed,
-            "effective": "openai" if requested == "openai" and allowed else "mock",
-            "model": s.llm_model if requested == "openai" and allowed else "",
+            "key_present": key_present,
+            # openai_no_key: 호출마다 config_error → 비상 규칙 경로로 강등된다
+            "effective": ("openai" if key_present else "openai_no_key") if live else "mock",
+            "model": s.llm_model if live else "",
         }
     except Exception as exc:  # noqa: BLE001
         return {"error": type(exc).__name__}
