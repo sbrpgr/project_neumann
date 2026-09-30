@@ -14,7 +14,8 @@
 4. 같은 계획서로 ``POST /premortem``(PremortemResult)을 받아 ``eval.linkage.check_result`` +
    ``neumann.index.store.get_source_text``로 근거 연결률 1.0
 5. 콘솔 오류 0 · 페이지 오류 0 · 외부 요청 0 · 실패한 요청 0, 스크린샷, 단계별·전체 시간 기록
-범위 밖 입력(`negative_recipe.md`): 카드 0장 + 사유(또는 4xx 부적합 판정 + 사유).
+범위 밖 입력(`negative_recipe.md`): 카드 0장 + 화면에 보이는 사유(`_status.empty_reason`→#noCards 또는
+notices의 `위험카드 0장: …`→#statusNotice), 또는 4xx 부적합 판정 + 사유.
 
 실패는 계획서마다 모아 한 번에 보고한다(샘플 모드 사유가 맨 앞). 측정값은
 ``docs/reports/E5-L0e2e_<mode>_summary.json``과 터미널 요약에 남는다(mode = live | sample | error).
@@ -265,6 +266,7 @@ def test_negative_recipe(browser, health, e2e_base_url: str, e2e_timeout_s: floa
     entry = {
         "http_status": rec.get("http_status"), "source": st.get("source"), "result_status": st.get("result_status"),
         "n_cards": len(dom.get("cards") or []), "empty_reason": st.get("empty_reason"),
+        "zero_card_reasons": C.zero_card_reasons(view if isinstance(view, dict) else None),
         "timings": {**rec.get("timings", {}), **C.stage_timings(view)}, "shots": rec["shots"],
         "browser": {k: len(rec[k]) for k in ("console_errors", "page_errors", "external", "failed")},
     }

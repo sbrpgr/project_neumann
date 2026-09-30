@@ -179,6 +179,71 @@ def test_negative_checks() -> None:
     assert C.check_negative({"view": "job", "job_err": "분석 실패"}, {"_status": {"notices": ["파이프라인 실행 실패"]}}, 500)
 
 
+def _zero_card_result(result: dict, notices: list[str], stages: list[dict] | None = None, status: str = "ok") -> dict:
+    """integ/v0 파이프라인 모양의 카드 0장 결과: 사유는 notices("위험카드 0장: …")와 risk_synthesis에 있다."""
+    res = copy.deepcopy(result)
+    res.update({"risk_cards": [], "evidence": [], "status": status, "notices": notices, "expected_review": {},
+                "checklist": [], "stages": stages if stages is not None else [
+                    {"name": "query_axes", "phase": "INPUT", "status": "ok", "reason": None, "elapsed_s": 1.2}]})
+    reason = notices[0].split(":", 1)[1].strip() if notices and ":" in notices[0] else None
+    res["risk_synthesis"] = {"no_card_reason": reason}
+    return res
+
+
+def test_negative_reason_from_pipeline_notices(result, build_ui_view) -> None:
+    """카드 0장 사유가 notices에만 있을 때(view.py가 empty_reason으로 올리지 않음): 화면에 보이면 통과."""
+    why = "위험카드 0장: 입력이 연구계획서가 아니다(astra 판단: 요리 메모); 연구성 0.02"
+    view = build_ui_view(_zero_card_result(result, [why]), pipeline_state="connected")
+    st = view["_status"]
+    assert st["empty_reason"] in C.DEFAULT_EMPTY_REASONS, st["empty_reason"]  # 오탐이 나던 모양 재현
+    assert C.zero_card_reasons(view) == [why]
+    shown = _dom(view, notice="일부 단계 강등 " + why)  # 상단 안내에 notices가 보인 화면
+    assert C.check_negative(shown, view, 200) == []
+    # 응답에는 사유가 있지만 화면 어디에도 없으면 실패(화면 결함을 사유 없음과 구분해 보고)
+    hidden = C.check_negative(_dom(view, notice=None), view, 200)
+    assert hidden and "화면(#noCards·#statusNotice)에 없다" in hidden[0], hidden
+
+
+def test_negative_reason_missing_everywhere_still_fails(result, build_ui_view) -> None:
+    """조작 입력: 사유가 자리표시뿐이거나 없거나, 분석 오류면 실패."""
+    for notices in (["위험카드 0장: 카드 0장(사유 미상)"], [], ["위험카드 0장:"], ["[search] degraded: 색인 느림"]):
+        view = build_ui_view(_zero_card_result(result, notices), pipeline_state="connected")
+        dom = _dom(view, notice=" ".join(notices) or None)
+        fails = C.check_negative(dom, view, 200)
+        assert fails and "사유가 없다" in fails[0], (notices, fails)
+    err = build_ui_view(_zero_card_result(result, ["위험카드 0장: 결과 조립 실패"], status="error"),
+                        pipeline_state="connected")
+    fails = C.check_negative(_dom(err), err, 200)
+    assert fails and "분석 오류" in fails[0], fails
+
+
+def test_negative_reason_from_skipped_card_stage(result, build_ui_view) -> None:
+    """integ/v0 실제 흐름: 카드 합성 단계가 사유와 함께 건너뛰어지면 view가 그 사유를 empty_reason(#noCards)으로 올린다."""
+    reason = "입력이 연구계획서가 아니다(astra 판단: 요리 메모)"
+    stages = [{"name": "query_axes", "phase": "INPUT", "status": "ok", "reason": None},
+              {"name": "search", "phase": "EVIDENCE", "status": "skipped", "reason": reason},
+              {"name": "synthesize_cards", "phase": "RISK", "status": "skipped", "reason": reason},
+              {"name": "verify_evidence", "phase": "REVIEW", "status": "skipped", "reason": "카드 없음"}]
+    view = build_ui_view(_zero_card_result(result, [f"위험카드 0장: {reason}"], stages), pipeline_state="connected")
+    assert view["_status"]["empty_reason"] == reason
+    dom = _dom(view)  # label이 없어 상단 안내는 없다 → #noCards에 사유
+    assert dom["notice"] is None and reason in dom["no_cards"]
+    assert C.check_negative(dom, view, 200) == []
+    # 건너뛴 단계는 강등이 아니므로 상단 안내가 없어도 강등 검사 통과(추적 섹션에는 단계가 있어야 한다)
+    assert C.check_degradation(dom, view) == []
+    assert any("추적 섹션" in f for f in C.check_degradation(_dom(view, trace="Stages"), view))
+
+
+def test_error_stage_must_be_displayed(result, build_ui_view) -> None:
+    res = copy.deepcopy(result)
+    res["stages"].append({"name": "expected_review", "phase": "REVIEW", "status": "error", "reason": "TimeoutError"})
+    res["status"] = "degraded"
+    view = build_ui_view(res, pipeline_state="connected")
+    assert C.check_degradation(_dom(view), view) == []
+    hidden = C.check_degradation(_dom(view, notice=view["_status"]["label"]), view)
+    assert any("REVIEW · expected_review · error" in f for f in hidden), hidden
+
+
 # ───────────────────────── 브라우저 위생 ─────────────────────────
 
 

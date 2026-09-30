@@ -157,3 +157,49 @@ $ python scripts/verify.py      # 보고서 커밋 직전, conftest.py 줄바꿈
 테스트: 통과
 verify 통과
 ```
+
+## 재작업 (검증 PASS-조건부 → 조건 해소)
+
+검증 보고서 `docs/reports/E5-L0e2e.verify.md`의 "고칠 것" 1건과 PM 지시 2항(`integ/v0` 모양 기준 점검)을 반영했다. 먼저 `git merge main`(충돌 없음, `88b582a`).
+
+1. **`check_negative`가 카드 0장 사유를 `_status.empty_reason`에서만 찾던 문제**(라이브 오탐). `integ/v0:src/neumann/pipeline.py` 346행은 사유를 `notices`에 `위험카드 0장: <사유>`로 담고, `api/view.py`는 이것을 `empty_reason`으로 올리지 않는다.
+   - 새 함수 `zero_card_reasons(view)`는 `_status.empty_reason`과 `_status.notices`의 `위험카드 0장: …` 둘 다에서 사유를 모은다. 기본값(`사유 없음`, `위험카드 0장 — 결과에 사유가 없다`)과 파이프라인 자리표시 `카드 0장(사유 미상)`, 빈 본문은 사유로 치지 않는다.
+   - 사유가 화면 `#noCards` 또는 `#statusNotice`에 보여야 통과한다. 응답에는 사유가 있는데 화면에 없으면 "사유 없음"과 구분해서 `카드 0장 사유가 응답에는 있으나 화면(#noCards·#statusNotice)에 없다`로 실패한다. 화면은 `_status.label`이 있을 때만 상단 안내를 그리기 때문에 생길 수 있는 경우다.
+   - 범위 밖 입력에서 `result_status=error`가 나오면 `분석 오류(부적합 판정 아님)`로 실패한다.
+   - 단위 검사 3건을 더했다(실제 `build_ui_view` 사용).
+     - `test_negative_reason_from_pipeline_notices`: 검증자가 재현한 모양, 즉 notices에만 사유가 있고 empty_reason은 기본값인 경우. 화면에 보이면 통과하고, 안 보이면 실패한다.
+     - `test_negative_reason_missing_everywhere_still_fails`: 조작 입력 4종(`카드 0장(사유 미상)`, notices 비움, `위험카드 0장:` 본문 없음, 무관한 notice)은 `사유가 없다`로 실패하고, status=error는 `분석 오류`로 실패한다.
+     - `test_negative_reason_from_skipped_card_stage`: `integ/v0`의 실제 흐름. `synthesize_cards`가 사유와 함께 skipped되면 view가 그 사유를 `empty_reason`으로 올려 `#noCards`에 보이므로 통과한다.
+2. **`integ/v0` 모양 점검에서 찾은 다른 불일치: `check_degradation`이 skipped 단계까지 상단 안내 표시를 요구하던 것.** `integ/v0`은 범위 밖 입력이나 카드 없음일 때 단계를 `skipped`로 남긴다. `stages_not_ok`에는 skipped가 들어가지만, 결과 status가 ok면 라벨이 없어서 화면에 상단 안내가 그려지지 않는다. 그래서 라이브에서 오탐이 났을 것이다.
+   - 이제 상단 안내에 표시를 요구하는 단계는 `degraded`·`error`·`unavailable`뿐이다.
+   - skipped·empty 단계는 추적(V) 섹션에 단계 이름이 보이는지로 잰다. 이 검사는 전과 같다.
+   - 단위 검사 `test_error_stage_must_be_displayed`를 더했다(error 단계를 숨기면 실패). 위 skipped 검사도 포함.
+   - 나머지 화면 연결점도 `integ/v0` 모양과 맞는지 확인했다.
+     - DOM 고리(`#ta`·`#btnStart`·`.rc[data-card]`·`.gen`·`a.src`·`#hdrState`·`#jobErr`·`#s-trace`·`data-ready`)는 병합한 main과 `integ/v0`의 `index.html`에 똑같이 있다.
+     - `GEN` 문구도 같다.
+     - `StageStatus`의 JSON 키는 `name/status/reason`이고 view가 읽는 키와 같다.
+     - `api/view.py`·`api/main.py`는 main과 `integ/v0`이 같다.
+3. `test_live.py`는 범위 밖 요약 JSON에 `zero_card_reasons`를 기록한다. docstring도 새 판정 기준에 맞춰 고쳤다.
+
+재실행(병합한 worktree 코드를 8123번에 샘플 모드로 띄움, 결과는 scratchpad에 저장, 끝난 뒤 서버 종료·8123 비어 있음 확인, 8010 미접근):
+
+```
+$ python -m pytest tests/e2e -q
+...............sssss                                                     [100%]
+15 passed, 5 skipped
+
+$ NEUMANN_LIVE_TESTS=1 python tests/e2e/test_live.py --base-url http://127.0.0.1:8123 --timeout 120 --out <scratchpad>
+대상 http://127.0.0.1:8123/ · 모드 sample · 상한 120.0s
+- plan.md / plan_elife_neuro.md / plan_medimaging.md: FAIL · 카드 2 · 각 6건(맨 앞 4건 "파이프라인 미연결(샘플 모드)", 나머지 _status.pipeline=unavailable·근거 연결률 미측정)
+- negative_recipe.md: FAIL · 샘플 3건 + "범위 밖 입력인데 위험카드 2장이 나왔다"
+============================== 5 failed in 8.67s ==============================   (기대대로)
+
+$ python scripts/verify.py      # main 병합 뒤
+471 passed, 11 skipped in 19.85s
+보안: 파일 202개
+계약: 2개
+테스트: 통과
+verify 통과
+```
+
+남은 메모(검증 보고서의 비차단 메모 그대로 두는 것): 결과 재조회 API가 없어 파이프라인이 두 번 돈다(결정 1). `get_source_text`는 `review_id`만 원문으로 돌려준다(응답·결정문·사후 기록 인용은 연결 실패로 잡히며, 원인은 `linkage.reason_counts`의 `source_not_found`로 구분된다).

@@ -32,7 +32,12 @@ GEN_LABEL = {
     "mock": "mock provider",
     "sample": "샘플 · 분석 결과 아님",
 }
-DEFAULT_EMPTY_REASONS = {"", "사유 없음", "위험카드 0장 — 결과에 사유가 없다"}
+DEFAULT_EMPTY_REASONS = {"", "사유 없음", "위험카드 0장 — 결과에 사유가 없다", "카드 0장(사유 미상)"}
+# 파이프라인(integ/v0 pipeline.py)은 카드 0장 사유를 notices에 "위험카드 0장: <사유>"로 담는다.
+# api/view.py는 이것을 _status.empty_reason으로 올리지 않으므로 notices도 사유로 인정한다.
+ZERO_CARD_NOTICE = "위험카드 0장"
+# 화면 상단 안내에 반드시 보여야 하는 단계 상태(건너뜀·결과 없음은 추적 섹션에만 보여도 된다)
+MUST_SHOW_STATUSES = {"degraded", "error", "unavailable"}
 
 # 브라우저에서 화면 상태를 읽는 스크립트(Playwright page.evaluate). 인용 원문은 길이만 보고 옮기지 않는다.
 DOM_PROBE_JS = r"""
@@ -193,7 +198,8 @@ def check_generators(dom: Mapping[str, Any], view: Mapping[str, Any] | None) -> 
 def check_degradation(dom: Mapping[str, Any], view: Mapping[str, Any] | None) -> list[str]:
     """강등·오류 단계가 화면에 표시되는가.
 
-    - ``_status.stages_not_ok``의 단계마다 상단 안내(#statusNotice)에 ``phase · name · status``가 있다(샘플 제외)
+    - ``_status.stages_not_ok`` 중 degraded·error·unavailable 단계마다 상단 안내(#statusNotice)에
+      ``phase · name · status``가 있다(샘플 제외. skipped·empty는 추적 섹션 표시로 충분)
     - ``_status.degraded``면 안내 상자와 라벨이 있다
     - 추적(V) 섹션 Stages에 응답 ``pipeline``의 단계 이름이 모두 있다
     """
@@ -206,6 +212,8 @@ def check_degradation(dom: Mapping[str, Any], view: Mapping[str, Any] | None) ->
         out.append(f"강등 결과인데 상단 안내에 라벨 '{st.get('label')}'이 없다")
     if st.get("source") != "sample":
         for s in st.get("stages_not_ok") or []:
+            if str(s.get("status")) not in MUST_SHOW_STATUSES:
+                continue  # skipped·empty는 강등이 아니다(화면은 label이 있을 때만 상단 안내를 그린다)
             key = f"{s.get('phase')} · {s.get('name')} · {s.get('status')}"
             if key not in notice:
                 out.append(f"강등 단계가 화면에 없다: {key}")
@@ -219,21 +227,49 @@ def check_degradation(dom: Mapping[str, Any], view: Mapping[str, Any] | None) ->
 # ───────────────────────── 범위 밖 입력 ─────────────────────────
 
 
-def check_negative(dom: Mapping[str, Any], view: Mapping[str, Any] | None, http_status: int | None) -> list[str]:
-    """범위 밖 입력: (a) 리포트에 카드 0장 + 기본값이 아닌 사유, 또는 (b) 4xx 부적합 판정 + 사유.
+def _norm(text: Any) -> str:
+    return " ".join(str(text or "").split())
 
-    500(파이프라인 실행 실패)은 부적합 판정이 아니다.
+
+def zero_card_reasons(view: Mapping[str, Any] | None) -> list[str]:
+    """응답이 밝힌 카드 0장 사유(기본값·자리표시 제외). ``_status.empty_reason``과 notices의 ``위험카드 0장: …``."""
+    st = _st(view)
+    out: list[str] = []
+    er = _norm(st.get("empty_reason"))
+    if er not in DEFAULT_EMPTY_REASONS:
+        out.append(er)
+    for n in st.get("notices") or []:
+        n = _norm(n)
+        if not n.startswith(ZERO_CARD_NOTICE):
+            continue
+        body = n[len(ZERO_CARD_NOTICE):].lstrip(" :·—-").strip()
+        if body and body not in DEFAULT_EMPTY_REASONS:
+            out.append(n)
+    return out
+
+
+def check_negative(dom: Mapping[str, Any], view: Mapping[str, Any] | None, http_status: int | None) -> list[str]:
+    """범위 밖 입력: (a) 리포트에 카드 0장 + 사유가 화면에 표시, 또는 (b) 4xx 부적합 판정 + 사유.
+
+    사유는 ``_status.empty_reason``(화면 #noCards) 또는 ``_status.notices``의 ``위험카드 0장: …``
+    (화면 #statusNotice)에서 찾는다. 기본값·``카드 0장(사유 미상)``은 사유가 아니다.
+    응답에 사유가 있어도 화면(#noCards·#statusNotice)에 안 보이면 실패. 분석 오류(status=error·500)는 부적합 판정이 아니다.
     """
     st = _st(view)
     if dom.get("view") == "report":
         cards = list(dom.get("cards") or [])
         if cards:
             return [f"범위 밖 입력인데 위험카드 {len(cards)}장이 나왔다"]
-        reason = str(st.get("empty_reason") or "").strip()
-        if reason in DEFAULT_EMPTY_REASONS:
-            return [f"카드 0장이지만 사유가 없다(empty_reason='{reason}')"]
-        if not dom.get("no_cards") or reason not in str(dom.get("no_cards")):
-            return [f"카드 0장 사유가 화면(#noCards)에 없다: '{dom.get('no_cards')}'"]
+        if st.get("result_status") == "error":
+            return [f"범위 밖 입력에서 분석 오류(부적합 판정 아님): {(st.get('notices') or [''])[0]}"]
+        reasons = zero_card_reasons(view)
+        if not reasons:
+            return [f"카드 0장이지만 사유가 없다(empty_reason='{st.get('empty_reason')}', "
+                    f"notices에 '{ZERO_CARD_NOTICE}: <사유>' 없음)"]
+        shown = _norm(dom.get("no_cards")) + " || " + _norm(dom.get("notice"))
+        if not any(r in shown for r in reasons):
+            return [f"카드 0장 사유가 응답에는 있으나 화면(#noCards·#statusNotice)에 없다: 사유 {reasons[:2]} · "
+                    f"#noCards='{dom.get('no_cards')}' · #statusNotice='{dom.get('notice')}'"]
         return []
     if http_status is not None and 400 <= http_status < 500:
         why = (st.get("notices") or [None])[0] or dom.get("job_err")
