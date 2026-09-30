@@ -293,3 +293,63 @@ BOM 본문을 넣는 테스트가 없다는 점은 L2c 검증의 지적과 같�
 ### 산출물 위치(임시, 저장소 밖)
 
 `C:\Users\User\AppData\Local\Temp\verify_e4l2d_r2`: `repo/`(main 49d7f3a+d44df68+패치), `repo3/`(main a2c4021+58cd372+패치), `repo4/`(main 17f9df5+58cd372+패치), `srv/`(가짜 앱·공격 스크립트 `attack1~5.py`·`load10.py`·`nat.py`·`ui_check.py`·`flood_tok.py`), `attack*.out`, `attack*_r3.out`, `load10*.out`, `nat_*.out`, `ui_check*.out`, `shots/`(스크린샷), `tests_out.txt`(d44df68), `tests_out3.txt`(58cd372 pytest+verify), `tests_out4.txt`(main 17f9df5), `serve_cp949_*.txt`.
+
+
+## 재검증 4 (7ab699a) — 로그 퍼센트 인코딩 job_id 재작업
+
+**PASS — 직전 FAIL(접근 로그에 `?job=%45…`, `?x=` 안의 `%2D`, `%2F` 경로, 전체 인코딩 id 누출)은 해결됐다. 이번에 적대적으로 새로 찾은 우회(이중 인코딩·`+`/잘못된 `%zz`로 쪼갠 id·전각 유니코드)는 전부 "어떤 작업으로도 이어지지 않는 요청"(404 또는 앱이 읽지 않는 쿼리 키)에서만 남고, 실제로 작업을 조회하는 모든 형태는 가려진다. 병합 전 필수 조치 없음.**
+
+- 대상: `task/E4-L2d` HEAD `7ab699a`(빌더 claude-opus-5.5, 검증 Sonnet 5.5). 모든 명령 `NEUMANN_LLM_PROVIDER=mock`, `OPENAI_API_KEY`·`NEUMANN_LIVE_LLM_OK` 해제, 실호출 0회. 시험 서버 8151·8152·8153·8154(8020·8099 미사용), 전부 종료 확인. 빌더 worktree 무수정(`git status` 0줄). `.env` 미열람.
+- 스크립트(임시, 저장소 밖): `C:\Users\User\AppData\Local\Temp\claude\...\scratchpad\v\` 의 `mask_fuzz.py`·`mask_fuzz2.py`·`e2e_log.py`(재실행), `r4_adv.py`·`r4_time.py`·`r4_live.py`·`r4_dos.py`·`r4_over.py`·`r4_main_app.py`(신규), `merge_r4/`(main 사본).
+
+### 판정 요약
+
+| # | 항목 | 결과 |
+|---|---|---|
+| 1 | 이전 검증자 스크립트 재실행 | **통과**: mask_fuzz 1,950건 누출 0 / mask_fuzz2 6형태×5확률×300 = 9,000건 누출 0 / 실 uvicorn e2e(포트 8151) 로그 51줄, id 3개 전체·12자 조각 모두 원문·1회 unquote 뒤 0줄(`id-enc-first/all`, `%2F`, `%2f`, `q-x-enc-mid`, `q-job-enc-all` 등 18형태 전부 마스킹) |
+| 2 | 새 우회(실 uvicorn 8152 + 필터 직접 2,940 접근 + 2,940 앱 로그 케이스) | **작업을 조회하는 모든 형태 통과**. 남은 노출은 아래 "잔여" |
+| 2 | 시간(ReDoS) | **통과**: 선형(입력 10배 → 시간 8.5~13.6배), 10만 자 필터 1회 최대 **159 ms**(<0.2 s, 16형태×접근·앱). 실 uvicorn은 요청줄 65,536바이트 초과를 400으로 거절(65k 200, 66k 400)하므로 10만 자는 도달 불가, 도달 가능한 최대(6만 자) 동시 `/health` 정지 최대 107 ms |
+| 2 | Referer·User-Agent 등 헤더 경로 | **없음**: Referer, User-Agent, Cookie, Origin, X-Forwarded-For, Authorization, X-Job-Id에 id를 실어도 로그에 0줄(접근 로그 형식은 헤더를 안 적고, 앱 로그 어디도 헤더를 안 적는다). 유일한 헤더 경로 `X-Neumann-Ticket`/`X-Request-ID`는 `request_id=oIY8xm…`처럼 앞 6자만 남음 |
+| 3 | 과잉 가림 | **운영 로그 판독 가능**(아래 표). 요청 번호(16자 16진)·plan_id·ip 태그·상태·일반 예외 이름·일반 경로는 그대로 |
+| 4 | 전체 pytest(worktree) | **1194 passed, 45 skipped, 0 failed** (152.7초) |
+| 4 | `verify.py --security` / 전체 `verify.py` | 둘 다 **verify 통과**(보안 파일 410개, 계약 2개) |
+| 4 | main f6095f5(E3-L1y b641f24 포함) 사본 + 브랜치 병합 + `E4-L2c_main.patch` → `E4-L2d_main.patch` | 병합 **충돌 0**, 두 패치 `git apply` 성공(main.py만 수정). 사본 `verify.py`: **1332 passed, 45 skipped**, verify 통과(첫 실행은 `tests/e3/test_pipeline_parallel_sim.py`가 1건 실패: 시간 비교 `1.121-0.984 > 0.6*0.24`, PC에 다른 python 프로세스 수십 개가 돌던 중. 같은 테스트는 사본에서 3/3 통과, 순수 main에서도 통과 → 부하로 인한 시간 시험 흔들림이며 이 브랜치와 무관) |
+| 4 | 병합 사본의 실제 `neumann.api.main:app`(8154) | 20개 id × 7형태 요청, 12자 이상 조각이 노출된 id **0/20** |
+
+### 2. 새 우회 시도 결과
+
+필터 직접(접근 로그 + 앱 로그 각 60개 id × 49형태): 이중 인코딩(`%2545`, 전체·일부·경로·`?next=`), 소문자 hex(`%2f`·`%2d`·`%5f`), `+`·`;`·`&&`·`%26`·`%3D`, 전각 유니코드(id·슬래시·등호), 퍼센트 뒤 잘못된 hex(`%zz`·`%4G`·`%%45`·꼬리 `%`·`%4`), NUL·UTF-8 깨짐·overlong `%C0%AF`.
+
+- **노출 0(가려짐)**: 이중 인코딩 경로(`/premortem/jobs/%2545…` → `…`), `?job=`·`?job_id=`·`?id=`·`?ticket=` 키의 이중 인코딩, 일부 이중 인코딩, 소문자 hex 전부, `;`·`&&`·`%26` 구분, 전각 슬래시, 경로·`?next=` 안의 이중 인코딩 경로.
+- **잔여(노출, 접근 로그 5형태·앱 로그 같은 5형태, 건당 60/60)**: ① 임의 키 `?x=`에 id 전체를 **이중 인코딩**(`%25%36…`, 두 번 unquote하면 복원), ② 이중 인코딩을 일부만 섞은 것, ③ id 중간에 `%25XX`를 끼움, ④ id를 **`+`로 둘로 쪼갬**(16+16자, 각 조각이 20자 미만), ⑤ id를 **잘못된 `%zz`로 둘로 쪼갬**(같은 이유).
+  - 실 서버 확인(8152): 위 요청은 `/health?x=…`처럼 앱이 읽지 않는 쿼리이거나 경로면 이중 인코딩·쪼갠 id는 **404**(uvicorn이 경로를 한 번만 풀고 `jobs.py`가 `_JOB_ID_RE` 정확 일치로만 조회). 작업으로 이어지는 형태(평문·`%2f`·전부/절반 인코딩·절대 URL 요청줄)는 모두 200이고 모두 앞 6자 + `…`로 가려짐.
+  - 판단: 로그에 남는 것은 **이미 id를 가진 클라이언트가 일부러 망가뜨려 보낸 요청**뿐이다. 다른 사용자의 정상 요청(화면은 `GET /premortem/jobs/<id>` 하나)은 이런 모양이 되지 않는다. 그래서 통과로 본다. 다만 길이 기준(접근 20자·앱 26자)은 "구분 글자로 끊긴 id"를 못 잡는 구조적 한계다. 권고: 저장소가 아는 살아 있는 job_id를 정확히 일치로 가리기(원문·1회·2회 unquote 형태) 또는 접근 로그 기준을 12자로.
+- 실 uvicorn 원시 소켓 40여 형태(8152): 경로 16종·쿼리 6종·헤더 실은 요청 4종(정상 GET·job GET·404·POST 본문)·던지는 라우트 5종(`RuntimeError`에 경로 포함)·깨진 요청 5종. 로그에서 id0의 12자 이상 조각이 보인 줄은 **3줄**(위 ①④⑤ 쿼리 형태 `/health?x=…`뿐). "Exception in ASGI application" 뒤에 트레이스 없음, `처리 안 된 예외 request_id=… path=/boom/oIY8xm… kind=RuntimeError`(앞 6자).
+
+### 3. 과잉 가림 부작용
+
+| 항목 | 결과 |
+|---|---|
+| 접근 로그 일반 경로 14종(`/`, `/health`, `/queue/status`, `/premortem/view`, `/premortem/jobs`, `/openapi.json`, `/docs/oauth2-redirect`, `?format=markdown`, `?limit=20&order=created_at_desc`) | 변경 0 |
+| 폰트 요청(20자 이상 파일명) | 9개 중 5개가 잘림: `/fonts/Jost/Jost-I….ttf`, `/fonts/InstrumentSerif/Instru….ttf`, `/fonts/IBMPlexMono/IBMPle….ttf`. 기능 영향 없음(정적 파일, 상태 코드·시간은 그대로) |
+| 짧은 값에도 `…`가 붙음 | `/premortem/jobs/short` → `short…`, `?id=5` → `5…`, `?probe=uptimerobot-monitor-check-1` → `?probe=uptime…` (없는 id에도 붙는 겉모양) |
+| 앱 로그 `req ticket=<16자> ip_<10자> path=… plan_id=<12자> …` | 변경 0(요청 번호·plan_id·ip 태그 모두 그대로) |
+| 예외 이름 | `ValidationError`·`EmbedderUnavailable`·`ShardIntegrityError`·`LocalEntryNotFoundError`·`AnalysisTimeout`·`JSONDecodeError` 그대로. 26자 이상만 잘림: `APIResponseValidationError`(26)→`APIRes…`, `ContentFilterFinishReasonError`→`Conten…`, `PydanticSchemaGenerationError`→`Pydant…`, `ClientConnectorCertificateError`→`Client…`. 앞부분으로 구분은 되지만 드묾 |
+| 26자 이상 설정 이름을 적는 경고 | `설정 NEUMANN_UPLOAD_RATE_PER_MIN 값이…` → `설정 NEUMAN… 값이…`, `NEUMANN_EXTRACT_STAGE_TIMEOUT_S`도 같음. **잘못 설정했을 때만** 나오는 경고라 어떤 변수인지 모르게 되는 것이 유일한 실제 불편 |
+| 클라이언트가 보낸 26자 이상 티켓(`X-Neumann-Ticket`, uuid 36자) | 앞 6자만 남음. 서버가 낸 티켓(16자)은 그대로. 화면은 티켓을 안 보낸다 |
+| 기타 | 스테이지 이름 26자 이상(`reviewer_question_forecast` 같은 것을 로그에 적을 때), 64자 sha256, 긴 모델 이름(`sentence-transformers/paraphrase-multilingual-mpnet-base-v2`), 긴 파일 이름이 잘림. `BAAI/bge-m3`·`gpt-5-mini-2025-08-07`·OpenAlex/DOI URL·`W…` id 목록·`https://api.openai.com/v1/chat/completions`는 그대로 |
+
+결론: 운영 로그를 못 읽게 될 정도의 과잉 가림은 없다(잘리는 것은 26자/20자 이상 연속 토큰뿐). 권고: 설정 이름 경고만 앞 6자 대신 이름 전체가 남게 하거나 임계를 더 높이기.
+
+### 시간·처리량 참고
+
+- 필터 1회(약 6만 5천 자): R3(40e283e) 대비 R4 — 긴 토큰 3.5→31.5 ms, `&job=x` 21→45 ms, `%25` 13→47 ms, 정상 200자 0.04→0.07 ms. 여전히 선형이고 정상 로그 줄에는 영향 없음. 로거·핸들러에 필터가 둘 다 붙으므로 실제 비용은 최대 2배로 추정.
+- 6만 자 쿼리 한 건이 이벤트 루프를 최대 약 0.1초 잡는다(정상 2 ms). job GET에는 IP별 분당 600건 제한이 있지만 `/health?x=…` 같은 다른 GET에는 없어, 6만 자 쿼리를 초당 약 10건 보내면 루프가 찬다고 추정된다(직접 재지는 않음). 사소, 권고만.
+
+### 테스트 정직성(병합 사본에서만 변이)
+
+새 테스트 4건(`-k access_log`) 기준선 4 passed. 변이: 퍼센트 디코딩 제거 → 2건 실패, 접근 로그 최소 길이 20→40 → 3건 실패, 쿼리 키 규칙 삭제 → 1건 실패, `…` 흡수 제거(멱등 깨짐) → 2건 실패. `%2F` 대안만 지우면 통과(일반 토큰 규칙이 겹쳐 가리는 중복 방어선이라 정상). 항상 통과하는 테스트는 아니다.
+
+### 병합 전 필수 조치
+
+없음. 권고(비차단): ① 저장소가 아는 job_id를 정확 일치로 가리기(구분 글자로 쪼갠 우회까지 닫힘), ② 26자 이상 설정 이름 경고 판독성, ③ 임의 GET 속도 제한. 병합 순서는 기존 결정대로(브랜치 병합 후 `E4-L2c_main.patch` → `E4-L2d_main.patch`).
