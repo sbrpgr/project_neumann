@@ -4,6 +4,7 @@
 - `get_excerpts(work_id) -> list[Excerpt]`: 그 논문의 심사평 문장, 번호 순서(심사평 순서 → 원문 위치)
 - `get_work(work_id) -> Work` (없으면 KeyError), `get_reviews(work_id) -> list[ReviewEvent]`
 - `get_excerpt(excerpt_id) -> Excerpt | None`, `get_rule_tags(work_id) -> list[RiskTag]`
+- `get_source_text(source_id) -> str | None`: Excerpt 원문(E5 근거 연결 검사기의 source_lookup)
 - `get_store()`: 공유 데이터 폴더 `data/index/`를 프로세스당 한 번 읽어 캐시한다(서버 시작 때 한 번)
 - `set_store(store)`: 테스트·fixture 어댑터가 메모리 저장소를 주입한다. `None`이면 캐시를 비운다
 
@@ -78,6 +79,7 @@ class IndexStore:
             raise ValueError(f"임베딩 행 수 {embeddings.shape[0]} != 논문 수 {len(self.work_order)}")
         self.embeddings = None if embeddings is None else np.ascontiguousarray(embeddings, dtype=np.float32)
         self.manifest: dict[str, Any] = manifest or {}
+        self._review_text: dict[str, str] | None = None
         self._lock = threading.Lock()
 
     # ── 만들기 ──
@@ -224,6 +226,12 @@ class IndexStore:
                 return ex
         return None
 
+    def get_source_text(self, source_id: str) -> str | None:
+        """Excerpt.source_id(review_id) → 오프셋 기준 원문. 없으면 None. E5 근거 연결 검사기의 source_lookup."""
+        if self._review_text is None:
+            self._review_text = {r.review_id: r.text for revs in self.reviews.values() for r in revs}
+        return self._review_text.get(source_id)
+
     def excerpt_work_id(self, excerpt_id: str) -> str | None:
         return self._excerpt_work.get(excerpt_id)
 
@@ -256,11 +264,10 @@ class IndexStore:
 
     def verify_offsets(self) -> dict[str, int]:
         """저장된 문장 전량을 원문 오프셋으로 잘라 대조한다."""
-        review_text = {r.review_id: r.text for revs in self.reviews.values() for r in revs}
         checked = passed = 0
         for _wid, row in self.iter_excerpt_rows():
             checked += 1
-            src = review_text.get(row["source_id"])
+            src = self.get_source_text(row["source_id"])
             if src is None:
                 continue
             ex = Excerpt.model_validate(row)
@@ -346,6 +353,11 @@ def get_rule_tags(work_id: str) -> list[RiskTag]:
     return get_store().get_rule_tags(work_id)
 
 
+def get_source_text(source_id: str) -> str | None:
+    """Excerpt.source_id → 원문(오프셋 기준 문자열). E5 `check_result(result, source_lookup=get_source_text)`."""
+    return get_store().get_source_text(source_id)
+
+
 def build_store_from(works: Sequence[Work], reviews: Sequence[ReviewEvent], *, embedder: Any | None = None) -> IndexStore:
     """편의 함수: 코퍼스로 메모리 저장소를 만들어 공용 저장소로 주입하고 돌려준다(E3 fixture 어댑터용)."""
     store = IndexStore.from_corpus(works, reviews, embedder=embedder)
@@ -363,6 +375,7 @@ __all__ = [
     "get_excerpts",
     "get_reviews",
     "get_rule_tags",
+    "get_source_text",
     "get_store",
     "get_work",
     "set_store",

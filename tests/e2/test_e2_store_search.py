@@ -132,6 +132,33 @@ def test_search_degrades_to_lexical_and_says_so(corpus):
     assert status["backend"] == "lexical_only" and status["degraded"] is True and status["reason"]
 
 
+def test_source_text_lookup_feeds_linkage_checker(mem_store):
+    """E5 근거 연결 검사기에 store.get_source_text를 source_lookup으로 넘기면 규칙 카드 근거가 전부 연결된다."""
+    from eval.linkage import check_result
+
+    from neumann.models import Generator, PremortemResult, RiskCard, RiskScore, WhyApplies
+
+    tags = [t for t in store_mod.get_rule_tags("fake:bat-1") if t.polarity == "negative"]
+    ids = list(dict.fromkeys(t.excerpt_id for t in tags))[:3]
+    evidence = [store_mod.get_excerpt(i) for i in ids]
+    assert len(ids) == 3 and all(ex is not None for ex in evidence)
+    assert store_mod.get_source_text(evidence[0].source_id).startswith("Summary:")
+    assert store_mod.get_source_text("no-such-review") is None
+    card = RiskCard(
+        card_id="c1",
+        risk_code=tags[0].risk_code,
+        title="t",
+        why_applies=WhyApplies(text="w", plan_lines=[1]),
+        evidence=ids,
+        score=RiskScore(similarity=0.5, frequency=0.5, severity=0.5, confidence=0.5, total=0.5),
+        generator=Generator.rule,
+        works=["fake:bat-1"],
+    )
+    result = PremortemResult(session_id="s", plan_id="p", evidence=evidence, risk_cards=[card])
+    rep = check_result(result, store_mod.get_source_text)
+    assert rep.verdict == "pass" and rep.links_ok == rep.links_total == len(ids)
+
+
 def test_search_dim_mismatch_degrades(mem_store):
     class Other:
         model_id = "fake-embedder"
