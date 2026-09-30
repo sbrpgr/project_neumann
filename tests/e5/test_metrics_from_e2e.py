@@ -16,9 +16,11 @@ ROOT = Path(__file__).resolve().parents[2]
 LIVE = ROOT / "docs" / "reports" / "E5-L0e2e_live_summary.json"
 SAMPLE = ROOT / "docs" / "reports" / "E5-L0e2e_sample_summary.json"
 PRODUCT_SYS = "Neumann 제품 기본 모델(gpt-6.1-sol)"
+REF_SYS = mfe.UNRECORDED_SYSTEM
+_RECORDED = object()  # 기본값: 연결 검사 카드 수만큼 astra로 기록
 
 
-def _plan(links=(10, 10), cards=(3, 3), drop=(1, 643), n_cards=5, failures=None, gens=None):
+def _plan(links=(10, 10), cards=(3, 3), drop=(1, 643), n_cards=5, failures=None, gens=None, link_gens=_RECORDED):
     rate = links[0] / links[1] if links[1] else None
     drop_txt = f"폐기율 {drop[0]}/{drop[1]} = {drop[0] / drop[1]:.3f} (verification)" if drop else "폐기율 없음"
     return {
@@ -29,6 +31,8 @@ def _plan(links=(10, 10), cards=(3, 3), drop=(1, 643), n_cards=5, failures=None,
                        f"{drop_txt} · 실패 0건 · 판정 {'pass' if links[0] == links[1] else 'fail'}",
             "verdict": "pass" if links[0] == links[1] else "fail", "linkage_rate": rate,
             "links": f"{links[0]}/{links[1]}", "cards": f"{cards[0]}/{cards[1]}",
+            **({"card_generators": {"astra": cards[1]}} if link_gens is _RECORDED
+               else {} if link_gens is None else {"card_generators": link_gens}),
         },
         "failures": failures if failures is not None else [],
     }
@@ -47,20 +51,24 @@ def _by(out):
 
 
 def test_live_summary_converts_to_counts_from_file():
-    """커밋된 라이브 요약을 그대로 변환: 계획서별 개수의 합이 값·detail로 들어간다."""
+    """커밋된 라이브 요약을 그대로 변환: 계획서별 개수의 합이 값·detail로 들어간다.
+    연결 검사 실행의 generator가 기록되지 않아 연결 지표는 참고 행으로 간다(neumann 행 없음 → P2 측정 전)."""
     out = mfe.convert(json.loads(LIVE.read_text(encoding="utf-8")), model="gpt-6-astra", product_model="gpt-6.1-sol")
     assert out["schema"] == "neumann.metrics/1" and out["model"] == "gpt-6-astra"
     by = _by(out)
-    lr = by[("linkage_rate", "neumann")]
+    for mid in ("linkage_rate", "card_pass_rate", "drop_rate"):
+        assert (mid, "neumann") not in by
+    lr = by[("linkage_rate", REF_SYS)]
     assert (lr["value"], lr["n"]) == (1.0, 43)
     assert lr["detail"].startswith("43/43; plan.md 10/10 · plan_elife_neuro.md 13/13 · plan_medimaging.md 20/20")
     assert "평가 모델 gpt-6-astra" in lr["conditions"]
-    assert "generator는 요약에 기록되지 않았다" in lr["limits"]  # 연결 검사 실행은 화면 실행과 다르다
+    assert "generator가 요약에 없다" in lr["limits"] and "약속 P2 판정에 쓰지 않는" in lr["limits"]
     assert lr["detail"].endswith("검사 실행 카드 generator 미기록")  # 약속 표(P2) 칸에도 보이게
-    cp = by[("card_pass_rate", "neumann")]
+    cp = by[("card_pass_rate", REF_SYS)]
     assert (cp["value"], cp["n"], cp["detail"].split(";")[0]) == (1.0, 12, "12/12")
-    dr = by[("drop_rate", "neumann")]
+    dr = by[("drop_rate", REF_SYS)]
     assert (dr["value"], dr["n"], dr["detail"].split(";")[0]) == (0.0034, 2033, "7/2033")
+    assert dr["limits"].startswith("연결 검사 실행의 카드 generator가 요약에 없다")
     assert by[("e2e_cards", "neumann")]["value"] == 13
     de = by[("demo_e2e", "all")]
     assert (de["value"], de["detail"]) == (3, "3/3")
@@ -138,16 +146,65 @@ def test_missing_drop_and_unchecked_plan_are_marked():
 
 
 def test_output_feeds_report_card(tmp_path):
-    """변환 결과를 eval.report_card에 넣으면 P2·P6가 채워지고, 제품 모델 행은 '측정 전'이다."""
+    """변환 결과를 eval.report_card에 넣으면: generator 미기록 연결 지표는 P2를 채우지 않고(측정 전) 참고 행으로만,
+    P6는 채워지고, 제품 모델 행은 '측정 전', e2e_cards는 이름표가 붙는다."""
     p = tmp_path / "e2e.json"
     assert mfe.main(["--summary", str(LIVE), "--model", "gpt-6-astra", "--product-model", "gpt-6.1-sol",
                      "--out", str(p)]) == 0
     md = rc.build([p], now="T", commit="c", command="cmd")
-    assert "| P2 | 근거 연결률 (폐기율 병기) | 100% | 1.0 (43/43;" in md
-    assert "**달성(폐기율 병기)**" in md
+    assert "| P2 | 근거 연결률 (폐기율 병기) | 100% | 측정 전 | — | — | **측정 전** | — |" in md
+    assert "달성(폐기율 병기)" not in md
+    assert f"| 근거 연결률 (링크 단위) | {REF_SYS} | 1.0 (43/43;" in md
+    assert "| 근거 연결률 (링크 단위) | Neumann (astra) | 측정 전 | — | — | — | — | 입력 없음 |" in md
+    assert f"| 폐기율 (버린 지적 / 전체 지적) | {REF_SYS} | 0.0034 (7/2033;" in md
     assert "| P6 | 대표 계획 end-to-end 시연 | 3건 | 3 (3/3) |" in md
     assert f"| 지적 추출 Macro-F1 (리뷰 단위) | {PRODUCT_SYS} | 측정 전 |" in md
-    assert "0.0034 (7/2033;" in md
+    assert "| 라이브 E2E 화면 위험카드 수 (데모 계획서 합) | Neumann (astra) | 13 (" in md
+    assert "(기타)" not in md
+
+
+@pytest.mark.parametrize(
+    "link_gens, system, note, p2",
+    [
+        ({"astra": 3}, "neumann", "검사 실행 카드 generator {'astra': 6}", "**달성(폐기율 병기)**"),
+        ({"astra": 2, "rule": 1}, "neumann", "비상 규칙 카드 2/6장 포함", "**달성(폐기율 병기)**"),
+        ({"rule": 3}, "neumann_rule", "비상 규칙 카드 6/6장", "**측정 전**"),
+        ({"astra": 3, "other": 1}, "mixed", "검사 실행 카드 generator", "**측정 전**"),
+        ({}, REF_SYS, "검사 실행 카드 generator 미기록", "**측정 전**"),
+    ],
+)
+def test_recorded_card_generators_decide_linkage_system(link_gens, system, note, p2, tmp_path):
+    """generator가 기록된 라이브 결과(v1 이후)는 eval.report_card의 연결 보고서 규칙대로 시스템을 나눈다."""
+    s = _summary(**{"a.md": _plan(link_gens=link_gens), "b.md": _plan(link_gens=link_gens)})
+    out = mfe.convert(s, model="gpt-6.1-sol")
+    lr = _by(out)[("linkage_rate", system)]
+    assert note in lr["detail"] and lr["value"] == 1.0
+    p = tmp_path / "m.json"
+    p.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
+    row = next(ln for ln in rc.build([p], now="T", commit="c", command="x").splitlines() if ln.startswith("| P2 |"))
+    assert p2 in row
+
+
+def test_mock_or_malformed_card_generators_refused():
+    for bad, msg in (({"astra": 2, "mock": 1}, "mock"), ({"astra": -1}, "0 이상 정수"), (["astra"], "0 이상 정수")):
+        s = _summary(**{"a.md": _plan(link_gens=bad)})
+        with pytest.raises(mfe.InputError, match=msg):
+            mfe.convert(s, model="m")
+
+
+def test_one_plan_without_generators_makes_all_linkage_reference():
+    """한 계획서라도 기록이 없으면 합계 전체를 참고 행으로 둔다(부분만 약속 칸에 넣지 않는다)."""
+    s = _summary(**{"a.md": _plan(), "b.md": _plan(link_gens=None)})
+    by = _by(mfe.convert(s, model="m"))
+    assert ("linkage_rate", "neumann") not in by and "(b.md)" in by[("linkage_rate", REF_SYS)]["limits"]
+
+
+def test_report_card_backtest_limit_and_label():
+    """PM 결정(E5-L3b 전달): 카드 한계 문구는 백테스트 n=5, e2e_cards 이름표."""
+    md = rc.build([], now="T", commit="c", command="x")
+    assert "백테스트는 n=5(대표 결정, 비용 사유; real 대 기준선, 셔플 없음, sol)" in md
+    assert "n=30" not in md
+    assert rc.METRIC_LABELS["e2e_cards"] == ("라이브 E2E 화면 위험카드 수 (데모 계획서 합)", "count")
 
 
 def test_cli_error_exit_code(tmp_path):

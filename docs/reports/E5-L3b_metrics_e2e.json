@@ -6,30 +6,30 @@
   "metrics": [
     {
       "id": "linkage_rate",
-      "system": "neumann",
+      "system": "Neumann 참고(검사 실행 generator 미기록, 약속 판정 제외)",
       "value": 1.0,
       "n": 43,
       "detail": "43/43; plan.md 10/10 · plan_elife_neuro.md 13/13 · plan_medimaging.md 20/20; 검사 실행 카드 generator 미기록",
       "conditions": "라이브 E2E http://127.0.0.1:8010/ 2026-09-30T10:19:48+00:00~2026-09-30T10:25:34+00:00, 1회 실행, 평가 모델 gpt-6-astra. 데모 계획서 3건 /premortem 결과 전수, eval.linkage.check_result 원문 글자 단위 대조, 계획서별 개수 합산(계산)",
-      "limits": "연결 검사는 화면 실행과 별도인 같은 계획서의 /premortem 재실행 결과다. 그 실행의 카드 generator는 요약에 기록되지 않았다(화면 실행 카드 generator {'astra': 13}, 강등 단계 0개). 전수라 구간 없음. 제품 기본 모델로는 재측정 안 함. 폐기율과 같이 읽는다(04_평가_명세 §2.2)"
+      "limits": "연결 검사 실행의 카드 generator가 요약에 없다(plan.md, plan_elife_neuro.md, plan_medimaging.md). 그래서 약속 P2 판정에 쓰지 않는 참고값이다(PM 결정 2026-09-30: generator를 기록한 라이브 결과로 채운다). 연결 검사는 화면 실행과 별도인 같은 계획서의 /premortem 재실행 결과다(화면 실행 카드 generator {'astra': 13}, 강등 단계 0개). 전수라 구간 없음. 제품 기본 모델로는 재측정 안 함. 폐기율과 같이 읽는다(04_평가_명세 §2.2)"
     },
     {
       "id": "card_pass_rate",
-      "system": "neumann",
+      "system": "Neumann 참고(검사 실행 generator 미기록, 약속 판정 제외)",
       "value": 1.0,
       "n": 12,
       "detail": "12/12; plan.md 3/3 · plan_elife_neuro.md 4/4 · plan_medimaging.md 5/5",
       "conditions": "라이브 E2E http://127.0.0.1:8010/ 2026-09-30T10:19:48+00:00~2026-09-30T10:25:34+00:00, 1회 실행, 평가 모델 gpt-6-astra. 데모 계획서 3건 /premortem 결과 전수, eval.linkage.check_result 원문 글자 단위 대조, 계획서별 개수 합산(계산)",
-      "limits": "연결 검사는 화면 실행과 별도인 같은 계획서의 /premortem 재실행 결과다. 그 실행의 카드 generator는 요약에 기록되지 않았다(화면 실행 카드 generator {'astra': 13}, 강등 단계 0개). 전수라 구간 없음. 제품 기본 모델로는 재측정 안 함"
+      "limits": "연결 검사 실행의 카드 generator가 요약에 없다(plan.md, plan_elife_neuro.md, plan_medimaging.md). 그래서 약속 P2 판정에 쓰지 않는 참고값이다(PM 결정 2026-09-30: generator를 기록한 라이브 결과로 채운다). 연결 검사는 화면 실행과 별도인 같은 계획서의 /premortem 재실행 결과다(화면 실행 카드 generator {'astra': 13}, 강등 단계 0개). 전수라 구간 없음. 제품 기본 모델로는 재측정 안 함"
     },
     {
       "id": "drop_rate",
-      "system": "neumann",
+      "system": "Neumann 참고(검사 실행 generator 미기록, 약속 판정 제외)",
       "value": 0.0034,
       "n": 2033,
       "detail": "7/2033; plan.md 1/643 · plan_elife_neuro.md 2/701 · plan_medimaging.md 4/689",
       "conditions": "라이브 E2E http://127.0.0.1:8010/ 2026-09-30T10:19:48+00:00~2026-09-30T10:25:34+00:00, 1회 실행, 평가 모델 gpt-6-astra. 데모 계획서 3건 /premortem 결과 전수, eval.linkage.check_result 원문 글자 단위 대조, 계획서별 개수 합산(계산). 폐기 출처 verification(검증 단계에서 버린 지적)",
-      "limits": "전수 계산"
+      "limits": "연결 검사 실행의 카드 generator가 요약에 없다(plan.md, plan_elife_neuro.md, plan_medimaging.md). 그래서 약속 P2 판정에 쓰지 않는 참고값이다(PM 결정 2026-09-30: generator를 기록한 라이브 결과로 채운다). 전수 계산"
     },
     {
       "id": "e2e_cards",

@@ -7,12 +7,18 @@
 일반 지표 형식으로 옮긴다. 파일만 읽는다(서버·OpenAI를 부르지 않는다).
 
 만드는 지표(값은 요약의 개수로만 계산한다. 추정·보정 없음):
-- `linkage_rate`/neumann   근거 연결률 = 데모 계획서들의 링크 합 ok / 합 total (계획서별 개수는 detail)
-- `card_pass_rate`/neumann 모든 근거가 연결된 카드 / 검사 카드
-- `drop_rate`/neumann      폐기율 = 버린 지적 / 전체 지적 (연결 요약 문자열의 `폐기율 a/b`에서 읽는다)
-- `e2e_cards`/neumann      화면에 나온 위험카드 수(데모 계획서 합)
-- `demo_e2e`/all           실패 0으로 끝까지 통과한 데모 계획서 수(신청서 약속 P6)
+- `linkage_rate`/<연결 시스템>   근거 연결률 = 데모 계획서들의 링크 합 ok / 합 total (계획서별 개수는 detail)
+- `card_pass_rate`/<연결 시스템> 모든 근거가 연결된 카드 / 검사 카드
+- `drop_rate`/<연결 시스템>      폐기율 = 버린 지적 / 전체 지적 (연결 요약 문자열의 `폐기율 a/b`에서 읽는다)
+- `e2e_cards`/neumann            화면에 나온 위험카드 수(데모 계획서 합)
+- `demo_e2e`/all                 실패 0으로 끝까지 통과한 데모 계획서 수(신청서 약속 P6)
 - `--product-model`을 주면, 그 모델로는 재지 않은 헤드라인 지표를 값 null(= 측정 전) 행으로 적는다.
+
+<연결 시스템>은 연결 검사 실행의 카드 generator(`plans[*].linkage.card_generators`)로 정한다.
+`eval.report_card`의 연결 보고서 규칙과 같다.
+- 한 계획서라도 기록이 없으면 → UNRECORDED_SYSTEM(참고 행, 약속 P2 판정에 안 씀. PM 결정 2026-09-30)
+- 전부 astra(계약 이름 "제품 LLM") 또는 astra+rule → neumann(규칙 카드 수를 detail에 병기)
+- 전부 rule → neumann_rule. mock이 한 장이라도 있으면 거부. 그 밖의 generator → mixed
 
 정직 규칙:
 - 샘플 모드 요약(mode != live)이나 파이프라인 미연결 요약은 거부한다(성능 수치가 아니다).
@@ -42,6 +48,8 @@ PRODUCT_UNMEASURED: tuple[tuple[str, str], ...] = (
     ("demo_e2e", "all"),
 )
 DECISION_REF = "docs/decisions.md 2026-09-30 19:38(평가 모델·제품 모델 구분)·19:42(실제 호출 동결)"
+# 연결 검사 실행의 카드 generator가 기록되지 않았을 때의 시스템. 약속 표는 system "neumann"만 보므로 P2는 측정 전으로 남는다.
+UNRECORDED_SYSTEM = "Neumann 참고(검사 실행 generator 미기록, 약속 판정 제외)"
 
 _FRAC = re.compile(r"^\s*(\d+)\s*/\s*(\d+)\s*$")
 _SUM_LINK = re.compile(r"근거 연결률 (\d+)/(\d+)")
@@ -106,7 +114,43 @@ def _plan_linkage(name: str, entry: dict[str, Any]) -> dict[str, Any] | None:
         drop = (d_ok, d_total, m.group(3))
     elif "폐기율" in summary and "폐기율 없음" not in summary:
         raise InputError(f"{where}: summary의 폐기율을 읽을 수 없다: {summary!r}")
-    return {"links": links, "cards": cards, "drop": drop, "verdict": lk.get("verdict")}
+    gens = lk.get("card_generators")
+    if gens is not None:
+        if not isinstance(gens, dict) or any(
+            not isinstance(g, str) or isinstance(c, bool) or not isinstance(c, int) or c < 0 for g, c in gens.items()
+        ):
+            raise InputError(f"{where}.card_generators: {{generator: 0 이상 정수}}여야 한다({gens!r})")
+        gens = {g: c for g, c in gens.items() if c}
+        if not gens and cards[1]:
+            gens = None  # 카드가 있는데 generator가 비어 있으면 기록 없음과 같다(eval.report_card의 unknown_generator)
+    return {"links": links, "cards": cards, "drop": drop, "verdict": lk.get("verdict"), "gens": gens}
+
+
+def linkage_system(measured: dict[str, dict[str, Any]]) -> tuple[str, str, str]:
+    """연결 검사 실행의 카드 generator로 (시스템, 약속 칸 병기 문구, 한계 문구 머리)를 정한다."""
+    missing = [n for n, v in measured.items() if v["gens"] is None]
+    if missing:
+        return (
+            UNRECORDED_SYSTEM,
+            "검사 실행 카드 generator 미기록",
+            f"연결 검사 실행의 카드 generator가 요약에 없다({', '.join(missing)}). 그래서 약속 P2 판정에 쓰지 않는 "
+            "참고값이다(PM 결정 2026-09-30: generator를 기록한 라이브 결과로 채운다)",
+        )
+    gens: dict[str, int] = {}
+    for v in measured.values():
+        for g, c in v["gens"].items():
+            gens[g] = gens.get(g, 0) + c
+    if gens.get("mock"):
+        raise InputError(f"연결 검사 카드에 mock generator가 있다({gens}): 성능 수치가 아니다")
+    total = sum(gens.values())
+    if gens and set(gens) == {"rule"}:
+        return "neumann_rule", f"비상 규칙 카드 {total}/{total}장", "전부 비상 규칙(비LLM) 카드다"
+    if set(gens) <= {"astra", "rule"}:
+        if gens.get("rule"):
+            return ("neumann", f"비상 규칙 카드 {gens['rule']}/{total}장 포함",
+                    "비상 규칙(비LLM) 카드가 들어 있다. astra 카드만의 값이 아니다")
+        return "neumann", f"검사 실행 카드 generator {gens or '없음'}", ""
+    return "mixed", f"검사 실행 카드 generator {gens}", "카드 generator가 astra·규칙이 아니다. 약속 판정에 쓰지 않는다"
 
 
 def convert(summary: dict[str, Any], *, model: str, product_model: str | None = None,
@@ -149,13 +193,15 @@ def convert(summary: dict[str, Any], *, model: str, product_model: str | None = 
         for g, c in (e.get("generators") or {}).items():
             gens[str(g)] = gens.get(str(g), 0) + int(c)
     degraded = sum(len(e.get("stages_not_ok") or []) for e in demo.values())
-    gen_note = (
-        f"연결 검사는 화면 실행과 별도인 같은 계획서의 /premortem 재실행 결과다. 그 실행의 카드 generator는 요약에 "
-        f"기록되지 않았다(화면 실행 카드 generator {gens or '없음'}, 강등 단계 {degraded}개)"
-    )
     miss_note = f". 연결 검사를 하지 않은 데모 {len(unmeasured)}건({', '.join(unmeasured)})은 합계에서 빠졌다" if unmeasured else ""
 
     if measured:
+        lsys, lnote, lhead = linkage_system(measured)
+        gen_note = (
+            (f"{lhead}. " if lhead else "")
+            + "연결 검사는 화면 실행과 별도인 같은 계획서의 /premortem 재실행 결과다"
+            f"(화면 실행 카드 generator {gens or '없음'}, 강등 단계 {degraded}개)"
+        )
         per = lambda key: " · ".join(f"{n} {v[key][0]}/{v[key][1]}" for n, v in measured.items())  # noqa: E731
         l_ok = sum(v["links"][0] for v in measured.values())
         l_tot = sum(v["links"][1] for v in measured.values())
@@ -167,12 +213,12 @@ def convert(summary: dict[str, Any], *, model: str, product_model: str | None = 
         )
         lim = f"{gen_note}. 전수라 구간 없음. 제품 기본 모델로는 재측정 안 함{miss_note}"
         metrics.append({
-            "id": "linkage_rate", "system": "neumann", "value": ratio(l_ok, l_tot) if l_tot else None,
-            "n": l_tot, "detail": f"{l_ok}/{l_tot}; {per('links')}; 검사 실행 카드 generator 미기록", "conditions": cond,
+            "id": "linkage_rate", "system": lsys, "value": ratio(l_ok, l_tot) if l_tot else None,
+            "n": l_tot, "detail": f"{l_ok}/{l_tot}; {per('links')}; {lnote}", "conditions": cond,
             "limits": lim + ". 폐기율과 같이 읽는다(04_평가_명세 §2.2)",
         })
         metrics.append({
-            "id": "card_pass_rate", "system": "neumann", "value": ratio(c_ok, c_tot) if c_tot else None,
+            "id": "card_pass_rate", "system": lsys, "value": ratio(c_ok, c_tot) if c_tot else None,
             "n": c_tot, "detail": f"{c_ok}/{c_tot}; {per('cards')}", "conditions": cond, "limits": lim,
         })
         with_drop = {n: v["drop"] for n, v in measured.items() if v["drop"]}
@@ -182,15 +228,15 @@ def convert(summary: dict[str, Any], *, model: str, product_model: str | None = 
             d_tot = sum(d[1] for d in with_drop.values())
             srcs = sorted({d[2] for d in with_drop.values()})
             metrics.append({
-                "id": "drop_rate", "system": "neumann", "value": ratio(d_ok, d_tot) if d_tot else None, "n": d_tot,
+                "id": "drop_rate", "system": lsys, "value": ratio(d_ok, d_tot) if d_tot else None, "n": d_tot,
                 "detail": f"{d_ok}/{d_tot}; " + " · ".join(f"{n} {d[0]}/{d[1]}" for n, d in with_drop.items()),
                 "conditions": f"{cond}. 폐기 출처 {', '.join(srcs)}(검증 단계에서 버린 지적)",
-                "limits": "전수 계산" + (f". 폐기율이 없는 {', '.join(no_drop)}은 합계에서 빠졌다" if no_drop else "")
-                + miss_note,
+                "limits": (f"{lhead}. " if lhead else "") + "전수 계산"
+                + (f". 폐기율이 없는 {', '.join(no_drop)}은 합계에서 빠졌다" if no_drop else "") + miss_note,
             })
         else:
             metrics.append({
-                "id": "drop_rate", "system": "neumann", "value": None, "detail": "폐기율 없음",
+                "id": "drop_rate", "system": lsys, "value": None, "detail": "폐기율 없음",
                 "conditions": cond, "limits": "요약에 폐기 수가 없다. 연결률 100%의 의미가 약하다",
             })
     else:
