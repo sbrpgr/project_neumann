@@ -246,6 +246,7 @@ def list_items(directory: Path) -> dict[str, Any]:
                 "cards_total": entry.get("cards_total"),
                 "cards_by_generator": entry.get("cards_by_generator", {}),
                 "models": entry.get("models", []),
+                "warnings": entry.get("warnings", []),
                 "elapsed_s": entry.get("elapsed_s"),
                 "sha256": entry.get("sha256"),
                 "integrity": state,

@@ -135,6 +135,17 @@ def test_pipeline_mode_calls_run_premortem_and_counts_by_generator(tmp_path):
     raw = _read(tmp_path, entries["plan"])[1]
     assert not any(n.startswith("[대체]") for n in raw["notices"])  # 실제 경로엔 대체 표시가 없다
     assert raw["session_id"] == "precomputed-plan"
+    # 카드 0장·건너뛴 단계는 status가 ok여도 경고로 드러낸다
+    assert entries["plan"]["warnings"] == []
+    assert entries["plan_medimaging"]["warnings"] == ["카드 0장: 가짜 파이프라인: 카드 없음", "건너뛴 단계: search"]
+
+
+def test_empty_pipeline_result_fails_unless_allowed(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(pd, "load_pipeline", _fake_loader([]))
+    assert pd.main(["--source", "pipeline", "--out", str(tmp_path / "a")]) == 1
+    out = capsys.readouterr().out
+    assert "카드 0장: plan_elife_neuro, plan_medimaging" in out and "경고 plan_medimaging" in out
+    assert pd.main(["--source", "pipeline", "--out", str(tmp_path / "b"), "--allow-empty"]) == 0
 
 
 def test_pipeline_failure_is_recorded_without_exception_text(tmp_path, monkeypatch, capsys):

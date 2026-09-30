@@ -75,6 +75,7 @@ def test_list_returns_items_with_label_and_integrity(client, store):
         assert it["sha256"] == entry["sha256"] and it["cards_total"] == entry["cards_total"]
         assert it["cards_by_generator"] == entry["cards_by_generator"]
         assert it["elapsed_s"] == entry["elapsed_s"] and it["source"] == "fixture"
+        assert it["warnings"] == entry["warnings"]
         assert it["url"] == f"{BASE}/{entry['plan_id']}"
     assert body["items"][0]["title"].startswith("연구계획서 (예시)")
 

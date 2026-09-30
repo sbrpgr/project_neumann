@@ -96,5 +96,6 @@ def fake_pipeline_result(plan_text: str, session_id: str) -> dict[str, Any]:
         "session_id": session_id,
         "plan_id": plan.plan_id,
         "plan": plan.model_dump(mode="json"),
+        "stages": [{"name": "search", "status": "skipped", "reason": "가짜: 색인 없음"}],
         "risk_synthesis": {"no_card_reason": "가짜 파이프라인: 카드 없음"},
     }

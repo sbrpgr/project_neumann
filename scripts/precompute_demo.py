@@ -4,6 +4,9 @@
     python scripts/precompute_demo.py --source pipeline    파이프라인 필수(없거나 실패하면 exit 1)
     python scripts/precompute_demo.py --source fixture     fixture 강제(네트워크·API 호출 없음)
     python scripts/precompute_demo.py --out DIR            출력 폴더(기본 <NEUMANN_DATA_DIR>/precomputed)
+    python scripts/precompute_demo.py --allow-empty        파이프라인 결과가 카드 0장이어도 exit 0
+
+exit 1: 분석 실패, 재생 실패, 또는 파이프라인 결과 중 카드 0장(데모 폴백으로 못 쓴다 — 항목 warnings에도 남는다).
 
 분석: `neumann.pipeline.run_premortem(plan_text, *, session_id=...) -> PremortemResult`(E3).
   provider는 파이프라인이 설정(NEUMANN_LLM_PROVIDER)대로 고른다. 이 스크립트는 LLM을 직접 부르지 않는다.
@@ -111,7 +114,7 @@ def load_pipeline() -> tuple[Runner | None, str]:
     runner = getattr(module, "run_premortem", None)
     if not callable(runner):
         return None, "neumann.pipeline.run_premortem 없음"
-    return runner, PIPELINE_IMPL
+    return runner, "연결됨"
 
 
 # ── 결과 만들기 ────────────────────────────────────────────────────────────
@@ -186,6 +189,18 @@ def llm_settings() -> dict[str, str] | None:
         return {"provider": s.llm_provider, "model": s.llm_model}
     except Exception:  # noqa: BLE001
         return None
+
+
+def entry_warnings(result: PremortemResult) -> list[str]:
+    """데모 폴백으로 쓰기 어려운 결과를 드러낸다(숨기지 않는다). 카드 0장, 건너뛴 단계."""
+    warnings = []
+    if not result.risk_cards:
+        reason = result.risk_synthesis.get("no_card_reason") if isinstance(result.risk_synthesis, dict) else None
+        warnings.append(f"카드 0장: {reason or '사유 없음'}")
+    skipped = [s.stage for s in result.stages if s.state == "skipped"]
+    if skipped:
+        warnings.append("건너뛴 단계: " + ", ".join(skipped))
+    return warnings
 
 
 def plan_title(plan_text: str) -> str | None:
@@ -280,10 +295,12 @@ def build(
             "models": result_models(result),
             "degraded_stages": [s.stage for s in result.stages if s.state in ("degraded", "error")],
             "plan_text_included": with_plan,
+            "warnings": entry_warnings(result),
         }
         entries.append(entry)
-        gen = ", ".join(f"{k} {v}" for k, v in by_gen.items() if v) or "카드 0"
-        log(f"  {spec.demo}: {used} · status {result.status} · 카드 {len(result.risk_cards)}({gen}) · {elapsed:.2f}s · {name}")
+        gen = ", ".join(f"{k} {v}" for k, v in by_gen.items() if v)
+        cards = f"카드 {len(result.risk_cards)}" + (f"({gen})" if gen else "")
+        log(f"  {spec.demo}: {used} · status {result.status} · {cards} · {elapsed:.2f}s · {name}")
 
     sources = sorted({e["source"] for e in entries})
     manifest = {
@@ -321,6 +338,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--source", choices=("auto", "pipeline", "fixture"), default="auto")
     parser.add_argument("--out", type=Path, default=None, help="출력 폴더(기본 <NEUMANN_DATA_DIR>/precomputed)")
     parser.add_argument("--plan", type=Path, action="append", default=None, help="계획서 경로(여러 번). 기본은 데모 3건")
+    parser.add_argument(
+        "--allow-empty", action="store_true", help="파이프라인 결과가 카드 0장이어도 exit 0(기본은 exit 1: 데모 폴백으로 못 쓴다)"
+    )
     args = parser.parse_args(argv)
 
     specs = [PlanSpec(demo=p.stem, path=p) for p in args.plan] if args.plan else demo_specs()
@@ -339,7 +359,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  재생 실패 {p}")
     for f in failures:
         print(f"  실패 {f['demo']}: {f['error']}")
-    return 1 if (failures or problems or n == 0) else 0
+    for e in manifest["entries"]:
+        for w in e["warnings"]:
+            print(f"  경고 {e['demo']}: {w}")
+    empty = [e["demo"] for e in manifest["entries"] if e["source"] == "pipeline" and e["cards_total"] == 0]
+    if empty and not args.allow_empty:
+        print(f"  파이프라인 결과 카드 0장: {', '.join(empty)} — 데모 폴백으로 못 쓴다(--allow-empty로 무시)")
+    return 1 if (failures or problems or n == 0 or (empty and not args.allow_empty)) else 0
 
 
 if __name__ == "__main__":
