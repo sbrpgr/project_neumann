@@ -8,6 +8,7 @@ already discards. Other input, including quote offsets, is returned unchanged.
 from __future__ import annotations
 
 import re
+from itertools import chain
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -59,26 +60,29 @@ def prepare_upload_text(text: str, *, collapse_blank: bool) -> str:
     # (removing them first could change composition and citation offsets).
     rows: list[str] = []
     chars = 0
+    blanks = 0
     start = 0
-    for match in _UPLOAD_BREAK.finditer(text):
-        end = match.start()
+    endings = ((match.start(), match.end()) for match in _UPLOAD_BREAK.finditer(text))
+    for end, next_start in chain(endings, ((len(text), len(text)),)):
         while end > start and text[end - 1] in " \t":
             end -= 1
-        chars += end - start + 1
+        if end == start:
+            blanks += 1
+            start = next_start
+            continue
+        # Leading/trailing blank rows are stripped by the existing cleaner;
+        # PDF/DOCX blank runs collapse to one empty row. Count only the text
+        # that actually reaches NFC, before allocating separators/content.
+        separators = 0 if not rows else (2 if collapse_blank and blanks else blanks + 1)
+        chars += end - start + separators
         if chars > MAX_PRE_NFC_CHARS:
             raise PlanLimitError(413, "plan_pre_nfc_too_large", "정규화 전 계획서가 너무 큽니다. 본문만 남겨 주세요.")
+        if separators:
+            rows.append("\n" * separators)
         rows.append(text[start:end])
-        start = match.end()
-    end = len(text)
-    while end > start and text[end - 1] in " \t":
-        end -= 1
-    chars += end - start
-    if chars > MAX_PRE_NFC_CHARS:
-        raise PlanLimitError(413, "plan_pre_nfc_too_large", "정규화 전 계획서가 너무 큽니다. 본문만 남겨 주세요.")
-    rows.append(text[start:end])
-    text = "\n".join(rows)
-    if collapse_blank:
-        text = re.sub(r"\n{3,}", "\n\n", text)
+        blanks = 0
+        start = next_start
+    text = "".join(rows)
     text = text.strip("\n")
     return check_plan_text(text)
 

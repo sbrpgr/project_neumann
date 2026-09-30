@@ -170,3 +170,17 @@ def test_upload_guard_mutation_is_detected(monkeypatch):
     monkeypatch.setattr(upload, "normalize_text", forbidden)
     with pytest.raises(pytest.fail.Exception, match="rejected raw input"):
         upload.extract_plan("synthetic.txt", ("가" * 800_001).encode("utf-8"))
+
+
+@pytest.mark.parametrize("padding", ["leading", "trailing", "collapsed"])
+def test_permitted_blank_padding_does_not_consume_pre_nfc_budget(padding):
+    from neumann.api.plan_limits import prepare_upload_text
+
+    body = "한" * 50_000  # 150k pre-NFC -> 50k NFC; normalization is not timed here
+    blanks = "\n" * 99_999
+    text = blanks + body if padding == "leading" else body + blanks
+    expected = body
+    if padding == "collapsed":
+        text += "b"
+        expected += "\n\nb"
+    assert prepare_upload_text(text, collapse_blank=padding == "collapsed") == expected
