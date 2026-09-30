@@ -1,6 +1,6 @@
 # 루트 README.md v0 개정 초안 (E6-docs, PM 검토용)
 
-루트 `README.md`는 PM 소유라 고치지 않았다. 아래 "초안 본문"을 그대로 옮겨 쓰면 된다. 숫자는 저장소에 있는 보고서·결정 기록의 값만 썼고, 출처는 맨 끝 "숫자 출처"에 파일별로 적었다. 기준은 main `52d1dae`(2026-09-30, v0 태그 이후)다.
+루트 `README.md`는 PM 소유라 고치지 않았다. 아래 "초안 본문"을 그대로 옮겨 쓰면 된다. 숫자는 저장소에 있는 보고서·결정 기록의 값만 썼고, 출처는 맨 끝 "숫자 출처"에 파일별로 적었다. 기준은 main `d1dc0aa`(2026-09-30, v0 태그 이후)다.
 
 ---
 
@@ -68,7 +68,7 @@ python -m uvicorn neumann.api.main:app --host 127.0.0.1 --port 8000   # 기본 m
 |---|---|
 | `AGENTS.md` | 에이전트 규칙 원본(Claude·Codex 공통). `CLAUDE.md`가 가져온다 |
 | `contracts/` | 데이터 계약 JSON Schema(API 응답, 화면 데이터) |
-| `src/neumann/` | 제품 코드: `models.py`(계약), `pipeline.py`, `llm.py`, `sources/`(수집), `index/`(색인), `analyze/`(분석), `api/`(서버·내보내기·MCP), `webui/`(화면) |
+| `src/neumann/` | 제품 코드: `models.py`(계약), `pipeline.py`, `llm.py`, `sources/`(수집), `index/`(색인), `analyze/`(분석), `api/`(서버·업로드·내보내기·MCP), `webui/`(화면) |
 | `eval/` | 평가: 근거 연결 검사, DISAPERE 골드·Macro-F1, 기준선, 백테스트, 리포트 카드 |
 | `scripts/` | 검증 러너, 코퍼스 수집·색인 빌드, 사전 계산본, 정적 배포, 시연 녹화 |
 | `tests/` | 테스트와 공용 가짜 데이터(`tests/fixtures/`) |

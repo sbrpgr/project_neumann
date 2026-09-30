@@ -375,6 +375,42 @@ $ python -m pytest -q -rs     (588da63 병합 상태, NEUMANN_RAW_DIR·NEUMANN_D
 - 이 문서를 병합한 뒤에도 main이 움직이면 기준 커밋을 확인한다. 특히 E3-L1w(적합성·예상 심사평·체크리스트를 파이프라인에 연결)가 들어오면 "있음(모듈만)" 표기(ARCHITECTURE §1·§2·§4·§5, API `/health` 설명)를 "있음"으로 바꾼다. E4-L1a(업로드)가 들어오면 API 목록·예정 절을 고친다.
 - 첫 제출 "다음 과제에 넘길 것" 1(샘플 → package 422)·5(가중치)·7(EVIDENCE 모듈 이름)은 main에서 해결됐다. 6(`plan_text` 패키지 경로 제거, 결정 19:20)은 588da63에서도 아직 200이다. 2(`/docs` CDN)·4(`NEUMANN_API_HOST/PORT` 미사용)는 그대로다.
 
+## 재작업 2 (재검증 02f30a5: PASS-조건부 → 조건 해소)
+
+재검증 보고서(`docs/reports/E6-docs.verify.md` "재검증 (02f30a5)" 절)의 조건 5개는 전부 main이 움직여 생긴 낡은 서술이었다. `git merge main`(`52d1dae`, 그 뒤 `d1dc0aa`, 충돌 없음) 뒤 문서만 고쳤다. 문서 기준 커밋은 `d1dc0aa`.
+
+| 조건 | 고친 것 |
+|---|---|
+| 1. 기본 provider가 `mock`(main `a736efc`) | ARCHITECTURE 요청 흐름·§5, RUNNING 머리·환경변수 표(기본값 `mock`)·셸 예시·서버 명령(기본은 mock, 실제 분석은 `NEUMANN_LLM_PROVIDER=openai …`)·사전 계산본 주석, API 머리·`plan_text` 행, README 초안 실행 절에서 "기본 openai라 요청마다 OpenAI를 부른다"를 모두 지우고 "기본 mock, `NEUMANN_LLM_PROVIDER=openai`로 켜면 요청마다 OpenAI 호출·비용, 실서비스·승인 확인에서만"으로 바꿨다 |
+| 2. README 초안 "공개 서버 방어선" | 결정 19:46대로 다시 씀: 일일 예산 상한 없음, 동시 분석 상한(2건, `main.py` `MAX_CONCURRENT`)은 있음, 대기열·속도 제한(E4-L2c)은 예정, 터널은 SEC-1 수정·재점검 뒤(19:20). 숫자 출처 표도 같이 고침 |
+| 3. RUNNING 검색 설정 | `NEUMANN_SEARCH_SCORE_FLOOR` 기본값을 "비움 = 임베딩 모델별 보정값(bge-m3 0.45), 어휘만 검색이면 0"으로. 새 키 5개(`FUSION`·`RRF_K`·`PER_QUERY_MIN`·`AXIS_WEIGHTS`·`ADAPTIVE_ALPHA`)를 기본값과 함께 표에 추가(값은 `src/neumann/index/settings.py` 머리 표 그대로). ARCHITECTURE 상태 표·모듈 지도에 `index/queries.py`(축별 질의, LLM 없음)와 검색 보정 추가 |
+| 4. README 초안 "사람 1명" | "사람(대표)과 AI 코딩 에이전트"로 |
+| 5. "평가 수치는 모두 gpt-6-astra" | "LLM으로 잰 것(Macro-F1 0.4864, 라이브 E2E)은 gpt-6-astra, 빈도 기준선·사람 상한·코퍼스·색인 수치는 LLM 측정이 아니다"로 범위를 좁힘 |
+| 권고 R1 | 전화번호·주민번호 형태 가림을 "있음(최소판, `pipeline.mask_extra_pii`)"으로(ARCHITECTURE INPUT 행·§6 개인정보 행, README 초안 끝줄). 강화판 `analyze/pii.py`만 "있음(모듈만)" |
+| 권고 R2·R3·R4·R5 | README 출처 표에 "5/5 = 검사 5개, 카드 수는 화면 실행·연결률은 API 재호출 실행"을 적음. API 머리에 "예시 수치는 검색 보정(`9a2471e`) 이전 값" 한 줄. `manifest.result.status`로 정정. "약 55%"에 "19:22 측정" |
+
+재측정(실제 OpenAI 호출 없음, `OPENAI_API_KEY`·`NEUMANN_LLM_PROVIDER` 해제, 서버 대신 TestClient):
+
+```
+$ python -c "from neumann.config import get_settings; …; TestClient(app) …"
+default provider: mock
+health pipeline {'state': 'connected', 'reason': '', 'mode': 'pipeline', 'label': ''}
+premortem degraded mock mock-deterministic-v1 cards 6 evidence 28 mock provider(테스트용) 결과 — 실제 astra 분석이 아니다
+$ grep -n "기본 openai\|(기본)면\|`openai`(기본)\|사람 1명" (세 문서 + README 초안)
+(출력 없음)
+```
+
+환경변수를 하나도 주지 않아도 provider가 `mock`으로 돌고(`manifest.llm_provider: mock`), 카드 6·근거 28은 검색 보정 뒤 값이라 API 예시(카드 5·근거 22, `304e91e`)와 다르다는 것을 API 머리에 밝혔다. `=openai`가 남은 곳은 전부 "openai로 켜면" 조건문이다(ARCHITECTURE §5, RUNNING 머리·서버 명령, API 머리, README 실행 절).
+
+추가: 재작업 2 도중 main `d1dc0aa`에 **E4-L1a 업로드 파서가 병합**돼 "예정"이던 `POST /upload/plan`을 "있음"으로 옮겼다(ARCHITECTURE 상태 표·요청 흐름·모듈 지도, API 목록·`/health` routers 예시(`upload: ok`)·새 절). 실측(TestClient, OpenAI 호출 없음):
+
+```
+routers {'neumann.api.export': 'ok', 'neumann.api.upload': 'ok', 'neumann.api.precomputed': 'ok', 'neumann.api.templates': 'ok', 'neumann.api.meta': 'ok'}
+md 200 {'filename': 'plan.md', 'kind': 'md', 'size_bytes': 1089, 'pages': None, 'encoding': 'utf-8', 'lines': 27, 'chars': 644, 'warnings': []}
+hwp 415 {'detail': 'HWP는 PDF나 DOCX로 저장해 올려 주세요'}
+empty 422 {'detail': '빈 파일입니다'}
+```
+
 ## 최종 verify (재작업 후)
 
 worktree(`task/E6-docs`, main `c4679f9` 병합 상태)에서 실행. `verify`는 공개자료·공유 데이터 폴더 환경변수 없이 돌려 원본·실데이터 테스트가 더 많이 건너뛰었다(위 재측정 `908 passed, 22 skipped`는 두 폴더를 준 값).

@@ -1,6 +1,6 @@
 # API
 
-- 기준: 이 문서를 병합하기 직전의 `main`(작성 때 확인한 커밋 `52d1dae`).
+- 기준: 이 문서를 병합하기 직전의 `main`(작성 때 확인한 커밋 `d1dc0aa`).
 - 아래 응답 예시는 `304e91e`의 서버를 `NEUMANN_LLM_PROVIDER=mock`, 임베딩 모델 없이(어휘 검색만) 포트 8125에서 띄워 실제로 요청해 받은 값을 줄인 것이다. **mock 응답이라 카드 내용은 분석 결과가 아니다.** 실제 서비스(provider를 `openai`로 켠 경우)에서는 `generator`가 `astra`이고 검색 강등이 없다(임베딩 모델이 있을 때). 예시 수치(근거 22건·카드 5장·점수)는 검색 보정(E2-L1, main `9a2471e`) 이전 값이라 지금 main에서는 조금 다르다.
 - **있음** = main의 서버에 라우트가 있다. **예정** = main에 없다(지금 요청하면 404).
 - 서버 실행은 [RUNNING.md §5](RUNNING.md#5-분석-실행). 기본 주소 `http://127.0.0.1:8000`.
@@ -22,9 +22,9 @@
 | `GET /templates`, `GET /templates/{item_id}` | AI for Science 계획서 템플릿 목록·골격 | 있음 |
 | `GET /api`, `GET /taxonomy`, `GET /config/weights` | 코퍼스·색인 실측 메타, 위험 유형 R0~R9, 위험점수 공식 | 있음 |
 | MCP 서버(stdio) `python -m neumann.api.mcp_server` | 읽기 전용 도구 3종 | 있음 |
-| `POST /upload/plan` | 파일(txt·md·pdf·docx, 10MB) → 텍스트. HWP 거부 | 예정 (E4-L1a) |
+| `POST /upload/plan` | 계획서 파일(txt·md·pdf·docx, 10MB) → 텍스트. HWP 거부, 디스크에 저장하지 않음 | 있음 |
 
-`upload` 라우터는 모듈이 main에 들어오면 `api/main.py`가 자동으로 붙인다. 붙었는지는 `/health`의 `routers`에서 `ok`로 확인한다.
+선택 라우터(`export`·`upload`·`precomputed`·`templates`·`meta`)는 `api/main.py`가 모듈이 있으면 붙인다. 붙었는지는 `/health`의 `routers`에서 확인한다(지금 main은 모두 `ok`).
 
 ## GET /health
 
@@ -51,7 +51,7 @@ curl http://127.0.0.1:8000/health
     "models":   {"available": true, "modules": {"neumann.models": "ok"}},
     "config":   {"available": true, "modules": {"neumann.config": "ok"}}
   },
-  "routers": {"neumann.api.export": "ok", "neumann.api.upload": "missing", "neumann.api.precomputed": "ok",
+  "routers": {"neumann.api.export": "ok", "neumann.api.upload": "ok", "neumann.api.precomputed": "ok",
               "neumann.api.templates": "ok", "neumann.api.meta": "ok"}
 }
 ```
@@ -241,8 +241,32 @@ python -m neumann.api.mcp_server
 
 확인: `python -m pytest tests/e4 -q -k mcp` → `11 passed`(SDK 클라이언트로 서버를 띄워 도구 3개 목록·호출 형식·없는 id 처리를 검사).
 
-## 예정 엔드포인트 (main에 없음)
+## POST /upload/plan
 
-| 경로 | 과제 | 지시문 요약 |
-|---|---|---|
-| `POST /upload/plan` | E4-L1a | txt·md·pdf·docx에서 텍스트 추출, 10MB 초과 거부, HWP·HWPX는 415와 "PDF나 DOCX로 저장" 안내, 디스크에 저장하지 않음. 텍스트·줄 수·추출 경고 반환 |
+계획서 파일에서 텍스트를 뽑는다. 입력 화면의 파일 올리기가 쓴다. 분석은 하지 않는다(뽑은 텍스트를 `/premortem/view`로 보낸다).
+
+```bash
+curl -X POST http://127.0.0.1:8000/upload/plan -F "file=@tests/fixtures/plans/plan.md"
+```
+
+- 본문: `multipart/form-data`, 필드 `file` 하나.
+- 형식: txt·md(인코딩 추정 UTF-8 → CP949), pdf, docx. 확장자와 매직바이트를 함께 본다.
+- 상한(넘으면 413, 붐비면 503): 파일 10MB, 추출 글자 50,000자, PDF 200쪽, DOCX 압축 해제 20MB·항목 1,000개·압축비 100배, 처리 20초, 동시 2건. pdf·docx 추출은 별도 프로세스에서 돌리고 시간이 넘으면 강제 종료한다.
+- 디스크에 쓰지 않는다. 로그에 본문·파일명을 남기지 않는다.
+- 응답 키: `filename`, `kind`, `size_bytes`, `pages`, `encoding`, `text`, `lines`, `chars`, `warnings`.
+
+실측(TestClient, main `d1dc0aa`):
+
+```
+plan.md → 200 {"filename": "plan.md", "kind": "md", "size_bytes": 1089, "pages": null, "encoding": "utf-8", "lines": 27, "chars": 644, "warnings": []}
+plan.hwp(HWP 매직바이트) → 415 {"detail": "HWP는 PDF나 DOCX로 저장해 올려 주세요"}
+빈 파일 → 422 {"detail": "빈 파일입니다"}
+```
+
+| 코드 | 언제 |
+|---|---|
+| 400 | multipart 형식 오류, 파일 여러 개 |
+| 413 | 상한 초과 |
+| 415 | HWP·HWPX, 그 밖의 미지원 형식 |
+| 422 | `file` 필드 없음, 빈 파일, 손상·암호 PDF, 텍스트 없음 |
+| 503 | 동시 처리 상한 초과 |
