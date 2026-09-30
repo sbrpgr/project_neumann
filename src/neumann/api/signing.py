@@ -7,9 +7,12 @@
 - 서명: HMAC-SHA256(키, "neumann-result-v1\\n" + 정규화 JSON). 문자열 형식은 ``v1.<64 hex>``.
 - 정규화: ``PremortemResult``로 검증한 뒤 JSON으로 되돌리고(계약 필드만), 정수로 떨어지는 실수는 정수로 바꾸고(브라우저
   JSON 왕복에서 ``1.0``이 ``1``이 된다), 키를 정렬한 압축 JSON(UTF-8). 같은 값이면 서명이 같다.
-- 키: 프로세스 환경변수 ``NEUMANN_RESULT_HMAC_KEY``. 없으면 모듈을 처음 읽을 때(서버 기동) 무작위 32바이트를 만든다.
-  그러면 재기동 뒤에는 옛 서명이 모두 무효가 된다(내보내기는 "client_submitted_unverified"로 정직하게 표시).
-- 키 값과 키 설정 여부는 로그·응답·/health 어디에도 내보내지 않는다. 이 모듈은 로그를 쓰지 않는다.
+- 키: 프로세스 환경변수 ``NEUMANN_RESULT_HMAC_KEY``(32자 이상 무작위 권장). 없으면 모듈을 처음 읽을 때(서버 기동)
+  무작위 32바이트를 만든다. 16바이트보다 짧으면 쓰지 않고 무작위 키로 바꾸며 경고 로그를 한 줄 남긴다(키 값·길이는 적지
+  않는다). 무작위 키면 재기동 뒤 옛 서명이 모두 무효가 된다(내보내기는 "client_submitted_unverified"로 정직하게 표시).
+- 키 값은 로그·응답·/health 어디에도 내보내지 않는다. 키 설정 여부도 응답·/health에 싣지 않는다.
+- 확인(R1): 서명 문자열이 ASCII·접두 ``v1.``·소문자 hex 64자인지 먼저 보고, 비교는 bytes로 한다. 형식이 틀리면 False
+  (예외 없음 — 비ASCII·전각 숫자도 500이 아니라 "확인 안 됨").
 """
 
 from __future__ import annotations
@@ -17,20 +20,33 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import math
 import os
+import re
 import secrets
 from collections.abc import Mapping
 from typing import Any
 
 KEY_ENV = "NEUMANN_RESULT_HMAC_KEY"
 SIG_VERSION = "v1"
+MIN_KEY_BYTES = 16
 _DOMAIN = b"neumann-result-v1\n"
+_SIG_RE = re.compile(r"v1\.[0-9a-f]{64}", re.ASCII)
+
+log = logging.getLogger(__name__)
 
 
 def _load_key() -> bytes:
     raw = os.environ.get(KEY_ENV, "")
-    return raw.encode("utf-8") if raw.strip() else secrets.token_bytes(32)
+    if not raw.strip():
+        return secrets.token_bytes(32)
+    key = raw.encode("utf-8")
+    if len(key) < MIN_KEY_BYTES:
+        log.warning("결과 서명 키 환경변수가 %d바이트보다 짧아 쓰지 않고 무작위 키를 쓴다(재기동하면 옛 서명 무효)",
+                    MIN_KEY_BYTES)
+        return secrets.token_bytes(32)
+    return key
 
 
 _KEY: bytes = _load_key()
@@ -76,16 +92,13 @@ def sign_result(result: Any) -> str:
 
 def verify_result(result: Any, sig: Any) -> bool:
     """서명이 이 프로세스의 키로 이 결과에 대해 만든 것인지. 형식이 틀리거나 결과가 계약을 어기면 False."""
-    if not isinstance(sig, str) or not sig.startswith(SIG_VERSION + "."):
-        return False
-    mac = sig[len(SIG_VERSION) + 1:]
-    if len(mac) != 64:
+    if not isinstance(sig, str) or len(sig) != 67 or not sig.isascii() or not _SIG_RE.fullmatch(sig):
         return False
     try:
         expected = _mac(canonical_bytes(result))
     except Exception:  # noqa: BLE001 - 계약 위반·정규화 실패는 "확인 안 됨"
         return False
-    return hmac.compare_digest(expected, mac)
+    return hmac.compare_digest(expected.encode("ascii"), sig[len(SIG_VERSION) + 1:].encode("ascii"))
 
 
 __all__ = ["KEY_ENV", "canonical_bytes", "reset_key", "sign_result", "verify_result"]
