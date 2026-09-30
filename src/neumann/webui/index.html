@@ -535,12 +535,12 @@
   }
   function showFitness(f) { FIT = normFit(f); var b = $('fitBox'); if (b) { b.innerHTML = fitInner(); b.hidden = !FIT; b.classList.toggle('ok', !!(FIT && FIT.fit === true)); } return FIT; }
   window.NeumannInput = { showFitness: showFitness, clearFitness: function () { return showFitness(null); }, reloadTemplates: loadTemplates };
-  /* 전송 고지(E4-S06, SEC-1 S-06). 직접 입력·파일 업로드 공통. 글은 textContent로만 넣는다. 확인할 수 없는 약속(학습 미사용 등)은 쓰지 않는다.
+  /* 전송 고지(E4-S06, SEC-1 S-06). 직접 입력·파일 업로드 공통. 글은 textContent로만 넣는다. 확인할 수 없는 약속(학습 미사용 등)과 바뀔 수 있는 모델명은 쓰지 않는다.
      접힌 상태 = 라벨 + 한 줄 요약(세 사실 모두), 펼치면 전문 두 줄 */
   var SEND_NOTE = {
     label: '외부 전송',
-    summary: 'OpenAI API(gpt-6-astra)로 전송 · 개인정보·미공개 기밀 입력 금지 · 본문 파일 저장 없음',
-    lines: ['입력한 계획서는 분석을 위해 OpenAI API(gpt-6-astra)로 전송됩니다. 개인정보·미공개 기밀은 넣지 마세요.',
+    summary: 'OpenAI API로 전송 · 개인정보·미공개 기밀 입력 금지 · 본문 파일 저장 없음',
+    lines: ['입력한 계획서는 분석을 위해 OpenAI API로 전송됩니다. 개인정보·미공개 기밀은 넣지 마세요.',
             '이 서버는 계획서 본문을 파일로 저장하지 않습니다.'],
     more: ['자세히', '접기'],
     open: false
