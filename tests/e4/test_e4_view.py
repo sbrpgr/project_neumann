@@ -174,7 +174,8 @@ def test_review_sentence_without_evidence_is_not_shown():
     assert R["weakness"] == []
     assert R["audit"]["gen"] == 4 and R["audit"]["pass"] == 1 and R["audit"]["drop"] == 3
     reasons = [d[0] for d in R["audit"]["dropped"]]
-    assert reasons.count("no_evidence_in_view") == 2 and "fabricated_number" in reasons
+    assert reasons.count("missing_citation") == 1 and reasons.count("unknown_excerpt_id") == 1
+    assert "fabricated_number" in reasons
     assert view["_status"]["dropped"]["review_sentences_without_evidence"] == 2
 
 

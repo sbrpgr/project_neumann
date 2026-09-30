@@ -12,6 +12,9 @@
 
 정직성 규칙(AGENTS.md):
 - 근거가 하나도 연결되지 않는 카드와 예상 심사평 문장은 화면에 내보내지 않고 ``_status``에 개수를 남긴다.
+- 체크리스트 항목도 같다(E3-L1e): 근거 번호로 풀리지 않는 항목은 내보내지 않는다. 앞 단계(체크리스트 생성·2차 검증)의
+  근거 게이트가 뺀 수와 합쳐 ``checklist_audit``(``note`` = "근거 없는 항목 k개 제외")에, 심사평은 ``review.audit``의
+  ``no_evidence``·``note``에 싣는다.
 - 인용문은 결과의 ``text``를 그대로 쓴다. 이 모듈은 문장을 만들지 않는다.
 - 생성 방식(``generator``)과 강등 단계는 그대로 화면까지 전달한다.
 """
@@ -31,9 +34,18 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+from neumann.analyze.gate import EvidenceLinkIndex, review_evidence_problem
+from neumann.models import redact_pii
+
 SCHEMA_PATH = Path(__file__).resolve().parents[3] / "contracts" / "ui_view.schema.json"
 
 SAMPLE_LABEL = "분석 파이프라인 미연결(샘플 데이터)"
+# E3-L1e: "근거 없는 항목 k개 제외"로 세는 폐기 사유(= analyze.gate.NO_EVIDENCE_FAMILY + 화면에서 뺀 것).
+# 화면(index.html)은 이 목록으로 삭제 문장을 "근거가 없어 제외한 문장"과 "검증에서 제외한 문장"으로 나눈다.
+NO_EVIDENCE_REASON_CODES: tuple[str, ...] = (
+    "missing_citation", "unknown_excerpt_id", "unknown_card_id", "excerpt_card_mismatch", "malformed",
+    "no_evidence_in_view",
+)
 ERROR_LABEL = "분석 실패"
 
 # 택소노미 v1 최상위 유형(부록/설계/03_risk_taxonomy.md). (이름, 지도 열 이름)
@@ -407,6 +419,7 @@ class _Ctx:
         self.ev_line: dict[str, int] = {}  # 발췌 id → 계획서 줄(명시 필드가 없으면 인용한 카드의 첫 줄)
         self.section_errors: dict[str, str] = {}
         self.dropped: dict[str, int] = {}
+        self.card_ev: dict[str, set[str]] = {}  # card_id → 화면에 나가는 그 카드의 근거 발췌 id(E3-L1e 체크리스트 게이트)
 
     def drop(self, what: str, n: int = 1) -> None:
         self.dropped[what] = self.dropped.get(what, 0) + n
@@ -697,6 +710,7 @@ def _build_cards(res: Mapping[str, Any], works: list[dict[str, Any]], ctx: _Ctx)
         cid = _text(_get(c, "card_id", "id"))
         if cid:
             ctx.card_rank.setdefault(cid, len(cards) + 1)
+            ctx.card_ev.setdefault(cid, set()).update(eids)
         cards.append({
             "rank": len(cards) + 1,
             "fam": fam,
@@ -789,10 +803,11 @@ def _build_ev(ctx: _Ctx, card_fam_of: dict[str, int]) -> dict[str, dict[str, Any
 def _build_review(res: Mapping[str, Any], ctx: _Ctx, has_works: bool) -> dict[str, Any]:
     """예상 심사평. 화면에서 근거 번호로 풀리지 않는 문장은 내보내지 않는다.
 
-    ``"map"`` 인용(평가이력 지도 참조)은 유사 연구 목록이 있을 때만 근거로 인정한다.
+    모든 발췌·카드 id를 공용 근거 검사로 확인한다. 일부만 유효한 문장은 통째로 제외한다.
     """
     er = _as_dict(_get(res, "expected_review", "review"))
     out: dict[str, Any] = {}
+    links = EvidenceLinkIndex(set(ctx.evidence), ctx.card_ev)
     kept = dropped_n = 0
     dropped: list[list[str]] = []
     for key, aliases in (("strength", ("strength", "strengths")), ("weakness", ("weakness", "weaknesses")),
@@ -801,26 +816,27 @@ def _build_review(res: Mapping[str, Any], ctx: _Ctx, has_works: bool) -> dict[st
         for raw in _list(_get(er, *aliases)):
             s = _as_dict(raw) if not isinstance(raw, str) else {"text": raw}
             t = _text(_get(s, "text", "t", "sentence"))
+            reason, _detail = review_evidence_problem(s, links)
+            if not t or reason is not None:
+                dropped_n += 1
+                dropped.append([reason or "malformed", redact_pii(t)[:200]])
+                continue
             cites: list[int | str] = []
             for ref in _list(_get(s, "evidence", "excerpt_ids", "c", "citations", "cites")):
-                if ref == "map":
-                    if has_works and "map" not in cites:
-                        cites.append("map")
-                    continue
                 eid = _text(ref) if not isinstance(ref, Mapping) else _text(_get(ref, "excerpt_id", "id"))
                 n = _number_ev(eid, ctx) if eid else None
                 if n is not None and n not in cites:
                     cites.append(n)
             if not t or not cites:
                 dropped_n += 1
-                dropped.append(["no_evidence_in_view", t[:200]])
+                dropped.append(["no_evidence_in_view", redact_pii(t)[:200]])
                 continue
             kept += 1
             sent: dict[str, Any] = {"t": t, "c": cites}
             lns = [n for v in _list(_get(s, "plan_lines", "lines", "ln")) if (n := _int(v)) in ctx.plan_line_ns]
             if lns:
                 sent["ln"] = list(dict.fromkeys(lns))
-            ranks = [ctx.card_rank[cid] for cid in (_text(x) for x in _list(s.get("cards"))) if cid in ctx.card_rank]
+            ranks = [ctx.card_rank[cid] for cid in (_text(x) for x in _list(_get(s, "cards", "card_ids"))) if cid in ctx.card_rank]
             if ranks:
                 sent["cards"] = list(dict.fromkeys(ranks))
             sents.append(sent)
@@ -839,6 +855,12 @@ def _build_review(res: Mapping[str, Any], ctx: _Ctx, has_works: bool) -> dict[st
         ctx.drop("review_sentences_without_evidence", dropped_n)
     # pass = 화면에 실제로 나가는 문장 수. 게이트가 뺀 것과 화면이 뺀 것이 모두 drop에 들어간다.
     out["audit"] = {"gen": gen, "pass": kept, "drop": max(0, gen - kept), "dropped": dropped}
+    # E3-L1e: 근거를 확인할 수 없어 뺀 문장 수 = 화면에 싣는 삭제 목록 중 NO_EVIDENCE_REASON_CODES 사유의 수
+    # (화면의 "근거가 없어 제외한 문장 · k"와 "근거 없는 항목 k개 제외"가 같은 수가 되게 목록에서 센다)
+    no_ev = sum(1 for d in dropped if d[0] in NO_EVIDENCE_REASON_CODES)
+    out["audit"]["no_evidence"] = no_ev
+    out["audit"]["no_evidence_reasons"] = list(NO_EVIDENCE_REASON_CODES)
+    out["audit"]["note"] = excluded_note(no_ev)
     gate = _text(audit.get("gate"))
     if gate:
         out["audit"]["gate"] = gate
@@ -878,12 +900,16 @@ def _build_checklist(res: Mapping[str, Any], ctx: _Ctx | None = None) -> list[di
         if ctx is not None:
             lns = [n for v in _list(_get(it, "plan_lines", "lines")) if (n := _int(v)) in ctx.plan_line_ns]
             item["ln"] = list(dict.fromkeys(lns))
-            evs = [ctx.ev_num[e] for e in (_text(x) for x in _list(_get(it, "evidence", "evidence_ids")))
-                   if e in ctx.ev_num]
-            item["ev"] = list(dict.fromkeys(evs))
-            rank = ctx.card_rank.get(_text(it.get("card_id")))
-            if rank is not None:
-                item["card"] = rank
+            # E3-L1e 화면 게이트(생성 직후·2차 검증과 같은 검사): 근거 1개 이상, 연결 카드가 화면에 있고,
+            # 근거가 전부 그 카드의 근거이며 근거 번호로 풀린다. 하나라도 어기면 항목을 내보내지 않는다.
+            cid = _text(it.get("card_id"))
+            ids = [_text(x) for x in _list(_get(it, "evidence", "evidence_ids"))]
+            pool = ctx.card_ev.get(cid) if cid else None
+            if not ids or pool is None or any(e not in pool or e not in ctx.ev_num for e in ids):
+                ctx.drop("checklist_items_without_evidence")
+                continue
+            item["ev"] = list(dict.fromkeys(ctx.ev_num[e] for e in ids))
+            item["card"] = ctx.card_rank[cid]
         for key, aliases in (("v", ("verify",)), ("gen", ("generator",)), ("why", ("fallback_reason",)),
                              ("cv", ("card_verdict",))):
             v = _text(_get(it, *aliases))
@@ -893,6 +919,25 @@ def _build_checklist(res: Mapping[str, Any], ctx: _Ctx | None = None) -> list[di
             item["genl"] = display_generator(item["gen"], _get(it, "model"))
         out.append(item)
     return out
+
+
+def excluded_note(n: int) -> str:
+    """근거 게이트 제외 수의 화면 문구(E3-L1e). 0이면 빈 문자열(화면이 그리지 않는다)."""
+    return f"근거 없는 항목 {n}개 제외" if n else ""
+
+
+def _checklist_audit(res: Mapping[str, Any], shown: int, ctx: _Ctx) -> dict[str, Any]:
+    """체크리스트 근거 게이트 제외 수(E3-L1e): 생성 직후 + 2차 검증 + 화면. 수만 싣고 뺀 문구는 싣지 않는다.
+    화면에 남은 항목이 없으면 note는 "근거 있는 항목이 없어 모두 제외했습니다(k개)"다(절을 숨기지 않는다)."""
+    ver = _as_dict(res.get("verification"))
+    at_build = _int(_as_dict(ver.get("checklist_evidence")).get("dropped")) or 0
+    at_validate = _int(_as_dict(_as_dict(ver.get("semantic")).get("counts")).get("actions_no_evidence")) or 0
+    at_view = ctx.dropped.get("checklist_items_without_evidence", 0)
+    total = max(0, at_build) + max(0, at_validate) + at_view
+    return {"shown": shown, "excluded": total,
+            "by_stage": {"checklist": max(0, at_build), "semantic_validate": max(0, at_validate), "view": at_view},
+            "note": (f"근거 있는 항목이 없어 모두 제외했습니다({total}개)" if total and not shown
+                     else excluded_note(total))}
 
 
 def _build_pipeline(res: Mapping[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]], float | None]:
@@ -964,8 +1009,11 @@ def empty_view() -> dict[str, Any]:
         "plan_id": "", "session_id": "",
         "plan": {"file": "", "size": "0 B", "meta": "계획서 줄 없음", "title": "", "lines": []},
         "pipeline": [], "works": [], "fams": [], "corpus": [], "ev": {}, "cards": [], "others": [],
-        "review": {"strength": [], "weakness": [], "request": [], "audit": {"gen": 0, "pass": 0, "drop": 0, "dropped": []}},
+        "review": {"strength": [], "weakness": [], "request": [], "audit": {"gen": 0, "pass": 0, "drop": 0, "dropped": [],
+                   "no_evidence": 0, "no_evidence_reasons": list(NO_EVIDENCE_REASON_CODES), "note": ""}},
         "checklist": [],
+        "checklist_audit": {"shown": 0, "excluded": 0, "by_stage": {"checklist": 0, "semantic_validate": 0, "view": 0},
+                            "note": ""},
         "kpi": {"n_works": 0, "n_reject": 0, "n_accept": 0, "n_evidence": 0, "n_cards_total": 0, "review_count": 0,
                 "model_id": None, "model_provider": None, "elapsed_s": None},
     }
@@ -1094,6 +1142,8 @@ def _build(result: Any, *, filename: str | None, sample: bool, pipeline_state: s
         "pipeline": pipeline, "works": works, "fams": ctx.fams, "corpus": [None] * len(ctx.fams),
         "ev": ev, "cards": cards, "others": [], "review": review, "checklist": checklist,
     })
+    view["checklist_audit"] = section("checklist_audit", lambda: _checklist_audit(res, len(checklist), ctx),
+                                      view["checklist_audit"])
     plan_text_for_id = "\n".join(line["t"] for line in view["plan"]["lines"])
     view["plan_id"] = _text(res.get("plan_id")) or (
         "sha256:" + hashlib.sha256(plan_text_for_id.encode("utf-8")).hexdigest()[:16] if plan_text_for_id else "")

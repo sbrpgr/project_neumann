@@ -27,6 +27,7 @@ import json
 import logging
 import re
 import zipfile
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -35,6 +36,8 @@ from typing import Any, Literal
 from fastapi import APIRouter, Body, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
+from neumann.analyze.checklist import gate_checklist_items
+from neumann.analyze.gate import EvidenceIndex, MALFORMED, NO_EVIDENCE_FAMILY, SECTIONS, review_evidence_problem
 from neumann.api.view import display_generator, display_text
 from neumann.models import (
     SCHEMA_VERSION,
@@ -162,6 +165,23 @@ def _checklist_ids(checklist: Sequence[Mapping[str, Any]]) -> set[str]:
     return {str(item[k]) for item in checklist for k in CHECKLIST_ID_KEYS if item.get(k) is not None}
 
 
+def _review_for_report(er: Mapping[str, Any]) -> dict[str, Any]:
+    """리포트에 싣는 예상 심사평(E3-L1e): 게이트가 뺀 문장 원문(audit.dropped·dropped_detail)은 빼고 사유 코드·개수만 남긴다.
+    뺀 문장은 분석 결과가 아니므로 라벨 없이 문서에 나가지 않게 한다. 결과 JSON 원본은 바꾸지 않는다."""
+    out = dict(er)
+    audit = dict(out.get("audit") or {})
+    drops = [d for d in (audit.pop("dropped", None) or []) if isinstance(d, (list, tuple)) and d]
+    audit.pop("dropped_detail", None)
+    if drops or "drop" in audit:
+        codes: dict[str, int] = dict(audit.get("dropped_reasons") or {})
+        for d in drops:
+            codes[str(d[0])] = codes.get(str(d[0]), 0) + 1
+        audit["dropped_reasons"] = codes
+        audit["dropped_text"] = "제외한 문장 원문은 싣지 않음(분석 결과 아님) — 사유 코드·개수만"
+    out["audit"] = audit
+    return out
+
+
 def _checklist_line(item: Mapping[str, Any]) -> str:
     """체크리스트 항목 한 줄. 키 이름은 E3 형식(text·risk_code·card_id·plan_lines)과 목업 형식(t·r·s·m)을 모두 읽는다."""
     text = item.get("text") or item.get("action") or item.get("t")
@@ -209,12 +229,55 @@ class _Ctx:
         return len(self.refs)
 
 
+def _gate_export_result(result: PremortemResult) -> tuple[PremortemResult, list[str]]:
+    """공용 조립 문맥 전에 저장 결과를 다시 검사한다. 원본 수정·규칙 대체 없이 사유 코드와 수만 남긴다."""
+    index = EvidenceIndex(result)
+    items, item_drops = gate_checklist_items(result.checklist, result, index=index, where="export")
+    review = _review_for_report(result.expected_review) if result.expected_review else {}
+    reasons: Counter[str] = Counter()
+    shown = 0
+    for section in SECTIONS:
+        kept = []
+        raw = review.get(section, [])
+        if not isinstance(raw, list):
+            reasons[MALFORMED] += 1
+            raw = []
+        for sentence in raw:
+            reason = review_evidence_problem(sentence, index)[0] if isinstance(sentence, Mapping) else MALFORMED
+            if reason is not None:
+                reasons[reason] += 1
+            else:
+                kept.append(sentence)
+        if review:
+            review[section] = kept
+        shown += len(kept)
+    if review and reasons:
+        audit = dict(review.get("audit") or {})
+        prior = Counter(audit.get("dropped_reasons") or {})
+        prior.update(reasons)
+        n = sum(reasons.values())
+        dropped_total = int(audit.get("drop") or 0) + n
+        audit.update({"gen": shown + dropped_total, "pass": shown, "drop": dropped_total,
+                      "no_evidence": int(audit.get("no_evidence") or 0) + sum(v for k, v in reasons.items() if k in NO_EVIDENCE_FAMILY),
+                      "dropped_reasons": dict(sorted(prior.items())),
+                      "dropped_text": "제외한 문장 원문은 싣지 않음(분석 결과 아님) — 사유 코드·개수만"})
+        review["audit"] = audit
+    warnings = []
+    if reasons or item_drops:
+        codes = Counter(d["reason"] for d in item_drops)
+        codes.update(reasons)
+        warnings.append(f"내보내기 근거 게이트: 심사평 {sum(reasons.values())}문장·체크리스트 {len(item_drops)}항목 제외 "
+                        f"(분석 결과 아님). 사유 코드·개수: {json.dumps(dict(sorted(codes.items())), ensure_ascii=False)}")
+    return result.model_copy(update={"expected_review": review, "checklist": items}), warnings
+
+
 def _make_ctx(
     result: PremortemResult,
     plan_text: str | None,
     decisions: Sequence[DecisionEntry | Mapping[str, Any]] | None,
 ) -> _Ctx:
-    warnings: list[str] = []
+    original_item_ids = _checklist_ids(result.checklist)
+    result, warnings = _gate_export_result(result)
     plan: PlanDocument | None
     if result.plan is not None:
         plan, plan_source = result.plan, "result.plan"
@@ -247,8 +310,11 @@ def _make_ctx(
         entry = raw if isinstance(raw, DecisionEntry) else DecisionEntry.model_validate(raw)
         if entry.card_id is not None and entry.card_id not in card_ids:
             raise ValueError(f"결정 로그의 card_id {entry.card_id!r}가 결과의 카드에 없다")
-        if entry.item_id is not None and entry.item_id not in item_ids:
+        if entry.item_id is not None and entry.item_id not in original_item_ids:
             raise ValueError(f"결정 로그의 item_id {entry.item_id!r}가 결과의 체크리스트에 없다")
+        if entry.item_id is not None and entry.item_id not in item_ids:
+            warnings.append("내보내기 근거 게이트: 제외된 체크리스트 항목의 결정 기록 1개 제외(분석 결과 아님).")
+            continue
         entries.append(entry)
 
     return _Ctx(
@@ -679,12 +745,12 @@ def _report(c: _Ctx) -> bytes:
         L.append("유사 연구가 없다.")
 
     if r.expected_review:
-        L += ["", "## 예상 심사평 (결과의 expected_review를 그대로 옮김)", ""]
+        L += ["", "## 예상 심사평 (결과의 expected_review를 옮김 · 제외한 문장은 사유 코드·개수만)", ""]
         er_gen = r.expected_review.get("generator")
         if er_gen:
             L += [f"생성: {display_generator(er_gen, r.expected_review.get('model'))}", ""]
         L.append("```json")
-        L += json.dumps(r.expected_review, ensure_ascii=False, indent=2).split("\n")
+        L += json.dumps(_review_for_report(r.expected_review), ensure_ascii=False, indent=2).split("\n")
         L.append("```")
     if r.checklist:
         L += ["", "## 체크리스트 (결과의 checklist를 옮김)", ""]
@@ -755,6 +821,8 @@ def _ai_context(c: _Ctx) -> bytes:
         ]
     else:
         L.append("- 없음")
+    if c.warnings:
+        L += ["", "## 내보내기 주의", "", *[f"- {w}" for w in c.warnings]]
     L += ["", "## 한계", ""]
     L += _limitations(c)
     return _md_bytes(L)
