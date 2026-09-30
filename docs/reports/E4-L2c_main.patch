@@ -1,0 +1,40 @@
+diff --git a/src/neumann/api/main.py b/src/neumann/api/main.py
+index 2f414ba..e97823c 100644
+--- a/src/neumann/api/main.py
++++ b/src/neumann/api/main.py
+@@ -69,6 +69,10 @@ STAGE_MODULES: dict[str, list[str]] = {
+ app = FastAPI(title="Neumann", version=neumann.__version__, description="Research pre-mortem API")
+ app.mount("/fonts", StaticFiles(directory=WEBUI_DIR / "fonts"), name="fonts")
+ 
++from neumann.api import serving  # noqa: E402  E4-L2c 서빙 층(동시 상한·대기열·속도 제한·예산·캐시·오류 문구·로그 위생)
++
++serving.install(app)
++
+ # 선택 라우터(PM 연결). 모듈이 아직 없으면 건너뛰고, 상태는 /health의 routers에 드러난다.
+ OPTIONAL_ROUTERS: tuple[str, ...] = (
+     "neumann.api.export",
+@@ -135,7 +139,7 @@ def _load_pipeline() -> tuple[Callable[..., Any] | None, str, str]:
+     fn = getattr(importlib.import_module(PIPELINE_MODULE), PIPELINE_FUNC, None)
+     if not callable(fn):
+         return None, "unavailable", f"{PIPELINE_MODULE}.{PIPELINE_FUNC} 없음"
+-    return fn, "connected", ""
++    return serving.wrap_pipeline(fn), "connected", ""
+ 
+ 
+ def _to_jsonable(result: Any) -> dict[str, Any]:
+@@ -155,11 +159,10 @@ async def _run_pipeline(fn: Callable[..., Any], req: PremortemRequest) -> dict[s
+             kwargs["filename"] = req.filename
+     except (TypeError, ValueError):
+         pass
+-    async with _semaphore():
+-        if inspect.iscoroutinefunction(fn):
+-            result = await fn(req.plan_text, **kwargs)
+-        else:
+-            result = await run_in_threadpool(fn, req.plan_text, **kwargs)
++    if inspect.iscoroutinefunction(fn):
++        result = await fn(req.plan_text, **kwargs)
++    else:
++        result = await run_in_threadpool(fn, req.plan_text, **kwargs)
+     return _to_jsonable(result)
+ 
+ 

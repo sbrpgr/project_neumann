@@ -70,6 +70,10 @@ STAGE_MODULES: dict[str, list[str]] = {
 app = FastAPI(title="Neumann", version=neumann.__version__, description="Research pre-mortem API")
 app.mount("/fonts", StaticFiles(directory=WEBUI_DIR / "fonts"), name="fonts")
 
+from neumann.api import serving  # noqa: E402  E4-L2c 서빙 층(동시 상한·대기열·속도 제한·예산·캐시·오류 문구·로그 위생)
+
+serving.install(app)
+
 # 선택 라우터(PM 연결). 모듈이 아직 없으면 건너뛰고, 상태는 /health의 routers에 드러난다.
 OPTIONAL_ROUTERS: tuple[str, ...] = (
     "neumann.api.export",
@@ -87,6 +91,24 @@ for _mod_name in OPTIONAL_ROUTERS:
         ROUTER_STATE[_mod_name] = "missing" if _exc.name == _mod_name else f"error: 의존 모듈 없음({_exc.name})"
     except Exception as _exc:  # 라우터 하나가 깨져도 서버는 뜨게 하고, 상태로 드러낸다
         ROUTER_STATE[_mod_name] = f"error: {type(_exc).__name__}"
+
+def _server_commit() -> str:
+    """서버가 뜬 코드 커밋(짧은 해시). 환경변수 NEUMANN_BUILD_COMMIT가 있으면 그 값, 없으면 git, 실패하면 unknown."""
+    import os
+    import subprocess
+
+    env = os.environ.get("NEUMANN_BUILD_COMMIT", "").strip()
+    if env:
+        return env[:40]
+    try:
+        out = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=REPO_ROOT, capture_output=True, text=True, timeout=5)
+        return out.stdout.strip() or "unknown"
+    except Exception:  # noqa: BLE001
+        return "unknown"
+
+
+SERVER_COMMIT = _server_commit()
+SERVER_STARTED_AT = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 _sem: asyncio.Semaphore | None = None
 
@@ -136,7 +158,7 @@ def _load_pipeline() -> tuple[Callable[..., Any] | None, str, str]:
     fn = getattr(importlib.import_module(PIPELINE_MODULE), PIPELINE_FUNC, None)
     if not callable(fn):
         return None, "unavailable", f"{PIPELINE_MODULE}.{PIPELINE_FUNC} 없음"
-    return fn, "connected", ""
+    return serving.wrap_pipeline(fn), "connected", ""
 
 
 def _to_jsonable(result: Any) -> dict[str, Any]:
@@ -156,11 +178,10 @@ async def _run_pipeline(fn: Callable[..., Any], req: PremortemRequest) -> dict[s
             kwargs["filename"] = req.filename
     except (TypeError, ValueError):
         pass
-    async with _semaphore():
-        if inspect.iscoroutinefunction(fn):
-            result = await fn(req.plan_text, **kwargs)
-        else:
-            result = await run_in_threadpool(fn, req.plan_text, **kwargs)
+    if inspect.iscoroutinefunction(fn):
+        result = await fn(req.plan_text, **kwargs)
+    else:
+        result = await run_in_threadpool(fn, req.plan_text, **kwargs)
     return _to_jsonable(result)
 
 
@@ -227,6 +248,8 @@ def health() -> dict[str, Any]:
     return {
         "status": "ok",
         "version": neumann.__version__,
+        "commit": SERVER_COMMIT,
+        "started_at": SERVER_STARTED_AT,
         "pipeline": {"state": state, "reason": reason, "mode": "pipeline" if state == "connected" else (
             "sample" if state == "unavailable" else "error"), "label": SAMPLE_LABEL if state == "unavailable" else ""},
         "stages": stages,
@@ -295,3 +318,11 @@ async def premortem_view(req: PremortemRequest) -> JSONResponse:
             view = build_ui_view(result, filename=req.filename, pipeline_state=state, input_info=info)
     view["_status"]["server_elapsed_s"] = round(time.perf_counter() - t0, 3)
     return JSONResponse(view, status_code=code)
+
+
+# ───────────────────────── 작업 방식(E4-L2d) ─────────────────────────
+# POST /premortem/jobs → 곧바로 job_id, GET /premortem/jobs/{id} → 상태·진행 단계·결과(메모리, TTL 뒤 폐기).
+# 터널(Cloudflare)의 응답 시간 상한(약 100초)을 넘지 않게 긴 분석을 작업으로 돌린다. 관문은 serving과 같다.
+from neumann.api import jobs  # noqa: E402
+
+jobs.install(app, load_pipeline=lambda: _load_pipeline(), sample_result=lambda reason: _sample_result(reason))
