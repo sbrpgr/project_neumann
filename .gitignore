@@ -1,0 +1,79 @@
+# ── 비밀값 ─────────────────────────────────────────────
+# .env와 그 변형은 전부 막고, 값이 빈 견본(.env.example)만 올린다.
+.env
+.env.*
+!.env.example
+*.env
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+secrets/
+credentials*.json
+service-account*.json
+.netrc
+.pypirc
+
+# ── 데이터·모델·캐시 (공개 저장소에 올리지 않는다) ─────
+data/
+*.parquet
+*.arrow
+*.feather
+*.npy
+*.npz
+*.faiss
+*.index
+*.sqlite
+*.sqlite3
+*.db
+*.zip
+*.tar
+*.tar.gz
+*.7z
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.gguf
+/models/
+.cache/
+/cache/
+
+# ── 에이전트·실행 로그 ─────────────────────────────────
+/logs/
+*.log
+codex_logs/
+.codex/
+.claude/settings.local.json
+.claude/worktrees/
+
+# ── Python ─────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ── 산출물 ─────────────────────────────────────────────
+/out/
+screenshots/
+playwright-report/
+test-results/
+
+# ── OS·편집기 ──────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
