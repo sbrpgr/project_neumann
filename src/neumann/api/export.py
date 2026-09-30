@@ -95,6 +95,10 @@ JSON_GENERATOR_NOTE = (
     "JSON 값 `generator: \"astra\"`는 계약 이름(제품 LLM)이고 모델명이 아니다. "
     "실제 모델은 `model`(카드·예상 심사평·체크리스트)에 있다."
 )
+# 서명 확인 안 된 결과(E4-L2f F1)에는 계약 이름 설명 대신 이 줄을 싣는다: 값이 무엇을 뜻하는지 서버가 보증하지 않는다.
+JSON_GENERATOR_NOTE_UNVERIFIED = (
+    "JSON 값 `generator`·`model`은 요청자가 보낸 결과에 적힌 표기다. 서버 서명이 없어 확인하지 못했다."
+)
 
 SOURCE_KIND_KO: dict[str, str] = {
     "review": "심사평",
@@ -493,7 +497,7 @@ def _readme(c: _Ctx) -> bytes:
         "|---|---|",
     ]
     L += [f"| `{name}` | {FILE_ROLES[name]} |" for name in FILE_NAMES]
-    L += ["", JSON_GENERATOR_NOTE]
+    L += ["", JSON_GENERATOR_NOTE if c.verified else JSON_GENERATOR_NOTE_UNVERIFIED]
     L += ["", "## 생성 방식", ""]
     L += [f"- **{_gen_short(c, g)}** {c.gen_counts[g.value]}장: {_gen_desc(c, g)}" for g in Generator]
     if c.refs:
@@ -818,7 +822,7 @@ def _ai_context(c: _Ctx) -> bytes:
          "원문과 대조하기 전에는 인용으로 쓰지 않는다."),
         "- 근거는 발췌 id(`ex_…`)로 가리킨다. 근거 id가 없는 위험을 새로 덧붙이지 않는다.",
         "- generator=rule 카드는 규칙(비상 경로) 결과이고 LLM 판단이 아니다. generator=mock 카드는 테스트용 가짜다.",
-        f"- {JSON_GENERATOR_NOTE}",
+        f"- {JSON_GENERATOR_NOTE if c.verified else JSON_GENERATOR_NOTE_UNVERIFIED}",
         "- 위험은 가능성이다. 계획서의 결함이 확정됐다고 말하지 않는다.",
         "",
         "## 상태",
