@@ -28,6 +28,11 @@
 키 목록은 ``ServingConfig.from_env``와 보고서 docs/reports/E4-L2c.md에 있다.
 
 프로세스 하나(uvicorn worker 1개)를 전제로 한다. 대기열·속도 제한 상태는 프로세스 메모리에 있다(예산은 파일에도 남김).
+
+SEC-7 보강: 모든 응답에 보안 헤더(nosniff·frame-ancestors 'none'·X-Frame-Options DENY·no-referrer), 요청 대상 8KB 상한(414),
+보호 경로 밖 요청(GET 등)의 IP별 분당 상한(공개 600), CF-Connecting-IP 값 검증, IPv6 /56 묶음, IP별 대기열 몫(대기 칸의 1/3,
+남은 자리는 처음 오는 사용자 몫), 계획서 줄 수 상한(5,000줄, 422), 로그에서 살아 있는 job_id 정확 일치 가림·긴 인자 자르기·
+설정 이름 허용 목록.
 """
 
 from __future__ import annotations
@@ -70,6 +75,7 @@ DEFAULT_PROTECTED = {
 KINDS = {"analysis", "export", "upload", "gated"}
 DOC_PATHS = frozenset({"/docs", "/redoc", "/openapi.json", "/docs/oauth2-redirect"})
 TICKET_HEADER = "x-neumann-ticket"
+JOB_POLL_PREFIX = "/premortem/jobs/"  # 작업 폴링 GET(jobs.py가 따로 IP별 상한을 건다)
 _TICKET_RE = re.compile(r"^[A-Za-z0-9_\-]{6,64}$")
 _PLAN_ID_RE = re.compile(r"^[0-9a-f]{64}$")
 
@@ -90,6 +96,11 @@ MESSAGES = {
     "invalid": "요청 형식이 올바르지 않습니다. 보낸 내용을 확인하고 다시 시도해 주세요.",
     "long_token": ("계획서에 띄어쓰기 없이 {limit:,}자가 넘게 이어진 부분이 있습니다(가장 긴 부분 {longest:,}자). "
                    "긴 링크·인코딩된 데이터·표 서식을 줄여서 다시 올려 주세요."),
+    # SEC-7
+    "too_many_lines": "줄이 너무 많습니다(최대 {limit:,}줄). 문단으로 합쳐 주세요.",
+    "queue_ip": ("이 주소에서 요청한 분석 {n}건이 이미 대기열에 있습니다. 다른 분의 자리를 남겨 두려고 더 받지 않습니다. "
+                 "앞 분석이 끝난 뒤 다시 시도해 주세요."),
+    "uri_too_long": "요청 주소가 너무 깁니다({limit:,}바이트 이하만 받습니다).",
     "internal": "처리 중 문제가 생겼습니다. 잠시 뒤 다시 시도해 주세요. 계속되면 요청 번호 {ticket}를 알려 주세요.",
     "not_found": "없는 주소입니다.",
     # 업로드(E4-L1a upload.py와 같은 문구: 화면이 같은 안내를 보게)
@@ -177,6 +188,11 @@ class ServingConfig:
     rate_window_s: float = 60.0
     max_plan_chars: int = 50_000
     max_token_chars: int = 20_000       # 공백 없이 이어진 토큰 하나의 글자 상한(E4-L2d 재작업: 정규식 O(n²) 방어 겹)
+    max_plan_lines: int = 5_000         # 계획서 줄 수 상한(SEC-7: 짧은 줄 수만 개로 요청당 CPU를 키우는 입력). 넘으면 422
+    max_request_line: int = 8192        # 요청 대상(경로+쿼리) 바이트 상한(SEC-7). 넘으면 414. 0이면 끔
+    get_rate_per_min: int = 0           # 보호 POST·작업 폴링 밖 요청(GET 등)의 IP별 분당 상한(SEC-7, 공개 600, 0이면 끔)
+    queue_per_ip: int = 0               # 분석 관문(실행+대기)에서 IP 묶음 하나가 잡을 수 있는 자리 수(SEC-7, 공개 대기 칸의 1/3)
+    queue_reserve: int = 0              # 이미 자리를 가진 IP는 남은 자리가 이만큼 이하면 더 못 잡는다(처음 오는 사용자 몫)
     max_body_bytes: int = 0             # 0이면 max_plan_chars*6 + 64KB
     max_export_bytes: int = 4 * 1024 * 1024
     max_upload_bytes: int = 10 * 1024 * 1024 + 65_536
@@ -231,10 +247,17 @@ class ServingConfig:
         trust = (_env("NEUMANN_TRUST_PROXY") or "loopback").lower()
         block_file = _env("NEUMANN_BLOCK_FILE")
         budget_file = _env("NEUMANN_BUDGET_FILE")
+        queue_max = int(_env_num("NEUMANN_QUEUE_MAX", 30 if public else 20, 0, 10_000))
+        share = max(math.ceil(queue_max / 3), 1) if public else 0  # SEC-7: IP 하나는 대기 칸의 1/3까지
         return cls(
             # 공개 기본값(다중 사용자, E4-L2d 대표 지시): 동시 4·대기 30(작업 방식), 동기 경로는 대기 4까지만
             max_concurrent=int(_env_num("NEUMANN_MAX_CONCURRENT", 4 if public else 2, 1, 64)),
-            queue_max=int(_env_num("NEUMANN_QUEUE_MAX", 30 if public else 20, 0, 10_000)),
+            queue_max=queue_max,
+            queue_per_ip=int(_env_num("NEUMANN_QUEUE_PER_IP", share, 0, 10_000)),
+            queue_reserve=int(_env_num("NEUMANN_QUEUE_RESERVE", share, 0, 10_000)),
+            max_plan_lines=int(_env_num("NEUMANN_MAX_PLAN_LINES", 5_000, 10, 10_000_000)),
+            max_request_line=int(_env_num("NEUMANN_MAX_REQUEST_LINE", 8192, 0, 1 << 20)),
+            get_rate_per_min=int(_env_num("NEUMANN_GET_RATE_PER_MIN", 600 if public else 0, 0, 1_000_000)),
             sync_queue_max=int(_env_num("NEUMANN_SYNC_QUEUE_MAX", 4 if public else 0, 0, 10_000)),
             rate_per_min=int(_env_num("NEUMANN_RATE_PER_MIN", 6 if public else 0, 0, 100_000)),
             preparse_per_min=int(_env_num("NEUMANN_PREPARSE_PER_MIN", 60 if public else 0, 0, 1_000_000)),
@@ -274,7 +297,8 @@ class ServingConfig:
     def public_view(self) -> dict[str, Any]:
         return {
             "max_concurrent": self.max_concurrent, "queue_max": self.queue_max, "sync_queue_max": self.sync_queue_max, "rate_per_min": self.rate_per_min,
-            "max_plan_chars": self.max_plan_chars, "request_timeout_s": self.request_timeout_s,
+            "max_plan_chars": self.max_plan_chars, "max_plan_lines": self.max_plan_lines,
+            "request_timeout_s": self.request_timeout_s,
             "cache": self.cache_enabled, "public": self.public,
         }
 
@@ -379,6 +403,11 @@ def longest_token(text: str) -> int:
     return max((len(t) for t in text.split()), default=0)
 
 
+def count_lines(text: str) -> int:
+    """``PlanDocument.from_text``와 같은 규칙(CRLF·CR → LF 뒤 ``split("\\n")``)의 줄 수. str.count만 쓴다(선형)."""
+    return text.count("\n") + text.count("\r") - text.count("\r\n") + 1
+
+
 # 로그의 job_id 가리기(재작업 3·4). job_id는 결과 열람 자격(URL-safe 32자)이다.
 # - 퍼센트 인코딩 인식(재작업 4): uvicorn 접근 로그는 쿼리를 날것으로 적으므로 ``%45``처럼 인코딩한 글자도 토큰의
 #   일부로 읽는다. [URL-safe 글자 | %XX]가 이어진 구간을 풀어(decoded) 보고, 푼 글자가 URL-safe로 N자 이상 이어지면
@@ -392,6 +421,10 @@ _JOB_PATH_RE = re.compile(r"(?i)(/premortem/+jobs(?:/|%2F)+)((?:[A-Za-z0-9_\-]|%
 _JOB_QUERY_RE = re.compile(r"(?i)([?&;](?:job|job_id|jobid|id|ticket)=)((?:[A-Za-z0-9_\-]|%[0-9A-Fa-f]{2})+)…?")
 ACCESS_TOKEN_MIN = 20
 APP_TOKEN_MIN = 26
+# 길이 기준 가림의 허용 목록(SEC-7): 설정 이름(``NEUMANN_`` + 대문자·숫자·밑줄)은 26자가 넘어도 그대로 둔다
+# ("설정 NEUMANN_UPLOAD_RATE_PER_MIN 값이…" 경고를 읽을 수 있게). job_id는 서버가 만든 대소문자 섞인 무작위 32자라
+# 이 모양이 될 수 없고, 살아 있는 job_id는 아래 정확 일치 가림이 따로 가린다.
+LOG_ALLOW_RE = re.compile(r"NEUMANN_[A-Z0-9_]{1,80}")
 
 
 def _decode_units(run: str) -> list[tuple[str, str]]:
@@ -416,7 +449,8 @@ def _mask_run(run: str, min_len: int) -> str:
     dec: list[str] = []
 
     def flush() -> None:
-        out.append("".join(dec[:6]) + "…" if len(dec) >= min_len else "".join(raw))
+        hide = len(dec) >= min_len and not LOG_ALLOW_RE.fullmatch("".join(dec))  # 설정 이름은 허용 목록(SEC-7)
+        out.append("".join(dec[:6]) + "…" if hide else "".join(raw))
         raw.clear()
         dec.clear()
 
@@ -441,8 +475,121 @@ def mask_job_paths(text: str, *, access: bool = False) -> str:
     return _ENC_RUN_RE.sub(lambda m: _mask_run(m.group(0), n) if len(m.group(0)) >= n else m.group(0), text)
 
 
+# 살아 있는 job_id 정확 일치 가림(SEC-7, E4-L2d 재검증 권고 ①). 길이 기준 가림은 구분 글자(``+``·``/``·잘못된 ``%zz``·
+# 이중 인코딩 ``%2541``)로 쪼갠 id를 못 잡는다. 작업 저장소가 아는 id를 등록해 두고, 로그 글을 "퍼센트 인코딩을 세 겹까지
+# 풀고 URL-safe가 아닌 글자를 모두 뺀 뼈대"로 바꿔 그 안에서 id를 정확히 찾는다. 찾으면 원문에서 그 id가 걸친 구간 전체를
+# "id 앞 6자 + …"로 바꾼다. 뼈대 만들기와 창 검사는 글 길이에 선형이다(창 하나는 집합 조회 한 번).
+_LIVE_SECRETS: set[str] = set()
+_LIVE_LENS: dict[int, int] = {}
+LOG_ARG_MAX = 2048        # 로그 인자 문자열 상한(넘으면 앞부분만 두고 끝의 잘린 토큰은 뺀다): 긴 쿼리로 필터 시간 키우기 방어
+_CLIP_TOKEN_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.*%+~")
+_HEX_CHARS = frozenset("0123456789abcdefABCDEF")
+
+
+def register_log_secret(token: str) -> None:
+    """로그에서 정확 일치로도 가릴 값(살아 있는 job_id)을 등록한다. 이벤트 루프에서 부른다."""
+    if isinstance(token, str) and len(token) >= 16 and token not in _LIVE_SECRETS:
+        _LIVE_SECRETS.add(token)
+        _LIVE_LENS[len(token)] = _LIVE_LENS.get(len(token), 0) + 1
+
+
+def forget_log_secret(token: str) -> None:
+    """등록한 값을 뺀다(작업이 만료·삭제될 때)."""
+    if token in _LIVE_SECRETS:
+        _LIVE_SECRETS.discard(token)
+        n = _LIVE_LENS.get(len(token), 0) - 1
+        if n > 0:
+            _LIVE_LENS[len(token)] = n
+        else:
+            _LIVE_LENS.pop(len(token), None)
+
+
+def _skeletons(text: str) -> list[tuple[str, list[int], list[int]]]:
+    """로그 글 → [(뼈대, 뼈대 글자별 원문 시작, 원문 끝)]. 뼈대는 퍼센트 인코딩을 세 겹까지 푼 뒤 URL-safe 글자만 남긴 것.
+
+    풀고 남은 ``%``(잘못된 인코딩 ``%zz`` 등)가 있으면, 그 ``%``와 뒤 영숫자 두 개까지 뺀 뼈대를 하나 더 만든다.
+    """
+    units = [(c, i, i + 1) for i, c in enumerate(text)]
+    for _ in range(3):
+        if "%" not in text:
+            break
+        out: list[tuple[str, int, int]] = []
+        j, n, changed = 0, len(units), False
+        while j < n:
+            c = units[j][0]
+            if c == "%" and j + 2 < n and units[j + 1][0] in _HEX_CHARS and units[j + 2][0] in _HEX_CHARS:
+                out.append((chr(int(units[j + 1][0] + units[j + 2][0], 16)), units[j][1], units[j + 2][2]))
+                j += 3
+                changed = True
+            else:
+                out.append(units[j])
+                j += 1
+        units = out
+        if not changed or not any(u[0] == "%" for u in units):
+            break
+    variants = [False]
+    if any(u[0] == "%" for u in units):
+        variants.append(True)
+    res = []
+    for drop_after_pct in variants:
+        chars: list[str] = []
+        starts: list[int] = []
+        ends: list[int] = []
+        skip = 0
+        for c, s, e in units:
+            if skip and c.isascii() and c.isalnum():
+                skip -= 1
+                continue
+            skip = 0
+            if c == "%" and drop_after_pct:
+                skip = 2
+            elif c in _URLSAFE_CHARS:
+                chars.append(c)
+                starts.append(s)
+                ends.append(e)
+        res.append(("".join(chars), starts, ends))
+    return res
+
+
+def mask_live_secrets(text: str) -> str:
+    """등록된 살아 있는 job_id를 원문·퍼센트 인코딩(세 겹까지)·구분 글자로 쪼갠 모양 모두에서 가린다(선형)."""
+    if not _LIVE_SECRETS or len(text) < min(_LIVE_LENS, default=10**9):
+        return text
+    lens = tuple(_LIVE_LENS)
+    spans: list[tuple[int, int, str]] = []
+    for sk, starts, ends in _skeletons(text):
+        for ln in lens:
+            for i in range(len(sk) - ln + 1):
+                tok = sk[i:i + ln]
+                if tok in _LIVE_SECRETS:
+                    spans.append((starts[i], ends[i + ln - 1], tok))
+    if not spans:
+        return text
+    spans.sort()
+    out: list[str] = []
+    pos = 0
+    for s, e, tok in spans:
+        if s < pos:  # 겹치는 구간은 앞 것에 합친다
+            continue
+        out.append(text[pos:s])
+        out.append(tok[:6] + "…")
+        pos = e
+    out.append(text[pos:])
+    return "".join(out)
+
+
+def _clip(text: str, limit: int = LOG_ARG_MAX) -> str:
+    """긴 로그 인자는 앞 ``limit``자만 둔다. 잘린 자리의 토큰 조각(자격·키의 일부일 수 있다)은 통째로 뺀다."""
+    if len(text) <= limit:
+        return text
+    i = limit
+    while i and text[i - 1] in _CLIP_TOKEN_CHARS:
+        i -= 1
+    return f"{text[:i]}…(+{len(text) - i}자 생략)"
+
+
 def _scrub_log(text: str, access: bool = False) -> str:
-    return mask_job_paths(scrub_secrets(text), access=access)
+    return mask_job_paths(mask_live_secrets(scrub_secrets(_clip(text))), access=access)
 
 
 def scrub_ok_payload(data: Any) -> Any:
@@ -460,11 +607,11 @@ class RedactingFilter(logging.Filter):
         try:
             acc = record.name == "uvicorn.access"
             if isinstance(record.msg, str):
-                record.msg = _scrub_log(record.msg, acc)
-            if isinstance(record.args, tuple):
-                record.args = tuple(_scrub_log(a, acc) if isinstance(a, str) else a for a in record.args)
+                record.msg = _scrub_log(record.msg if record.args else _clip(record.msg, 4 * LOG_ARG_MAX), acc)
+            if isinstance(record.args, tuple):  # 인자는 길이를 먼저 자른다(SEC-7: 긴 쿼리 한 줄로 필터 시간 키우기 방어)
+                record.args = tuple(_scrub_log(_clip(a), acc) if isinstance(a, str) else a for a in record.args)
             elif isinstance(record.args, dict):
-                record.args = {k: _scrub_log(v, acc) if isinstance(v, str) else v for k, v in record.args.items()}
+                record.args = {k: _scrub_log(_clip(v), acc) if isinstance(v, str) else v for k, v in record.args.items()}
             if record.exc_info:
                 exc = record.exc_info[1]
                 note = f" [트레이스 생략: {type(exc).__name__ if exc else '?'}]"
@@ -473,10 +620,11 @@ class RedactingFilter(logging.Filter):
                 if isinstance(record.msg, str):
                     record.msg = record.msg + note
             record.stack_info = None
-            msg = record.getMessage()
-            clean = _scrub_log(msg, acc)
-            if clean != msg and record.name != "uvicorn.access":  # 인자를 합쳐야 드러나는 키
-                record.msg, record.args = clean, None
+            if not acc:  # 인자를 합쳐야 드러나는 키(접근 로그는 인자 구조를 지키고 인자별로 이미 가렸다)
+                msg = record.getMessage()
+                clean = _scrub_log(_clip(msg, 4 * LOG_ARG_MAX), acc)
+                if clean != msg:
+                    record.msg, record.args = clean, None
         except Exception:  # noqa: BLE001 - 로그 필터가 로그를 막지 않게
             pass
         return True
@@ -511,8 +659,12 @@ def ensure_log_handler() -> None:
         lg.setLevel(logging.INFO)
 
 
+IPV6_GROUP_PREFIX = 56  # SEC-7: /64 → /56(가정 가입자 하나가 흔히 /56을 받는다. 근거는 docs/reports/SEC-7.md)
+
+
 def ip_key(ip: str) -> str:
-    """속도 제한·로그용 IP 묶음. IPv6는 /64(한 가입자가 보통 /64를 통째로 가진다), IPv4-매핑은 IPv4로."""
+    """속도 제한·로그용 IP 묶음. IPv6는 /56(가입자 하나가 /56~/48을 받으면 /64마다 새 통이 생기던 문제),
+    IPv4-매핑은 IPv4로."""
     try:
         addr = ipaddress.ip_address(ip.strip().strip("[]").split("%")[0])
     except ValueError:
@@ -520,7 +672,7 @@ def ip_key(ip: str) -> str:
     if addr.version == 6:
         if addr.ipv4_mapped is not None:
             return str(addr.ipv4_mapped)
-        return str(ipaddress.ip_network(f"{addr}/64", strict=False))
+        return str(ipaddress.ip_network(f"{addr}/{IPV6_GROUP_PREFIX}", strict=False))
     return str(addr)
 
 
@@ -692,6 +844,7 @@ class Ticket:
     start_at: float | None = None
     end_at: float | None = None
     event: asyncio.Event | None = None
+    owner: str = ""               # IP 묶음 키(SEC-7: IP별 자리 수 상한). 빈 값이면 세지 않는다(예열 등 내부)
 
 
 class Gate:
@@ -704,18 +857,50 @@ class Gate:
         self._running: dict[str, Ticket] = {}
         self._recent: OrderedDict[str, Ticket] = OrderedDict()
         self.completed = 0
+        self._owners: dict[str, int] = {}  # IP 묶음별 잡은 자리(실행+대기) 수(SEC-7)
 
     # 입장 ------------------------------------------------------------
-    def reserve(self, ticket_id: str, plan_id: str = "", *, force: bool = False) -> Ticket:
+    def reserve(self, ticket_id: str, plan_id: str = "", *, force: bool = False, owner: str = "") -> Ticket:
         """대기열에 자리를 잡는다. 빈 슬롯이면 바로 running. 꽉 찼으면 QueueFull(force면 무시: 예열 등 내부 작업)."""
         if not force and len(self._running) + len(self._waiting) >= self.max_active + self.max_waiting:
             raise QueueFull(self.eta(len(self._waiting) + 1))
         if ticket_id in self._waiting or ticket_id in self._running:
             ticket_id = f"{ticket_id}-{uuid.uuid4().hex[:6]}"
-        t = Ticket(id=ticket_id, plan_id=plan_id)
+        t = Ticket(id=ticket_id, plan_id=plan_id, owner=owner)
+        if owner:
+            self._owners[owner] = self._owners.get(owner, 0) + 1
         self._waiting[t.id] = t
         self._dispatch()
         return t
+
+    def held(self, owner: str) -> int:
+        """그 IP 묶음이 지금 잡고 있는 자리(실행+대기) 수."""
+        return self._owners.get(owner, 0)
+
+    def share_refusal(self, owner: str, per_owner: int, reserve: int) -> int | None:
+        """IP별 몫 검사(SEC-7, M-1). 거절이면 그 IP가 잡은 자리 수, 받으면 None.
+
+        - 한 IP 묶음은 자리를 ``per_owner``개까지만 잡는다.
+        - 이미 자리를 가진 IP는 남은 자리가 ``reserve``개 이하로 줄면 더 못 잡는다(처음 오는 사용자 몫).
+          IP 몇 개로 대기열을 채워 다른 사용자를 밀어내지 못하게 한다. 처음 오는 IP(잡은 자리 0)는 이 검사를 받지 않는다.
+        """
+        n = self.held(owner) if owner else 0
+        if n <= 0:
+            return None
+        if per_owner > 0 and n >= per_owner:
+            return n
+        free = self.max_active + self.max_waiting - len(self._running) - len(self._waiting)
+        if reserve > 0 and free <= reserve:
+            return n
+        return None
+
+    def _release_owner(self, t: Ticket) -> None:
+        if t.owner:
+            n = self._owners.get(t.owner, 0) - 1
+            if n > 0:
+                self._owners[t.owner] = n
+            else:
+                self._owners.pop(t.owner, None)
 
     def has_plan(self, plan_id: str) -> bool:
         return any(t.plan_id == plan_id for t in (*self._waiting.values(), *self._running.values()))
@@ -745,6 +930,7 @@ class Gate:
     def release(self, t: Ticket, run_s: float | None = None) -> None:
         if self._running.pop(t.id, None) is not None:
             t.state, t.end_at = "done", time.monotonic()
+            self._release_owner(t)
             self.completed += 1
             if run_s is not None and run_s > 0:
                 self.avg_run_s = 0.7 * self.avg_run_s + 0.3 * run_s
@@ -755,6 +941,7 @@ class Gate:
         """쓰지 않은 자리를 돌려준다(대기 중이든, 잡아 둔 슬롯이든)."""
         if self._waiting.pop(t.id, None) is not None or self._running.pop(t.id, None) is not None:
             t.state = "cancelled"
+            self._release_owner(t)
             self._remember(t)
         self._dispatch()
 
@@ -1000,7 +1187,8 @@ class Serving:
         self.preparse_limiter = RateLimiter(c.preparse_per_min, c.rate_window_s)  # 본문 파싱·해시 전 값싼 검사
         self.aux_limiter = RateLimiter(c.aux_rate_per_min, c.rate_window_s)
         self.upload_limiter = RateLimiter(c.upload_rate_per_min, c.rate_window_s)
-        self.upload_active: dict[str, int] = {}  # IP(/64)별 처리 중인 업로드 수
+        self.get_limiter = RateLimiter(c.get_rate_per_min, c.rate_window_s)  # SEC-7: 보호 POST·작업 폴링 밖 요청
+        self.upload_active: dict[str, int] = {}  # IP 묶음별 처리 중인 업로드 수
         self.budget = DailyBudget(c.daily_budget, c.budget_file if c.daily_budget > 0 else None)
         self.cache = ResultCache(c.cache_dir, enabled=c.cache_enabled, mem_items=c.cache_mem_items,
                                  variant=c.cache_variant, statuses=c.cache_statuses, ttl_s=c.cache_ttl_s,
@@ -1033,7 +1221,7 @@ class Serving:
         return self.extra_protected.get(key) or self.config.protected.get(key)
 
     def admit_new(self, ctx: RequestCtx) -> tuple[int, str, str, int] | None:
-        """새 분석 입장 검사: 차단 스위치 → IP(/64) 속도 제한 → 일일 예산 → 대기열.
+        """새 분석 입장 검사: 차단 스위치 → IP 묶음 속도 제한 → 일일 예산 → IP별 대기열 몫(SEC-7) → 대기열.
 
         입장이면 None(대기열 자리를 잡고 예산 1건을 뗀다. 쓰지 않으면 _drop_reservation이 돌려준다).
         거절이면 (HTTP 코드, error_code, 사용자 문구, retry 초).
@@ -1054,8 +1242,13 @@ class Serving:
             self.counters["busy_503"] += 1
             r = max(int(math.ceil(min(self.gate.eta(self.gate.waiting + 1), 600))), 5)
             return 503, "busy", user_message("busy", retry=r), r
+        owner = ip_key(ctx.ip)
+        held = self.gate.share_refusal(owner, cfg.queue_per_ip, cfg.queue_reserve)  # SEC-7: IP별 대기열 몫
+        if held is not None:
+            self.counters["rate_429"] += 1
+            return 429, "busy_ip", user_message("queue_ip", n=held), 30
         try:
-            ctx.reservation = self.gate.reserve(ctx.ticket, ctx.plan_id)
+            ctx.reservation = self.gate.reserve(ctx.ticket, ctx.plan_id, owner=owner)
         except QueueFull as exc:
             self.counters["busy_503"] += 1
             r = max(int(math.ceil(min(exc.retry_after_s, 600))), 5)
@@ -1301,10 +1494,36 @@ def client_ip(scope: dict[str, Any], trust: str, pick: str = "first", use_xff: b
                 return peer
     cf = (_header(scope, "cf-connecting-ip") or "").strip()
     if cf:
-        return cf[:64]
+        # SEC-7: 올바른 IPv4/IPv6 하나만 믿는다. 쉼표 목록·이상한 값이면 peer로 보고 경고(값은 로그에 안 적는다)
+        return cf if _valid_ip(cf) else _bad_ip_header("CF-Connecting-IP", peer)
     xff = [p.strip() for p in (_header(scope, "x-forwarded-for") or "").split(",") if p.strip()] if use_xff else []
     if xff:
-        return (xff[-1] if pick == "last" else xff[0])[:64]
+        v = xff[-1] if pick == "last" else xff[0]
+        return v if _valid_ip(v) else _bad_ip_header("X-Forwarded-For", peer)
+    return peer
+
+
+def _valid_ip(value: str) -> bool:
+    """IPv4·IPv6 주소 하나인가(쉼표 목록·포트·대괄호·공백·범위 표기는 거절). IPv6 zone(%eth0)도 거절한다."""
+    if not value or len(value) > 45 or "%" in value:
+        return False
+    try:
+        ipaddress.ip_address(value)
+    except ValueError:
+        return False
+    return True
+
+
+_BAD_IP_WARN = {"n": 0, "t": 0.0}
+
+
+def _bad_ip_header(name: str, peer: str) -> str:
+    """이상한 IP 헤더: peer 주소로 처리한다. 경고는 60초에 한 번(그 사이 건수를 붙여), 헤더 값은 적지 않는다."""
+    _BAD_IP_WARN["n"] += 1
+    now = time.monotonic()
+    if now - _BAD_IP_WARN["t"] >= 60.0:
+        log.warning("%s 값이 IP 주소 하나가 아니어서 연결 주소로 처리한다(최근 %d건)", name, _BAD_IP_WARN["n"])
+        _BAD_IP_WARN.update(n=0, t=now)
     return peer
 
 
@@ -1369,6 +1588,10 @@ class ServingMiddleware:
             return
         path = scope.get("path", "")
         cfg = self.serving.config
+        early = self._precheck(scope, path)  # SEC-7: 요청 대상 길이(414)·보호 경로 밖 요청의 IP별 속도 제한(429)
+        if early is not None:
+            await self._send_early(send, *early)
+            return
         if cfg.hide_docs and path in DOC_PATHS:
             body = json.dumps({"detail": user_message("not_found")}, ensure_ascii=False).encode("utf-8")
             await send({"type": "http.response.start", "status": 404,
@@ -1381,6 +1604,43 @@ class ServingMiddleware:
             await self.app(scope, receive, send)
             return
         await self._handle(scope, receive, send, kind)
+
+    def _precheck(self, scope: dict[str, Any], path: str) -> tuple[int, dict[str, Any], dict[str, str]] | None:
+        """본문·앱을 부르기 전 값싼 검사(SEC-7).
+
+        - 요청 대상(경로+쿼리)이 ``max_request_line`` 바이트를 넘으면 414(긴 쿼리 반복으로 로그 필터·라우팅 시간 키우기 방어).
+        - 보호 POST(자기 관문이 있음)와 작업 폴링 GET(jobs의 폴링 상한)을 뺀 모든 요청(/health·정적 파일·/templates 등)에
+          IP 묶음별 넉넉한 분당 상한(``get_rate_per_min``, 공개 600).
+        """
+        srv, cfg = self.serving, self.serving.config
+        raw = scope.get("raw_path") or path.encode("utf-8", "surrogateescape")
+        size = len(raw) + len(scope.get("query_string") or b"") + 1
+        if cfg.max_request_line > 0 and size > cfg.max_request_line:
+            rid = uuid.uuid4().hex[:16]
+            return 414, _err("uri_too_long", user_message("uri_too_long", limit=cfg.max_request_line), rid), {
+                "x-neumann-ticket": rid}
+        method = scope.get("method", "GET")
+        if cfg.get_rate_per_min <= 0 or (method == "POST" and srv.kind_for(path) is not None):
+            return None
+        if method == "GET" and path.startswith(JOB_POLL_PREFIX):
+            return None
+        ok, retry = srv.get_limiter.hit(ip_key(client_ip(scope, cfg.trust_proxy, cfg.xff_pick, cfg.trust_xff)))
+        if ok:
+            return None
+        srv.counters["rate_429"] += 1
+        retry_s = max(int(math.ceil(retry)), 1)
+        rid = uuid.uuid4().hex[:16]
+        return 429, _err("rate_limited", user_message("rate", retry=retry_s, limit=cfg.get_rate_per_min), rid,
+                         retry_after_s=retry_s), {"retry-after": str(retry_s), "x-neumann-ticket": rid}
+
+    @staticmethod
+    async def _send_early(send: Any, code: int, payload: dict[str, Any], headers: dict[str, str]) -> None:
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        hs = [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode("latin-1")),
+              (b"cache-control", b"no-store")]
+        hs += [(k.encode("latin-1"), v.encode("latin-1")) for k, v in headers.items()]
+        await send({"type": "http.response.start", "status": code, "headers": hs})
+        await send({"type": "http.response.body", "body": body})
 
     async def _handle(self, scope: dict[str, Any], receive: Any, send: Any, kind: str) -> None:
         srv, cfg = self.serving, self.serving.config
@@ -1459,6 +1719,10 @@ class ServingMiddleware:
             if longest > cfg.max_token_chars:
                 await reply(422, _err("long_token", user_message("long_token", limit=cfg.max_token_chars,
                                                                  longest=longest), ticket))
+                return
+            # 줄 수 상한(SEC-7): 짧은 줄 수만 개는 글자 상한 안에서도 요청당 CPU(줄 모델·화면 조립·복사)를 크게 키운다
+            if plan_text is not None and count_lines(plan_text) > cfg.max_plan_lines:
+                await reply(422, _err("too_many_lines", user_message("too_many_lines", limit=cfg.max_plan_lines), ticket))
                 return
             if plan_text is not None and plan_text.strip():
                 ctx.plan_id = await asyncio.to_thread(plan_key, plan_text)
@@ -1676,6 +1940,39 @@ class ServingMiddleware:
                  ctx.waited_s, ctx.run_s, time.monotonic() - ctx.started)
 
 
+# ───────────────────────── 보안 헤더(SEC-7) ─────────────────────────
+
+# 모든 응답에 붙인다. CSP는 frame-ancestors만(화면 index.html의 인라인 스크립트·스타일을 막지 않게 스크립트 정책은 넣지 않는다).
+SECURITY_HEADERS: tuple[tuple[bytes, bytes], ...] = (
+    (b"x-content-type-options", b"nosniff"),
+    (b"content-security-policy", b"frame-ancestors 'none'"),
+    (b"x-frame-options", b"DENY"),
+    (b"referrer-policy", b"no-referrer"),
+)
+
+
+class SecurityHeadersMiddleware:
+    """응답 시작 메시지에 보안 헤더를 붙인다(앱이 이미 같은 이름을 붙였으면 그대로 둔다). 가장 바깥에 둔다."""
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_with_headers(message: dict[str, Any]) -> None:
+            if message.get("type") == "http.response.start":
+                headers = list(message.get("headers") or [])
+                have = {bytes(k).lower() for k, _ in headers}
+                headers += [(k, v) for k, v in SECURITY_HEADERS if k not in have]
+                message = {**message, "headers": headers}
+            await send(message)
+
+        await self.app(scope, receive, send_with_headers)
+
+
 # ───────────────────────── 전역 예외 처리기(S-04) ─────────────────────────
 
 
@@ -1691,8 +1988,9 @@ async def _unhandled_exception(request: Request, exc: Exception) -> JSONResponse
     """모든 경로의 처리 안 된 예외: 분류 문자열과 요청 id만(예외 메시지·경로·상류 API 문구 없음)."""
     rid = _request_id(request)
     log.warning("처리 안 된 예외 request_id=%s path=%s kind=%s", rid, request.url.path, type(exc).__name__)
+    # 이 응답은 가장 바깥(ServerErrorMiddleware)에서 나가 보안 헤더 미들웨어를 거치지 않으므로 직접 붙인다(SEC-7)
     return JSONResponse(_err("internal", user_message("internal", ticket=rid), rid), status_code=500,
-                        headers={"x-neumann-ticket": rid})
+                        headers={"x-neumann-ticket": rid, **{k.decode(): v.decode() for k, v in SECURITY_HEADERS}})
 
 
 async def _validation_exception(request: Request, exc: Exception) -> JSONResponse:
@@ -1730,6 +2028,7 @@ def install(app: Any, serving: Serving | None = None, *, pipeline: Callable[...,
     srv = serving or get_serving()
     app.state.serving = srv
     app.add_middleware(ServingMiddleware, serving=srv)
+    app.add_middleware(SecurityHeadersMiddleware)  # 나중에 붙인 것이 바깥: 서빙 층이 직접 보낸 응답에도 붙는다(SEC-7)
     if exception_handlers:
         install_exception_handlers(app)
     app.include_router(router)
@@ -1750,4 +2049,7 @@ __all__ = [
     "ensure_log_handler", "get_serving", "install", "ip_key", "install_exception_handlers", "install_log_filter",
     "longest_token", "mask_job_paths", "plan_key", "public_plan_ids", "router", "scrub_ok_payload", "scrub_public", "scrub_secrets", "user_message",
     "wrap_pipeline",
+    # SEC-7
+    "SECURITY_HEADERS", "SecurityHeadersMiddleware", "count_lines", "forget_log_secret", "mask_live_secrets",
+    "register_log_secret",
 ]

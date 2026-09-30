@@ -5,7 +5,7 @@
 라우트(L0)
 - ``GET /``                  화면(webui/index.html)
 - ``GET /fonts/...``         로컬 폰트(CDN 없음)
-- ``GET /health``            서버 상태 + 단계별 모듈 import 가능 여부(정직하게)
+- ``GET /health``            서버 상태 + 단계별 모듈 import 가능 여부(정직하게). 공개 모드는 축약(SEC-7, ``_public_health``)
 - ``POST /premortem``        {"plan_text": str, "filename"?: str} → 분석 결과 JSON(PremortemResult 모양)
 - ``POST /premortem/view``   같은 입력 → 화면 데이터 계약(ui_view) JSON + ``_status``
 
@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse, JSONResponse
@@ -234,7 +234,10 @@ def index() -> FileResponse:
 
 
 @app.get("/health")
-def health() -> dict[str, Any]:
+def health(request: Request) -> dict[str, Any]:
+    srv = getattr(request.app.state, "serving", None)
+    if srv is not None and srv.config.public:
+        return _public_health(srv)
     stages: dict[str, Any] = {}
     cache: dict[str, tuple[str, str]] = {}
     for stage, modules in STAGE_MODULES.items():
@@ -255,6 +258,29 @@ def health() -> dict[str, Any]:
         "stages": stages,
         "routers": dict(ROUTER_STATE),
         "llm": _llm_state(),
+    }
+
+
+def _public_health(srv: Any) -> dict[str, Any]:
+    """공개 모드(SEC-7) /health: 운영·화면에 필요한 값만. 모듈별 import 상태·라우터·키 존재 여부·실패 사유·기동 시각은 뺀다.
+
+    남기는 값: status·version·commit, pipeline.state/mode/label(화면 머리 표시·녹화 판정·터널 점검),
+    llm.effective/model/live_llm_ok(OPS-tun 점검), accepting(새 분석을 받는지).
+    """
+    _fn, state, _reason = _load_pipeline()
+    llm = _llm_state()
+    try:
+        accepting = bool(srv.queue_status().get("accepting"))
+    except Exception:  # noqa: BLE001 - 상태 확인이 /health를 깨지 않게
+        accepting = False
+    return {
+        "status": "ok",
+        "version": neumann.__version__,
+        "commit": SERVER_COMMIT,
+        "pipeline": {"state": state, "mode": "pipeline" if state == "connected" else (
+            "sample" if state == "unavailable" else "error"), "label": SAMPLE_LABEL if state == "unavailable" else ""},
+        "llm": {k: llm.get(k) for k in ("effective", "model", "live_llm_ok")},
+        "accepting": accepting,
     }
 
 

@@ -4,11 +4,14 @@
   확장자와 매직바이트를 함께 본다. 내용이 PDF·DOCX로 확인되면 확장자가 달라도 내용 기준으로 읽고 경고를 남긴다.
 - HWP·HWPX는 415로 거부하고 "HWP는 PDF나 DOCX로 저장해 올려 주세요"라고 안내한다.
 - **상한(SEC-1 S-03, 업로드 증폭 차단). 넘으면 413, 붐비면 503.**
-  파일 10MB(10 × 1024 × 1024바이트) · 추출 글자 50,000자 · PDF 200쪽 ·
-  DOCX 압축 해제 합계 20MB·항목 1,000개·압축비 100배(1MB 넘는 항목) · 처리 시간 20초 · 동시 처리 2건.
+  파일 10MB(10 × 1024 × 1024바이트) · 추출 글자 50,000자 · 줄 5,000줄(422, SEC-7) · PDF 200쪽 ·
+  DOCX 압축 해제 합계 20MB·항목 1,000개·압축비 100배(1MB 넘는 항목) · 처리 시간 10초(SEC-7, 옛 20초) · 동시 처리 2건.
   HTTP 경로의 pdf·docx 추출은 **별도 프로세스**에서 돌리고 시간이 넘으면 강제 종료한다(pypdf·python-docx가
   한 쪽·한 문서 안에서 오래 걸려도 서버 CPU를 붙잡지 못하게). 그 프로세스에는 비밀값 환경변수를 넘기지 않고,
   감사 훅으로 디스크 쓰기를 막는다. 추출 루프 안에서도 시간·글자 예산을 확인해 일찍 멈춘다.
+- **PDF 폭탄(SEC-7).** 작업자 프로세스 메모리(커밋) 상한 512MB(Windows 작업 개체·POSIX RLIMIT_AS, 자식 프로세스 금지),
+  스트림 하나 해제 크기 8MB, 쪽 내용 스트림 1MB(넘는 쪽은 읽지 않고 경고), 문서 전체 쪽 내용 5MB(넘으면 413),
+  쪽당 글자 20,000자(413). pypdf는 내용 스트림 1MB를 해석하는 데 수 초가 걸려 이 상한들이 처리 시간 상한과 짝을 이룬다.
 - **디스크에 쓰지 않는다.** Starlette의 기본 multipart 처리(`UploadFile`)는 1MB가 넘으면 임시 파일로
   내려 쓰므로 쓰지 않고, 요청 본문을 스트림으로 읽어 메모리에서만 파싱한다. 로그에도 본문·파일명을 남기지 않는다.
 
@@ -59,8 +62,27 @@ MAX_ZIP_ENTRIES = 1000
 """zip 항목 수 상한."""
 MAX_ZIP_RATIO = 100
 """1MB가 넘는 항목의 압축비 상한(보통 DOCX XML은 10~30배)."""
-EXTRACT_TIMEOUT_S = 20.0
-"""추출 처리 시간 상한(초). 넘으면 413. 격리 프로세스는 이 시간이 지나면 강제 종료한다."""
+def _env_float(name: str, default: float, lo: float, hi: float) -> float:
+    try:
+        return min(max(float(os.environ.get(name, "") or default), lo), hi)
+    except ValueError:
+        return default
+
+
+EXTRACT_TIMEOUT_S = _env_float("NEUMANN_UPLOAD_TIMEOUT_S", 10.0, 2.0, 120.0)
+"""추출 처리 시간 상한(초, SEC-7에서 20 → 10). 넘으면 413. 격리 프로세스는 이 시간이 지나면 강제 종료한다."""
+EXTRACT_MEMORY_MB = int(_env_float("NEUMANN_UPLOAD_MEMORY_MB", 512, 128, 8192))
+"""격리 작업자 프로세스의 메모리(커밋) 상한(MB, SEC-7). 넘으면 MemoryError → 413."""
+MAX_PLAN_LINES = 5_000
+"""추출 본문 줄 수 상한(SEC-7, 분석 입력 상한과 같다). 넘으면 422."""
+MAX_PDF_PAGE_CHARS = 20_000
+"""PDF 한 쪽에서 나온 글자 상한(SEC-7). 넘으면 쪽 안에서 바로 멈추고 413."""
+MAX_PDF_PAGE_STREAM = 1_000_000
+"""PDF 한 쪽 내용 스트림(푼 크기) 상한(SEC-7). 넘는 쪽은 해석하지 않고 경고로 알린다(pypdf 해석이 1MB에 수 초)."""
+MAX_PDF_CONTENT_TOTAL = 5_000_000
+"""PDF 전체 쪽 내용 스트림 합계 상한(SEC-7). 넘으면 413(처리 시간 상한 안에 해석할 수 없는 양)."""
+MAX_PDF_STREAM_DECODE = 8_000_000
+"""pypdf가 스트림 하나를 풀 때의 크기 상한(SEC-7, 기본 75MB). 정상 PDF 실측 최대 약 0.4MB."""
 MAX_CONCURRENT_EXTRACTIONS = 2
 """HTTP 경로의 동시 추출 수. 자리가 없으면 `EXTRACT_QUEUE_WAIT_S`만큼 기다리고 503."""
 EXTRACT_QUEUE_WAIT_S = 5.0
@@ -72,7 +94,13 @@ TOO_LARGE_MESSAGE = "파일이 10MB를 넘습니다. 10MB 이하로 줄여 올�
 TOO_MANY_CHARS_MESSAGE = "계획서 글자 수가 상한(50,000자)을 넘습니다. 계획서 본문만 남겨 올려 주세요"
 TOO_MANY_PAGES_MESSAGE = "PDF가 200쪽을 넘습니다. 계획서 부분만 PDF로 저장해 올려 주세요"
 ZIP_BOMB_MESSAGE = "압축을 푼 크기가 상한(20MB)을 넘거나 비정상적으로 큽니다. 계획서 본문만 담아 다시 저장해 올려 주세요"
-TIMEOUT_MESSAGE = "파일 처리 시간이 상한(20초)을 넘었습니다. 쪽수를 줄이거나 다시 저장해 올려 주세요"
+TIMEOUT_MESSAGE = f"파일 처리 시간이 상한({EXTRACT_TIMEOUT_S:g}초)을 넘었습니다. 쪽수를 줄이거나 다시 저장해 올려 주세요"
+TOO_MANY_LINES_MESSAGE = f"줄이 너무 많습니다(최대 {MAX_PLAN_LINES:,}줄). 문단으로 합쳐 주세요."
+PAGE_CHARS_MESSAGE = (f"PDF 한 쪽에서 나온 글자가 너무 많습니다(쪽당 최대 {MAX_PDF_PAGE_CHARS:,}자). "
+                      "계획서 부분만 PDF로 저장해 올려 주세요")
+PDF_COMPLEX_MESSAGE = ("PDF 내용(그림·도형 명령)이 너무 많아 처리 시간 안에 읽을 수 없습니다. "
+                       "계획서 본문 부분만 PDF로 저장하거나 DOCX로 올려 주세요")
+MEMORY_MESSAGE = "파일을 읽는 데 메모리가 너무 많이 듭니다. 쪽수를 줄이거나 다시 저장해 올려 주세요"
 BUSY_MESSAGE = "업로드 처리 중인 요청이 많습니다. 잠시 뒤 다시 올려 주세요"
 WORKER_FAILED_MESSAGE = "파일을 처리하지 못했습니다(손상된 파일일 수 있습니다)"
 UNSUPPORTED_MESSAGE = "지원하지 않는 형식입니다. txt·md·pdf·docx만 올릴 수 있습니다"
@@ -252,8 +280,77 @@ def _decode_text(data: bytes) -> tuple[str, str, list[str]]:
     return text, "utf-8", [f"UTF-8로 읽지 못한 글자 {bad}곳을 �로 바꿨습니다"]
 
 
+def _pdf_limits():  # noqa: ANN202 - pypdf 설정 문맥
+    """pypdf 스트림 해제 크기 상한(SEC-7). 옛 pypdf라 설정 API가 없으면 아무것도 안 하는 문맥."""
+    import contextlib
+
+    try:
+        from pypdf import apply_configuration
+
+        n = MAX_PDF_STREAM_DECODE
+        return apply_configuration(zlib_maximum_output_length=n, lzw_maximum_output_length=n,
+                                   run_length_maximum_output_length=n, array_based_stream_maximum_output_length=n)
+    except (ImportError, TypeError):
+        return contextlib.nullcontext()
+
+
+def _content_parts(page):  # noqa: ANN001, ANN202 - pypdf 객체
+    obj = page.get("/Contents")
+    if obj is None:
+        return []
+    obj = obj.get_object()
+    return [p.get_object() for p in obj] if isinstance(obj, list) else [obj]
+
+
+def _page_content_size(page) -> int:  # noqa: ANN001
+    """쪽 내용 스트림의 푼 크기 합(해석 전에 잰다. 스트림 하나가 해제 상한을 넘으면 pypdf가 LimitReachedError)."""
+    return sum(len(p.get_data()) for p in _content_parts(page) if hasattr(p, "get_data"))
+
+
+def _drop_decoded(page) -> None:  # noqa: ANN001
+    """읽지 않기로 한 쪽의 푼 스트림 캐시를 버린다(pypdf가 스트림 객체에 붙여 두는 사본, 최선 노력)."""
+    try:
+        for p in _content_parts(page):
+            if getattr(p, "decoded_self", None) is not None:
+                p.decoded_self = None
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _page_text(page, budget: _Budget) -> str:  # noqa: ANN001
+    """쪽 하나의 텍스트. 연산자 256개마다 시간 예산을 보고, 쪽 글자가 상한을 넘으면 쪽 안에서 바로 멈춘다(SEC-7)."""
+    seen = {"chars": 0, "ops": 0}
+
+    def on_text(text, *_):  # noqa: ANN001, ANN002, ANN202
+        seen["chars"] += len(text or "")
+        if seen["chars"] > MAX_PDF_PAGE_CHARS:
+            raise UploadRejected(413, PAGE_CHARS_MESSAGE)
+
+    def on_op(*_):  # noqa: ANN002, ANN202
+        seen["ops"] += 1
+        if not seen["ops"] & 255:
+            budget.spend()
+
+    text = page.extract_text(visitor_text=on_text, visitor_operand_before=on_op) or ""
+    if len(text) > MAX_PDF_PAGE_CHARS:  # 방문자가 못 본 글자(양식 등)까지
+        raise UploadRejected(413, PAGE_CHARS_MESSAGE)
+    return text
+
+
 def _extract_pdf(data: bytes, budget: _Budget) -> tuple[str, int, list[str]]:
+    with _pdf_limits():
+        return _extract_pdf_limited(data, budget)
+
+
+def _extract_pdf_limited(data: bytes, budget: _Budget) -> tuple[str, int, list[str]]:
     from pypdf import PdfReader
+
+    try:
+        from pypdf.errors import LimitReachedError
+
+        limit_errors: tuple[type[BaseException], ...] = (LimitReachedError,)
+    except ImportError:  # 옛 pypdf
+        limit_errors = ()
 
     try:
         reader = PdfReader(io.BytesIO(data))
@@ -267,6 +364,8 @@ def _extract_pdf(data: bytes, budget: _Budget) -> tuple[str, int, list[str]]:
         n_pages = len(reader.pages)
     except UploadRejected:
         raise
+    except MemoryError:
+        raise UploadRejected(413, MEMORY_MESSAGE) from None
     except Exception as exc:  # pypdf는 손상 파일에서 여러 종류의 예외를 낸다
         raise UploadRejected(422, "PDF를 읽을 수 없습니다(손상된 파일일 수 있습니다)") from exc
     if n_pages > MAX_PDF_PAGES:
@@ -276,10 +375,33 @@ def _extract_pdf(data: bytes, budget: _Budget) -> tuple[str, int, list[str]]:
     texts: list[str] = []
     empty: list[int] = []
     failed: list[int] = []
+    heavy: list[int] = []  # 내용 스트림이 쪽 상한을 넘어 해석하지 않은 쪽(SEC-7)
+    content_total = 0
     for i in range(n_pages):
         budget.spend()
         try:
-            page_text = reader.pages[i].extract_text() or ""
+            page = reader.pages[i]
+            size = _page_content_size(page)  # 해석(느림) 전에 푼 크기만 잰다(빠름)
+        except MemoryError:
+            raise UploadRejected(413, MEMORY_MESSAGE) from None
+        except limit_errors:
+            size = MAX_PDF_PAGE_STREAM + 1
+        except Exception:
+            failed.append(i + 1)
+            continue
+        if size > MAX_PDF_PAGE_STREAM:
+            heavy.append(i + 1)
+            _drop_decoded(page)
+            continue
+        content_total += size
+        if content_total > MAX_PDF_CONTENT_TOTAL:
+            raise UploadRejected(413, PDF_COMPLEX_MESSAGE)
+        try:
+            page_text = _page_text(page, budget)
+        except UploadRejected:
+            raise
+        except MemoryError:
+            raise UploadRejected(413, MEMORY_MESSAGE) from None
         except Exception:
             failed.append(i + 1)
             continue
@@ -290,6 +412,8 @@ def _extract_pdf(data: bytes, budget: _Budget) -> tuple[str, int, list[str]]:
             empty.append(i + 1)
     if failed:
         warnings.append(f"텍스트 추출에 실패한 쪽: {_pages(failed)}")
+    if heavy:
+        warnings.append(f"그림·도형 명령이 너무 많아 읽지 않은 쪽: {_pages(heavy)} (쪽 내용 {MAX_PDF_PAGE_STREAM // 1_000_000}MB 상한)")
     if empty:
         warnings.append(f"텍스트가 없는 쪽: {_pages(empty)} (스캔 이미지일 수 있습니다. 문자 인식(OCR)은 하지 않습니다)")
     return "\n".join(texts), n_pages, warnings
@@ -354,6 +478,8 @@ def _extract_docx(data: bytes, budget: _Budget) -> tuple[str, list[str]]:
             lines.append(line)
     except UploadRejected:
         raise
+    except MemoryError:
+        raise UploadRejected(413, MEMORY_MESSAGE) from None
     except Exception as exc:
         raise UploadRejected(422, "DOCX를 읽을 수 없습니다(손상된 파일일 수 있습니다)") from exc
     return "\n".join(lines), []
@@ -400,12 +526,16 @@ def extract_plan(filename: str, data: bytes, *, deadline_s: float | None = EXTRA
         raw, encoding, more = _decode_text(data)  # 10MB 디코딩·정리는 1초 안쪽이라 글자 상한은 정리 뒤 한 번만 본다
         budget.spend()
     warnings.extend(more)
+    if raw.count("\n") + raw.count("\r") > 20 * MAX_PLAN_LINES:  # 정리(줄 목록) 전에 값싸게: 줄바꿈 수백만 개 txt의 메모리
+        raise UploadRejected(422, TOO_MANY_LINES_MESSAGE)
     text = _clean(raw, collapse_blank=kind in ("pdf", "docx"))
     if not text.strip():
         hint = " 스캔한 PDF라면 텍스트가 들어 있는 PDF나 DOCX로 올려 주세요" if kind == "pdf" else ""
         raise UploadRejected(422, "파일에서 텍스트를 찾지 못했습니다." + hint)
     if len(text) > MAX_PLAN_CHARS:
         raise UploadRejected(413, TOO_MANY_CHARS_MESSAGE)
+    if text.count("\n") + 1 > MAX_PLAN_LINES:  # SEC-7: 분석 입구와 같은 줄 수 상한
+        raise UploadRejected(422, TOO_MANY_LINES_MESSAGE)
     return PlanExtract(
         filename=name,
         kind=kind,
@@ -456,16 +586,71 @@ def _deny_disk_writes() -> None:
     sys.addaudithook(hook)
 
 
+def _limit_worker_memory(max_mb: int) -> bool:
+    """이 프로세스의 메모리(커밋) 상한을 건다(SEC-7). 걸었으면 True. 추출 작업자 전용.
+
+    Windows: 새 작업 개체(Job Object)에 자기 자신을 넣고 프로세스 메모리 상한 + 프로세스 수 1(자식 금지).
+    POSIX: RLIMIT_AS. 넘으면 파이썬은 MemoryError를 낸다(작업자는 413으로 답한다).
+    """
+    limit = int(max_mb) * 1024 * 1024
+    if os.name != "nt":
+        try:
+            import resource
+
+            resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+            return True
+        except (ImportError, ValueError, OSError):
+            return False
+    import ctypes
+    from ctypes import wintypes
+
+    class _Basic(ctypes.Structure):
+        _fields_ = [("PerProcessUserTimeLimit", ctypes.c_int64), ("PerJobUserTimeLimit", ctypes.c_int64),
+                    ("LimitFlags", wintypes.DWORD), ("MinimumWorkingSetSize", ctypes.c_size_t),
+                    ("MaximumWorkingSetSize", ctypes.c_size_t), ("ActiveProcessLimit", wintypes.DWORD),
+                    ("Affinity", ctypes.c_size_t), ("PriorityClass", wintypes.DWORD), ("SchedulingClass", wintypes.DWORD)]
+
+    class _Io(ctypes.Structure):
+        _fields_ = [(n, ctypes.c_uint64) for n in ("ReadOperationCount", "WriteOperationCount", "OtherOperationCount",
+                                                    "ReadTransferCount", "WriteTransferCount", "OtherTransferCount")]
+
+    class _Extended(ctypes.Structure):
+        _fields_ = [("BasicLimitInformation", _Basic), ("IoInfo", _Io), ("ProcessMemoryLimit", ctypes.c_size_t),
+                    ("JobMemoryLimit", ctypes.c_size_t), ("PeakProcessMemoryUsed", ctypes.c_size_t),
+                    ("PeakJobMemoryUsed", ctypes.c_size_t)]
+
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.CreateJobObjectW.restype = wintypes.HANDLE
+    k32.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
+    k32.SetInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD]
+    k32.GetCurrentProcess.restype = wintypes.HANDLE
+    k32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+    job = k32.CreateJobObjectW(None, None)
+    if not job:
+        return False
+    info = _Extended()
+    info.BasicLimitInformation.LimitFlags = 0x100 | 0x8  # JOB_OBJECT_LIMIT_PROCESS_MEMORY | ACTIVE_PROCESS
+    info.BasicLimitInformation.ActiveProcessLimit = 1
+    info.ProcessMemoryLimit = limit
+    if not k32.SetInformationJobObject(job, 9, ctypes.byref(info), ctypes.sizeof(info)):  # ExtendedLimitInformation
+        return False
+    return bool(k32.AssignProcessToJobObject(job, k32.GetCurrentProcess()))  # 핸들은 프로세스가 끝날 때 닫힌다
+
+
 def _worker_main() -> None:
     """작업자 진입점. 표준 입력: JSON 머리 한 줄 + 파일 바이트. 표준 출력: JSON 결과 하나."""
     _deny_disk_writes()
     header = json.loads(sys.stdin.buffer.readline().decode("utf-8"))
+    if header.get("memory_mb"):
+        _limit_worker_memory(int(header["memory_mb"]))
     data = sys.stdin.buffer.read(MAX_UPLOAD_BYTES + 1)
     try:
         result = extract_plan(header["filename"], data, deadline_s=header.get("deadline_s"))
         out: dict = {"ok": True, "result": asdict(result)}
     except UploadRejected as exc:
         out = {"ok": False, "status": exc.status_code, "message": exc.message}
+    except MemoryError:
+        out = {"ok": False, "status": 413, "message": MEMORY_MESSAGE}
     except Exception:  # 내부 예외 문구는 내보내지 않는다(SEC-1 S-04)
         out = {"ok": False, "status": 422, "message": WORKER_FAILED_MESSAGE}
     sys.stdout.buffer.write(json.dumps(out, ensure_ascii=False).encode("utf-8"))
@@ -473,7 +658,8 @@ def _worker_main() -> None:
 
 
 def _run_worker(filename: str, data: bytes, timeout_s: float) -> PlanExtract:
-    header = json.dumps({"filename": filename, "deadline_s": timeout_s}).encode("utf-8") + b"\n"
+    header = json.dumps({"filename": filename, "deadline_s": timeout_s,
+                         "memory_mb": EXTRACT_MEMORY_MB}).encode("utf-8") + b"\n"
     try:
         proc = subprocess.run(
             _worker_command(),
@@ -624,7 +810,7 @@ router = APIRouter(tags=["upload"])
 
 _ERROR_RESPONSES = {
     400: {"description": "multipart 형식 오류, 파일 여러 개"},
-    413: {"description": "상한 초과: 파일 10MB, 글자 50,000자, PDF 200쪽, 압축 해제 20MB, 처리 시간 20초"},
+    413: {"description": "상한 초과: 파일 10MB, 글자 50,000자, PDF 200쪽, 압축 해제 20MB, 처리 시간 10초(SEC-7), 줄 5,000줄(422)"},
     415: {"description": f"HWP·HWPX(\"{HWP_MESSAGE}\"), 그 밖의 미지원 형식"},
     422: {"description": "빈 파일, 손상·암호 PDF, 텍스트 없음"},
     503: {"description": BUSY_MESSAGE},
