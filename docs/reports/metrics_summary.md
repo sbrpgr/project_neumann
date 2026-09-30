@@ -19,7 +19,7 @@
 |---|---|---|---|---|---|
 | **미달** | P1 지적 추출 Macro-F1 | ≥ 0.70 | **0.4864** | n=148, [0.4276, 0.5394] | `data/eval/score_astra.json` (sha256 `c409bed9…`), `docs/reports/E5-L1b.md` |
 | 측정 전 | P2 근거 연결률 | 100% | 측정 전 | — | 연결 검사 실행의 generator 미기록(PM 결정). 참고값은 3절 |
-| 측정 전 | P3 백테스트 Top-3 적중(hit@3) | ≥ 0.50 | 측정 전 | — | 지표 파일 없음. 계획은 n=5(대표 결정, 비용 사유; real 대 기준선, 셔플 없음, sol) |
+| 측정 전 | P3 백테스트 Top-3 적중(hit@3) | ≥ 0.50 | 측정 전 | — | 지표 파일 없음. 계획은 n=5(대표 결정, 비용 사유; real 대 기준선, 셔플 없음, sol). 셔플 미실행은 `docs/decisions.md` 정정(main `a9f28e1`) |
 | 측정 전 | P4 표본 연결 | ≥ 300편 | 측정 전 | — | 지표 파일 없음 |
 | 측정 전 | P5 원문 링크 | 100% | 측정 전 | — | 지표 파일 없음 |
 | 측정 전 | P6 대표 계획 end-to-end 시연 | 3건 | 측정 전 | — | generator 미기록 실행(PM 결정). 참고값은 3절 |
@@ -32,7 +32,7 @@
 | 근거 연결률, **참고**(약속 판정 제외: 검사 실행 generator 미기록) | 43/43 = 1.0 (plan.md 10/10 · plan_elife_neuro.md 13/13 · plan_medimaging.md 20/20) | `E5-L0e2e_live_summary.json` 각 계획서 `linkage.links` |
 | 폐기율(검증 단계에서 버린 지적), 참고 | **7/2033 = 0.0034** (1/643 · 2/701 · 4/689) | `E5-L0e2e_live_summary.json` 각 계획서 `linkage.summary` |
 | 카드 통과율(모든 근거가 연결된 카드), 참고 | 12/12 = 1.0 (3/3 · 4/4 · 5/5) | 같은 파일 `linkage.cards` |
-| 화면에 나온 위험카드 수 | 13장 (5 · 3 · 5), 화면 카드 generator astra 13/13, 강등 단계 0 | 같은 파일 `n_cards`·`generators`·`stages_not_ok` |
+| 화면에 나온 위험카드 수(LLM 카드만, 규칙 카드는 따로 셈) | 13장 (5 · 3 · 5), 화면 카드 generator astra 13/13(규칙 카드 0장), 강등 단계 0 | 같은 파일 `n_cards`·`generators`·`stages_not_ok` |
 | 범위 밖 입력(요리 메모) | 카드 0장, 사유 표시, 4.433초 | 같은 파일 `negative_recipe.md` |
 | 화면 전체 소요(클릭 → 리포트) | 69.645초 · 62.046초 · 65.096초 | 같은 파일 `timings.ui_total_s` |
 | Micro-F1 (Neumann) | 0.5644 [0.5125, 0.612], n=148 | `score_astra.json` |
@@ -44,7 +44,7 @@
 2. **근거 연결률은 약속 달성으로 쓰지 않는다(PM 결정).** 약속 칸은 "측정 전"이다. 쓰려면 "참고"로 계획서별 값을 적는다(10/10 · 13/13 · 20/20). 이 값은 화면 실행과 별도로 같은 계획서를 `/premortem`으로 다시 돌린 결과에서 쟀다. 그래서 plan.md는 화면 카드 5장, 검사 카드 3장이다. 검사 실행의 카드 generator는 요약에 기록되지 않았다. v1 라이브(E5-L1e2e)가 generator를 기록하면 그 값으로 바꾼다.
 3. **근거 연결을 적을 때는 폐기율을 같이 적는다(참고 0.34%).** 폐기율 없는 100%는 의미가 약하다(04_평가_명세 §2.2).
 4. **시연도 약속 달성으로 쓰지 않는다(PM 결정).** 약속 칸은 "측정 전"이다. 쓰려면 "참고: 3/3(generator 미기록 실행, 리포트 화면까지)"로 적는다. 라이브 E2E 테스트 5개(연결 1 + 데모 3 + 범위 밖 1)가 모두 통과했지만, 통과 조건인 근거 연결 1.0 검사 실행의 generator가 기록되지 않았다. 결과 패키지(ZIP) 내보내기는 재지 않았다.
-5. **모델 표기:** "평가 모델 gpt-6-astra로 잰 값. 제품 기본 모델 gpt-6.1-sol로는 재측정하지 않음(비용)."
+5. **모델 표기:** "평가 모델 gpt-6-astra로 잰 값. 제품 기본 모델 gpt-6.1-sol로는 재측정하지 않음(비용)." 카드의 '모델' 칸은 입력 파일에 기록된 모델만 적는다. P1은 예측 파일에 gpt-6-astra가 기록돼 있다. 라이브 E2E 요약에는 모델 기록이 없어 E2E 행은 "(모델 기록 없음)"이다. gpt-6-astra라는 근거는 `docs/decisions.md` 19:38이다.
 6. **1회 실행이다.** LLM 출력은 호출마다 달라질 수 있다. 골드는 1회만 채점했다.
 7. 12쪽의 커밋 수·태그 수·테스트 수는 이 표에 없다. 07:00 동결 때 `git rev-list --count HEAD`, `git tag --list`, `pytest -q`(mock)로 다시 센다(`E6-pres2.verify.md` 권고 1).
 
@@ -66,5 +66,5 @@ python scripts/metrics_from_e2e.py --summary docs/reports/E5-L0e2e_live_summary.
   --model gpt-6-astra --product-model gpt-6.1-sol --out docs/reports/E5-L3b_metrics_e2e.json
 D=C:/Users/User/Desktop/project_neumann/data/eval
 python -m eval.report_card --inputs $D/score_baseline_freq.json $D/score_astra.json $D/score_rule.json \
-  docs/reports/E5-L3b_metrics_e2e.json --out docs/reports/report_card.md --eval-model gpt-6-astra
+  docs/reports/E5-L3b_metrics_e2e.json --out docs/reports/report_card.md
 ```
