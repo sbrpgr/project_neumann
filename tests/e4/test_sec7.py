@@ -153,7 +153,7 @@ def test_public_health_is_small_and_local_health_keeps_diagnostics(monkeypatch):
         resp = TestClient(app).get("/health")
         body = resp.json()
         if public:
-            assert set(body) == {"status", "version", "commit", "pipeline", "llm", "accepting"}
+            assert set(body) == {"status", "version", "commit", "pipeline", "llm", "accepting", "warmup"}
             assert set(body["llm"]) == {"effective", "model", "live_llm_ok"}
             assert "private-path" not in resp.text and "key_present" not in resp.text
         else:
