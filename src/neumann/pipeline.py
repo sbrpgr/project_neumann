@@ -18,9 +18,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import re
 import sys
 import time
+import traceback
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -46,6 +48,8 @@ from neumann.models import (
 PIPELINE_VERSION = "neumann-e3-l0"
 DEFAULT_K = 10
 
+log = logging.getLogger(__name__)
+
 _PHONE = re.compile(r"(?<!\d)(?:\+?82[- ]?)?0\d{1,2}-\d{3,4}-\d{4}(?!\d)")
 _RRN = re.compile(r"(?<!\d)\d{6}-[1-4]\d{6}(?!\d)")
 
@@ -65,6 +69,38 @@ def mask_extra_pii(text: str) -> tuple[str, int]:
     return text, n
 
 
+# ── 응답에 나가는 문구 정리(SEC-1 S-04) ──────────────────────────────────
+# 결과(stages.detail, notices, 사유)에는 사용자용 짧은 문구와 분류만 싣는다. 예외 원문·경로·요청 정보는
+# 서버 로그에만 남기고(`_log_exception`: 예외 종류와 파일:줄, 메시지 없음), 키·계획서 본문은 로그에도 쓰지 않는다.
+# 아래 정리는 마지막 안전망이다: 절대 경로와 키 모양 문자열을 지운다.
+_ABS_PATH = re.compile(
+    r"(?:[A-Za-z]:[\\/]|\\\\|/(?:home|Users|root|mnt|var|tmp|opt|srv|etc|usr)/)[^\s'\"<>|;,)]*"
+)
+_KEYLIKE = re.compile(r"\b(?:sk|pk|rk)[-_][A-Za-z0-9_\-]{8,}|\bBearer\s+\S+|\b[A-Za-z0-9_\-]{40,}\b")
+MAX_DETAIL_CHARS = 400
+_SEARCH_STATUS_KEYS = (
+    "backend", "degraded", "dense_model", "device", "alpha", "score_floor", "n_queries", "n_works", "n_hits",
+    "n_excluded", "elapsed_s", "top_score",
+)
+MOCK_NOTICE = "mock provider(테스트용) 결과 — 실제 astra 분석이 아니다"
+
+
+def safe_text(text: str | None) -> str | None:
+    """응답에 싣기 전 문구 정리: 절대 경로 → [path], 키 모양 → [redacted], 길이 상한."""
+    if text is None:
+        return None
+    text = _ABS_PATH.sub("[path]", str(text))
+    text = _KEYLIKE.sub("[redacted]", text)
+    return text[:MAX_DETAIL_CHARS]
+
+
+def _log_exception(where: str, exc: BaseException) -> None:
+    """서버 로그: 예외 종류와 발생 위치(파일 이름:줄)만. 메시지는 계획서 본문·키를 담을 수 있어 쓰지 않는다."""
+    frames = traceback.extract_tb(exc.__traceback__)[-3:]
+    trail = " <- ".join(f"{Path(f.filename).name}:{f.lineno}" for f in reversed(frames))
+    log.error("%s 실패: %s @ %s", where, type(exc).__name__, trail)
+
+
 @dataclass
 class _Run:
     stages: list[StageStatus] = field(default_factory=list)
@@ -78,22 +114,27 @@ class _Run:
         try:
             yield rec
         except Exception as exc:  # noqa: BLE001 — 예외로 죽지 않는다
+            _log_exception(f"단계 {name}", exc)
             rec["state"] = "error"
-            rec["detail"] = f"{type(exc).__name__}: {str(exc)[:200]}"
+            rec["detail"] = f"내부 오류({type(exc).__name__}) — 이 단계를 건너뜀"
         finally:
             dt = time.perf_counter() - t0
             self.timings[name] = round(dt, 3)
             counts = {k: int(v) for k, v in rec["counts"].items()}
+            detail = safe_text(rec["detail"])
             self.stages.append(
-                StageStatus(stage=name, state=rec["state"], detail=rec["detail"], phase=phase, impl=rec["impl"],
+                StageStatus(stage=name, state=rec["state"], detail=detail, phase=phase, impl=rec["impl"],
                             elapsed_s=round(dt, 3), counts=counts)
             )
             if rec["state"] in ("degraded", "error"):
-                self.notices.append(f"[{name}] {rec['state']}: {rec['detail']}")
+                self.notice(f"[{name}] {rec['state']}: {detail}")
 
     def skip(self, name: str, phase: str, why: str) -> None:
-        self.stages.append(StageStatus(stage=name, state="skipped", detail=why, phase=phase))
+        self.stages.append(StageStatus(stage=name, state="skipped", detail=safe_text(why), phase=phase))
         self.timings[name] = 0.0
+
+    def notice(self, text: str) -> None:
+        self.notices.append(safe_text(text) or "")
 
 
 def _load_settings() -> tuple[Any, str | None]:
@@ -136,7 +177,7 @@ def run_premortem(
     if settings is None:
         settings, settings_note = _load_settings()
     if settings_note:
-        run.notices.append(settings_note)
+        run.notice(settings_note)
     if llm is None:
         llm = make_llm(settings, provider)
     if cache_dir == "default":
@@ -202,9 +243,10 @@ def run_premortem(
         try:
             backend = backend_mod.make_backend()
         except Exception as exc:  # noqa: BLE001
+            _log_exception("근거 저장소 열기", exc)
             backend = None
-            run.skip("search", "EVIDENCE", f"근거 저장소 없음: {type(exc).__name__}: {str(exc)[:160]}")
-            run.notices.append("[search] 근거 저장소(E2 색인)를 열 수 없다")
+            run.skip("search", "EVIDENCE", f"근거 저장소 없음({type(exc).__name__})")
+            run.notice("[search] 근거 저장소(E2 색인)를 열 수 없다")
             no_card_reason = "유사 연구 색인을 열 수 없어 분석하지 못했다"
     if backend is not None and qp is not None and no_card_reason is None:
         with run.stage("search", "EVIDENCE") as st:
@@ -215,10 +257,12 @@ def run_premortem(
             kept = [h for h in hits if h.score >= min_similarity]
             st["counts"] = {"hits": len(hits), "kept": len(kept), "queries": len(search_queries)}
             st["detail"] = f"상위 점수 {top:.3f}" if top is not None else "검색 결과 0건"
-            be_status = backend.status() if hasattr(backend, "status") else {}
+            # E2 검색 상태: 사유 문자열(경로가 들어갈 수 있다)은 빼고 공개해도 되는 키만 싣는다.
+            raw_status = backend.status() if hasattr(backend, "status") else {}
+            be_status = {k: raw_status[k] for k in _SEARCH_STATUS_KEYS if k in raw_status}
             if be_status.get("degraded"):
                 st["state"] = "degraded"
-                st["detail"] += f"; 검색 강등: {be_status.get('reason')}"
+                st["detail"] += f"; 검색 강등(백엔드 {be_status.get('backend', '?')}, 임베딩 없이 어휘 검색)"
             extras["plan_checks"]["search"] = {
                 "top_score": top,
                 "min_similarity": min_similarity,
@@ -342,9 +386,13 @@ def run_premortem(
 
     # 결과 ─────────────────────────────────────────────────────────────────
     if not cards:
-        reason = no_card_reason or "카드 0장(사유 미상)"
-        run.notices.append(f"위험카드 0장: {reason}")
+        reason = safe_text(no_card_reason) or "카드 0장(사유 미상)"
+        run.notice(f"위험카드 0장: {reason}")
         extras["risk_synthesis"]["no_card_reason"] = reason
+    # SEC-1 S-05: mock provider 결과(또는 mock 카드)는 정상(ok)으로 두지 않는다.
+    is_mock = llm.name == "mock" or any(c.generator.value == "mock" for c in cards)
+    if is_mock:
+        run.notice(MOCK_NOTICE)
     if synthesis is not None:
         extras["risk_synthesis"].update(
             {
@@ -380,6 +428,7 @@ def run_premortem(
         return PremortemResult(
             session_id=session_id,
             plan_id=plan.plan_id,
+            status="degraded" if is_mock else "ok",  # 단계 강등이 있으면 모델이 degraded로 올린다
             pipeline_version=PIPELINE_VERSION,
             plan=plan,
             similar_works=similar,
@@ -396,7 +445,8 @@ def run_premortem(
             manifest=manifest,
         )
     except Exception as exc:  # noqa: BLE001 — 조립 실패도 결과로 돌려준다
-        stages = [*run.stages, StageStatus(stage="assemble", state="error", detail=f"{type(exc).__name__}: {str(exc)[:200]}")]
+        _log_exception("결과 조립", exc)
+        stages = [*run.stages, StageStatus(stage="assemble", state="error", detail=f"내부 오류({type(exc).__name__})")]
         return PremortemResult(
             session_id=session_id, plan_id=plan.plan_id, status="error", stages=stages,
             notices=[*run.notices, "결과 조립 실패"], manifest=manifest,
@@ -493,5 +543,5 @@ if __name__ == "__main__":
     sys.exit(main())
 
 
-__all__ = ["PIPELINE_VERSION", "mask_extra_pii", "run_premortem", "summarize"]
+__all__ = ["MOCK_NOTICE", "PIPELINE_VERSION", "mask_extra_pii", "run_premortem", "safe_text", "summarize"]
 
