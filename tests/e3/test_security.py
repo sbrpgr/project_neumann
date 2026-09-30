@@ -17,7 +17,7 @@ import neumann.analyze.backend as backend_mod
 from neumann.analyze.backend import FixtureBackend
 from neumann.analyze.mock_responders import default_responders
 from neumann.llm import LLMCall, MockProvider, OpenAIProvider, validate_output
-from neumann.pipeline import MOCK_NOTICE, run_premortem, safe_text
+from neumann.pipeline import FITNESS_MISSING, MOCK_NOTICE, run_premortem, safe_text
 from tests.e3.corpus import PLAN_BATTERY, build, build_backend
 
 # 가짜 값(실제 키 아님). 저장소 스캐너에 걸리지 않게 실행 중에 조립한다.
@@ -145,7 +145,8 @@ def test_schema_error_detail_does_not_echo_model_output():
 def test_mock_provider_result_is_degraded_with_notice():
     r = run_premortem(PLAN_BATTERY, provider="mock", backend=build_backend(), cache_dir=None)
     assert r.risk_cards and all(c.generator.value == "mock" for c in r.risk_cards)
-    assert all(s.state == "ok" for s in r.stages)  # 단계는 정상이어도
+    # 단계는 정상이어도(적합성 모듈 E3-L1c가 아직 없으면 fitness만 skipped)
+    assert all(s.state == "ok" or s.detail == FITNESS_MISSING for s in r.stages)
     assert r.status == "degraded" and MOCK_NOTICE in r.notices
 
 

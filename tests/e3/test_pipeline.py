@@ -12,13 +12,20 @@ from neumann.analyze.backend import FixtureBackend
 from neumann.llm import MockProvider
 from neumann.analyze.mock_responders import default_responders
 from neumann.models import ReviewEvent
-from neumann.pipeline import MOCK_NOTICE, mask_extra_pii, run_premortem, safe_text
+from neumann.pipeline import FITNESS_MISSING, MOCK_NOTICE, mask_extra_pii, run_premortem, safe_text
 from tests.e3.corpus import PLAN_BATTERY, PLAN_IMAGING, RECIPE, build, build_backend
 
 CONTRACT = json.loads(
     (Path(__file__).resolve().parents[2] / "contracts" / "premortem_response.schema.json").read_text(encoding="utf-8")
 )
-STAGES = ["plan_normalize", "query_axes", "search", "extract_issues", "synthesize_cards", "verify_evidence"]
+# E3-L1w: 적합성(fitness)과 v1 단계(예상 심사평·체크리스트·2차 검증)가 붙었다.
+STAGES = ["plan_normalize", "fitness", "query_axes", "search", "extract_issues", "synthesize_cards", "verify_evidence",
+          "expected_review", "checklist", "semantic_validate"]
+
+
+def _ok(stage) -> bool:
+    """정상 단계. 적합성 모듈(E3-L1c)이 아직 없으면 fitness만 skipped로 남는 것을 허용한다."""
+    return stage.state == "ok" or (stage.stage == "fitness" and stage.state == "skipped" and stage.detail == FITNESS_MISSING)
 
 
 def _run(plan: str, *, provider: str = "mock", backend=None, llm=None, k: int = 10):
@@ -49,7 +56,7 @@ def test_mock_end_to_end_cards_and_contract():
     # mock 결과는 단계가 모두 ok여도 status를 ok로 두지 않는다(SEC-1 S-05)
     assert r.status == "degraded" and MOCK_NOTICE in r.notices
     assert [s.stage for s in r.stages] == STAGES
-    assert all(s.state == "ok" for s in r.stages)
+    assert all(_ok(s) for s in r.stages)
     assert len(r.risk_cards) >= 1
     assert all(c.generator.value == "mock" for c in r.risk_cards)  # mock 결과를 astra라고 쓰지 않는다
     _assert_all_quotes_verify(r, be)
