@@ -1,5 +1,7 @@
 # 과제 대기열 (PM이 병합·배정할 때마다 갱신)
 
+**최신 통합 준비(10/01):** `codex/integration-20261001`의 코드 HEAD `2fa72fe`에 TEST-1 `dc87885`, E3-L1s `47acaba`, E3-L1e `4c47892`, E4-L2f `5ac22b5`, E3-L2r `f8932e0`를 포함했다. 아직 main 미병합이다. 마지막 근거·서명·수정 권고 결합 회귀 364 통과·1 건너뜀, TEST-1 E3/CPU 285 통과·E4 156 통과. 통합 담당의 단일 전체 verify와 `gpt-6-sol` 최종 후보 검증 뒤 root PM이 병합을 결정한다. E4-L3m·SEC-7·L1z2·L1g·L4r 등은 다음 단계 대기이며 이 후보 완료로 간주하지 않는다. 실제 32개 편성·모델·노력 수준·실행/대기는 대시보드의 현재 기록을 따른다.
+
 **Codex 인수 진행(09/30 23:5x):** 개발 6.1-sol, 독립 검증 6-sol. E3-L2r F1~F4 커밋 후 후속 보강, E3-L1e 최종 view/export 게이트 보강, E3-L1s는 전체 verify 시간 단언 실패로 보류. CLI 병렬 실행 배정 중이며 전체 verify는 직렬이다. 최신 상태는 HANDOFF 맨 위 Codex PM 절과 대시보드 codex_progress/attention을 따른다. 종료 10/01 02:40.
 
 인계 받는 쪽(Codex PM)은 이 표 위에서부터 진행한다. 실행은 `bash scripts/codex_task.sh build <과제ID>`, 검증은 `bash scripts/codex_task.sh verify <과제ID>`, 병합은 PM 규칙(`AGENTS.md`)대로. 상태: ✅ main 병합 · 🔍 검증 대기/중 · ⏳ 빌더 작업 중 · ⬜ 대기(착수 전) · ⛔ 막힘
