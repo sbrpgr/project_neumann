@@ -16,12 +16,13 @@
 
 | 과제 | 상태 | 다음 |
 |---|---|---|
-| E3-L1w v1 파이프라인 연결 | 🔍 빌드 끝(실제 호출 0), Sonnet 검증 중(mock) — task/E3-L1w 19b3fc1 | 끝나면 Sonnet/sol 검증 → 병합 → 실서버 재시작(sol) → 대표 점검 → 태그 `v1` |
+| E3-L1w v1 파이프라인 연결 | ✅ 병합(f204d0c, Sonnet PASS·mock), 단계별 설정 키 .env.example(cd0a3ca) | 8020을 main 최신으로 재기동(sol 명시) → 대표 점검 → 승인 확인 실행 1회 → 태그 `v1` |
+| **SEC-3 실제 호출 잠금** | 🔍 task/SEC-3 ab3270f, Sonnet 검증 중 | 사용자 환경변수 provider=openai 사고 대응(변수는 대표 승인으로 삭제됨). 병합 뒤 실서버는 `NEUMANN_LIVE_LLM_OK=1 NEUMANN_LLM_PROVIDER=openai NEUMANN_LLM_MODEL=gpt-6.1-sol`로 기동, `/health.llm` 확인 |
 | E2-L1 검색 보정 | ✅ 병합(33dd641), .env.example 키 추가됨 | 병합 시 `.env.example`에 새 키 5개(SCORE_FLOOR는 비움), similar_works 유사도 정렬·무관 사유 노출은 E3 후속 |
-| E4-L1e 입력 예시·템플릿 AI4S 정렬(대표 지시) | ⏳ 구축 세션(API 금지) | 예시: 전해액 GNN 유지 + 단백질-리간드·신경 연산자 PDE 기후 새로. 템플릿 5종 AI4S. 병합 뒤 사전 계산본·정적 판·시연 녹화의 예시도 맞출 것 |
+| E4-L1e 입력 예시·템플릿 AI4S 정렬(대표 지시) | 🔍 task/E4-L1e 66c0b82 검증 중(구축 세션, API 0) | 병합 → E4-L1f를 그 위에. 새 예시 사전 계산본·정적 판 DEMO_PLANS 교체는 API 사용 → 대표 승인 |
 | E1-L1c eLife(+EPMC) 색인(우선순위 낮아짐: 예시에서 fMRI·의료영상 제외) | a3a4251, `index_elife`·`index_elife_epmc`에 DO_NOT_SERVE 표시(E1-L1b 실명 FAIL) | 데모 3건 모두 살리려면 `index_elife_epmc` 후보. E2-L1 병합 뒤 `NEUMANN_INDEX_DIR` 전환 결정·서버 재시작(첫 분석에 API 사용 = 허용) |
 | E1-L1b eLife·EPMC 수집 | ❌ FAIL(리뷰어 실명 22+3건) → PM 세션 빌더 재작업(오프라인) | 잔존 서명 0 증명 후 재검증 → 병합. **그 전에는 eLife/EPMC 색인을 서비스에 쓰지 않는다** |
-| E4-L2c 서빙 안정성 | ❌ FAIL(BOM·UTF-16 본문으로 입장 검사 우회, IPv6 /64 우회) → 재작업 중(구축 세션). **공개 금지** | 병합 + `docs/reports/E4-L2c_main.patch` 적용. 공개 모드 `NEUMANN_DAILY_BUDGET=0`(대표 정정), 동시 상한·대기열·속도 제한 유지 |
+| E4-L2c 서빙 안정성 | ❌ FAIL(BOM·UTF-16 본문으로 입장 검사 우회, IPv6 /64 우회) → 재작업 중(구축 세션). **공개 금지**. ⚠ stash 사고로 E4-L1e 변경이 섞였음 → 병합 전 diff에 templates·index.html 없는지 PM 확인 | 병합 + `docs/reports/E4-L2c_main.patch` 적용. 공개 모드 `NEUMANN_DAILY_BUDGET=0`(대표 정정), 동시 상한·대기열·속도 제한 유지 |
 | E4-L2d 비동기 작업 API | 🔍 999f3f9 빌드 끝(동시 5건 응답 최장 0.08초). E4-L2c 재작업 병합 뒤 재검증 | E4-L2c 뒤 병합 + `E4-L2d_main.patch`. **터널 공개 전제**(Cloudflare 100초 제한) |
 | SEC-2 재점검 | 대기 | E4-L2c·L2d 병합 뒤 → 통과하면 cloudflared 터널 공개(주소는 발표자료로) |
 | E4-L1a 업로드 | ✅ 병합(2e38839, 긴 경계 400 수정 80e024c 포함) | 공개 전 `/upload/plan` 속도 제한(E4-L2c 보호 경로), 화면 문구 "정리 뒤 50,000자 상한" |
