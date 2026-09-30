@@ -6,7 +6,10 @@ PM이 병합할 때마다 갱신한다. Claude 한도가 다 되면 이 문서�
 
 - PM이 `AGENTS.md`를 개정 계획서에 맞춤(push는 주요 에픽마다, HANDOFF 병합마다 갱신, 인계 뒤 astra→sol 검증, astra 주력), 패키지 골격(`src/neumann/{sources,index,analyze,api}/__init__.py`, `eval/__init__.py`)과 pytest `pythonpath` 추가
 - 과제 지시문: `docs/tasks/_COMMON.md`(공통) + W1 1차 `E0b`(모델·설정·fixture) · `E1-L0`(코퍼스) · `E4-L0`(API·화면) · `E5-L1a`(DISAPERE 골드·Macro-F1)
-- 진행 중 빌더: 위 4건(Claude Opus 5.5, worktree 격리, 브랜치 `task/<과제ID>`). E0b의 `models.py`가 main에 들어오면 W1 2차(E2-L0 색인, E3-L0 astra 추출·카드, E5-L0 근거 연결 검사기, E1-L2 Retraction Watch)를 띄운다
+- 18:26 `models.py`·`config.py`(E0b 커밋 73a264b)를 main에 선병합(def820d). verify 통과(tests/e0 39개)
+- 진행 중 빌더 7명(Claude Opus 5.5, worktree `.claude/worktrees/agent-*`, 브랜치 `task/<과제ID>`): E0b(fixture 계속), E1-L0, E4-L0, E5-L1a, E2-L0, E3-L0, E5-L0
+- 대기: E1-L2 Retraction Watch(자리 나면). 빌더가 끝나면 Sonnet 검증(`docs/tasks/_VERIFY.md`) → 병합 → 에픽이면 push
+- Codex 인계 시험 통과(18:21). 인계 명령은 계획서 §5.6
 - 공유 데이터 폴더: `C:/Users/User/Desktop/project_neumann/data`(모든 worktree 공용, gitignore)
 
 ## 이전 상태 (2026-09-30 18:35 구축 세션 기록)
