@@ -125,8 +125,8 @@ def test_units_must_be_contiguous_and_bounded():
 
 def test_unanchored_unit_operation_is_unchecked():
     plan, check = units()
-    plan = plan.replace("합산", "참고")
-    check["params"]["sources"][0]["quote"] = "참고 3 m"
+    plan = plan.replace("합산", "수치")
+    check["params"]["sources"][0]["quote"] = "수치 3 m"
     assert run((plan, check))["message"] == "ungrounded_operation"
 
 
@@ -164,6 +164,30 @@ def test_malformed_input_is_sanitized():
 
 def test_no_relation_marker_does_not_assert_correctness():
     plan, check = constraint()
-    plan = plan.replace("최대", "참고")
-    check["params"]["sources"][2]["quote"] = "참고 10"
+    plan = plan.replace("최대", "수치")
+    check["params"]["sources"][2]["quote"] = "수치 10"
     assert run((plan, check))["message"] == "ungrounded_comparator"
+
+
+@pytest.mark.parametrize("line,negated", [(0, "합계가 아님 3"), (2, "최대가 아님 10"), (0, "합계 예시 3"), (2, "조건부 최대 10")])
+def test_negated_or_qualified_numeric_source_unchecked(line, negated):
+    plan, check = constraint()
+    lines = plan.splitlines()
+    lines[line] = negated
+    check["params"]["sources"][line]["quote"] = negated
+    result = run(("\n".join(lines), check))
+    assert result["status"] == "unchecked"
+    assert result["message"] == "negated_or_qualified_numeric_claim"
+
+
+@pytest.mark.parametrize("line,qualifier", [(0, " (합계 아님)"), (2, " (최대 아님)"), (2, " unless approved")])
+def test_cropped_numeric_quote_cannot_erase_source_qualification(line, qualifier):
+    plan, check = constraint()
+    lines = plan.splitlines()
+    lines[line] += qualifier
+    assert run(("\n".join(lines), check))["message"] == "negated_or_qualified_numeric_claim"
+
+
+def test_cropped_units_quote_cannot_erase_negation():
+    plan, check = units()
+    assert run((plan.replace("합산 3 m", "합산 3 m (합산 아님)"), check))["status"] == "unchecked"

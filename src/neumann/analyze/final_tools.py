@@ -16,6 +16,11 @@ MAX_FACTS = 32
 SOLVER_TIMEOUT_MS = 200
 _NUMBER = re.compile(r"(?<![\w.])[-+]?\d+(?:\.\d+)?(?![\w.])")
 _TOOLS = {"constraint": "z3", "units": "pint", "dependency": "networkx"}
+_QUALIFIED_NUMERIC = re.compile(
+    r"아님|아닌|아니|않|없|불필요|예시|참고|가정|추정|대략|약\s*\d|"
+    r"\b(?:not|no|optional|example|hypothetical|approximately|estimated|if|unless)\b|"
+    r"경우|라면|조건부", re.I,
+)
 
 
 class _Unchecked(Exception):
@@ -174,6 +179,8 @@ def run_tool_checks(plan_text: str, checks: list[dict], cancel_event=None) -> li
                 line = source["line"]
                 quote = _string(source["quote"])
                 _require(type(line) is int and line in anchors and quote in lines[line - 1], "source_mismatch")
+                if kind in ("constraint", "units"):
+                    _require(not _QUALIFIED_NUMERIC.search(lines[line - 1]), "negated_or_qualified_numeric_claim")
                 # A cropped quote must not erase a qualification on the source line.
                 if kind == "dependency":
                     _require(not re.search(r"feedback|피드백|반복|iteration|optional|선택|않|아니|불필요|\bnot\b", lines[line - 1], re.I), "non_hard_dependency")

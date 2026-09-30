@@ -31,3 +31,5 @@ Result: `29 passed in 0.78s`. Coverage includes actual Z3 positive/negative sum 
 ## Limits and next steps
 
 This verifies supplied anchored claims only, not universal research-plan correctness or the completeness of model-proposed checks. It deliberately leaves unsupported language and ambiguous extraction unchecked. No live API calls or full repository verification were run. Independent gpt-6-sol verification and integration are PM responsibilities; dependency packaging is owned by PM.
+
+Independent verification follow-up: numeric and dimensional checks now reject negated, hypothetical, approximate, or conditional claims using complete original source lines. Cropped quotes cannot remove qualifications. Added eight regression counterexamples while retaining normal positive tool checks.
