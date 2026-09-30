@@ -202,12 +202,13 @@ def test_document_fields_equal_base() -> None:
     assert got["tests/fixtures/plans/plan_elife_neuro.md"] == ("신경과학·뇌영상", "신경과학·뇌영상")
 
 
-# 수정 전에도 신경과학이던 진짜 신경과학 구절(E3-L1x 검증 3-2절 + 인지 복합어). 수정 뒤에도 신경과학이어야 한다.
+# 수정 전에도 신경과학이던 진짜 신경과학 구절(E3-L1x 검증 3-2절 + 인지 복합어 + E3-L1z 검증 발견 A). 수정 뒤에도 신경과학이어야 한다.
 KNOWN_NEURO = (
     "fMRI BOLD signal을 측정한다.", "EEG 신호를 기록한다.", "뉴런 발화를 기록한다.", "신경세포 배양", "cognitive load task",
     "brain connectivity", "brains of mice", "neurons and neuronal activity", "neuroscience", "neuroimaging study",
     "뇌 영상", "뇌파", "대뇌 피질", "인지 과학", "인지 기능 저하", "신경 영상", "신경계 질환", "신경 활동", "신경 신호",
     "인지과제 분류", "경도인지장애 환자", "경도 인지장애", "사회인지기능 척도", "(인지 부하)", "인지심리학",
+    "사회인지 기능", "경도인지 장애", "신경인지 기능", "사회인지 과제", "시각인지 능력",  # 검증 발견 A
 )
 
 

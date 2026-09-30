@@ -144,6 +144,7 @@ def test_real_neuroscience_plans_stay_neuroscience(text: str, expected_terms: se
         "누출이 없는 분할인지 과제마다 확인한다.",
         "기준선보다 나은지, 충분한 것인지 능력 범위 안에서 본다.",
         "타당한 설계인지 부하 시험으로 확인한다.",
+        "이것이 문화인지 기능인지 따진다.",  # 접두어 목록 밖(문화)의 "-ㄴ지"는 그대로 뺀다
         "위험을 인지하고 대응 절차를 둔다.",
     ],
 )
@@ -165,6 +166,12 @@ def test_korean_ending_inji_is_not_neuroscience(text: str) -> None:
         ("과제 난이도(인지 부하)를 세 단계로 둔다.", {"인지 부하"}),
         ("사회인지기능 척도로 평가한다.", {"인지기능"}),
         ("인지심리학 실험 설계를 따른다.", {"인지심리"}),
+        # E3-L1z 검증 발견 A: 인지 접두어 뒤에 띄어 쓴 복합어(main에서는 잡혔다)
+        ("사회인지 기능 척도로 평가한다.", {"인지 기능"}),
+        ("경도인지 장애 환자를 모은다.", {"인지 장애"}),
+        ("신경인지 기능 검사를 한다.", {"인지 기능"}),
+        ("사회인지 과제 중 시선을 추적한다.", {"인지 과제"}),
+        ("시각인지 능력을 비교한다.", {"인지 능력"}),
     ],
 )
 def test_cognition_compounds_stay_neuroscience(text: str, expected_terms: set[str]) -> None:
@@ -247,6 +254,7 @@ def test_other_neuro_terms_still_neuroscience(text: str, expected_terms: set[str
 _ADVERSARIAL_UNITS = (
     "인지", "인지 ", "가인지 ", "인지\u3000", "인지과", "신경 ", "뇌", "가", "a", "a가", "neuro", "neuro-", "neuro ",
     "neurosymboli", "neuromorphi", "neuro-symboli", "cognit", "eeg와", "x-", "x-ra", "brain", "_", "9",
+    "사회인지 ", "경도인지", "사회인지　", "사회",
 )
 
 

@@ -163,11 +163,13 @@ _OFFTOPIC_EN = _en(
 # AI 방법이지 신경과학이 아니다. 영어는 neur\w*가 아니라 neuro…(neuron·neuronal·neuroscience·neuroimaging)만 잡는다.
 # 한국어는 "신경" 단독 대신 신경과학 복합어만 잡고, "뇌우"(기상)와 "~인지"(어미)는 빼려고 정규식으로 둔다.
 # 인지 복합어(E3-L1z): 붙여 쓴 복합어(인지과제·경도인지장애·사회인지기능)는 앞 글자와 상관없이 잡고, 띄어 쓴
-# "인지 과제"는 "인지"가 낱말 첫머리일 때만 잡는다. "효과적인지 과제별로"·"것인지 기능"의 "인지"는 어미 "-ㄴ지"다.
+# "인지 과제"는 "인지"가 낱말 첫머리이거나 인지 접두어(사회인지·경도인지·신경인지·시각인지…) 뒤일 때만 잡는다.
+# "효과적인지 과제별로"·"것인지 기능"의 "인지"는 어미 "-ㄴ지"다. 접두어 뒷보기는 모두 두 글자(고정 길이)다.
 _NEURO_KO_COGNITION = r"(?:과학|과제|기능|능력|부하|저하|장애|심리)"
+_NEURO_KO_PREFIX = r"사회|경도|신경|시각|청각|공간|언어|정서|메타"
 _NEURO_KO = re.compile(
     r"신경\s?(?:과학|세포|생리|영상|활동|신호|질환)|신경\s?회로(?!망)|신경계|뉴런|뇌(?!우)"
-    rf"|인지{_NEURO_KO_COGNITION}|(?<![가-힣])인지\s{_NEURO_KO_COGNITION}"
+    rf"|인지{_NEURO_KO_COGNITION}|(?:(?<![가-힣])|(?<={_NEURO_KO_PREFIX}))인지\s{_NEURO_KO_COGNITION}"
 )
 # neuromorphic(뉴로모픽 하드웨어)·neuro-symbolic(신경-기호 AI)은 AI 용어라 뺀다(E3-L1z). 부정 전방탐색은 최대 9글자만 본다.
 _NEURO_EN = _en_ascii(r"neuro(?!morphic|[-\s]?symbolic)[a-z0-9]*", r"fmri", r"eeg", r"brains?", r"cognit[a-z0-9]*")
