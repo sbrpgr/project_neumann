@@ -1,10 +1,11 @@
 """E4-S06 입력 화면 전송 고지(SEC-1 S-06) 정적 검사.
 
 index.html을 글자로 읽어 확인한다(브라우저 없이 기본 pytest에서 돈다).
-- 고지 문구 두 줄이 글자 그대로 있고, 확인할 수 없는 약속(학습 미사용 등)은 없다.
+- 고지 문구(라벨·한 줄 요약·전문 두 줄)가 글자 그대로 있고, 확인할 수 없는 약속(학습 미사용 등)은 없다.
 - 고지 자리(#sendNote)가 입력 카드(#inCard) 안, 실행 버튼(#btnStart) 바로 앞에 있고, 모드별 입력 영역(area) 밖이라
   직접 입력·파일 업로드 두 모드에 같이 나온다.
 - 고지 글은 textContent로만 들어간다(innerHTML·문자열 이어 붙이기 없음). 색은 토큰, 외부 요청 없음.
+- (조건부) 결과를 파일로 캐시하는 서빙 층이 있으면, 그 저장본에서 본문을 떼는지 확인한다("본문 파일 저장 없음"의 근거).
 화면에서 실제로 보이는지(첫 화면 viewport 안)는 ``test_notice_ui.py``(Playwright)가 잰다.
 """
 
@@ -20,12 +21,12 @@ HTML_PATH = ROOT / "src" / "neumann" / "webui" / "index.html"
 SERVING = ROOT / "src" / "neumann" / "api" / "serving.py"
 
 SEND_LINE = "입력한 계획서는 분석을 위해 OpenAI API(gpt-6-astra)로 전송됩니다. 개인정보·미공개 기밀은 넣지 마세요."
-STORE_LINE = "이 서버는 계획서 본문을 파일로 저장하지 않습니다(분석 결과는 메모리에 잠시 보관)."
+STORE_LINE = "이 서버는 계획서 본문을 파일로 저장하지 않습니다."
+SUMMARY = "OpenAI API(gpt-6-astra)로 전송 · 개인정보·미공개 기밀 입력 금지 · 본문 파일 저장 없음"
 LABEL = "외부 전송"
-MEMORY_ONLY = "(분석 결과는 메모리에 잠시 보관)"  # 결과 디스크 캐시가 없을 때만 사실
-# 우리가 직접 확인할 수 없는 약속. 고지에 쓰지 않는다.
+# 우리가 직접 확인할 수 없는 약속, 또는 서빙 층 구현에 따라 거짓이 되는 보관 설명. 고지에 쓰지 않는다.
 UNVERIFIABLE = ("학습에 쓰지", "학습에 사용하지", "학습하지 않", "모델 학습", "학습 미사용", "학습에 이용",
-                "즉시 삭제", "영구 삭제", "암호화", "제3자", "안전하게 보호")
+                "즉시 삭제", "영구 삭제", "암호화", "제3자", "안전하게 보호", "메모리에 잠시 보관", "보관")
 
 
 @pytest.fixture(scope="module")
@@ -53,19 +54,21 @@ def test_notice_text_exact(html: str) -> None:
     block = _send_note_block(html)
     assert f"'{SEND_LINE}'" in block
     assert f"'{STORE_LINE}'" in block
+    assert f"summary: '{SUMMARY}'" in block
     assert f"label: '{LABEL}'" in block
     # 고지 글은 SEND_NOTE 한 곳에만 있다(다른 곳에서 HTML 문자열로 다시 쓰지 않음)
-    assert html.count(SEND_LINE) == 1
-    assert html.count(STORE_LINE) == 1
+    for t in (SEND_LINE, STORE_LINE, SUMMARY):
+        assert html.count(t) == 1, t
 
 
 def test_notice_mentions_facts_only(html: str) -> None:
     block = _send_note_block(html)
     for w in UNVERIFIABLE:
-        assert w not in block, f"확인할 수 없는 문구: {w}"
-    # 전송 대상·모델·금지 대상을 모두 밝힌다
-    for w in ("OpenAI API", "gpt-6-astra", "전송", "개인정보", "미공개 기밀", "파일로 저장하지 않습니다"):
-        assert w in block, f"빠진 요소: {w}"
+        assert w not in block, f"확인할 수 없거나 구현 따라 거짓이 되는 문구: {w}"
+    # 전문과 한 줄 요약이 같은 세 사실(전송 대상·모델, 입력 금지 대상, 본문 파일 미저장)을 모두 밝힌다
+    for w in ("OpenAI API", "gpt-6-astra", "전송", "개인정보", "미공개 기밀", "본문"):
+        assert w in SEND_LINE + STORE_LINE and w in SUMMARY, f"빠진 요소: {w}"
+    assert "파일로 저장하지 않습니다" in STORE_LINE and "파일 저장 없음" in SUMMARY
 
 
 def test_notice_inside_input_card_before_run_button(html: str) -> None:
@@ -86,11 +89,11 @@ def test_notice_inside_input_card_before_run_button(html: str) -> None:
 def test_notice_painted_with_textcontent(html: str) -> None:
     fn = _func(html, "paintSendNote")
     assert "innerHTML" not in fn and "insertAdjacentHTML" not in fn and "outerHTML" not in fn
-    assert "textContent = SEND_NOTE.label" in fn
-    assert "textContent = t" in fn
-    assert "SEND_NOTE.lines.forEach" in fn
-    # 자리 표시 div는 빈 채로 문자열에 들어가고, 글은 렌더 직후 칠한다
-    assert '<div class="sendnote" id="sendNote" role="note"></div>' in html
+    for want in ("textContent = SEND_NOTE.label", "textContent = SEND_NOTE.summary", "textContent = t",
+                 "SEND_NOTE.lines.forEach", "createElement('summary')"):
+        assert want in fn, want
+    # 자리 표시는 빈 채로 문자열에 들어가고, 글은 렌더 직후 칠한다
+    assert '<details class="sendnote" id="sendNote"></details>' in html
     render = _func(html, "render")
     assert "app.innerHTML = renderInput(); paintSendNote();" in render
     # SEND_NOTE가 HTML 문자열에 이어 붙지 않는다
@@ -100,7 +103,7 @@ def test_notice_painted_with_textcontent(html: str) -> None:
 
 def test_notice_style_tokens_and_sticky(html: str) -> None:
     rules = re.findall(r"^\s*\.sendnote[^{]*\{([^}]*)\}", html, re.M)
-    assert len(rules) >= 3
+    assert len(rules) >= 5
     css = " ".join(rules)
     assert not re.search(r"#[0-9a-fA-F]{3,8}\b", css), "색은 :root 토큰만"
     assert "position: sticky" in css and "bottom: 0" in css
@@ -116,19 +119,16 @@ def test_no_external_requests_in_page(html: str) -> None:
     assert not re.search(r"fetch\(\s*['\"](https?:)?//", html)
 
 
-def test_store_line_matches_result_cache() -> None:
-    """결과를 디스크에 캐시하는 서빙 층(E4-L2c)이 들어오면 '메모리에 잠시 보관'은 사실이 아니게 된다.
+def test_result_file_cache_strips_plan_body() -> None:
+    """'본문을 파일로 저장하지 않습니다'의 근거: 결과 파일 캐시(E4-L2c serving.py)가 있으면 저장본에서 본문을 뗀다.
 
-    지금 main(8f77957)에는 serving.py가 없어 건너뛴다. 들어오면 문구를 고칠 때까지 실패한다.
+    지금 main(8f77957)에는 serving.py가 없어 건너뛴다.
     """
     if not SERVING.exists():
-        pytest.skip("serving.py 없음(E4-L2c 미병합): 결과 디스크 캐시 없음")
+        pytest.skip("serving.py 없음(E4-L2c 미병합): 결과 파일 캐시 없음")
     src = SERVING.read_text(encoding="utf-8")
-    if "cache/results" not in src:
-        pytest.skip("serving.py에 결과 디스크 캐시 경로 없음")
-    html = HTML_PATH.read_text(encoding="utf-8")
-    assert MEMORY_ONLY not in html, (
-        "E4-L2c 결과 캐시가 분석 결과(본문 줄 제외)를 data/cache/results/에 파일로 남긴다. "
-        "고지의 '(분석 결과는 메모리에 잠시 보관)'을 사실에 맞게 고칠 것 "
-        "(예: '이 서버는 계획서 본문을 파일로 저장하지 않습니다(분석 결과는 본문 줄을 뺀 채 캐시에 보관).') "
-        "— 이 파일의 STORE_LINE도 같이 바꾼다")
+    if "cache/results" not in src and "write_text" not in src:
+        pytest.skip("serving.py에 결과 파일 쓰기 없음")
+    assert re.search(r"def _strip_plan_body\(", src), "결과 파일 캐시가 본문을 떼는 함수(_strip_plan_body)가 없다"
+    assert re.search(r"[\"']result[\"']\s*:\s*_strip_plan_body\(", src), (
+        "결과 파일 캐시 저장본이 _strip_plan_body를 거치지 않는다 → 고지 '본문을 파일로 저장하지 않습니다'가 거짓이 된다")

@@ -7,7 +7,8 @@
 - 서버는 하위 프로세스(uvicorn ``neumann.api.main:app``, 기본 8131번)로 띄우고 끝나면(실패해도) 종료한다. 8010은 쓰지 않는다.
 - 렌더 완료 DOM 조건(``data-ready``, 템플릿 목록, 헤더 상태, 폰트)을 기다린 뒤 잰다.
 - 콘솔 오류·페이지 오류·실패 요청·외부 도메인 요청이 하나라도 있으면 실패.
-- 스크린샷: ``docs/reports/E4-S06_notice.png``(직접 입력 모드 첫 화면).
+- 스크린샷: ``docs/reports/E4-S06_notice.png``(직접 입력 첫 화면, 고지 접힘 = 한 줄 요약),
+  ``docs/reports/E4-S06_notice_open.png``(같은 화면, 고지 펼침 = 전문 두 줄).
 """
 
 from __future__ import annotations
@@ -32,8 +33,10 @@ FORBIDDEN_PORT = 8010
 VW, VH = 1440, 900
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
 SEND_LINE = "입력한 계획서는 분석을 위해 OpenAI API(gpt-6-astra)로 전송됩니다. 개인정보·미공개 기밀은 넣지 마세요."
-STORE_LINE = "이 서버는 계획서 본문을 파일로 저장하지 않습니다(분석 결과는 메모리에 잠시 보관)."
+STORE_LINE = "이 서버는 계획서 본문을 파일로 저장하지 않습니다."
+SUMMARY = "OpenAI API(gpt-6-astra)로 전송 · 개인정보·미공개 기밀 입력 금지 · 본문 파일 저장 없음"
 NEAR_PX = 60  # 스크롤해 버튼이 보일 때, 고지 아래 끝 ~ 실행 버튼 위 끝 거리 상한
+COLLAPSED_MAX_H = 44  # 접힌 고지(한 줄) 높이 상한. 입력칸을 가리는 폭을 줄이려는 것(첫 판 두 줄 64px)
 
 pytestmark = pytest.mark.skipif(os.getenv("NEUMANN_UI_TESTS") != "1", reason="NEUMANN_UI_TESTS=1일 때만(브라우저·서버 필요)")
 
@@ -86,15 +89,24 @@ MEASURE = """() => {
   const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
   const top = document.elementFromPoint(cx, cy);
   const cs = getComputedStyle(n);
+  const sm = n.querySelector('summary'), su = n.querySelector('summary .sum');
+  const ta = document.getElementById('ta'), tr = ta ? ta.getBoundingClientRect() : null;
+  const lh = parseFloat(getComputedStyle(su).lineHeight);
   return {
     box: {x: r.left, y: r.top, w: r.width, h: r.height, bottom: r.bottom, right: r.right},
     btn: {y: br.top, bottom: br.bottom},
     in_card: !!n.closest('#inCard'),
     on_top: !!(top && n.contains(top)),
+    open: n.open,
     text: n.innerText,
     label: n.getAttribute('aria-label'),
+    summary_text: su.textContent,
+    summary_lines: Math.round(su.getBoundingClientRect().height / lh),
+    more_text: n.querySelector('summary .more').textContent,
     spans: Array.from(n.querySelectorAll('.snl')).map(s => s.textContent),
+    spans_shown: Array.from(n.querySelectorAll('.snl')).map(s => s.checkVisibility()),
     has_markup_children: Array.from(n.children).map(c => c.tagName),
+    textarea_covered_px: tr ? Math.max(0, Math.min(tr.bottom, window.innerHeight) - Math.max(r.top, tr.top)) : null,
     visible: cs.visibility !== 'hidden' && cs.display !== 'none' && r.width > 0 && r.height > 0,
     scrollY: window.scrollY,
     mode: document.querySelector('.seg button.on') && document.querySelector('.seg button.on').dataset.mode
@@ -140,6 +152,17 @@ def shoot(base: str, out: Path) -> dict:
         res["text_first_button_in_viewport"] = m["btn"]["bottom"] <= VH
         page.screenshot(path=str(out / f"{PREFIX}_notice.png"))
 
+        # 1b 펼치기: 전문 두 줄이 보이고 여전히 첫 화면 안. 다시 접는다
+        page.click("#sendNote summary")
+        page.wait_for_function("document.getElementById('sendNote').open === true && document.querySelector('#sendNote .more').textContent === '접기'")
+        mo = page.evaluate(MEASURE)
+        res["text_first_open"] = mo
+        res["text_first_open_in_viewport"] = _in_viewport(mo)
+        page.screenshot(path=str(out / f"{PREFIX}_notice_open.png"))
+        page.click("#sendNote summary")
+        page.wait_for_function("document.getElementById('sendNote').open === false && document.querySelector('#sendNote .more').textContent === '자세히'")
+        res["text_first_reclosed"] = page.evaluate(MEASURE)["open"] is False
+
         # 2 실행 버튼이 보이게 내리면 고지는 버튼 줄 바로 위에 놓인다
         page.evaluate("document.getElementById('btnStart').scrollIntoView({block: 'end'})")
         page.wait_for_timeout(150)
@@ -184,19 +207,30 @@ def shoot(base: str, out: Path) -> dict:
 
 def check(res: dict) -> list[str]:
     bad: list[str] = []
-    for key in ("text_first", "file_first", "file_loaded_first", "text_scrolled"):
+    for key in ("text_first", "text_first_open", "file_first", "file_loaded_first", "text_scrolled"):
         m = res[key]
         if m["spans"] != [SEND_LINE, STORE_LINE]:
             bad.append(f"{key}: 고지 문구 다름 {m['spans']}")
+        if m["summary_text"] != SUMMARY or m["label"] != "외부 전송":
+            bad.append(f"{key}: 요약·라벨 다름 {m['summary_text']!r} {m['label']!r}")
         if not m["in_card"]:
             bad.append(f"{key}: 입력 카드 밖")
         if not m["visible"] or not m["on_top"]:
             bad.append(f"{key}: 고지가 보이지 않거나 가려짐")
-        if m["has_markup_children"] != ["B", "SPAN", "SPAN"]:
+        if m["has_markup_children"] != ["SUMMARY", "SPAN", "SPAN"]:
             bad.append(f"{key}: 고지 구조 다름 {m['has_markup_children']}")
+        if key != "text_first_open":  # 기본은 접힘: 한 줄 요약만, 높이 상한
+            if m["open"] or any(m["spans_shown"]) or m["summary_lines"] != 1 or m["box"]["h"] > COLLAPSED_MAX_H:
+                bad.append(f"{key}: 접힌 고지가 한 줄이 아님 open={m['open']} lines={m['summary_lines']} h={m['box']['h']}")
+    mo = res["text_first_open"]
+    if not mo["open"] or mo["spans_shown"] != [True, True] or mo["more_text"] != "접기":
+        bad.append(f"펼치기: 전문이 안 보임 {mo['spans_shown']} {mo['more_text']}")
+    if not res["text_first_reclosed"]:
+        bad.append("다시 접기 실패")
     if res["text_first"]["mode"] != "text" or res["file_first"]["mode"] != "file":
         bad.append("모드 전환 확인 실패")
-    for key in ("text_first_in_viewport", "file_first_in_viewport", "file_loaded_first_in_viewport"):
+    for key in ("text_first_in_viewport", "text_first_open_in_viewport", "file_first_in_viewport",
+                "file_loaded_first_in_viewport"):
         if not res[key]:
             bad.append(f"{key}: 첫 화면(1440×900) 밖")
     for key in ("text_first", "file_first", "file_loaded_first"):
