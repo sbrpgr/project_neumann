@@ -220,7 +220,32 @@ def _model_of(result: Mapping[str, Any], entry: Mapping[str, Any] | None) -> str
     gens = sorted({str(c.get("generator", "")) for c in result.get("risk_cards", []) if c.get("generator")})
     if gens == ["mock"]:
         return "mock provider"
-    return "미기록" + (f"(생성 방식 {'/'.join(gens)})" if gens else "")
+    if not gens:
+        return "모델 미기록"
+    # 사람이 보는 곳에는 계약 이름 astra를 쓰지 않는다(DISP-1): "LLM (모델 미기록)" · "비상 규칙"
+    return " · ".join(display_generator(g, MODEL_UNRECORDED if g.lower() == "astra" else None) for g in gens)
+
+
+# ── 생성 방식 표시(DISP-1, PM 결정) ─────────────────────────────────────────
+# DISP-1(neumann.api.view.display_generator)이 main에 있으면 그것을 쓰고, 없으면 아래 작은 매핑으로 대신한다.
+# 병합 뒤에는 _GEN_FALLBACK과 이 함수 본문의 대체 분기를 지우면 된다(표시 규칙은 이 한 곳에만 있다).
+MODEL_UNRECORDED = "모델 미기록"
+_GEN_FALLBACK = {"astra": "LLM", "rule": "비상 규칙", "mock": "모의(mock)"}
+
+
+def display_generator(generator: Any, model: Any = None) -> str:
+    """생성 방식(계약 값) → 화면 이름. astra → "LLM (모델명)". 저장 JSON의 generator 값은 바꾸지 않는다."""
+    try:
+        from neumann.api.view import display_generator as disp  # type: ignore[attr-defined]  # DISP-1 병합 뒤
+    except ImportError:
+        disp = None
+    if disp is not None:
+        return str(disp(generator, model))
+    g = str(generator or "").strip()
+    if g.lower() == "astra":
+        m = str(model or "").strip()
+        return f"LLM ({m})" if m else "LLM"
+    return _GEN_FALLBACK.get(g.lower(), g or "생성 방식 미표기")
 
 
 def _attach_plan(result: dict[str, Any], demo: Demo) -> None:

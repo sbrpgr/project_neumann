@@ -497,3 +497,28 @@ def test_rehearsal_import_badge_says_not_live_server(tmp_path: Path, webui: Path
     assert any(n.startswith("로컬 리허설(라이브 서버 아님)에서 mock-deterministic-v1로") for n in st["notices"])
     assert not any("라이브 서버(" in n for n in st["notices"])
     assert bss.check_site(site)[0] == []
+
+
+def test_unrecorded_model_is_shown_as_llm_not_astra(tmp_path: Path, webui: Path) -> None:
+    """DISP-1(PM 결정): 사람이 보는 곳에 계약 이름 astra를 쓰지 않는다. 모델이 없으면 "LLM (모델 미기록)"."""
+    assert bss.display_generator("astra") == "LLM"
+    assert bss.display_generator("astra", "gpt-6.1-sol") == "LLM (gpt-6.1-sol)"
+    assert bss.display_generator("rule") == "비상 규칙"
+    result = {"manifest": {}, "risk_cards": [{"generator": "astra"}, {"generator": "rule"}]}
+    assert bss._model_of(result, None) == "LLM (모델 미기록) · 비상 규칙"
+    assert bss._model_of({"risk_cards": []}, None) == "모델 미기록"
+
+    pre = tmp_path / "pre"
+    path = write_precomputed(pre)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["manifest"] = {}
+    for c in data["risk_cards"]:
+        c.update(generator="astra", model=None)
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    entry = {"plan_id": data["plan_id"], "file": path.name, "sha256": bss._sha256_bytes(path.read_bytes())}
+    (pre / "manifest.json").write_text(json.dumps({"entries": [entry]}), encoding="utf-8")
+    site, summary = build(tmp_path, webui, pre=pre)
+    plan = summary["demos"][0]
+    assert plan["model"] == "LLM (모델 미기록)" and "astra" not in plan["badge"]
+    st = json.loads((site / "demo" / "plan.json").read_text(encoding="utf-8"))["_status"]
+    assert "LLM (모델 미기록)" in st["label"] and "astra" not in st["label"] and "astra" not in st["static"]["model"]
