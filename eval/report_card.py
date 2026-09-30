@@ -85,6 +85,7 @@ METRIC_LABELS: dict[str, tuple[str, str]] = {
     "corpus_linked_papers": ("표본 연결 논문 수", "count"),
     "source_link_rate": ("원문 링크 유효율", "ratio"),
     "demo_e2e": ("대표 계획 end-to-end 시연", "count"),
+    "e2e_cards": ("라이브 E2E 화면 위험카드 수 (데모 계획서 합)", "count"),
 }
 
 
@@ -131,6 +132,12 @@ EXPECTED_DETAIL: tuple[tuple[str, str], ...] = (
     ("bt_evidence_rate", "llm_baseline"),
     ("judge_human_agreement", "all"),
     ("judge_human_kappa", "all"),
+)
+
+# 백테스트 표본 한계(PM 결정 2026-09-30, E5-L3b 전달): 대표 결정으로 n=5, 사유는 비용.
+BACKTEST_LIMIT = (
+    "백테스트는 n=5(대표 결정, 비용 사유; real 대 기준선, 셔플 없음, sol)다. 표본이 작아 95% 구간이 매우 넓다. "
+    "유의성을 주장하지 않고 점추정·구간·차이의 방향만 말한다. 셔플이 없어 특이성(진짜 − 셔플)은 재지 않는다."
 )
 
 FOOTNOTE_R7 = (
@@ -664,7 +671,7 @@ def render(col: Collected, *, now: str, commit: str, command: str) -> str:
         "측정 전 지표는 비워 두지 않고 '측정 전'으로 적었다. 이 카드의 빈칸을 추정값으로 읽지 않는다.",
         "사람 간 상한 0.725는 DISAPERE 외부 실측이다. 우리 시스템 성능이 아니라 과제 난이도의 천장이다.",
         "빈도 기준선은 입력을 읽지 않는다. 기준선 없는 단독 숫자는 보고하지 않는다(04_평가_명세 §6).",
-        "백테스트 n=30이면 95% 구간 폭이 약 0.2다. 유의성을 주장하지 않고 점추정·구간·차이의 방향만 말한다.",
+        BACKTEST_LIMIT,
         "백테스트 판정 조건(블라인드 여부·판정자 수와 구성·사람 재검토 여부)은 각 지표의 '조건' 칸을 본다. "
         "입력에 없으면 측정 전이다.",
     ]
