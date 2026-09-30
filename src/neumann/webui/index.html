@@ -957,9 +957,9 @@
      파일명·경고·서버 문구는 esc()로만 HTML에 넣는다. */
   var UP = { busy: '', api: window.NEUMANN_STATIC ? 'none' : '', warn: null };
   var UP_MAX = 10 * 1024 * 1024;
-  var UP_ACCEPT = '.txt,.md,.markdown,.pdf,.docx,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-  var UP_HINT = 'TXT · MD · PDF · DOCX · 최대 10 MB · 정리 뒤 50,000자 · HWP는 PDF·DOCX로 저장';
-  var UP_LIVE_ONLY = 'PDF·DOCX는 라이브 서버에서만 읽습니다 — 본문을 직접 입력에 붙여넣기';
+  var UP_ACCEPT = '.txt,.md,.markdown,.pdf,.docx,.hwpx,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/hwp+zip';
+  var UP_HINT = 'TXT · MD · PDF · DOCX · HWPX · 최대 10 MB · 정리 뒤 50,000자 · HWP는 HWPX·PDF로 저장';
+  var UP_LIVE_ONLY = 'PDF·DOCX·HWPX는 라이브 서버에서만 읽습니다 — 본문을 직접 입력에 붙여넣기';
   var UP_OFFLINE = '서버에 연결하지 못함';
   function upSize(n) { n = +n || 0; return n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : (n >= 1024 ? (n / 1024).toFixed(1) + ' KB' : n + ' B'); }
   function upExt(name) { return (String(name).toLowerCase().match(/\.([a-z0-9]+)$/) || ['', ''])[1]; }
@@ -988,7 +988,7 @@
   /* 정적 판·서버 연결 실패: md·txt만 브라우저에서 UTF-8로 읽는다. why = 왜 서버를 못 썼는지(화면에 그대로 남긴다) */
   function readLocal(file, name, why) {
     var ext = upExt(name);
-    if (ext === 'pdf' || ext === 'docx') { S.inErr = why + ' — ' + UP_LIVE_ONLY; render(); return; }
+    if (ext === 'pdf' || ext === 'docx' || ext === 'hwpx') { S.inErr = why + ' — ' + UP_LIVE_ONLY; render(); return; }
     if (!/^(md|txt|markdown)$/.test(ext)) { S.inErr = why + ' — ' + (ext ? ext.toUpperCase() : '이 형식') + ' 형식은 읽지 못함 · 브라우저에서는 TXT·MD만 읽습니다'; render(); return; }
     var rd = new FileReader();
     rd.onload = function () { upDone(String(rd.result || ''), name, ext.toUpperCase() + ' · ' + upSize(file.size) + ' · 브라우저 읽기', [why + ' · 브라우저에서 UTF-8로 읽음(서버 정리·인코딩 추정 없음)']); };
