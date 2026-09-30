@@ -196,7 +196,8 @@ def run_tests(problems: list[str]) -> str:
 
 def warn_hooks() -> None:
     hooks = git("config", "--get", "core.hooksPath", check=False).stdout.decode().strip()
-    if hooks != ".githooks":
+    # worktree에서 절대경로(…/.githooks)로 잡혀 있어도 켜진 것으로 본다
+    if Path(hooks.replace("\\", "/")).name != ".githooks":
         print("주의: git 훅이 꺼져 있다. 켜려면  git config core.hooksPath .githooks")
 
 
