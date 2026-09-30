@@ -163,15 +163,30 @@ def _bind_sources(checks: list, lines: list[str]) -> list:
 def _run_checks(text: str, checks: list, event: Any) -> list:
     if not checks:
         return []
-    try:
-        from neumann.analyze.final_tools import run_tool_checks
-        return run_tool_checks(text, checks, event)
-    except Exception:
-        # No exception contents (which may include payload or credentials) leave this boundary.
-        return [{"check_id": c.get("check_id", "unknown"), "kind": c.get("kind", "unknown"),
-                 "tool": c.get("tool", "unknown"), "status": "unchecked",
-                 "plan_lines": c.get("plan_lines", []), "message": "도구 실행 불가", "details": {}}
-                for c in checks]
+    from neumann.finalize.tools import run_check
+
+    rows = []
+    for check in checks:
+        row = {"check_id": check.get("check_id", "unknown"), "kind": check.get("kind", "unknown"),
+               "tool": "unknown", "status": "unchecked", "plan_lines": check.get("plan_lines", []),
+               "message": "도구 실행 불가", "details": {}}
+        try:
+            # Initial checks and targeted rechecks share registry evidence and
+            # ToolSpec.timeout_s. Never call the unbounded adapter directly.
+            result = run_check(text, check, cancel_event=event)
+            out = result.output
+            row.update(tool=out.get("tool") or result.evidence.get("tool") or "unknown",
+                       status={"pass": "passed", "fail": "failed"}.get(result.verdict, "unchecked"),
+                       message=("도구 실행 불가" if result.error == "tool_unavailable"
+                                else out.get("reason") or result.error or "unchecked"),
+                       details=out.get("details", {}),
+                       plan_lines=out.get("plan_lines", row["plan_lines"]),
+                       evidence=result.evidence, error=result.error)
+        except Exception:
+            # No exception contents (payload or credentials) leave this boundary.
+            pass
+        rows.append(row)
+    return rows
 
 
 def _numbers(text: str) -> set[str]:
@@ -199,35 +214,23 @@ def _text_problem(text: str, source: str, tool_numbers: frozenset[str] | set[str
 
 
 def _computed_numbers(check: dict, row: dict) -> set[str]:
-    """Numbers a completed tool check (passed/failed) established: the grounded term/limit values it verified and
-    the numeric leaves of the tool ``details`` (e.g. ``computed``). The engine never does arithmetic itself
-    (audit E-1); unchecked rows contribute nothing."""
+    """Only a completed tool's explicitly computed scalar grants numeric evidence.
+
+    Input params and result metadata (nodes, edges, timings, anchors) do not
+    declare calculations. Source numbers are grounded separately by _edit_scope.
+    This matches the computed field consumed by _placeholder_template (E-1).
+    """
     if row.get("status") not in ("pass", "passed", "ok", "fail", "failed"):
         return set()
-    values: list[str] = []
-    params = check.get("params", {}) if isinstance(check, dict) else {}
-    params = params if isinstance(params, dict) else {}
-
-    def number(v: Any) -> bool:
-        return isinstance(v, (int, float)) and not isinstance(v, bool)
-
-    terms = [t.get("value") for t in params.get("terms", []) if isinstance(t, dict) and number(t.get("value"))]
-    others = [params[k].get("value") for k in ("limit", "left", "right") if isinstance(params.get(k), dict) and number(params[k].get("value"))]
-    values += [str(v) for v in terms + others]
-
-    def leaves(obj: Any) -> None:
-        if isinstance(obj, bool):
-            return
-        if isinstance(obj, (int, float)):
-            values.append(str(int(obj)) if float(obj).is_integer() else str(obj))
-        elif isinstance(obj, dict):
-            for v in obj.values():
-                leaves(v)
-        elif isinstance(obj, list):
-            for v in obj:
-                leaves(v)
-    leaves(row.get("details", {}))
-    return set(extract_numbers(" ".join(values)))
+    details = row.get("details")
+    value = details.get("computed") if isinstance(details, dict) else None
+    if type(value) is int:
+        token = str(value)
+    elif type(value) is float and math.isfinite(value):
+        token = str(int(value)) if value.is_integer() else str(value)
+    else:
+        return set()
+    return set(extract_numbers(token))
 
 
 def _edit_scope(issue_ids: list, issue_by_id: dict, check_by_id: dict, rows: dict, lines: list[str]) -> tuple[set[int], str, set[str]]:
