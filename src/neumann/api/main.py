@@ -1,0 +1,242 @@
+"""Neumann API (FastAPI).
+
+    python -m uvicorn neumann.api.main:app --host 127.0.0.1 --port 8000
+
+라우트(L0)
+- ``GET /``                  화면(webui/index.html)
+- ``GET /fonts/...``         로컬 폰트(CDN 없음)
+- ``GET /health``            서버 상태 + 단계별 모듈 import 가능 여부(정직하게)
+- ``POST /premortem``        {"plan_text": str, "filename"?: str} → 분석 결과 JSON(PremortemResult 모양)
+- ``POST /premortem/view``   같은 입력 → 화면 데이터 계약(ui_view) JSON + ``_status``
+
+분석은 E3의 ``neumann.pipeline.run_premortem``을 요청 때마다 지연 import 한다. 모듈이 아직 없으면
+목업 DATA에서 옮긴 샘플을 돌려주되, 응답(``sample``·``status``·``notices``·``_status.label``)과 화면에
+"분석 파이프라인 미연결(샘플 데이터)"을 표시한다. 모듈은 있는데 import나 실행이 실패하면 샘플로 숨기지 않고
+500과 오류 상태를 돌려준다.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import importlib
+import inspect
+import json
+import logging
+import time
+import traceback
+import uuid
+from collections.abc import Callable
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from fastapi import FastAPI
+from fastapi.concurrency import run_in_threadpool
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field, field_validator
+
+import neumann
+from neumann.api.view import SAMPLE_LABEL, build_ui_view
+
+log = logging.getLogger("neumann.api")
+
+WEBUI_DIR = Path(__file__).resolve().parent.parent / "webui"
+SAMPLE_PATH = Path(__file__).resolve().with_name("sample_result.json")
+PIPELINE_MODULE = "neumann.pipeline"
+PIPELINE_FUNC = "run_premortem"
+MAX_PLAN_CHARS = 200_000
+MAX_CONCURRENT = 2
+
+# /health가 보고하는 단계별 구현 모듈(계획서 §4.0 골격). import가 되면 available.
+STAGE_MODULES: dict[str, list[str]] = {
+    "pipeline": [PIPELINE_MODULE],
+    "INPUT": ["neumann.analyze.plan"],
+    "EVIDENCE": ["neumann.index.hybrid", "neumann.analyze.retrieve"],
+    "RISK": ["neumann.analyze.cards"],
+    "REVIEW": ["neumann.analyze.review"],
+    "ACTION": ["neumann.analyze.checklist"],
+    "TRACE": [PIPELINE_MODULE],
+    "llm": ["neumann.llm"],
+    "models": ["neumann.models"],
+    "config": ["neumann.config"],
+}
+
+app = FastAPI(title="Neumann", version=neumann.__version__, description="Research pre-mortem API")
+app.mount("/fonts", StaticFiles(directory=WEBUI_DIR / "fonts"), name="fonts")
+
+_sem: asyncio.Semaphore | None = None
+
+
+def _semaphore() -> asyncio.Semaphore:
+    global _sem
+    if _sem is None:
+        _sem = asyncio.Semaphore(MAX_CONCURRENT)
+    return _sem
+
+
+class PremortemRequest(BaseModel):
+    plan_text: str = Field(..., max_length=MAX_PLAN_CHARS, description="계획서 원문(붙여넣기)")
+    filename: str | None = Field(default=None, max_length=255)
+
+    @field_validator("plan_text")
+    @classmethod
+    def _not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("plan_text가 비어 있다")
+        return v
+
+
+# ───────────────────────── 파이프라인 연결 ─────────────────────────
+
+
+def _import_state(module: str) -> tuple[str, str]:
+    """(상태, 사유). 상태: ok | missing | error. 사유에는 예외 종류와 모듈 이름만 넣는다."""
+    try:
+        importlib.import_module(module)
+    except ModuleNotFoundError as exc:
+        if exc.name and (exc.name == module or module.startswith(exc.name + ".")):
+            return "missing", "모듈 없음"
+        return "error", f"import 실패: {type(exc).__name__}({exc.name})"
+    except Exception as exc:  # noqa: BLE001 - 어떤 import 실패든 상태로 보고한다
+        return "error", f"import 실패: {type(exc).__name__}"
+    return "ok", ""
+
+
+def _load_pipeline() -> tuple[Callable[..., Any] | None, str, str]:
+    """(run_premortem, 상태, 사유). 상태: connected | unavailable | error."""
+    state, reason = _import_state(PIPELINE_MODULE)
+    if state == "missing":
+        return None, "unavailable", f"{PIPELINE_MODULE} 모듈 없음"
+    if state == "error":
+        return None, "error", f"{PIPELINE_MODULE} {reason}"
+    fn = getattr(importlib.import_module(PIPELINE_MODULE), PIPELINE_FUNC, None)
+    if not callable(fn):
+        return None, "unavailable", f"{PIPELINE_MODULE}.{PIPELINE_FUNC} 없음"
+    return fn, "connected", ""
+
+
+def _to_jsonable(result: Any) -> dict[str, Any]:
+    dump = getattr(result, "model_dump", None)
+    if callable(dump):
+        result = dump(mode="json")
+    out = jsonable_encoder(result)
+    if not isinstance(out, dict):
+        raise TypeError(f"{PIPELINE_FUNC} 반환형이 dict가 아니다: {type(result).__name__}")
+    return out
+
+
+async def _run_pipeline(fn: Callable[..., Any], req: PremortemRequest) -> dict[str, Any]:
+    kwargs: dict[str, Any] = {}
+    try:
+        if "filename" in inspect.signature(fn).parameters:
+            kwargs["filename"] = req.filename
+    except (TypeError, ValueError):
+        pass
+    async with _semaphore():
+        if inspect.iscoroutinefunction(fn):
+            result = await fn(req.plan_text, **kwargs)
+        else:
+            result = await run_in_threadpool(fn, req.plan_text, **kwargs)
+    return _to_jsonable(result)
+
+
+def _failure_reason(exc: BaseException) -> str:
+    """사람이 읽는 실패 사유. 예외 메시지는 쓰지 않는다(요청 헤더·키가 섞일 수 있다)."""
+    tb = traceback.extract_tb(exc.__traceback__)
+    where = f" @ {Path(tb[-1].filename).name}:{tb[-1].lineno}" if tb else ""
+    return f"파이프라인 실행 실패: {type(exc).__name__}{where}"
+
+
+def _sample_result(reason: str) -> dict[str, Any]:
+    data = json.loads(SAMPLE_PATH.read_text(encoding="utf-8"))
+    data.update({
+        "status": "degraded",
+        "sample": True,
+        "session_id": "sess_" + uuid.uuid4().hex[:12],
+        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "stages": [{
+            "name": PIPELINE_FUNC, "phase": "PIPELINE", "status": "unavailable",
+            "reason": f"{reason} — 샘플 데이터", "impl": "fallback:sample", "degraded": True,
+            "elapsed_s": 0.0, "counts": {}, "details": {},
+        }],
+        "notices": [f"{SAMPLE_LABEL}: 입력한 계획서는 분석되지 않았다. 아래 값은 기획 키트 목업 DATA에서 옮긴 샘플이다."],
+    })
+    return data
+
+
+def _input_info(req: PremortemRequest) -> dict[str, Any]:
+    return {
+        "chars": len(req.plan_text),
+        "lines": sum(1 for line in req.plan_text.splitlines() if line.strip()),
+        "filename": req.filename or "",
+    }
+
+
+# ───────────────────────── 라우트 ─────────────────────────
+
+
+@app.get("/", include_in_schema=False)
+def index() -> FileResponse:
+    return FileResponse(WEBUI_DIR / "index.html", media_type="text/html", headers={"Cache-Control": "no-store"})
+
+
+@app.get("/health")
+def health() -> dict[str, Any]:
+    stages: dict[str, Any] = {}
+    cache: dict[str, tuple[str, str]] = {}
+    for stage, modules in STAGE_MODULES.items():
+        mods = {}
+        for m in modules:
+            cache.setdefault(m, _import_state(m))
+            state, reason = cache[m]
+            mods[m] = state if not reason else f"{state}: {reason}"
+        stages[stage] = {"available": all(cache[m][0] == "ok" for m in modules), "modules": mods}
+    _fn, state, reason = _load_pipeline()
+    return {
+        "status": "ok",
+        "version": neumann.__version__,
+        "pipeline": {"state": state, "reason": reason, "mode": "pipeline" if state == "connected" else (
+            "sample" if state == "unavailable" else "error"), "label": SAMPLE_LABEL if state == "unavailable" else ""},
+        "stages": stages,
+    }
+
+
+@app.post("/premortem")
+async def premortem(req: PremortemRequest) -> JSONResponse:
+    fn, state, reason = _load_pipeline()
+    if fn is None and state == "unavailable":
+        return JSONResponse(_sample_result(reason))
+    if fn is None:
+        return JSONResponse({"status": "error", "pipeline": state, "reason": reason}, status_code=500)
+    try:
+        result = await _run_pipeline(fn, req)
+    except Exception as exc:  # noqa: BLE001
+        why = _failure_reason(exc)
+        log.error(why)
+        return JSONResponse({"status": "error", "pipeline": state, "reason": why}, status_code=500)
+    return JSONResponse(result)
+
+
+@app.post("/premortem/view")
+async def premortem_view(req: PremortemRequest) -> JSONResponse:
+    t0 = time.perf_counter()
+    info = _input_info(req)
+    fn, state, reason = _load_pipeline()
+    code = 200
+    if fn is None and state == "unavailable":
+        view = build_ui_view(_sample_result(reason), sample=True, pipeline_state=state, input_info=info)
+    elif fn is None:
+        view, code = build_ui_view(None, pipeline_state=state, error=reason, input_info=info), 500
+    else:
+        try:
+            result = await _run_pipeline(fn, req)
+        except Exception as exc:  # noqa: BLE001
+            why = _failure_reason(exc)
+            log.error(why)
+            view, code = build_ui_view(None, pipeline_state=state, error=why, input_info=info), 500
+        else:
+            view = build_ui_view(result, filename=req.filename, pipeline_state=state, input_info=info)
+    view["_status"]["server_elapsed_s"] = round(time.perf_counter() - t0, 3)
+    return JSONResponse(view, status_code=code)
