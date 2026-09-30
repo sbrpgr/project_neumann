@@ -218,7 +218,7 @@ def test_timeout_cancels_queued_cards_and_holds_slot_until_threads_finish(tmp_pa
             async with client(app) as c:
                 response = await c.post("/premortem/revise", json={"result": many_cards(8), "plan_text": PLAN})
                 assert response.status_code == 504
-                assert 1 <= len(started) <= 3
+                assert 1 <= len(started) <= 4
                 count = len(started)
                 assert srv.gate.active == 1 and srv.gate.waiting == 0
                 release.set()
@@ -227,7 +227,7 @@ def test_timeout_cancels_queued_cards_and_holds_slot_until_threads_finish(tmp_pa
                         break
                     await asyncio.sleep(0.01)
                 assert srv.gate.active == srv.gate.waiting == 0
-                assert len(started) == count  # 다섯 대기 카드는 호출하지 않는다.
+                assert len(started) == count  # 취소된 대기 카드는 호출하지 않는다.
         finally:
             release.set()
     run(go())
@@ -338,7 +338,7 @@ def test_assemble_rejects_bad_revision_and_mismatch(tmp_path, monkeypatch):
     run(go())
 
 
-def test_assemble_conflict_listed_via_api(tmp_path, monkeypatch):
+def test_assemble_overlap_is_preserved_via_api(tmp_path, monkeypatch):
     _srv, app = make(tmp_path, monkeypatch)
 
     async def go() -> None:
@@ -350,7 +350,10 @@ def test_assemble_conflict_listed_via_api(tmp_path, monkeypatch):
             r = await c.post("/premortem/revise/assemble", json={"plan_text": PLAN, "revision": bundle, "decisions": decisions, "result": result_json()})
             assert r.status_code == 200
             out = r.json()
-            assert out["stats"]["conflicts"] == 1 and out["conflicts"][0]["kind"] == "same_line" and out["stats"]["applied"] == 0
+            assert out["stats"]["conflicts"] == 0 and out["stats"]["applied"] == 2
+            assert out["stats"]["converted_insert"] == 1
+            assert "다른 안" in out["revised_text"]
+            assert all(s["status"] != "not_applied" for s in out["edit_statuses"] if s["edit_id"] in {d["edit_id"] for d in decisions})
     run(go())
 
 

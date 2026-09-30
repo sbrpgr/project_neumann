@@ -752,7 +752,7 @@ def check(r: dict) -> list[str]:
     losers = [x for x in pk["server"] if x.get("note", "").startswith("충돌 선택에서 제외")]
     if "충돌 0" not in pk["cnt"] or pk["chosen"] != "선택됨" or len(pk["log"]) != 1 or len(losers) != 1 or losers[0]["decision"] != "기각":
         bad.append(f"충돌 선택·서버 결정 이상: {pk}")
-    if sorted(pk["payload_keys"]) != ["revised_plan", "revision", "revision_decisions", "revision_sig"]:
+    if sorted(pk["payload_keys"]) != ["revised_plan", "revision", "revision_decisions", "revision_sig", "title"]:
         bad.append(f"내보내기 payload 모양 이상: {pk['payload_keys']}")
     x = r["docx"]
     if not (x["valid_xml"] and x["filled"] and x["overlay_absent"]):

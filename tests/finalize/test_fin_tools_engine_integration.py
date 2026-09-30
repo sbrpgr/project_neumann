@@ -26,7 +26,12 @@ def _constraint(limit: int):
 
 @pytest.fixture()
 def shared_registry():
-    """엔진 공용 레지스트리에 실제로 붙이고, 끝나면 엔진 기본(어댑터)으로 되돌린다."""
+    """엔진 공용 레지스트리에 실제로 붙이고, 끝나면 엔진 기본(어댑터)으로 되돌린다.
+
+    확정 경로가 코드 선택 검사로 FIN-TOOLS를 먼저 붙였을 수 있으니 시작 전에도 기본으로 되돌린다."""
+    for name in engine.TOOL_NAMES:
+        engine.registry.unregister(name)
+    engine.ensure_adapters()
     yield engine.registry
     for name in engine.TOOL_NAMES:
         engine.registry.unregister(name)

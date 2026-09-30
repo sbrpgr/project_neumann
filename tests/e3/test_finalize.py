@@ -91,17 +91,19 @@ def test_cancellation_before_and_after_assessment_stops():
 
 def test_targeted_recheck_once_with_stub_adapter(monkeypatch):
     calls = []
-    def run(text, checks, event):
+    def run(text, checks, event=None):
         calls.append((text, checks))
         return [{"check_id": c["check_id"], "kind": c["kind"], "tool": "stub",
-                 "status": "fail" if len(calls) == 1 else "pass", "plan_lines": c["plan_lines"],
+                 "status": "pass" if "명확히" in text else "fail", "plan_lines": c["plan_lines"],
                  "message": "검사", "details": {}} for c in checks]
     monkeypatch.setitem(sys.modules, "neumann.analyze.final_tools", types.SimpleNamespace(run_tool_checks=run))
     checks = [{"check_id": "c1", "kind": "constraint", "plan_lines": [1], "params": {"sources": [{"line": 1}]}},
               {"check_id": "c2", "kind": "constraint", "plan_lines": [2], "params": {"sources": [{"line": 2}]}}]
     issues = [{"issue_id": "i1", "kind": "logical", "plan_lines": [1], "message": "검사", "check_ids": ["c1"]}]
     out = finalize_plan("방법을 검토한다.\n다른 줄", provider=provider([edit("방법을 명확히 검토한다.")], issues), checks=checks)
-    assert len(calls) == 2 and len(calls[1][1]) == 1
+    # Each initial check and the single targeted recheck crosses the registry.
+    assert [c[1][0]["check_id"] for c in calls] == ["c1", "c2", "c1"]
+    assert all(len(c[1]) == 1 for c in calls)
     assert out["counters"]["recheck_runs"] == 1
     assert out["issues"][0]["status"] == "resolved"
     assert out["issues"][1]["status"] == "unresolved"

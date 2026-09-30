@@ -2181,6 +2181,7 @@
   function invalidateFinalization() { var st = state(); st.finalization = null; st.finalSubmission = null; st.finalStamp = (st.finalStamp || 0) + 1; if (st.finalCtrl) st.finalCtrl.abort(); st.finalBusy = false; st.finalMsg = ''; }
   function invalidateAsm() { var st = state(); invalidateFinalization(); st.asm = null; st.asmStamp++; if (viewerOpen()) refreshServerAsm(); }
   function requestFinalization() {
+    flushEditTimer();
     var st = state(); if (st.finalBusy) return;
     if (MOCK || !mergedRevision()) { st.finalMsg = '수정 확정은 실제 서버 수정 권고가 있어야 실행할 수 있습니다.'; paintViewer(); return; }
     var body = assembleBody('json'); body.polish = false;
@@ -2225,7 +2226,7 @@
   }
   function saveBlob(blob, name) { var u = URL.createObjectURL(blob), a = document.createElement('a'); a.href = u; a.download = name; a.style.display = 'none'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(u); }, 5000); }
   function revisedName(asm, ext) { var title = String((asm.raw || {}).title || '수정된 연구계획서').replace(/[^\p{L}\p{N} _-]/gu, '').trim().replace(/\s+/g, '_').slice(0, 60) || 'plan'; var id = String(asm.rid || 'plan').replace(/[^0-9A-Za-z_-]/g, '').slice(0, 12) || 'plan'; return 'neumann_revised_plan_' + title + '_' + id + '.' + ext; }
-  function downloadMd() { var final = state().finalization; if (final) { var result = final.finalization || {}; var text = '> 수정 확정·검증 · ' + T(result.status) + ' · ' + originText(final) + '\n\n' + T(final.final_text) + '\n\n## 변경 목록\n\n' + JSON.stringify(result.corrections || [], null, 2) + '\n\n## 잔여 쟁점\n\n' + JSON.stringify(result.issues || [], null, 2); saveBlob(new Blob([text], { type: 'text/markdown;charset=utf-8' }), 'neumann_final_plan.md'); U.toast('최종 수정 초안 내려받음'); return; } var asm = currentAsm(); if (!asm.counts.adopted) U.toast('채택한 수정안이 없어 수정본이 원본과 같음'); var name = asm.source === 'server' && asm.rid ? revisedName(asm, 'md') : mdName('md'); saveBlob(new Blob([mdText(asm)], { type: 'text/markdown;charset=utf-8' }), name); U.toast('수정본 내려받음 · ' + name + (asm.source === 'server' ? ' · 서버 각주 판+이력' : ' · 화면 조립')); }
+  function downloadMd() { var final = state().finalization; if (final) { var result = final.finalization || {}; var text = '> 수정 확정·검증 · ' + T(result.status) + ' · ' + originText(final) + '\n> 최종 점검 완료: ' + (result.status === 'completed' ? '예' : '아니오 · 확인할 항목이 남아 있습니다.') + '\n> 최종 점검 생성: ' + genText(result.generator, result.model) + ' · 모델: ' + (T(result.model) || '미표기') + (final.origin === 'server_signed' ? '' : ' · 요청자 표기이며 서버 확인 안 됨') + '\n\n' + L(result.notices).map(function (n) { return '> ' + T(n); }).join('\n') + '\n\n' + T(final.final_text) + '\n\n## 변경 목록\n\n' + JSON.stringify(result.corrections || [], null, 2) + '\n\n## 잔여 쟁점\n\n' + JSON.stringify(result.issues || [], null, 2); saveBlob(new Blob([text], { type: 'text/markdown;charset=utf-8' }), 'neumann_final_plan.md'); U.toast('최종 수정 초안 내려받음'); return; } var asm = currentAsm(); if (!asm.counts.adopted) U.toast('채택한 수정안이 없어 수정본이 원본과 같음'); var name = asm.source === 'server' && asm.rid ? revisedName(asm, 'md') : mdName('md'); saveBlob(new Blob([mdText(asm)], { type: 'text/markdown;charset=utf-8' }), name); U.toast('수정본 내려받음 · ' + name + (asm.source === 'server' ? ' · 서버 각주 판+이력' : ' · 화면 조립')); }
   function docxMsg(m, err) { var st = state(); st.docxMsg = m; var e = $('rvDocxMsg'); if (e) { e.textContent = m; e.classList.toggle('inerr', !!err); } }
   function fileNameOf(cd, fallback) { var m = /filename\*=UTF-8''([^;]+)/i.exec(cd || '') || /filename="?([^";]+)"?/i.exec(cd || ''); var n = ''; try { n = m ? decodeURIComponent(m[1]).replace(/[^\p{L}\p{N}_. -]/gu, '').replace(/\s+/g, '_').slice(0, 120) : ''; } catch (_) {} return n && n.indexOf('..') < 0 ? n : fallback; }
   /* .docx는 서버가 만든다(assemble format=docx: 본문 + 미주 + 수정 이력 표 + 근거 부록) */
@@ -2468,6 +2469,7 @@
     add(sheet, bar, body); add(m, sheet); return m;
   }
   function openViewer(opener) {
+    flushEditTimer();
     var st = state(), m = $('rvViewer'); if (!m) return; st.opener = opener || document.activeElement; st.pin = null;
     m.classList.add('on'); document.body.classList.add('rvmopen');
     paintViewer(); if (!st.asm) refreshServerAsm();
@@ -2542,7 +2544,7 @@
   function editChip(chip) {
     var key = chip.dataset.rvph, label = chip.dataset.label, st = state(), cur = st.fill[key] ? st.fill[key].v : '';
     var inp = el('input', 'rvphin'); inp.type = 'text'; inp.value = cur; inp.placeholder = label; inp.setAttribute('aria-label', '확인 필요: ' + label); inp.style.cssText = 'font:inherit; font-size: 14px; padding:2px 8px; border:1px solid var(--amber); border-radius:2px; background:var(--surface); min-width:160px; max-width:100%;';
-    var done = function (commit) { if (inp._done || !document.contains(inp)) return; inp._done = true; var v = inp.value.trim(), was = st.fill[key] ? st.fill[key].v : ''; if (commit) { if (v) st.fill[key] = { v: v, at: new Date().toISOString() }; else delete st.fill[key]; persist(); } if (st.asm && st.asm.source === 'server' && st.asm.paras) st.asm.paras.forEach(function (p) { if (p.segs) p.segs = segments(p, st); }); paintViewer(); if (commit && v !== was) invalidateAsm(); var again = document.querySelector('[data-rvph="' + key.replace(/"/g, '') + '"]'); if (again) again.focus(); };
+    var done = function (commit) { if (inp._done || !document.contains(inp)) return; inp._done = true; var v = inp.value.trim(), was = st.fill[key] ? st.fill[key].v : ''; if (commit && v !== was) { if (v) st.fill[key] = { v: v, at: new Date().toISOString() }; else delete st.fill[key]; persist(); } if (st.asm && st.asm.source === 'server' && st.asm.paras) st.asm.paras.forEach(function (p) { if (p.segs) p.segs = segments(p, st); }); paintViewer(); if (commit && v !== was) invalidateAsm(); var again = document.querySelector('[data-rvph="' + key.replace(/"/g, '') + '"]'); if (again) again.focus(); };
     inp.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); done(true); } else if (ev.key === 'Escape') { ev.stopPropagation(); done(false); } });
     inp.addEventListener('blur', function () { done(true); });
     chip.replaceWith(inp); inp.focus(); inp.select();
@@ -2607,6 +2609,7 @@
     if (act === 'cancel') { st.editing = null; paintViewer(); focusPara(p); return; }
     if (act === 'revert') { st.editing = null; if (p.src && p.src.rank && p.src.edit) { var it = item(p.src.rank), eid = p.src.edit.id; pushUndo({ k: 'dec', rank: p.src.rank, eid: eid, prev: it.dec[eid] ? JSON.parse(JSON.stringify(it.dec[eid])) : null }); it.dec[eid] = { d: 'adopt', text: p.src.edit.after, at: new Date().toISOString() }; syncCardDec(p.src.rank, eid); } else { pushUndo({ k: 'pedit', key: String(p.n), prev: st.pedit[String(p.n)] || null }); delete st.pedit[String(p.n)]; } afterEdit(p); return; }
     if (!text) { U.toast('빈 문단은 저장하지 않음 — 삭제는 카드의 결정으로'); return; }
+    if (text === paraText(p).replace(/\r\n?/g, '\n').replace(/\n+/g, ' ').trim()) { st.editing = null; paintViewer(); focusPara(p); return; }
     st.editing = null;
     if (p.src && p.src.rank && p.src.edit) {
       var it2 = item(p.src.rank), eid2 = p.src.edit.id; if (!it2.rev) { U.toast('이 문단의 수정안 정보가 없음'); paintViewer(); return; }
@@ -2695,7 +2698,20 @@
     if (t && t.id === 'rvPolish') { var s = state(); s.polish = t.checked; s.asm = null; invalidateAsm(); }
   });
   var editTimer = null;
-  document.addEventListener('input', function (ev) { var t = ev.target; if (!t || !t.dataset || t.dataset.rvedit == null) return; var it = item(+t.dataset.rank), dc = it.dec[t.dataset.rvedit]; if (!dc) return; invalidateFinalization(); dc.text = t.value; dc.at = new Date().toISOString(); state().asm = null; clearTimeout(editTimer); editTimer = setTimeout(function () { persist(); paintSummary(); if (viewerOpen()) { paintViewer(); invalidateAsm(); } }, 250); });
+  /* Input changes are committed synchronously. Debounce only saves/repaints them;
+     opening/confirming consumes pending work before a newer result can arrive. */
+  function flushEditTimer() { if (editTimer === null) return; clearTimeout(editTimer); editTimer = null; persist(); paintSummary(); }
+  document.addEventListener('input', function (ev) {
+    var t = ev.target; if (!t || !t.dataset || t.dataset.rvedit == null) return;
+    var st = state(), it = item(+t.dataset.rank), dc = it.dec[t.dataset.rvedit];
+    if (!dc || dc.text === t.value) return;
+    invalidateFinalization(); dc.text = t.value; dc.at = new Date().toISOString(); st.asm = null; st.asmStamp++;
+    clearTimeout(editTimer); var stamp = st.finalStamp;
+    editTimer = setTimeout(function () {
+      editTimer = null; if (state() !== st || st.finalStamp !== stamp) return;
+      persist(); paintSummary(); if (viewerOpen()) { paintViewer(); refreshServerAsm(); }
+    }, 250);
+  });
   document.addEventListener('keydown', function (ev) {
     if (!viewerOpen()) return;
     var st = state(), inEd = ev.target && ev.target.classList && ev.target.classList.contains('rvpta');
@@ -3197,6 +3213,8 @@
   function finalMd() {
     var C = V.C, res = C.res, c = res.counts, d = D();
     var out = ['<!-- Neumann 최종 초안 · 원본 ' + (d.plan.file || '직접 입력') + ' · ' + kst() + ' · 상태 ' + res.status + ' · 자동 수정 ' + c.applied + '건 · 확인 필요 ' + c.fills + '곳 · 도구 검사 ' + c.checks + '건(불일치 ' + c.failed + ') · 생성: ' + R.genText(res.gen, res.model) + ' · ' + (res.sig ? '서버 서명 확인됨' : (MOCK ? '시험 모드 · 서명 없음' : '서명 확인 안 됨')) + ' · 제한된 검사 · 최종 판단은 연구자에게 -->', ''];
+    out.push('> 최종 점검 완료: ' + (res.status === 'completed' ? '예' : '아니오 · 확인할 항목이 남아 있습니다.'));
+    out.push('> 최종 점검 생성: ' + R.genText(res.gen, res.model) + ' · 모델: ' + (res.model || '미표기'));
     res.notices.forEach(function (n) { out.push('> ' + n); }); out.push('');
     res.paras.forEach(function (p) { if (/^\s{0,3}#{1,6}\s/.test(p.t) && out.length) out.push(''); out.push(p.t); });
     out.push('', '---', '', '## 최종 점검 요약 (Neumann · 수정 문안은 근거가 아님)', '', '| 항목 | 도구 | 줄 | 결과 |', '|---|---|---|---|');
@@ -3268,7 +3286,7 @@
   document.addEventListener('click', function (ev) {
     var t;
     if ((t = ev.target.closest('[data-finstep]')) && !t.disabled) { goStep(t.dataset.finstep); return; }
-    if (ev.target.closest('#rvFinalize') || ev.target.closest('#rvFinalize2')) { startFromRevise(); return; }
+    if (ev.target.closest('#rvFinalize') || ev.target.closest('#rvFinalize2')) { if (!FIN.legacyReport) startFromRevise(); return; }
     if ((t = ev.target.closest('#stpFinal'))) { if (!t.disabled) { if (V.C.status === 'done') { S.step = 5; U.renderSteps(); goStep('done'); } else startFromRevise(); } return; }
     if ((t = ev.target.closest('[data-fatoggle]'))) { setCard(+t.dataset.fatoggle, t.checked); var art = $('fa-' + t.dataset.fatoggle); if (art) { art.classList.toggle('off', !t.checked); var lb = t.parentNode.querySelector('span'); if (lb) lb.textContent = t.checked ? '채택' : '제외'; } paintAdoptBar(); return; }
     if ((t = ev.target.closest('[data-faev]'))) { var x = $(t.getAttribute('aria-controls')); if (x) { x.hidden = !x.hidden; t.setAttribute('aria-expanded', x.hidden ? 'false' : 'true'); } return; }

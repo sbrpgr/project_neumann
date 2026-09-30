@@ -135,6 +135,7 @@ def render_files(comp: FinalComposition) -> dict[str, bytes]:
         return {}
     final = comp.envelope["finalization"]
     draft = (f"> 최종 수정 초안 · 상태: {final['status']} · 출처: {comp.origin}\n\n"
+             + _completion(final) + "\n\n"
              + _generation(comp, final) + "\n\n"
              + html.escape(_safe(final["final_text"]), quote=False) + "\n\n"
              + "\n".join(comp.qualifiers + [_md(n) for n in final["notices"]]) + "\n")
@@ -145,9 +146,16 @@ def render_files(comp: FinalComposition) -> dict[str, bytes]:
 
 
 def _generation(comp: FinalComposition, final: Mapping[str, Any]) -> str:
+    label = _md(display_generator(final["generator"], final["model"]))
+    model = _md(final.get("model") or "미표기")
     if comp.origin != SIGNED:
-        return "생성 방식·모델: 요청자 표기이며 서버 확인 안 됨."
-    return "생성 방식: " + _md(display_generator(final["generator"], final["model"]))
+        return f"생성 방식·모델: 요청자 표기이며 서버 확인 안 됨. 표기: {label} · 모델: {model}"
+    return f"생성 방식: {label} · 모델: {model}"
+
+
+def _completion(final: Mapping[str, Any]) -> str:
+    return ("최종 점검 완료: 예" if final["status"] == "completed"
+            else "최종 점검 완료: 아니오 · 확인할 항목이 남아 있습니다.")
 
 
 def summary_of(comp: FinalComposition) -> list[str]:
@@ -155,6 +163,7 @@ def summary_of(comp: FinalComposition) -> list[str]:
         return []
     final = comp.envelope["finalization"]
     out = ["", "## 최종 점검", "", f"- 상태: {final['status']} · 출처: {comp.origin}",
+           "- " + _completion(final),
            "- " + _generation(comp, final),
            "- 제한된 검사 범위이며 모든 오류의 부재를 보장하지 않습니다.", *comp.qualifiers,
            "", "### 자동 수정 목록", ""]

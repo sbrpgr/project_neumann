@@ -73,17 +73,17 @@ def test_non_overlapping_edits_merge_with_line_tracking(bundle, plan):
     assert [ln["text"] for ln in out["lines"] if not ln["changed"]] == [t for i, t in enumerate(orig, 1) if i not in (16, 17)]
 
 
-def test_same_line_conflict_is_listed_not_resolved(bundle, plan):
+def test_same_line_replacements_are_preserved_in_card_order(bundle, plan):
     e = edits_of(bundle)
     b = with_extra_edit(bundle, e[0], edit_id="card-fx-leak/e9", proposed_text="다른 안: 시간 순서 분할을 쓴다.")
     out = asm.assemble_revised_plan(plan, b, [{"edit_id": e[0]["edit_id"], "decision": "adopt"},
                                              {"edit_id": "card-fx-leak/e9", "decision": "adopt"}])
-    assert out["stats"]["applied"] == 0 and out["stats"]["conflicts"] == 1
-    c = out["conflicts"][0]
-    assert c["kind"] == "same_line" and c["plan_line"] == 16 and set(c["edit_ids"]) == {e[0]["edit_id"], "card-fx-leak/e9"}
-    assert len(c["candidates"]) == 2 and c["current_text"] == plan.split("\n")[15]
-    assert out["revised_text"].split("\n")[15] == plan.split("\n")[15]  # 원문 유지
-    assert any("충돌" in n for n in out["notices"])
+    assert out["stats"]["applied"] == 2 and out["stats"]["conflicts"] == 0
+    assert out["stats"]["converted_insert"] == 1
+    assert out["revised_text"].split("\n")[15:17] == [e[0]["proposed_text"], "다른 안: 시간 순서 분할을 쓴다."]
+    assert [s["status"] for s in out["edit_statuses"] if s["edit_id"] in (e[0]["edit_id"], "card-fx-leak/e9")] == ["applied", "converted_insert"]
+    assert out["changes"][1]["excerpt_ids"] == e[0]["rationale"]["excerpt_ids"]
+    assert asm.validate_revised_plan(out) == []
 
 
 def test_stale_line_conflict_when_plan_changed(bundle, plan):
