@@ -209,6 +209,12 @@ def parse(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # 한국어 Windows(cp949)에서 출력을 파일로 돌리면 '—' 같은 문자에서 UnicodeEncodeError로 죽지 않게
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+        except (AttributeError, ValueError, OSError):
+            pass
     args = parse(argv)
     if not args.dry_run:
         if IS_WIN:
