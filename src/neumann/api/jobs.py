@@ -17,8 +17,16 @@
 - 작업이 시작할 때 자리가 없고(입장 때 캐시·합류였는데 그새 사라짐) 캐시·진행 중 분석도 없으면 같은 관문을 다시 거친다.
 - 실행은 ``Serving.run``(캐시 → 같은 계획서 합류 → 동시 상한·대기열)이 한다. 시간 상한은 작업용(``NEUMANN_JOB_TIMEOUT_S``).
 
-작업 결과는 **메모리에만** 두고 끝난 뒤 TTL(``NEUMANN_JOB_TTL_S``)이 지나면 버린다. 보관 개수 상한(``NEUMANN_JOB_MAX``)을
-넘으면 끝난 것부터 버리고, 그래도 가득이면 503. job_id는 ``secrets.token_urlsafe(24)``(192비트)라 추측할 수 없다.
+작업 결과는 **메모리에만** 두고 끝난 뒤 TTL(``NEUMANN_JOB_TTL_S``)이 지나면 버린다. job_id는
+``secrets.token_urlsafe(24)``(192비트)라 추측할 수 없다.
+
+저장소 고갈 방지(재작업): 합류·캐시 적중 POST는 serving의 속도 제한·예산·대기열을 쓰지 않으므로 작업 API가 따로 막는다.
+- IP(/64)별 POST 속도 제한(``NEUMANN_JOB_RATE_PER_MIN``, 모든 작업 POST에 적용)
+- IP별 보관 작업 수 상한(``NEUMANN_JOB_PER_IP``): 넘으면 **그 IP의** 끝난 작업부터 밀어내고, 모두 진행 중이면 429
+- 전체 상한(``NEUMANN_JOB_MAX``): 차면 **요청한 IP의** 끝난 작업만 밀어내고, 없으면 그 요청을 503으로 거절한다
+  (다른 IP의 결과는 밀어내지 않는다)
+- 폴링 GET도 IP별 넉넉한 속도 제한(``NEUMANN_JOB_POLL_PER_MIN``)
+- 입구 검사: 글자 상한(413)과 공백 없는 긴 토큰(422)을 핸들러에서도 직접 본다(serving과 이중).
 오류는 사용자 문구와 분류(error_code)만 싣는다(예외 메시지·경로·트레이스·키 없음).
 
 진행 단계: 파이프라인이 ``on_stage`` 키워드를 받으면 콜백을 넘기고, 파이프라인 안(같은 요청 문맥)에서
@@ -74,6 +82,9 @@ MESSAGES = {
     "full": "지금 보관 중인 분석 작업이 많습니다. 약 {retry}초 뒤에 다시 시도해 주세요.",
     "unavailable": "지금은 분석 기능을 쓸 수 없습니다. 잠시 뒤 다시 시도해 주세요(요청 번호 {ticket}).",
     "not_gated": "지금은 작업 방식 분석을 받을 수 없습니다. 잠시 뒤 다시 시도해 주세요.",
+    "per_ip": "이 주소에서 요청한 분석 {n}건이 아직 진행 중입니다. 끝난 뒤 다시 시도해 주세요.",
+    "rate": "분석 요청이 너무 잦습니다. {retry}초 뒤에 다시 시도해 주세요(분당 {limit}건).",
+    "poll_rate": "상태 확인이 너무 잦습니다. {retry}초 뒤에 다시 확인해 주세요.",
 }
 
 
@@ -86,14 +97,21 @@ class JobsConfig:
     max_jobs: int = 200         # 메모리에 두는 작업 수 상한
     timeout_s: float = 900.0    # 작업 하나의 시간 상한(대기+실행). 넘으면 오류 문구(분석은 끝까지 돌고 캐시에 들어간다)
     poll_s: float = 1.5         # 화면에 권하는 폴링 간격
+    per_ip: int = 3             # IP(/64)별 보관 작업 수 상한(0이면 끔)
+    rate_per_min: int = 6       # IP별 작업 POST 수(합류·캐시 적중 포함, 0이면 끔). 개발 기본은 끔
+    poll_per_min: int = 600     # IP별 폴링 GET 수(정상 사용은 작업 1건에 분당 약 40회, 0이면 끔)
 
     @classmethod
     def from_env(cls) -> JobsConfig:
+        public = serving._env_bool("NEUMANN_PUBLIC", False)
         return cls(
             ttl_s=serving._env_num("NEUMANN_JOB_TTL_S", 900.0, 1.0, 7 * 86_400),
             max_jobs=int(serving._env_num("NEUMANN_JOB_MAX", 200, 1, 100_000)),
             timeout_s=serving._env_num("NEUMANN_JOB_TIMEOUT_S", 900.0, 0.05, 86_400),
             poll_s=serving._env_num("NEUMANN_JOB_POLL_S", 1.5, 1.0, 2.0),
+            per_ip=int(serving._env_num("NEUMANN_JOB_PER_IP", 3, 0, 10_000)),
+            rate_per_min=int(serving._env_num("NEUMANN_JOB_RATE_PER_MIN", 6 if public else 0, 0, 100_000)),
+            poll_per_min=int(serving._env_num("NEUMANN_JOB_POLL_PER_MIN", 600, 0, 1_000_000)),
         )
 
 
@@ -154,6 +172,7 @@ class Job:
     fmt: str
     filename: str | None
     lines: int
+    ipk: str = ""                    # 요청한 IP(/64) 묶음 키
     created: float = field(default_factory=time.monotonic)
     state: str = "queued"            # queued | done | error (대기·실행 구분은 대기열에서 읽는다)
     started: bool = False            # 작업 코루틴이 실행을 시작했나
@@ -191,7 +210,10 @@ class JobStore:
         self.srv, self.config = srv, config or JobsConfig.from_env()
         self.load_pipeline, self.sample_result, self.clock = load_pipeline, sample_result, clock
         self._jobs: OrderedDict[str, Job] = OrderedDict()
-        self.counters = {"created": 0, "done": 0, "error": 0, "expired": 0, "evicted": 0, "full_503": 0}
+        self.limiter = serving.RateLimiter(self.config.rate_per_min, 60.0)
+        self.poll_limiter = serving.RateLimiter(self.config.poll_per_min, 60.0)
+        self.counters = {"created": 0, "done": 0, "error": 0, "expired": 0, "evicted": 0, "full_503": 0,
+                         "per_ip_429": 0, "rate_429": 0, "poll_429": 0}
 
     # 보관 ------------------------------------------------------------
     def sweep(self) -> None:
@@ -202,15 +224,26 @@ class JobStore:
             del self._jobs[jid]
             self.counters["expired"] += 1
 
-    def _make_room(self) -> bool:
-        self.sweep()
-        while len(self._jobs) >= self.config.max_jobs:
-            done = [(j.finished_at or 0.0, k) for k, j in self._jobs.items() if j.finished]
-            if not done:
-                return False
-            del self._jobs[min(done)[1]]
-            self.counters["evicted"] += 1
+    def _evict_own_finished(self, ipk: str) -> bool:
+        """그 IP의 끝난 작업 중 가장 오래된 것 하나를 버린다. 다른 IP의 결과는 건드리지 않는다."""
+        done = [(j.finished_at or 0.0, k) for k, j in self._jobs.items() if j.finished and j.ipk == ipk]
+        if not done:
+            return False
+        del self._jobs[min(done)[1]]
+        self.counters["evicted"] += 1
         return True
+
+    def _make_room(self, ipk: str) -> str | None:
+        """새 작업 자리. 없으면 거절 종류("per_ip" | "full"). 밀어내는 것은 요청한 IP의 끝난 작업뿐이다."""
+        self.sweep()
+        cap = self.config.per_ip
+        while cap > 0 and sum(1 for j in self._jobs.values() if j.ipk == ipk) >= cap:
+            if not self._evict_own_finished(ipk):
+                return "per_ip"
+        while len(self._jobs) >= self.config.max_jobs:
+            if not self._evict_own_finished(ipk):
+                return "full"
+        return None
 
     def get(self, job_id: str) -> Job | None:
         self.sweep()
@@ -223,11 +256,35 @@ class JobStore:
 
     # 접수 ------------------------------------------------------------
     def submit(self, req: JobRequest, ctx: serving.RequestCtx) -> JSONResponse:
-        """미들웨어가 입장시킨 요청을 작업으로 바꾼다. 잡은 자리·뗀 예산은 작업 문맥으로 넘긴다."""
-        if not self._make_room():
+        """미들웨어가 입장시킨 요청을 작업으로 바꾼다. 잡은 자리·뗀 예산은 작업 문맥으로 넘긴다.
+
+        거절하면 자리·예산은 ctx에 남아 있으므로 미들웨어가 돌려준다.
+        """
+        cfg = self.srv.config
+        text = req.plan_text
+        if len(text) > cfg.max_plan_chars:  # serving과 이중: 파서 차이 등으로 미들웨어가 못 봤어도 여기서 막는다
+            self.srv.counters["too_large_413"] += 1
+            return _json(serving._err("too_large", serving.user_message("too_large", limit=cfg.max_plan_chars,
+                                                                        chars=len(text)), ctx.ticket), 413)
+        longest = serving.longest_token(text)
+        if longest > cfg.max_token_chars:
+            return _json(serving._err("long_token", serving.user_message("long_token", limit=cfg.max_token_chars,
+                                                                         longest=longest), ctx.ticket), 422)
+        ipk = serving.ip_key(ctx.ip)
+        ok, retry_f = self.limiter.hit(ipk)
+        if not ok:
+            self.counters["rate_429"] += 1
+            retry = max(int(retry_f) + 1, 1)
+            return _json(serving._err("rate_limited", MESSAGES["rate"].format(retry=retry, limit=self.config.rate_per_min),
+                                      ctx.ticket, retry_after_s=retry), 429, {"Retry-After": str(retry)})
+        why = self._make_room(ipk)
+        if why == "per_ip":
+            self.counters["per_ip_429"] += 1
+            return _json(serving._err("busy_ip", MESSAGES["per_ip"].format(n=self.config.per_ip), ctx.ticket,
+                                      retry_after_s=30), 429, {"Retry-After": "30"})
+        if why == "full":
             self.counters["full_503"] += 1
             retry = max(int(self.srv.gate.eta(self.srv.gate.waiting + 1)) or 30, 10)
-            # 자리·예산은 ctx에 남아 있으므로 미들웨어가 돌려준다
             return _json(serving._err("busy", MESSAGES["full"].format(retry=retry), ctx.ticket, retry_after_s=retry),
                          503, {"Retry-After": str(retry)})
         job_ctx = serving.RequestCtx(ticket=ctx.ticket, ip=ctx.ip, path=JOBS_PATH, kind="analysis", mode="analysis",
@@ -239,7 +296,7 @@ class JobStore:
         jid = _new_job_id()
         while jid in self._jobs:  # 사실상 일어나지 않는다
             jid = _new_job_id()
-        job = Job(id=jid, ctx=job_ctx, fmt=req.format, filename=req.filename,
+        job = Job(id=jid, ctx=job_ctx, fmt=req.format, filename=req.filename, ipk=ipk,
                   lines=sum(1 for ln in req.plan_text.splitlines() if ln.strip()), created=self.clock())
         self._jobs[jid] = job
         self.counters["created"] += 1
@@ -281,18 +338,13 @@ class JobStore:
                 return
             raw = getattr(fn, "__wrapped_pipeline__", fn)
             kwargs = self._kwargs(raw, job)
-            pid = job.plan_id
-            # 입장 때 캐시·합류라 자리 없이 들어왔는데 그새 캐시·진행 중 분석이 사라졌으면 관문을 다시 거친다.
-            # (아래 확인부터 Serving.run이 대기열에 등록할 때까지 await가 없어 끼어들 틈이 없다)
-            if ctx.reservation is None and srv.cache.get(pid) is None and pid not in srv.inflight:
-                refusal = srv.admit_new_analysis(ctx)
-                if refusal is not None:
-                    _code, body, _h = refusal
-                    self._finish_err(job, str(body.get("error_code", "busy")), str(body.get("message", "")),
-                                     body.get("retry_after_s"))
-                    return
+            # 입장 때 캐시·합류라 자리 없이 들어왔는데 그새 캐시·진행 중 분석이 사라졌으면 Serving.run이 관문을
+            # 다시 거친다(차단·속도 제한·예산·대기열). 거절이면 AdmissionRefused + ctx.refusal.
             result = await srv.run(raw, plan_text, timeout_s=self.config.timeout_s, **kwargs)
-            self._finish_ok(job, self._present(job, result, state))
+            self._finish_ok(job, await asyncio.to_thread(self._present, job, result, state))
+        except serving.AdmissionRefused:
+            _code, error_code, message, retry = ctx.refusal or (503, "busy", serving.user_message("busy", retry=30), 30)
+            self._finish_err(job, error_code, message, retry)
         except serving.AnalysisTimeout:
             srv.counters["timeout_504"] += 1
             self._finish_err(job, "timeout", serving.user_message("timeout", limit=int(self.config.timeout_s),
@@ -416,6 +468,15 @@ async def create_job(req: JobRequest, request: Request) -> JSONResponse:
 async def get_job(job_id: str, request: Request) -> JSONResponse:
     """작업 상태·결과. 모르는 id·보관 시간이 지난 id는 404(둘을 구분하지 않는다)."""
     store = _store(request)
+    if store is not None:
+        cfg = store.srv.config
+        ip = serving.client_ip(request.scope, cfg.trust_proxy, cfg.xff_pick, cfg.trust_xff)
+        ok, retry_f = store.poll_limiter.hit(serving.ip_key(ip))
+        if not ok:
+            store.counters["poll_429"] += 1
+            retry = max(int(retry_f) + 1, 1)
+            return _json({"status": "error", "error_code": "rate_limited", "retry_after_s": retry,
+                          "message": MESSAGES["poll_rate"].format(retry=retry)}, 429, {"Retry-After": str(retry)})
     job = store.get(job_id) if store is not None else None
     if job is None:
         ttl_min = int((store.config.ttl_s if store else 900) // 60)
@@ -435,7 +496,7 @@ def install(app: Any, *, load_pipeline: Callable[[], tuple[Callable[..., Any] | 
     if srv is None:
         log.warning("작업 API를 붙이지 않음: 서빙 층(serving.install)이 없다(관문 없는 경로를 만들지 않는다)")
         return None
-    srv.protect(JOBS_PATH, "analysis")
+    srv.protect(JOBS_PATH, "analysis", async_=True)  # 작업 경로는 대기열 전체를 쓴다(동기 경로는 sync_queue_max)
     store = JobStore(srv, config, load_pipeline=load_pipeline, sample_result=sample_result)
     app.state.jobs = store
     app.include_router(router)

@@ -551,10 +551,12 @@ def test_config_defaults_and_public_profile(monkeypatch):
     c = serving.ServingConfig.from_env()
     assert (c.rate_per_min, c.cache_enabled, c.warmup) == (6, True, True)
     assert c.hide_docs and c.aux_rate_per_min == 30
-    # FAIL 대응 4: 공개 기본값 — 시간 상한 90초(Cloudflare 약 100초보다 먼저), 대기 4, 일일 예산 끔(대표 결정)
-    assert (c.request_timeout_s, c.queue_max, c.daily_budget) == (90.0, 4, 0)
+    # FAIL 대응 4: 공개 기본값 — 시간 상한 90초(Cloudflare 약 100초보다 먼저), 일일 예산 끔(대표 결정)
+    # E4-L2d(대표 지시 "여러 명이 동시에"): 동시 4·대기 30(작업 방식), 동기 경로는 대기 4까지만
+    assert (c.request_timeout_s, c.queue_max, c.sync_queue_max, c.daily_budget) == (90.0, 30, 4, 0)
+    assert c.max_concurrent == 4
     assert c.trust_xff is False  # 공개: X-Forwarded-For 무시, CF-Connecting-IP만
     monkeypatch.setenv("NEUMANN_RATE_PER_MIN", "10")
     monkeypatch.setenv("NEUMANN_MAX_CONCURRENT", "abc")
     c = serving.ServingConfig.from_env()
-    assert c.rate_per_min == 10 and c.max_concurrent == 2
+    assert c.rate_per_min == 10 and c.max_concurrent == 4  # 숫자가 아니면 공개 기본값
