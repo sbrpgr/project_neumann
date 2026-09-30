@@ -543,7 +543,7 @@ def _order(verdict: str) -> int:
     return 2
 
 
-def render(col: Collected, *, now: str, commit: str, command: str) -> str:
+def render(col: Collected, *, now: str, commit: str, command: str, eval_model: str | None = None) -> str:
     by = {(m.id, m.system): m for m in col.metrics}
     L: list[str] = []
     add = L.append
@@ -553,6 +553,8 @@ def render(col: Collected, *, now: str, commit: str, command: str) -> str:
     add(f"- 생성: {now} · 코드 커밋: `{commit}` · 생성 명령: `{command}`")
     add("- 규칙(04_평가_명세 §7): 참조선 먼저 · 미달 먼저 · 모든 숫자에 n과 95% 구간 · 없는 지표는 \"측정 전\"(추정 금지)")
     add("- 값은 입력 JSON의 숫자를 그대로 옮겼다. 합쳐서 계산한 값은 '계산'으로 표시했다.")
+    if eval_model:
+        add(f"- Neumann 행의 평가 모델: `{eval_model}` (명령행 `--eval-model` 값. 입력 JSON에는 모델 기록이 없다)")
     add("")
 
     # 1. 참조선
@@ -597,6 +599,8 @@ def render(col: Collected, *, now: str, commit: str, command: str) -> str:
         val = fmt_value(m.value if m else None)
         if m and m.detail and m.value is not None:
             val += f" ({m.detail})"
+        if eval_model and p.system == "neumann" and m and m.value is not None:
+            val += f" ({eval_model})"
         verdict = f"**{v}**" + (f" · {m.promise_note}" if m and m.promise_note and m.value is not None else "")
         add(
             f"| {p.key} | {p.label} | {p.target_text} | {val} | {fmt_ci(m)} | {fmt_n(m)} | {verdict} "
@@ -718,12 +722,13 @@ def _git_commit() -> str:
         return "알 수 없음"
 
 
-def build(paths: list[Path], *, now: str | None = None, commit: str | None = None, command: str | None = None) -> str:
+def build(paths: list[Path], *, now: str | None = None, commit: str | None = None, command: str | None = None,
+          eval_model: str | None = None) -> str:
     col = collect(paths)
     now = now or datetime.now().astimezone().isoformat(timespec="seconds")
     commit = commit or _git_commit()
     command = command or "python -m eval.report_card --inputs " + " ".join(str(p) for p in paths)
-    return render(col, now=now, commit=commit, command=command)
+    return render(col, now=now, commit=commit, command=command, eval_model=eval_model)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -733,11 +738,15 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m eval.report_card", description="리포트 카드 생성(E5-L3a)")
     ap.add_argument("--inputs", nargs="*", type=Path, default=[], help="지표 JSON 파일들(없으면 전부 측정 전)")
     ap.add_argument("--out", type=Path, required=True, help="리포트 카드 Markdown 경로")
+    ap.add_argument("--eval-model", default=None,
+                    help="Neumann 행을 잰 LLM 모델(입력 JSON에 기록이 없을 때). 약속 표 Neumann 행 측정값 옆과 머리에 적는다")
     args = ap.parse_args(argv)
     command = "python -m eval.report_card --inputs " + " ".join(p.as_posix() for p in args.inputs)
     command += f" --out {args.out.as_posix()}"
+    if args.eval_model:
+        command += f" --eval-model {args.eval_model}"
     try:
-        text = build(args.inputs, command=command)
+        text = build(args.inputs, command=command, eval_model=args.eval_model)
     except (InputError, OSError) as exc:
         print(f"오류: {exc}", file=sys.stderr)
         return 2
