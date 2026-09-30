@@ -7,13 +7,15 @@ from __future__ import annotations
 
 import copy
 import json
+import math
+import re
 from typing import Any
 
 from neumann.analyze.gate import extract_numbers
 from neumann.analyze.assemble import _content_words
 from neumann.analyze.pii import mask_pii
 from neumann.analyze.revise import (
-    CONTROL_RE, UNSAFE_MARKUP_RE, contains_identity, unsupported_facts, written_numbers,
+    CONTROL_RE, PLACEHOLDER_RE, UNSAFE_MARKUP_RE, contains_identity, unsupported_facts, written_numbers,
 )
 from neumann.llm import LLMCall, make_llm, validate_output
 from neumann.models import PlanDocument, contains_pii
@@ -21,6 +23,29 @@ from neumann.models import PlanDocument, contains_pii
 VERSION = "finalization@v1"
 ASSESSMENT_TASK = "final_assessment"
 CORRECTION_TASK = "final_correction"
+MAX_PLAN_CHARS = 200_000  # engine-level cap before any model call (HTTP caps are separate and smaller)
+
+_WORD_RE = re.compile(r"[A-Za-z][A-Za-z0-9._-]+|[가-힣]{2,}")
+_KO_SUFFIX_RE = re.compile(r"(?:으로써|으로|에서는|에서|에게|께서|이다|입니다|한다|합니다|된다|됩니다|하며|하고|하도록|하는|하여|해서|하면|했다|되어|"
+                           r"이며|이고|이라|라는|다는|보다|처럼|까지|부터|마다|조차|밖에|과|와|의|를|을|는|은|이|가|에|도|로|만|고|며|서)$")
+_STYLE_WORDS = frozenset({"다듬음", "제안", "이러한", "해당", "또한", "그리고", "따라서", "명확히", "자연스럽게", "위한", "위해서", "이다", "있다"})
+_NEGATION_RE = re.compile(r"(?<![가-힣])(?:안|못)\s+(?=[가-힣])|않|없|아니|불가|금지|제외|\b(?:not|no|never|without|cannot)\b", re.I)
+
+
+def _grounded_words(text: str) -> set[str]:
+    """Content words outside placeholders, Korean tokens from two characters with common particles stripped.
+
+    Stricter than assemble._content_words (three characters): short scientific claims such as 효과·입증 count.
+    """
+    words: set[str] = set()
+    for raw in _WORD_RE.findall(PLACEHOLDER_RE.sub(" ", text).lower()):
+        base = _KO_SUFFIX_RE.sub("", raw) if re.fullmatch(r"[가-힣]+", raw) else raw
+        words.add(base if len(base) >= 2 else raw)
+    return words - _STYLE_WORDS
+
+
+def _negations(text: str) -> set[str]:
+    return {m.group(0).strip().lower() for m in _NEGATION_RE.finditer(PLACEHOLDER_RE.sub(" ", text))}
 
 
 def _object(properties: dict) -> dict:
@@ -122,16 +147,109 @@ def _run_checks(text: str, checks: list, event: Any) -> list:
                 for c in checks]
 
 
-def _text_problem(text: str, source: str) -> str:
+def _numbers(text: str) -> set[str]:
+    return set(extract_numbers(text) + written_numbers(text))
+
+
+def _text_problem(text: str, source: str, tool_numbers: frozenset[str] | set[str] = frozenset()) -> str:
+    """Gate against invented content. ``source`` is the grounded scope (issue lines + tool source quotes).
+
+    Numbers outside ``[확인 필요: …]`` must already occur in ``source``. Inside a placeholder, a number may also
+    be a tool-computed value (``tool_numbers``): the computation is shown to the researcher, never asserted as fact.
+    """
     if contains_pii(text) or contains_identity(text):
         return "pii_or_identity"
     if CONTROL_RE.search(text) or UNSAFE_MARKUP_RE.search(text):
         return "unsafe_markup"
     if unsupported_facts(text, source):
         return "unsupported_fact"
-    if set(extract_numbers(text) + written_numbers(text)) - set(extract_numbers(source) + written_numbers(source)):
+    allowed = _numbers(source)
+    if _numbers(PLACEHOLDER_RE.sub(" ", text)) - allowed:
+        return "unsupported_number"
+    if _numbers(" ".join(PLACEHOLDER_RE.findall(text))) - allowed - set(tool_numbers):
         return "unsupported_number"
     return ""
+
+
+def _computed_numbers(check: dict, row: dict) -> set[str]:
+    """Numbers a completed tool check (passed/failed) established from grounded facts: term/limit values, their
+    stated operation result, and numeric leaves of the tool ``details``. Unchecked rows contribute nothing."""
+    if row.get("status") not in ("pass", "passed", "ok", "fail", "failed"):
+        return set()
+    values: list[str] = []
+    params = check.get("params", {}) if isinstance(check, dict) else {}
+    params = params if isinstance(params, dict) else {}
+
+    def number(v: Any) -> bool:
+        return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+    terms = [t.get("value") for t in params.get("terms", []) if isinstance(t, dict) and number(t.get("value"))]
+    others = [params[k].get("value") for k in ("limit", "left", "right") if isinstance(params.get(k), dict) and number(params[k].get("value"))]
+    values += [str(v) for v in terms + others]
+    if terms and params.get("operation") in ("sum", "product"):
+        total = sum(terms) if params["operation"] == "sum" else math.prod(terms)
+        values.append(str(int(total)) if float(total).is_integer() else str(total))
+
+    def leaves(obj: Any) -> None:
+        if isinstance(obj, bool):
+            return
+        if isinstance(obj, (int, float)):
+            values.append(str(int(obj)) if float(obj).is_integer() else str(obj))
+        elif isinstance(obj, dict):
+            for v in obj.values():
+                leaves(v)
+        elif isinstance(obj, list):
+            for v in obj:
+                leaves(v)
+    leaves(row.get("details", {}))
+    return set(extract_numbers(" ".join(values)))
+
+
+def _edit_scope(issue_ids: list, issue_by_id: dict, check_by_id: dict, rows: dict, lines: list[str]) -> tuple[set[int], str, set[str]]:
+    """Grounded scope of one correction: the issue's plan lines, the source lines/quotes of its tool checks,
+    and numbers those completed checks computed. Text outside this scope cannot enter the draft."""
+    scope_lines: set[int] = set()
+    quotes: list[str] = []
+    tool_numbers: set[str] = set()
+    for iid in issue_ids:
+        issue = issue_by_id[iid]
+        scope_lines.update(n for n in issue.get("plan_lines", []) if isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= len(lines))
+        for cid in issue.get("check_ids", []):
+            check = check_by_id.get(cid)
+            if not isinstance(check, dict):
+                continue
+            params = check.get("params") if isinstance(check.get("params"), dict) else {}
+            for source in params.get("sources", []) if isinstance(params.get("sources"), list) else []:
+                if not isinstance(source, dict):
+                    continue
+                n = source.get("line")
+                if isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= len(lines):
+                    scope_lines.add(n)
+                if isinstance(source.get("quote"), str):
+                    quotes.append(source["quote"])
+            row = rows.get(cid)
+            if row is not None:
+                tool_numbers |= _computed_numbers(check, row)
+    scope = "\n".join(lines[n - 1] for n in sorted(scope_lines))
+    if quotes:
+        scope += "\n" + "\n".join(quotes)
+    return scope_lines, scope, tool_numbers
+
+
+_DONE = ("pass", "passed", "ok", "fail", "failed")
+
+
+def _unchecked_reason(check_ids: list, rows: dict) -> str:
+    """Why an issue stayed unchecked: 판단 보류(no explicit tool-checkable condition) vs 미검사(tool could not run)."""
+    if not check_ids:
+        return "no_tool_check"
+    for cid in check_ids:
+        row = rows.get(cid)
+        if row is None:
+            return "check_not_run"
+        if row.get("status") not in _DONE:
+            return str(row.get("message") or "unchecked")[:80]
+    return "unchecked"
 
 
 def finalize_plan(plan_text: str, *, result=None, provider=None, checks=None,
@@ -159,12 +277,16 @@ def finalize_plan(plan_text: str, *, result=None, provider=None, checks=None,
     def stop(reason: str) -> dict:
         output["notices"].append(reason)
         for issue in output["issues"]:
+            if issue.get("status") == "unchecked":
+                issue.setdefault("unchecked_reason", "review_incomplete")
             issue.pop("check_ids", None)
         return output
     if _cancelled(cancel_event):
         return stop("취소되어 최종 검토를 완료하지 못했습니다.")
     if not text.strip():
         return stop("빈 계획서는 최종 검토할 수 없습니다.")
+    if len(text) > MAX_PLAN_CHARS:
+        return stop(f"계획서가 {MAX_PLAN_CHARS:,}자를 넘어 최종 검토를 시작하지 않았습니다.")
     try:
         llm = make_llm(provider=provider) if isinstance(provider, (str, type(None))) else provider
         invoke = llm_call or llm.complete_json
@@ -205,6 +327,10 @@ def finalize_plan(plan_text: str, *, result=None, provider=None, checks=None,
         return stop("도구 검사는 목록이어야 하며 최대 16개입니다.")
     if any(not isinstance(c, dict) for c in selected):
         return stop("도구 검사 형식이 유효하지 않습니다.")
+    ids = [c.get("check_id") for c in selected]
+    if any(not isinstance(i, str) or not i.strip() for i in ids) or len(set(ids)) != len(ids):
+        # Duplicate ids would let a later passing row overwrite an earlier failure (audit F1).
+        return stop("도구 검사 id가 비었거나 중복돼 최종 검토를 완료하지 못했습니다.")
     try:
         selected = _bind_sources(selected, lines)
     except (AttributeError, TypeError, ValueError):
@@ -226,7 +352,9 @@ def finalize_plan(plan_text: str, *, result=None, provider=None, checks=None,
     if correction is None:
         return stop("수정 제안 실패로 원문을 보존했습니다. 최종 검토 미완료입니다.")
     updated, edited, touched = list(lines), set(), set()
-    issue_ids = {i["issue_id"] for i in issues}
+    issue_by_id = {i["issue_id"]: i for i in issues}
+    check_by_id = {c.get("check_id"): c for c in selected if isinstance(c, dict) and isinstance(c.get("check_id"), str)}
+    rows_before = {r["check_id"]: r for r in output["tool_checks_before"]}
     for edit in correction["edits"]:
         no, replacement = edit["line"], edit["replacement"]
         reason = ""
@@ -234,17 +362,26 @@ def finalize_plan(plan_text: str, *, result=None, provider=None, checks=None,
             reason = "duplicate_line"
         elif edit["current_text"] != lines[no - 1]:
             reason = "anchor_mismatch"
-        elif not edit["issue_ids"] or set(edit["issue_ids"]) - issue_ids:
+        elif not edit["issue_ids"] or set(edit["issue_ids"]) - set(issue_by_id):
             reason = "unknown_issue"
         elif not replacement.strip() or "\n" in replacement or "\r" in replacement:
             reason = "invalid_line"
         else:
-            reason = _text_problem(replacement, lines[no - 1])
-            # Existing conservative polish vocabulary gate: do not introduce new scientific
-            # content merely because it escaped numeric/entity regular expressions. Unknown
-            # researcher facts can be expressed only inside explicit confirmation placeholders.
-            if not reason and _content_words(replacement) - _content_words(lines[no - 1]):
-                reason = "unsupported_content"
+            scope_lines, scope, tool_numbers = _edit_scope(edit["issue_ids"], issue_by_id, check_by_id, rows_before, lines)
+            if no not in scope_lines:
+                reason = "line_outside_issue"
+            else:
+                reason = _text_problem(replacement, scope, tool_numbers)
+                # Grounded-vocabulary gate: a correction may only use words the issue's own lines and the
+                # tool-checked source quotes already contain ("fix the text with facts the text states").
+                # New scientific content, numbers, entities or achieved results are still rejected; unknown
+                # researcher facts can be expressed only inside explicit [확인 필요: …] placeholders.
+                # A correction must not flip the researcher's direction: new negations are rejected first.
+                if not reason and _negations(replacement) - _negations(scope):
+                    reason = "negation_change"
+                if not reason and (_content_words(replacement) - _content_words(scope)
+                                   or _grounded_words(replacement) - _grounded_words(scope)):
+                    reason = "unsupported_content"
         touched.add(no)
         applied = not reason and replacement != lines[no - 1]
         output["corrections"].append({"line": no, "before": lines[no - 1],
@@ -257,12 +394,19 @@ def finalize_plan(plan_text: str, *, result=None, provider=None, checks=None,
     final_text = "\n".join(updated)
     output["final_text"] = final_text
     output["output_plan_id"] = PlanDocument.from_text(final_text, "finalize").plan_id
-    # Rechecks retain original explicit facts; changed source text cannot silently re-anchor a claim.
+    # Rechecks keep the original quotes while they still occur in the corrected line. When a correction rewrote
+    # the quoted text, the source is re-bound by code to the corrected line and dependency edges that are no
+    # longer stated there are dropped: the tool then judges the prerequisites the corrected text actually
+    # states (audit F4). Numbers that vanished make the check unchecked, never passed.
     targeted = [c for c in selected if edited.intersection(c.get("plan_lines", [])) or
                 any(s.get("line") in edited for s in c.get("params", {}).get("sources", []))]
     if targeted:
         output["counters"]["recheck_runs"] = 1
+        targeted, rebound = _rebind_for_recheck(targeted, updated, edited)
         output["tool_checks_after"] = _run_checks(final_text, targeted, cancel_event)
+        for row in output["tool_checks_after"]:
+            if row["check_id"] in rebound:
+                row["details"] = {**row.get("details", {}), "rebound_to_corrected_lines": rebound[row["check_id"]]}
     if _cancelled(cancel_event):
         output["status"] = "incomplete"
         return stop("취소되어 재검토가 미완료입니다.")
@@ -272,6 +416,34 @@ def finalize_plan(plan_text: str, *, result=None, provider=None, checks=None,
         statuses = [rows.get(cid, {}).get("status", "unchecked") for cid in issue["check_ids"]]
         issue["status"] = ("resolved" if statuses and all(s in ("pass", "passed", "ok") for s in statuses)
                            else "unresolved" if any(s in ("fail", "failed") for s in statuses) else "unchecked")
+        if issue["status"] == "unchecked":
+            issue["unchecked_reason"] = _unchecked_reason(issue["check_ids"], rows)
+        issue["corrected_lines"] = sorted(n for n in issue.get("plan_lines", []) if n in edited)
         issue.pop("check_ids", None)
-    output["status"] = "partial" if any(i["status"] != "resolved" for i in issues) or any(not c["applied"] for c in output["corrections"]) else "completed"
+    # Placeholders left in the draft are open researcher decisions: the review cannot be reported as completed.
+    output["status"] = ("partial" if any(i["status"] != "resolved" for i in issues) or any(not c["applied"] for c in output["corrections"])
+                        or PLACEHOLDER_RE.search(final_text) else "completed")
     return output
+
+
+def _rebind_for_recheck(checks: list, new_lines: list[str], edited: set[int]) -> tuple[list, dict[str, list[int]]]:
+    """Code-only re-anchoring of checks whose quoted source line was rewritten by an applied correction."""
+    out = copy.deepcopy(checks)
+    rebound: dict[str, list[int]] = {}
+    for check in out:
+        params = check.get("params") if isinstance(check.get("params"), dict) else None
+        if params is None:
+            continue
+        for idx, source in enumerate(params.get("sources", []) if isinstance(params.get("sources"), list) else []):
+            n = source.get("line") if isinstance(source, dict) else None
+            if not (isinstance(n, int) and n in edited and isinstance(source.get("quote"), str)):
+                continue
+            current = new_lines[n - 1]
+            if source["quote"] in current:
+                continue
+            source["quote"] = current
+            rebound.setdefault(check.get("check_id", ""), []).append(n)
+            if check.get("kind") == "dependency" and isinstance(params.get("edges"), list):
+                params["edges"] = [e for e in params["edges"] if not (isinstance(e, dict) and e.get("source") == idx)
+                                   or str(e.get("phrase", "")) in current]
+    return out, rebound
