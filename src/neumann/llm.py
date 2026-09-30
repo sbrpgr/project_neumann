@@ -57,6 +57,9 @@ TASK_DEFAULTS: dict[str, dict[str, Any]] = {
     "expected_review": {"effort": "medium", "timeout_s": 90.0},
     "checklist": {"effort": "medium", "timeout_s": 90.0},
     "semantic_validate": {"effort": "medium", "timeout_s": 90.0},
+    # E3-L2r 뒷단(분석 결과 뒤에 붙는 단계): 카드별 수정 권고 1회 · 통합본 다듬기 1회(선택)
+    "revise_card": {"effort": "medium", "timeout_s": 90.0},
+    "polish_plan": {"effort": "medium", "timeout_s": 90.0},
 }
 
 # 실패 분류. 호출부는 reason()을 StageStatus.detail에 옮긴다.

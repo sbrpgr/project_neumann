@@ -59,6 +59,11 @@ def _plan():
     return res.plan
 
 
+def _ev(payload: dict, card_id: str) -> list[str]:
+    """입력에 실린 그 카드의 근거 excerpt id(E3-L1e: 근거 없는 행동은 버려지므로 테스트 행동에도 근거를 단다)."""
+    return [e["excerpt_id"] for c in payload["cards"] if c["card_id"] == card_id for e in c["evidence"]]
+
+
 def _good(payload: dict) -> dict:
     """카드마다 유효한 행동 2개(카드 자기 근거·실재 줄)."""
     out = []
@@ -72,7 +77,7 @@ def _good(payload: dict) -> dict:
                     {"action": f"{c['card_id']} 첫 행동을 계획서에 적는다.", "verify": "계획서에 적혀 있다.",
                      "plan_lines": lines, "evidence_ids": ev[:2]},
                     {"action": f"{c['card_id']} 두 번째 행동을 실험 전에 한다.", "verify": "",
-                     "plan_lines": lines[:1], "evidence_ids": []},
+                     "plan_lines": lines[:1], "evidence_ids": ev[-1:]},
                 ],
             }
         )
@@ -143,12 +148,14 @@ def test_nonexistent_plan_lines_are_removed_and_recorded() -> None:
                 {"card_id": LEAK, "actions": [
                     # 16만 실재. 99·n+1(범위 밖), 0·-3(1 미만), 2(빈 줄), "17"(정수 아님), true(불리언) 제거
                     {"action": "그룹 분할 규칙을 문서로 고정한다.", "verify": "문서가 있다.",
-                     "plan_lines": [16, 99, n + 1, 0, -3, 2, "17", True, 16], "evidence_ids": []},
+                     "plan_lines": [16, 99, n + 1, 0, -3, 2, "17", True, 16], "evidence_ids": _ev(payload, LEAK)[:1]},
                     # 줄이 전부 없는 줄 → 카드가 인용한 줄(16, 17)로 잇고 표시
-                    {"action": "근사중복 제거 기준을 정한다.", "verify": "", "plan_lines": [500], "evidence_ids": []},
+                    {"action": "근사중복 제거 기준을 정한다.", "verify": "", "plan_lines": [500],
+                     "evidence_ids": _ev(payload, LEAK)[:1]},
                 ]},
                 {"card_id": SEED, "actions": [
-                    {"action": "시드 반복 횟수를 정한다.", "verify": "", "plan_lines": [22], "evidence_ids": []},
+                    {"action": "시드 반복 횟수를 정한다.", "verify": "", "plan_lines": [22],
+                     "evidence_ids": _ev(payload, SEED)[:1]},
                 ]},
             ]
         }
@@ -197,16 +204,18 @@ def test_actions_capped_at_three_deduped_and_length_checked() -> None:
     res, plan = _result(), _plan()
 
     def respond(payload: dict) -> dict:
-        acts = [
-            {"action": "짧다", "verify": "", "plan_lines": [16], "evidence_ids": []},  # 5자 미만
-            {"action": "가" * 400, "verify": "", "plan_lines": [16], "evidence_ids": []},  # 너무 김
-            {"action": "행동 하나를 한다.", "verify": "", "plan_lines": [16], "evidence_ids": []},
-            {"action": "행동  하나를 한다!", "verify": "", "plan_lines": [17], "evidence_ids": []},  # 중복
-            {"action": "행동 둘을 한다.", "verify": "", "plan_lines": [16], "evidence_ids": []},
-            {"action": "행동 셋을 한다.", "verify": "", "plan_lines": [16], "evidence_ids": []},
-            {"action": "행동 넷을 한다.", "verify": "", "plan_lines": [16], "evidence_ids": []},
-        ]
-        return {"cards": [{"card_id": c["card_id"], "actions": acts} for c in payload["cards"]]}
+        def acts(ev: list[str]) -> list[dict]:
+            return [
+                {"action": "짧다", "verify": "", "plan_lines": [16], "evidence_ids": ev},  # 5자 미만
+                {"action": "가" * 400, "verify": "", "plan_lines": [16], "evidence_ids": ev},  # 너무 김
+                {"action": "행동 하나를 한다.", "verify": "", "plan_lines": [16], "evidence_ids": ev},
+                {"action": "행동  하나를 한다!", "verify": "", "plan_lines": [17], "evidence_ids": ev},  # 중복
+                {"action": "행동 둘을 한다.", "verify": "", "plan_lines": [16], "evidence_ids": ev},
+                {"action": "행동 셋을 한다.", "verify": "", "plan_lines": [16], "evidence_ids": ev},
+                {"action": "행동 넷을 한다.", "verify": "", "plan_lines": [16], "evidence_ids": ev},
+            ]
+        return {"cards": [{"card_id": c["card_id"], "actions": acts(_ev(payload, c["card_id"])[:1])}
+                          for c in payload["cards"]]}
 
     items = build_checklist(res, plan, FakeLLM(respond))
     leak = [it["action"] for it in items if it["card_id"] == LEAK]
@@ -245,7 +254,7 @@ def test_all_actions_invalid_falls_back_for_that_card_only() -> None:
         return {"cards": [
             {"card_id": LEAK, "actions": [{"action": 3, "verify": "", "plan_lines": [], "evidence_ids": []}]},
             {"card_id": SEED, "actions": [{"action": "시드 반복을 정한다.", "verify": "", "plan_lines": [22],
-                                           "evidence_ids": []}]},
+                                           "evidence_ids": _ev(payload, SEED)[:1]}]},
         ]}
 
     items = build_checklist(res, plan, FakeLLM(respond))

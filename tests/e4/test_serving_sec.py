@@ -134,7 +134,7 @@ def test_upload_time_limit_504_keeps_slot_until_work_ends(tmp_path):
             assert body["error_code"] == "timeout" and body["request_id"] == "tk_up_timeout"
             assert "0초 안에 끝나지 않았습니다" in body["message"]
             assert srv.aux_gate.active == 1  # 처리는 아직 돈다 → 슬롯을 쥐고 있다(과부하 누적 방지)
-            await wait_until(lambda: srv.aux_gate.active == 0, timeout=3)
+            await wait_until(lambda: srv.aux_gate.active == 0)
             assert slow.done == 1
 
     asyncio.run(go())
@@ -547,9 +547,11 @@ def test_run_rechecks_admission_when_middleware_did_not_reserve(tmp_path):
 # ───────────────────────── FAIL 대응 2: IPv6 /64, 공개 프로필 XFF 무시 ─────────────────────────
 
 
-def test_ipv6_addresses_in_same_64_share_one_rate_limit(tmp_path, monkeypatch):
-    assert serving.ip_key("2001:db8:1:2:aaaa::1") == serving.ip_key("2001:db8:1:2:ffff:1:2:3") == "2001:db8:1:2::/64"
-    assert serving.ip_key("2001:db8:1:3::1") != serving.ip_key("2001:db8:1:2::1")
+def test_ipv6_addresses_in_same_56_share_one_rate_limit(tmp_path, monkeypatch):
+    # SEC-7: 묶음이 /64 → /56. 같은 /64는 물론 같은 /56 안의 다른 /64도 한 통, 다른 /56은 다른 통
+    assert serving.ip_key("2001:db8:1:2:aaaa::1") == serving.ip_key("2001:db8:1:2:ffff:1:2:3") == "2001:db8:1::/56"
+    assert serving.ip_key("2001:db8:1:3::1") == serving.ip_key("2001:db8:1:2::1") == serving.ip_key("2001:db8:1:ff::1")
+    assert serving.ip_key("2001:db8:1:100::1") != serving.ip_key("2001:db8:1:2::1")
     assert serving.ip_key("::ffff:198.51.100.7") == "198.51.100.7" and serving.ip_key("198.51.100.7") == "198.51.100.7"
     srv, app = make(tmp_path, monkeypatch, lambda t: fake_result(t), rate_per_min=3)
 
@@ -798,7 +800,7 @@ def test_upload_timeout_releases_per_ip_count_only_when_work_ends(tmp_path):
             assert srv.upload_active == {serving.ip_key("198.51.100.40"): 1}  # 처리는 아직 돈다
             r2 = await c.post("/upload/plan", content=b"y", headers=h)
             assert r2.status_code == 429 and r2.json()["error_code"] == "busy_ip"
-            await wait_until(lambda: srv.upload_active == {}, timeout=3)
+            await wait_until(lambda: srv.upload_active == {})
 
     asyncio.run(go())
 

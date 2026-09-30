@@ -13,6 +13,12 @@
 
 실패(None·예외·모양 오류)면 그 묶음 카드·행동은 `unverified`(미검증)로 남기고 단계는 degraded다.
 의미 판정을 규칙으로 흉내 내지 않는다.
+
+근거 게이트(E3-L1e): 판정 전에 체크리스트 항목을 체크리스트 생성 직후와 **같은 검사**
+(`checklist.gate_checklist_items` → `gate.evidence_link_problem`)로 다시 거른다. 근거가 없거나 연결 카드의
+근거 밖을 가리키는 항목은 모델에 보내지 않고, `apply_validation`이 체크리스트에서 **뺀다**(틀림 강등과 달리
+근거 없는 문장은 내보내지 않는다). 수는 `counts["actions_no_evidence"]`와 `evidence_gate`에 남고 단계는 degraded다
+(정상 흐름이면 생성 직후 게이트가 이미 거르므로 0이다 — 0이 아니면 앞 단계를 우회한 항목이 있다는 뜻이다).
 """
 
 from __future__ import annotations
@@ -26,7 +32,9 @@ from neumann.analyze.checklist import (
     LLMCall,
     batched,
     call_llm,
+    evidence_audit,
     evidence_payload,
+    gate_checklist_items,
     llm_label,
     plan_lines_payload,
     run_batches,
@@ -147,7 +155,9 @@ def validate_cards(
     checklist를 안 주면 `result.checklist`를 쓴다.
     """
     gen, mdl = llm_label(llm_call, generator, model)
-    items = list(result.checklist if checklist is None else checklist)
+    raw_items = list(result.checklist if checklist is None else checklist)
+    # 근거 게이트: 근거 없는 항목은 판정하지 않고 빼낼 목록에 올린다(apply_validation이 뺀다)
+    items, gate_drops = gate_checklist_items(raw_items, result, where="semantic_validate")
     cards = list(result.risk_cards)
     by_ex = {ex.excerpt_id: ex for ex in result.evidence}
     valid = valid_plan_line_numbers(plan)
@@ -245,7 +255,7 @@ def validate_cards(
     else:
         status, reason = "ok", None
 
-    return {
+    report = {
         "method": "semantic_v1",
         "generator": gen,
         "model": mdl,
@@ -258,6 +268,20 @@ def validate_cards(
         "demoted_actions": [r["item_id"] for r in action_rows if r["demoted"]],
         "counts": counts,
     }
+    return _with_gate(report, gate_drops, len(items))
+
+
+def _with_gate(report: dict[str, Any], drops: list[dict[str, Any]], n_kept: int) -> dict[str, Any]:
+    """보고서에 근거 게이트 기록을 넣은 사본. 폐기가 있으면 degraded와 사유 한 줄(skipped는 그대로)."""
+    out = {**report, "counts": {**report["counts"], "actions_no_evidence": len(drops)}}
+    out["evidence_gate"] = evidence_audit(drops, n_kept)
+    out["dropped_actions"] = [d["item_id"] for d in drops if d.get("item_id")]
+    if drops:
+        note = f"근거 없는 체크리스트 항목 {len(drops)}개 제외(2차 검증 근거 게이트)"
+        if out["status"] != "skipped":
+            out["status"] = "degraded"
+        out["reason"] = f"{out['reason']}; {note}" if out.get("reason") else note
+    return out
 
 
 def validation_stage(report: dict[str, Any], *, elapsed_s: float = 0.0) -> StageStatus:
@@ -270,11 +294,17 @@ def validation_stage(report: dict[str, Any], *, elapsed_s: float = 0.0) -> Stage
 
 
 def apply_validation(result: PremortemResult, report: dict[str, Any], *, elapsed_s: float = 0.0) -> PremortemResult:
-    """보고서를 결과에 붙인 사본. 카드·행동은 지우지 않고 판정과 강등 표시만 더한다."""
+    """보고서를 결과에 붙인 사본. 카드·행동은 지우지 않고 판정과 강등 표시만 더한다.
+    예외는 근거 게이트(E3-L1e)다: 근거가 없거나 연결 카드의 근거 밖을 가리키는 체크리스트 항목은 뺀다."""
     card_v = {r["card_id"]: r for r in report["cards"]}
     act_v = {r["item_id"]: r for r in report["actions"]}
+    # 근거 게이트: 내보낼 체크리스트(result.checklist)를 같은 검사로 다시 거른다. 보고서와 수가 다르면
+    # (보고서를 다른 체크리스트로 만들었으면) 이 결과 기준으로 보고서의 게이트 기록을 고쳐 쓴다.
+    kept_items, drops = gate_checklist_items(result.checklist, result, where="semantic_validate")
+    if len(drops) != int(report["counts"].get("actions_no_evidence", 0)):
+        report = _with_gate(report, drops, len(kept_items))
     checklist = []
-    for it in result.checklist:
+    for it in kept_items:
         it = dict(it)
         cv = card_v.get(it.get("card_id"))
         if cv is not None:
@@ -284,12 +314,17 @@ def apply_validation(result: PremortemResult, report: dict[str, Any], *, elapsed
             it["validation"] = {k: av[k] for k in ("verdict", "verdict_ko", "reason", "judge", "demoted")}
         checklist.append(it)
     notices = list(result.notices)
+    n_gate = int(report["counts"].get("actions_no_evidence", 0))
+    if n_gate:
+        ids = ", ".join(str(x) for x in report.get("dropped_actions", [])) or "-"
+        notices.append(f"2차 검증: 근거 없는 체크리스트 항목 {n_gate}개 제외(근거 번호 없음·연결 카드의 근거 밖): {ids}")
     if report["demoted_cards"]:
         notices.append(
             f"2차 의미검증: 카드 {len(report['demoted_cards'])}장이 '틀림'(인용한 계획서 줄과 해당 이유가 맞지 않음) — "
             f"삭제하지 않고 강등 표시: {', '.join(report['demoted_cards'])}"
         )
-    if report["status"] == "degraded":
+    gate_only = bool(n_gate) and str(report.get("reason") or "").startswith("근거 없는 체크리스트 항목")
+    if report["status"] == "degraded" and not gate_only:  # 게이트 폐기만이면 위 한 줄로 충분하다
         notices.append(f"2차 의미검증 일부 미검증(강등): {report['reason']}")
     verification = {**result.verification, "semantic": report}
     stage = validation_stage(report, elapsed_s=elapsed_s)

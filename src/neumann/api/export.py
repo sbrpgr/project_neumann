@@ -16,26 +16,37 @@ similar_works.csv, plan_annotated.md, neumann_report.md, ai_context.md, decision
   규칙 카드를 LLM 결과라고 쓰지 않는다. 카드가 0장이면 결과에 적힌 사유를 옮기고, 없으면 "사유 없음"이라고 쓴다.
 - 인용: `evidence`의 text를 가공 없이 옮긴다. 패키지는 원문을 다시 받지 않으므로 재대조 상태는 `not_reverified`다.
 - 개인정보: 계획서 줄은 `PlanDocument` 규칙(NFC+LF, 이메일·ORCID 가림)을 거친 줄만 쓴다. 설정·환경변수는 읽지 않는다.
+- 출처(E4-L2f F1): API로 받은 결과는 서버 서명(`result_sig`, `neumann.api.signing`)을 확인한다. 확인되면
+  `result_origin: "server_signed"`, 아니면 `"client_submitted_unverified"`(README 첫 줄 경고, "제품 LLM이 만든"·
+  "오프셋으로 자른" 같은 서버 보증 문구를 쓰지 않는다). 파이썬에서 직접 부르면 `"in_process"`(호출한 코드가 가진 결과).
+- 서식 안전(F4): 마크다운 파일에 옮기는 결과 문자열의 `& < >`는 HTML 엔티티로 바꾸고(글자 그대로의 인용은
+  `evidence_pack.json`), 코드 스팬 안 id의 백틱은 뺀다. CSV 문자열 칸이 `= + - @`·탭·CR로 시작하면 앞에 `'`를 붙인다.
 """
 
 from __future__ import annotations
 
 import csv
 import hashlib
+import html
 import io
 import json
 import logging
 import re
 import zipfile
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from fastapi import APIRouter, Body, HTTPException, Response
+from fastapi import APIRouter, Body, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
+from neumann.analyze.checklist import gate_checklist_items
+from neumann.analyze.gate import EvidenceIndex, MALFORMED, NO_EVIDENCE_FAMILY, SECTIONS, review_evidence_problem
 from neumann.api.view import display_generator, display_text
+from neumann.api.plan_limits import check_embedded_plan, check_payload_plan
+from neumann.api import export_revision  # E3-L2r: ZIP에 덧붙이는 수정 권고·통합본 파일(선택)
 from neumann.models import (
     SCHEMA_VERSION,
     Excerpt,
@@ -52,6 +63,9 @@ logger = logging.getLogger(__name__)
 
 PACKAGE_FORMAT = "neumann-package/1"
 MAX_PLAN_CHARS = 1_000_000
+MAX_PACKAGE_CARDS = 100
+MAX_PACKAGE_CARD_LINES = 200
+MAX_PACKAGE_DECISIONS = 1_000
 
 FILE_NAMES: tuple[str, ...] = (
     "README.md",
@@ -89,6 +103,10 @@ JSON_GENERATOR_NOTE = (
     "JSON 값 `generator: \"astra\"`는 계약 이름(제품 LLM)이고 모델명이 아니다. "
     "실제 모델은 `model`(카드·예상 심사평·체크리스트)에 있다."
 )
+# 서명 확인 안 된 결과(E4-L2f F1)에는 계약 이름 설명 대신 이 줄을 싣는다: 값이 무엇을 뜻하는지 서버가 보증하지 않는다.
+JSON_GENERATOR_NOTE_UNVERIFIED = (
+    "JSON 값 `generator`·`model`은 요청자가 보낸 결과에 적힌 표기다. 서버 서명이 없어 확인하지 못했다."
+)
 
 SOURCE_KIND_KO: dict[str, str] = {
     "review": "심사평",
@@ -98,6 +116,21 @@ SOURCE_KIND_KO: dict[str, str] = {
 }
 
 NOT_OK_STATES = ("degraded", "error", "skipped")
+
+# ── 결과 출처(서버 서명) ──────────────────────────────────────────────────
+
+ResultOrigin = Literal["server_signed", "client_submitted_unverified", "in_process"]
+RESULT_ORIGINS: tuple[str, ...] = ("server_signed", "client_submitted_unverified", "in_process")
+ORIGIN_LABELS: dict[str, str] = {
+    "server_signed": "이 서버가 분석해 서명한 결과(서명 확인됨)",
+    "client_submitted_unverified": "요청자가 보낸 결과(서버 서명 확인 안 됨: 서명 없음·변조·서버 재기동)",
+    "in_process": "서버 프로세스 안에서 직접 호출해 묶은 결과(API를 거치지 않음)",
+}
+UNVERIFIED_WARNING = (
+    "**주의: 서버가 분석·서명한 결과가 아님.** 이 패키지의 결과 JSON은 요청자가 보낸 값이고 Neumann 서버의 서명을 "
+    "확인하지 못했다(서명 없음·변조·서버 재기동). 위험카드의 생성 방식(generator)·인용문·점수는 보낸 값을 그대로 옮긴 것이며 "
+    "서버가 검증하지 않았다."
+)
 
 # ── 결정 로그 ─────────────────────────────────────────────────────────────
 
@@ -149,9 +182,9 @@ class DecisionEntry(NeumannModel):
     def target(self) -> str:
         parts = []
         if self.card_id:
-            parts.append(f"카드 `{self.card_id}`")
+            parts.append(f"카드 `{_code(self.card_id)}`")
         if self.item_id:
-            parts.append(f"행동 `{self.item_id}`")
+            parts.append(f"행동 `{_code(self.item_id)}`")
         return " · ".join(parts)
 
 
@@ -160,6 +193,26 @@ CHECKLIST_ID_KEYS = ("id", "item_id", "action_id")
 
 def _checklist_ids(checklist: Sequence[Mapping[str, Any]]) -> set[str]:
     return {str(item[k]) for item in checklist for k in CHECKLIST_ID_KEYS if item.get(k) is not None}
+
+
+def _review_for_report(er: Mapping[str, Any]) -> dict[str, Any]:
+    """리포트에 싣는 예상 심사평(E3-L1e): 게이트가 뺀 문장 원문(audit.dropped·dropped_detail)은 빼고 사유 코드·개수만 남긴다.
+    뺀 문장은 분석 결과가 아니므로 라벨 없이 문서에 나가지 않게 한다. 결과 JSON 원본은 바꾸지 않는다."""
+    out = dict(er)
+    raw_audit = out.get("audit")
+    if raw_audit is not None and not isinstance(raw_audit, Mapping):
+        raise ValueError("expected_review.audit는 JSON 객체여야 합니다.")
+    audit = dict(raw_audit or {})
+    drops = [d for d in (audit.pop("dropped", None) or []) if isinstance(d, (list, tuple)) and d]
+    audit.pop("dropped_detail", None)
+    if drops or "drop" in audit:
+        codes: dict[str, int] = dict(audit.get("dropped_reasons") or {})
+        for d in drops:
+            codes[str(d[0])] = codes.get(str(d[0]), 0) + 1
+        audit["dropped_reasons"] = codes
+        audit["dropped_text"] = "제외한 문장 원문은 싣지 않음(분석 결과 아님) — 사유 코드·개수만"
+    out["audit"] = audit
+    return out
 
 
 def _checklist_line(item: Mapping[str, Any]) -> str:
@@ -177,7 +230,7 @@ def _checklist_line(item: Mapping[str, Any]) -> str:
         meta.append("계획서 줄 " + ", ".join(str(n) for n in item["plan_lines"]))
     if item.get("generator"):
         meta.append(f"생성 {display_generator(item['generator'], item.get('model'))}")
-    line = (f"[{item_id}] " if item_id is not None else "") + _one_line(text)
+    line = (f"[{_one_line(item_id)}] " if item_id is not None else "") + _one_line(text)
     if meta:
         line += f" ({_one_line(' · '.join(meta))})"
     status = item.get("decision") or item.get("s")
@@ -203,30 +256,116 @@ class _Ctx:
     not_ok_stages: list[StageStatus]
     decisions: list[DecisionEntry]
     warnings: list[str] = field(default_factory=list)
+    origin: str = "in_process"
+    extra_files: list[str] = field(default_factory=list)  # E3-L2r: 덧붙인 파일 이름(revision.json·revised_plan.md)
+    extra_summary: list[str] = field(default_factory=list)
 
     @property
     def n_cards(self) -> int:
         return len(self.refs)
+
+    @property
+    def verified(self) -> bool:
+        """서버가 만든 결과라고 말할 수 있는지(서명 확인 또는 프로세스 안 직접 호출)."""
+        return self.origin != "client_submitted_unverified"
+
+    @property
+    def plan_association(self) -> str:
+        return _plan_association(self.plan, self.plan_source, self.origin)
+
+    @property
+    def plan_verified(self) -> bool:
+        return self.plan_association in {"signed_result_plan", "hash_verified"}
+
+
+def _resolve_plan(result: PremortemResult, plan_text: str | None) -> tuple[PlanDocument | None, str]:
+    """External text may supply a missing body only when its canonical hash matches."""
+    if result.plan is not None:
+        return result.plan, "result.plan (plan_text는 쓰지 않음)" if plan_text else "result.plan"
+    if plan_text is not None and plan_text.strip():
+        plan = PlanDocument.from_text(plan_text, result.session_id)
+        if plan.plan_id != result.plan_id:
+            raise ValueError("계획서 본문 해시가 분석 결과의 plan_id와 맞지 않아 내보낼 수 없습니다.")
+        return plan, "plan_text (이메일·ORCID 가림, 결과 plan_id와 해시 일치)"
+    return None, "none"
+
+
+def _plan_association(plan: PlanDocument | None, source: str, origin: str) -> str:
+    if plan is None:
+        return "missing"
+    if origin != "server_signed":
+        return "unverified"  # 직접 호출(in_process)도 서버 HMAC 검증을 주장하지 않는다.
+    return "signed_result_plan" if source.startswith("result.plan") else "hash_verified"
+
+
+def _plan_metadata(c: _Ctx) -> dict[str, Any]:
+    return {"plan_association": c.plan_association, "plan_verified": c.plan_verified}
+
+
+def _plan_authority_text(c: _Ctx) -> str:
+    explanation = {
+        "signed_result_plan": "결과 JSON 안의 계획서 본문이 서버 서명 범위에 포함된다.",
+        "hash_verified": "보조 본문을 정규화·마스킹한 해시가 서버 서명된 결과의 plan_id와 일치한다.",
+        "missing": "계획서 본문 없음. 계획서 본문을 서버 검증된 입력으로 보증하지 않는다.",
+        "unverified": "계획서 본문을 서버 검증된 입력으로 보증하지 않는다. 결과의 plan_id와 일치는 서버 출처 보증이 아니다.",
+    }[c.plan_association]
+    return (f"계획서 연결 상태: `{c.plan_association}` — {explanation}\n"
+            "결과 서명은 결과 JSON에만 적용되며 패키지 전체나 새 외부 입력을 서명한 것이 아니다.")
+
+
+def _gate_export_result(result: PremortemResult) -> tuple[PremortemResult, list[str]]:
+    """공용 조립 문맥 전에 저장 결과를 다시 검사한다. 원본 수정·규칙 대체 없이 사유 코드와 수만 남긴다."""
+    index = EvidenceIndex(result)
+    items, item_drops = gate_checklist_items(result.checklist, result, index=index, where="export")
+    review = _review_for_report(result.expected_review) if result.expected_review else {}
+    reasons: Counter[str] = Counter()
+    shown = 0
+    for section in SECTIONS:
+        kept = []
+        raw = review.get(section, [])
+        if not isinstance(raw, list):
+            reasons[MALFORMED] += 1
+            raw = []
+        for sentence in raw:
+            reason = review_evidence_problem(sentence, index)[0] if isinstance(sentence, Mapping) else MALFORMED
+            if reason is not None:
+                reasons[reason] += 1
+            else:
+                kept.append(sentence)
+        if review:
+            review[section] = kept
+        shown += len(kept)
+    if review and reasons:
+        audit = dict(review.get("audit") or {})
+        prior = Counter(audit.get("dropped_reasons") or {})
+        prior.update(reasons)
+        n = sum(reasons.values())
+        dropped_total = int(audit.get("drop") or 0) + n
+        audit.update({"gen": shown + dropped_total, "pass": shown, "drop": dropped_total,
+                      "no_evidence": int(audit.get("no_evidence") or 0) + sum(v for k, v in reasons.items() if k in NO_EVIDENCE_FAMILY),
+                      "dropped_reasons": dict(sorted(prior.items())),
+                      "dropped_text": "제외한 문장 원문은 싣지 않음(분석 결과 아님) — 사유 코드·개수만"})
+        review["audit"] = audit
+    warnings = []
+    if reasons or item_drops:
+        codes = Counter(d["reason"] for d in item_drops)
+        codes.update(reasons)
+        warnings.append(f"내보내기 근거 게이트: 심사평 {sum(reasons.values())}문장·체크리스트 {len(item_drops)}항목 제외 "
+                        f"(분석 결과 아님). 사유 코드·개수: {json.dumps(dict(sorted(codes.items())), ensure_ascii=False)}")
+    return result.model_copy(update={"expected_review": review, "checklist": items}), warnings
 
 
 def _make_ctx(
     result: PremortemResult,
     plan_text: str | None,
     decisions: Sequence[DecisionEntry | Mapping[str, Any]] | None,
+    origin: str = "in_process",
 ) -> _Ctx:
-    warnings: list[str] = []
-    plan: PlanDocument | None
-    if result.plan is not None:
-        plan, plan_source = result.plan, "result.plan"
-        if plan_text:
-            plan_source = "result.plan (plan_text는 쓰지 않음)"
-    elif plan_text is not None and plan_text.strip():
-        plan = PlanDocument.from_text(plan_text, result.session_id)  # NFC+LF, 이메일·ORCID 가림
-        plan_source = "plan_text (이메일·ORCID 가림)"
-        if plan.plan_id != result.plan_id:
-            warnings.append("plan_text의 해시가 결과의 plan_id와 다르다. 분석한 계획서와 다른 본문일 수 있다.")
-    else:
-        plan, plan_source = None, "none"
+    if origin not in RESULT_ORIGINS:
+        raise ValueError(f"result_origin은 {RESULT_ORIGINS} 중 하나다")
+    original_item_ids = _checklist_ids(result.checklist)
+    result, warnings = _gate_export_result(result)
+    plan, plan_source = _resolve_plan(result, plan_text)
 
     refs = [(f"C{i}", card) for i, card in enumerate(result.risk_cards, start=1)]
     if plan is not None:
@@ -234,7 +373,7 @@ def _make_ctx(
         for ref, card in refs:
             bad = [n for n in card.why_applies.plan_lines if n > n_lines]
             if bad:
-                warnings.append(f"{ref} `{card.card_id}`가 계획서에 없는 줄 {bad}을 가리킨다(계획서 {n_lines}줄).")
+                warnings.append(f"{ref} `{_code(card.card_id)}`가 계획서에 없는 줄 {bad}을 가리킨다(계획서 {n_lines}줄).")
 
     gen_counts = {g.value: 0 for g in Generator}
     for card in result.risk_cards:
@@ -247,8 +386,11 @@ def _make_ctx(
         entry = raw if isinstance(raw, DecisionEntry) else DecisionEntry.model_validate(raw)
         if entry.card_id is not None and entry.card_id not in card_ids:
             raise ValueError(f"결정 로그의 card_id {entry.card_id!r}가 결과의 카드에 없다")
-        if entry.item_id is not None and entry.item_id not in item_ids:
+        if entry.item_id is not None and entry.item_id not in original_item_ids:
             raise ValueError(f"결정 로그의 item_id {entry.item_id!r}가 결과의 체크리스트에 없다")
+        if entry.item_id is not None and entry.item_id not in item_ids:
+            warnings.append("내보내기 근거 게이트: 제외된 체크리스트 항목의 결정 기록 1개 제외(분석 결과 아님).")
+            continue
         entries.append(entry)
 
     return _Ctx(
@@ -261,19 +403,68 @@ def _make_ctx(
         not_ok_stages=[s for s in result.stages if s.state in NOT_OK_STATES],
         decisions=entries,
         warnings=warnings,
+        origin=origin,
     )
 
 
 # ── 서식 헬퍼 ─────────────────────────────────────────────────────────────
 
 
+def _utc_date(dt: datetime) -> datetime:
+    try:
+        return dt.astimezone(UTC)
+    except (OverflowError, ValueError):
+        raise ValueError("날짜를 UTC로 표현할 수 없어 내보낼 수 없습니다.") from None
+
+
+def _zip_date(dt: datetime) -> tuple[int, int, int, int, int, int]:
+    ts = _utc_date(dt)
+    if not 1980 <= ts.year <= 2107:
+        raise ValueError("ZIP 날짜는 UTC 기준 1980년부터 2107년까지 지원합니다.")
+    return ts.year, ts.month, ts.day, ts.hour, ts.minute, ts.second
+
+
 def _iso(dt: datetime) -> str:
-    return dt.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    return _utc_date(dt).isoformat().replace("+00:00", "Z")
+
+
+def _md_escape(text: str) -> str:
+    """마크다운 파일에 옮기는 결과 문자열을 무력화한다(E4-L2f F4·R4). 렌더하면 같은 글자로 보인다.
+
+    - HTML: ``& < >`` → 엔티티(태그·자동 링크 ``<http…>`` 불가).
+    - 링크·이미지 문법: 백슬래시를 먼저 두 배로 하고, 대괄호 앞에 백슬래시를 붙인다(이미지·링크·참조 정의 문법 불가 →
+      원격 이미지를 불러올 수 없다).
+    """
+    t = text.replace("\\", "\\\\")
+    t = html.escape(t, quote=False)
+    return t.replace("[", "\\[").replace("]", "\\]")
 
 
 def _one_line(text: Any) -> str:
-    """마크다운 한 줄용: 개인정보 가림 + 줄바꿈·연속 공백을 한 칸으로."""
-    return re.sub(r"\s+", " ", redact_pii(str(text))).strip()
+    """마크다운 한 줄용: 개인정보 가림 + 줄바꿈·연속 공백을 한 칸으로 + HTML 이스케이프."""
+    return _md_escape(re.sub(r"\s+", " ", redact_pii(str(text))).strip())
+
+
+def _code(text: Any) -> str:
+    """코드 스팬(`…`) 안에 넣을 id: 백틱·줄바꿈을 빼서 스팬을 깨고 나오지 못하게 한다."""
+    return re.sub(r"[`\r\n]+", "", str(text))
+
+
+def _url(url: str) -> str:
+    """자동 링크(<…>)로 쓸 수 있는 http(s) URL만 링크로, 아니면 이스케이프한 글자로."""
+    return f"<{url}>" if re.fullmatch(r"https?://[^\s<>`]+", url) else _one_line(url)
+
+
+def _csv(text: Any) -> str:
+    """CSV 수식 주입 방지(F4): = + - @ 탭 CR로 시작하는 문자열 칸 앞에 ' 를 붙인다."""
+    s = "" if text is None else str(text)
+    return "'" + s if s[:1] in ("=", "+", "-", "@", "\t", "\r") else s
+
+
+def _json_md(obj: Any) -> str:
+    """마크다운 안 JSON: < > & 를 \\u 이스케이프(디코드하면 같은 값, 렌더러가 HTML로 읽지 않는다)."""
+    return (json.dumps(obj, ensure_ascii=False, indent=2)
+            .replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e"))
 
 
 def _cell(text: Any) -> str:
@@ -304,13 +495,17 @@ def _result_model(r: PremortemResult) -> str | None:
     return next((str(m[k]) for k in ("model_id", "model", "llm_model") if m.get(k)), None)
 
 
-def _gen_label(card: RiskCard, fallback_model: str | None = None) -> str:
-    """카드 생성 방식 표시 이름. LLM 카드는 "LLM (모델명)", 규칙·mock은 모델을 붙이지 않는다."""
-    return display_generator(card.generator.value, card.model or fallback_model)
+UNVERIFIED_GEN_NOTE = "결과에 적힌 표기, 미확인"
+
+
+def _unverified_name(g: Generator) -> str:
+    """서명 확인 안 된 결과의 생성 방식 이름: "LLM(결과에 적힌 표기, 미확인)"처럼 표기만 옮긴다(모델명 없음)."""
+    base = display_generator(g.value)
+    return f"{base[:-1]}, {UNVERIFIED_GEN_NOTE})" if base.endswith(")") else f"{base}({UNVERIFIED_GEN_NOTE})"
 
 
 def _gen_name(c: _Ctx, g: Generator) -> str:
-    """결과 전체의 생성 방식 이름. LLM이면 카드들의 모델(여럿이면 모두), 없으면 manifest 모델.
+    """결과 전체의 생성 방식 이름(DISP-1). LLM이면 카드들의 모델(여럿이면 모두), 없으면 manifest 모델.
 
     LLM 카드가 0장이면 모델명을 붙이지 않는다("LLM 0장"). 쓰이지 않은 모델을 적지 않기 위해서다.
     """
@@ -320,12 +515,31 @@ def _gen_name(c: _Ctx, g: Generator) -> str:
     return display_generator(g.value, ", ".join(models) or _result_model(c.result))
 
 
+def _gen_short(c: _Ctx, g: Generator) -> str:
+    """결과 전체의 생성 방식 이름(마크다운용, 이스케이프됨). 서명 확인·직접 호출이면 DISP-1 이름, 미확인이면 표기만."""
+    return _one_line(_gen_name(c, g) if c.verified else _unverified_name(g))
+
+
+def _gen_desc(c: _Ctx, g: Generator) -> str:
+    if c.verified:
+        return GENERATOR_LABELS[g]
+    return "결과에 적힌 생성 방식 표기일 뿐이다. 서버 서명이 없어 누가 어떻게 만들었는지 확인하지 못했다"
+
+
+def _gen_label(c: _Ctx, card: RiskCard) -> str:
+    """카드 생성 방식(마크다운용, 이스케이프됨). LLM 카드는 "LLM (모델명)", 규칙·mock은 모델을 붙이지 않는다.
+    서명 확인 안 된 결과는 모델명 없이 "LLM(결과에 적힌 표기, 미확인)"."""
+    if not c.verified:
+        return _one_line(_unverified_name(card.generator))
+    return _one_line(display_generator(card.generator.value, card.model or _result_model(c.result)))
+
+
 def _gen_summary(c: _Ctx) -> str:
-    return " · ".join(f"{_gen_name(c, g)} {c.gen_counts[g.value]}장" for g in Generator)
+    return " · ".join(f"{_gen_short(c, g)} {c.gen_counts[g.value]}장" for g in Generator)
 
 
 def _stage_line(s: StageStatus) -> str:
-    text = f"{s.stage}: {s.state}"
+    text = f"{_one_line(s.stage)}: {s.state}"
     if s.detail:
         text += f" — {_one_line(display_text(s.detail))}"
     return text
@@ -358,18 +572,25 @@ def _plan_line_text(c: _Ctx, no: int) -> str | None:
 
 
 def _quote_block(text: str, indent: str = "") -> list[str]:
-    return [f"{indent}> {ln}" if ln else f"{indent}>" for ln in text.split("\n")]
+    return [f"{indent}> {_md_escape(ln)}" if ln else f"{indent}>" for ln in text.split("\n")]
 
 
 def _excerpt_ref(ex: Excerpt) -> str:
     kind = SOURCE_KIND_KO.get(ex.source_kind, ex.source_kind)
-    return f"{kind} `{ex.source_id}` [{ex.start}:{ex.end}] · <{ex.source_url}> · `{ex.excerpt_id}`"
+    return f"{kind} `{_code(ex.source_id)}` [{ex.start}:{ex.end}] · {_url(ex.source_url)} · `{_code(ex.excerpt_id)}`"
 
 
 def _limitations(c: _Ctx) -> list[str]:
-    lines = [
+    quote_line = (
         "- 인용문은 분석 시점에 원문을 오프셋으로 잘라 옮긴 것이다. 이 패키지는 원문을 다시 받아 대조하지 않았다"
-        "(`evidence_pack.json`의 `reverification`).",
+        "(`evidence_pack.json`의 `reverification`)."
+        if c.verified else
+        "- 인용문은 요청자가 보낸 결과의 text 값이다. 원문에서 잘라 온 것인지 서버가 확인하지 않았다"
+        "(`evidence_pack.json`의 `reverification`)."
+    )
+    lines = [
+        f"- 결과 출처: `{c.origin}` — {ORIGIN_LABELS[c.origin]}.",
+        quote_line,
         "- 위험카드는 비슷한 연구가 받은 심사 기록에서 찾은 **가능성**이다. 이 계획서의 결함이 확정됐다는 뜻이 아니다.",
         f"- 계획서 본문 출처: {c.plan_source}. 계획서 줄은 이메일·ORCID를 가린 뒤 담는다.",
         "- 설정·API 키·환경변수 값은 담지 않는다. 리뷰어 신원 정보는 없다.",
@@ -387,15 +608,17 @@ def _limitations(c: _Ctx) -> list[str]:
 
 def _readme(c: _Ctx) -> bytes:
     r = c.result
-    L = [
+    L = [UNVERIFIED_WARNING, ""] if not c.verified else []
+    L += [
         "# Neumann 내보내기 패키지",
         "",
         "연구계획서 사전 위험 점검 결과를 파일 9개로 묶었다. 파일별 sha256·크기는 `manifest.json`에 있다.",
         "",
+        f"- 결과 출처: `{c.origin}` — {ORIGIN_LABELS[c.origin]}",
         f"- 결과 상태: **{r.status}**{_status_suffix(c)}",
         f"- 위험카드 {c.n_cards}장 · 근거 발췌 {len(r.evidence)}건 · 유사 연구 {len(r.similar_works)}편",
         f"- 생성 방식: {_gen_summary(c)}",
-        f"- 계획서 id `{r.plan_id}` · 분석 시각 {_iso(r.generated_at)} · 파이프라인 `{r.pipeline_version}`",
+        f"- 계획서 id `{_code(r.plan_id)}` · 분석 시각 {_iso(r.generated_at)} · 파이프라인 `{_code(r.pipeline_version)}`",
         "",
         "## 들어 있는 파일",
         "",
@@ -403,12 +626,15 @@ def _readme(c: _Ctx) -> bytes:
         "|---|---|",
     ]
     L += [f"| `{name}` | {FILE_ROLES[name]} |" for name in FILE_NAMES]
-    L += ["", JSON_GENERATOR_NOTE]
+    L += [f"| `{name}` | {export_revision.FILE_ROLES[name]} |" for name in c.extra_files]  # E3-L2r(있을 때만)
+    L += ["", JSON_GENERATOR_NOTE if c.verified else JSON_GENERATOR_NOTE_UNVERIFIED]
+    if c.extra_summary:
+        L += ["", "## 수정 권고(E3-L2r)", "", *c.extra_summary]
     L += ["", "## 생성 방식", ""]
-    L += [f"- **{_gen_name(c, g)}** {c.gen_counts[g.value]}장: {GENERATOR_LABELS[g]}" for g in Generator]
+    L += [f"- **{_gen_short(c, g)}** {c.gen_counts[g.value]}장: {_gen_desc(c, g)}" for g in Generator]
     if c.refs:
         L += ["", "카드별:", ""]
-        L += [f"- {ref} `{card.card_id}` — {_gen_label(card, _result_model(r))}" for ref, card in c.refs]
+        L += [f"- {ref} `{_code(card.card_id)}` — {_gen_label(c, card)}" for ref, card in c.refs]
     L += ["", "## 강등 단계", ""]
     if c.not_ok_stages:
         L += ["| 단계 | 상태 | 구현 | 사유 |", "|---|---|---|---|"]
@@ -486,11 +712,15 @@ def _evidence_pack_json(c: _Ctx) -> bytes:
             "format": PACKAGE_FORMAT,
             "schema_version": SCHEMA_VERSION,
             "plan_id": r.plan_id,
+            "result_origin": c.origin,
+            **_plan_metadata(c),
             "reverification": {
                 "status": "not_reverified",
                 "note": (
-                    "패키지는 원문을 다시 받지 않는다. text는 분석 시점에 원문[start:end]를 잘라 옮긴 값이다. "
-                    "대조하려면 source_url의 원문(정규화 NFC+LF, 개인정보 가림 뒤)에서 [start:end]를 잘라 "
+                    ("패키지는 원문을 다시 받지 않는다. text는 분석 시점에 원문[start:end]를 잘라 옮긴 값이다. "
+                     if c.verified else
+                     "서버 서명이 없는 결과다. text는 요청자가 보낸 값이며 원문[start:end]와 같은지 확인되지 않았다. ")
+                    + "대조하려면 source_url의 원문(정규화 NFC+LF, 개인정보 가림 뒤)에서 [start:end]를 잘라 "
                     "text와 글자 단위로 비교하고 sha256을 text_sha256·source_sha256과 비교한다."
                 ),
             },
@@ -516,13 +746,13 @@ def _similar_works_csv(c: _Ctx) -> bytes:
         writer.writerow(
             [
                 i,
-                w.work_id,
+                _csv(w.work_id),
                 f"{w.similarity:.4f}",
-                w.title or "",
-                w.venue or "",
+                _csv(w.title or ""),
+                _csv(w.venue or ""),
                 "" if w.year is None else w.year,
-                w.url or "",
-                ";".join(cited_by.get(w.work_id, [])),
+                _csv(w.url or ""),
+                _csv(";".join(cited_by.get(w.work_id, []))),
                 *("" if a not in w.axis_scores else f"{w.axis_scores[a]:.4f}" for a in axes),
             ]
         )
@@ -534,7 +764,8 @@ def _card_legend(c: _Ctx) -> list[str]:
         return ["위험카드가 0장이라 연결된 줄이 없다."]
     L = ["| 표시 | 카드 id | 위험 유형 | 생성 | 제목 |", "|---|---|---|---|---|"]
     L += [
-        f"| {ref} | `{card.card_id}` | {_cell(_risk_label(card))} | {_cell(_gen_label(card, _result_model(c.result)))} | {_cell(card.title)} |"
+        f"| {ref} | `{_code(card.card_id)}` | {_cell(_risk_label(card))} | {_gen_label(c, card).replace('|', chr(92) + '|')} "
+        f"| {_cell(card.title)} |"
         for ref, card in c.refs
     ]
     return L
@@ -543,10 +774,9 @@ def _card_legend(c: _Ctx) -> list[str]:
 def _plan_annotated(c: _Ctx) -> bytes:
     by_line: dict[int, list[str]] = {}
     for ref, card in c.refs:
-        for no in card.why_applies.plan_lines:
-            refs = by_line.setdefault(no, [])
-            if ref not in refs:
-                refs.append(ref)
+        # 한 카드 안의 중복 줄만 제거한다. ref는 카드마다 고유하므로 누적 목록을 검색할 필요가 없다.
+        for no in dict.fromkeys(card.why_applies.plan_lines):
+            by_line.setdefault(no, []).append(ref)
 
     if c.plan is None:
         L = [
@@ -597,7 +827,7 @@ def _plan_annotated(c: _Ctx) -> bytes:
     if c.refs:
         for ref, card in c.refs:
             nos = card.why_applies.plan_lines
-            L.append(f"- {ref} `{card.card_id}`: " + (", ".join(str(n) for n in nos) if nos else "연결된 줄 없음"))
+            L.append(f"- {ref} `{_code(card.card_id)}`: " + (", ".join(str(n) for n in nos) if nos else "연결된 줄 없음"))
     else:
         L.append("위험카드가 0장이다.")
     missing = sorted(n for n in by_line if n > len(lines))
@@ -608,25 +838,30 @@ def _plan_annotated(c: _Ctx) -> bytes:
 
 def _report(c: _Ctx) -> bytes:
     r = c.result
-    L = [
+    L = [UNVERIFIED_WARNING, ""] if not c.verified else []
+    L += [
         "# Neumann 위험 점검 리포트",
         "",
-        "비슷한 연구가 실제로 받은 심사 기록(심사평·저자 답변·결정·사후 상태)에서 찾은 위험이다. "
-        "인용문은 원문을 오프셋으로 잘라 그대로 옮긴 것이다.",
+        ("비슷한 연구가 실제로 받은 심사 기록(심사평·저자 답변·결정·사후 상태)에서 찾은 위험이다. "
+         "인용문은 원문을 오프셋으로 잘라 그대로 옮긴 것이다."
+         if c.verified else
+         "요청자가 보낸 결과를 옮겼다. 위험카드·인용문·점수는 서버가 확인하지 않은 값이다."),
         "",
         "## 요약",
         "",
+        f"- 결과 출처: `{c.origin}` — {ORIGIN_LABELS[c.origin]}",
         f"- 결과 상태: **{r.status}**{_status_suffix(c)}",
         f"- 위험카드 {c.n_cards}장 · 근거 발췌 {len(r.evidence)}건 · 유사 연구 {len(r.similar_works)}편",
         f"- 생성 방식: {_gen_summary(c)}",
-        f"- 계획서 id `{r.plan_id}` · 세션 `{r.session_id}` · 분석 시각 {_iso(r.generated_at)} · 파이프라인 `{r.pipeline_version}`",
+        f"- 계획서 id `{_code(r.plan_id)}` · 세션 `{_code(r.session_id)}` · 분석 시각 {_iso(r.generated_at)} · "
+        f"파이프라인 `{_code(r.pipeline_version)}`",
     ]
     if r.notices:
         L += ["", "알림:", ""]
         L += [f"- {_one_line(display_text(n))}" for n in r.notices]
 
     L += ["", "## 생성 방식과 단계", ""]
-    L += [f"- **{_gen_name(c, g)}** {c.gen_counts[g.value]}장: {GENERATOR_LABELS[g]}" for g in Generator]
+    L += [f"- **{_gen_short(c, g)}** {c.gen_counts[g.value]}장: {_gen_desc(c, g)}" for g in Generator]
     L.append("")
     if r.stages:
         L += ["| 단계 | 상태 | 구현 | 사유 | 소요(초) |", "|---|---|---|---|---:|"]
@@ -646,7 +881,7 @@ def _report(c: _Ctx) -> bytes:
         L += [
             f"### {i}. [{_risk_label(card)}] {_one_line(card.title)}",
             "",
-            f"- 카드 `{card.card_id}` ({ref}) · 생성: {_gen_label(card, _result_model(r))}",
+            f"- 카드 `{_code(card.card_id)}` ({ref}) · 생성: {_gen_label(c, card)}",
             f"- 점수 {s.total:.2f} (유사도 {s.similarity:.2f} · 빈도 {s.frequency:.2f} · "
             f"심각도 {s.severity:.2f} · 신뢰도 {s.confidence:.2f})",
             f"- 이 계획서에 해당하는 이유: {_one_line(card.why_applies.text)}",
@@ -657,7 +892,7 @@ def _report(c: _Ctx) -> bytes:
                 text = _plan_line_text(c, no)
                 L.append(f"  - {no}: {text}" if text is not None else f"  - {no}")
         if card.works:
-            L.append("- 근거 논문: " + ", ".join(f"`{w}`" for w in card.works))
+            L.append("- 근거 논문: " + ", ".join(f"`{_code(w)}`" for w in card.works))
         L += ["", f"근거 인용 {len(card.evidence)}건:", ""]
         for k, ex_id in enumerate(card.evidence, start=1):
             ex = c.ex_by_id[ex_id]
@@ -673,18 +908,20 @@ def _report(c: _Ctx) -> bytes:
             venue = ", ".join(x for x in (w.venue or "", "" if w.year is None else str(w.year)) if x) or "-"
             L.append(
                 f"| {i} | {_cell(w.title or w.work_id)} | {w.similarity:.2f} | {_cell(venue)} | "
-                f"{'<' + w.url + '>' if w.url else '-'} |"
+                f"{_url(w.url) if w.url else '-'} |"
             )
     else:
         L.append("유사 연구가 없다.")
 
     if r.expected_review:
-        L += ["", "## 예상 심사평 (결과의 expected_review를 그대로 옮김)", ""]
+        L += ["", "## 예상 심사평 (결과의 expected_review를 옮김 · 제외한 문장은 사유 코드·개수만)", ""]
         er_gen = r.expected_review.get("generator")
         if er_gen:
-            L += [f"생성: {display_generator(er_gen, r.expected_review.get('model'))}", ""]
+            name = (display_generator(er_gen, r.expected_review.get("model")) if c.verified
+                    else f"{display_generator(er_gen)}({UNVERIFIED_GEN_NOTE})")
+            L += [f"생성: {_one_line(name)}", ""]
         L.append("```json")
-        L += json.dumps(r.expected_review, ensure_ascii=False, indent=2).split("\n")
+        L += _json_md(_review_for_report(r.expected_review)).split("\n")
         L.append("```")
     if r.checklist:
         L += ["", "## 체크리스트 (결과의 checklist를 옮김)", ""]
@@ -705,21 +942,26 @@ def _report(c: _Ctx) -> bytes:
 
 def _ai_context(c: _Ctx) -> bytes:
     r = c.result
-    L = [
+    L = [UNVERIFIED_WARNING, ""] if not c.verified else []
+    L += [
         "# Neumann 결과 요약 (다른 AI에 넘기는 맥락)",
         "",
         "연구계획서 사전 위험 점검 결과다. 이 문서를 받은 AI는 다음을 지킨다.",
         "",
-        "- 따옴표 안 인용문은 실제 심사 기록 원문을 오프셋으로 잘라 옮긴 것이다. 고치거나 지어내지 않는다.",
+        ("- 따옴표 안 인용문은 실제 심사 기록 원문을 오프셋으로 잘라 옮긴 것이다. 고치거나 지어내지 않는다."
+         if c.verified else
+         "- 이 결과는 서버가 분석·서명한 것이 아니다. 인용문·생성 방식·점수는 보낸 값 그대로이고 확인되지 않았다. "
+         "원문과 대조하기 전에는 인용으로 쓰지 않는다."),
         "- 근거는 발췌 id(`ex_…`)로 가리킨다. 근거 id가 없는 위험을 새로 덧붙이지 않는다.",
         "- generator=rule 카드는 규칙(비상 경로) 결과이고 LLM 판단이 아니다. generator=mock 카드는 테스트용 가짜다.",
-        f"- {JSON_GENERATOR_NOTE}",
+        f"- {JSON_GENERATOR_NOTE if c.verified else JSON_GENERATOR_NOTE_UNVERIFIED}",
         "- 위험은 가능성이다. 계획서의 결함이 확정됐다고 말하지 않는다.",
         "",
         "## 상태",
         "",
+        f"- result_origin: {c.origin}",
         f"- status: {r.status}{_status_suffix(c)}",
-        f"- plan_id: {r.plan_id}",
+        f"- plan_id: {_one_line(r.plan_id)}",
         f"- 생성 방식: {_gen_summary(c)}",
     ]
     L += [f"- 정상이 아닌 단계: {_stage_line(s)}" for s in c.not_ok_stages]
@@ -729,32 +971,36 @@ def _ai_context(c: _Ctx) -> bytes:
         L += [f"- {x}" for x in _zero_card_reasons(c)]
     for ref, card in c.refs:
         L += [
-            f"### {ref} {card.card_id}",
+            f"### {ref} {_one_line(card.card_id)}",
             "",
             f"- 위험 유형: {_risk_label(card)} ({card.risk_code.title_en})",
             f"- 제목: {_one_line(card.title)}",
-            f"- 생성: {_gen_label(card, _result_model(r))}",
+            f"- 생성: {_gen_label(c, card)}",
             f"- 점수 total: {card.score.total:.2f}",
             f"- 해당 이유: {_one_line(card.why_applies.text)}",
         ]
         for no in card.why_applies.plan_lines:
             text = _plan_line_text(c, no)
             L.append(f"  - 계획서 {no}줄" + (f": {text}" if text is not None else ""))
-        L.append("- 근거 id: " + ", ".join(card.evidence))
+        L.append("- 근거 id: " + ", ".join(_one_line(x) for x in card.evidence))
         L.append("- 근거 인용:")
         for ex_id in card.evidence:
             ex = c.ex_by_id[ex_id]
-            quote = json.dumps(ex.text, ensure_ascii=False)  # 글자 그대로(줄바꿈은 \n으로 이스케이프)
+            quote = json.dumps(ex.text, ensure_ascii=False).replace("&", "\\u0026").replace("<", "\\u003c").replace(
+                ">", "\\u003e")  # 디코드하면 글자 그대로(줄바꿈 \n, < > &는 \\u 이스케이프)
             kind = SOURCE_KIND_KO.get(ex.source_kind, ex.source_kind)
-            L.append(f"  - [{ex_id}] {quote} ({kind}, {ex.source_url})")
+            L.append(f"  - [{_one_line(ex_id)}] {quote} ({kind}, {_one_line(ex.source_url)})")
         L.append("")
     L += ["## 유사 연구", ""]
     if r.similar_works:
         L += [
-            f"- {w.work_id} · {_one_line(w.title or '-')} · similarity {w.similarity:.2f}" for w in r.similar_works
+            f"- {_one_line(w.work_id)} · {_one_line(w.title or '-')} · similarity {w.similarity:.2f}"
+            for w in r.similar_works
         ]
     else:
         L.append("- 없음")
+    if c.warnings:
+        L += ["", "## 내보내기 주의", "", *[f"- {w}" for w in c.warnings]]
     L += ["", "## 한계", ""]
     L += _limitations(c)
     return _md_bytes(L)
@@ -775,6 +1021,7 @@ def _decision_log_json(c: _Ctx) -> bytes:
             ],
             "checklist_item_ids": sorted(_checklist_ids(r.checklist)),
             "decisions": [d.model_dump(mode="json") for d in c.decisions],
+            **_plan_metadata(c),
         }
     )
 
@@ -786,6 +1033,8 @@ def _manifest_json(c: _Ctx, files: Mapping[str, bytes], created_at: datetime) ->
             "format": PACKAGE_FORMAT,
             "schema_version": SCHEMA_VERSION,
             "created_at": _iso(created_at),
+            "result_origin": c.origin,
+            **_plan_metadata(c),
             "result": {
                 "session_id": r.session_id,
                 "plan_id": r.plan_id,
@@ -808,10 +1057,12 @@ def _manifest_json(c: _Ctx, files: Mapping[str, bytes], created_at: datetime) ->
             "evidence_reverification": "not_reverified",
             "warnings": c.warnings,
             "files": [
-                {"path": name, "sha256": _sha256(files[name]), "bytes": len(files[name])}
-                for name in FILE_NAMES
+                {"path": name, "sha256": _sha256(files[name]), "bytes": len(files[name]),
+                 **({"result_origin": c.origin, **_plan_metadata(c)} if name in FILE_NAMES else {})}
+                for name in (*FILE_NAMES, *c.extra_files)
                 if name != "manifest.json"
             ],
+            "extra_files": list(c.extra_files),  # E3-L2r: 9파일 밖에 덧붙인 것(없으면 빈 목록)
         }
     )
 
@@ -823,17 +1074,37 @@ def _sha256(data: bytes) -> str:
 # ── 공개 함수 ─────────────────────────────────────────────────────────────
 
 
+def _guard_export_plan(result: Any, plan_text: str | None) -> None:
+    check_payload_plan({"result": result, "plan_text": plan_text})
+    if isinstance(result, PremortemResult) and result.plan is not None:
+        check_embedded_plan(result.plan.lines)
+
+
 def build_package_files(
     result: PremortemResult | Mapping[str, Any],
     *,
     plan_text: str | None = None,
     decisions: Sequence[DecisionEntry | Mapping[str, Any]] | None = None,
     created_at: datetime | None = None,
+    result_origin: ResultOrigin = "in_process",
+    revision: Mapping[str, Any] | None = None,
+    revision_decisions: Sequence[Mapping[str, Any]] | None = None,
+    revised_plan: Mapping[str, Any] | None = None,
+    revision_sig: str | None = None,
+    result_sig: str | None = None,
 ) -> dict[str, bytes]:
-    """9개 파일 {이름: 바이트}(FILE_NAMES 순서). 입력이 계약을 어기면 ValueError(ValidationError 포함)."""
+    """9개 파일 {이름: 바이트}(FILE_NAMES 순서). 입력이 계약을 어기면 ValueError(ValidationError 포함).
+
+    E3-L2r: `revision`(수정 권고)·`revised_plan`(통합본)이 오면 `revision.json`·`revised_plan.md`를 뒤에 덧붙인다(10·11번째).
+    """
+    _guard_export_plan(result, plan_text)
     if not isinstance(result, PremortemResult):
         result = PremortemResult.model_validate(result)
-    c = _make_ctx(result, plan_text, decisions)
+    c = _make_ctx(result, plan_text, decisions, result_origin)
+    extras = export_revision.extra_files(result, revision, revision_decisions, revised_plan, revision_sig, result_sig)
+    c.extra_files = list(extras)
+    c.extra_summary = export_revision.summary_lines(revision, revision_decisions, revised_plan,
+                                                  result=result, revision_sig=revision_sig, result_sig=result_sig)
     files: dict[str, bytes] = {
         "README.md": _readme(c),
         "risk_cards.json": _risk_cards_json(c),
@@ -844,9 +1115,15 @@ def build_package_files(
         "ai_context.md": _ai_context(c),
         "decision_log.json": _decision_log_json(c),
     }
+    # Preserve the first-line result warning/title. Every human-facing member states
+    # the narrower plan authority; manifest entries also cover card-list and CSV members.
+    for name in ("README.md", "plan_annotated.md", "neumann_report.md", "ai_context.md"):
+        head, separator, tail = files[name].decode("utf-8").partition("\n")
+        files[name] = (head + separator + "\n" + _plan_authority_text(c) + "\n" + tail).encode("utf-8")
+    files.update(extras)
     when = created_at or datetime.now(UTC).replace(microsecond=0)
     files["manifest.json"] = _manifest_json(c, files, when)
-    return {name: files[name] for name in FILE_NAMES}
+    return {name: files[name] for name in (*FILE_NAMES, *c.extra_files)}
 
 
 def build_package(
@@ -855,21 +1132,25 @@ def build_package(
     plan_text: str | None = None,
     decisions: Sequence[DecisionEntry | Mapping[str, Any]] | None = None,
     created_at: datetime | None = None,
+    result_origin: ResultOrigin = "in_process",
+    **extras: Any,
 ) -> bytes:
-    """분석 결과 → ZIP 바이트(9파일).
+    """분석 결과 → ZIP 바이트(9파일 + E3-L2r 선택 파일: revision·revision_decisions·revised_plan·revision_sig).
 
-    - plan_text: result.plan이 없을 때만 쓴다. PlanDocument 규칙대로 정규화·마스킹한 줄만 담는다.
+    - plan_text: result.plan이 없을 때만 쓴다. 정규화·마스킹한 해시가 result.plan_id와 다르면 거절한다.
     - decisions: 카드별 채택·보류·기각 기록(선택). card_id가 결과에 없으면 ValueError.
     - created_at: 패키지 생성 시각(manifest). 없으면 지금. 넘기면 출력 전체가 결정적이다.
+    - result_origin: 결과 출처(manifest·README). API는 서버 서명을 확인해 정한다. 직접 부르면 "in_process".
     """
+    _guard_export_plan(result, plan_text)
     if not isinstance(result, PremortemResult):
         result = PremortemResult.model_validate(result)
-    files = build_package_files(result, plan_text=plan_text, decisions=decisions, created_at=created_at)
-    ts = result.generated_at.astimezone(UTC)
-    date_time = max((ts.year, ts.month, ts.day, ts.hour, ts.minute, ts.second), (1980, 1, 1, 0, 0, 0))
+    date_time = _zip_date(result.generated_at)  # reject unsupported dates before rendering; never substitute a date
+    files = build_package_files(result, plan_text=plan_text, decisions=decisions, created_at=created_at,
+                                result_origin=result_origin, **extras)
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for name in FILE_NAMES:
+        for name in files:  # FILE_NAMES 순서 + 덧붙인 파일
             info = zipfile.ZipInfo(name, date_time=date_time)
             info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = 0o644 << 16
@@ -885,14 +1166,74 @@ router = APIRouter()
 RESULT_REQUIRED_MESSAGE = "내보내기에는 분석 결과가 필요합니다. 먼저 분석을 실행한 뒤 결과 화면에서 내보내 주세요."
 
 
+def package_limit_refusal(
+    payload: dict[str, Any], *, max_plan_lines: int = 5_000, max_plan_chars: int = 50_000,
+) -> tuple[int, str, str] | None:
+    """중첩 모델 검증·정규화·ZIP 조립 전에 원자료 개수만 검사한다(SEC-7).
+
+    감싼 결과와 bare result 모두 검사한다. 잘못된 자료형은 기존 스키마 검증에 맡기고 입력은 되돌려 주지 않는다.
+    """
+    from neumann.api.serving import count_lines, user_message
+
+    def plan_refusal(chars: int, lines: int) -> tuple[int, str, str] | None:
+        if chars > max_plan_chars:
+            return 413, "too_large", user_message("too_large", limit=max_plan_chars, chars=chars)
+        if lines > max_plan_lines:
+            return 422, "too_many_lines", user_message("too_many_lines", limit=max_plan_lines)
+        return None
+
+    text = payload.get("plan_text")
+    if isinstance(text, str):
+        refused = plan_refusal(len(text), count_lines(text))
+        if refused:
+            return refused
+    decisions = payload.get("decisions")
+    if isinstance(decisions, list) and len(decisions) > MAX_PACKAGE_DECISIONS:
+        return 422, "package_limits", f"결정 기록이 너무 많습니다(최대 {MAX_PACKAGE_DECISIONS:,}건)."
+    result = payload.get("result", payload)
+    if not isinstance(result, dict):
+        return None
+    cards = result.get("risk_cards")
+    if isinstance(cards, list):
+        if len(cards) > MAX_PACKAGE_CARDS:
+            return 422, "package_limits", f"위험카드가 너무 많습니다(최대 {MAX_PACKAGE_CARDS:,}장)."
+        for card in cards:
+            why = card.get("why_applies") if isinstance(card, dict) else None
+            refs = why.get("plan_lines") if isinstance(why, dict) else None
+            if isinstance(refs, list) and len(refs) > MAX_PACKAGE_CARD_LINES:
+                return 422, "package_limits", f"카드별 연결 줄이 너무 많습니다(최대 {MAX_PACKAGE_CARD_LINES:,}줄)."
+    plan = result.get("plan")
+    lines = plan.get("lines") if isinstance(plan, dict) else None
+    if isinstance(lines, list):
+        if len(lines) > max_plan_lines:
+            return plan_refusal(0, len(lines))
+        chars, physical_lines = max(len(lines) - 1, 0), 0
+        for line in lines:
+            text = line.get("text") if isinstance(line, dict) else None
+            if isinstance(text, str):
+                chars += len(text)
+                physical_lines += count_lines(text)
+                refused = plan_refusal(chars, physical_lines)
+                if refused:
+                    return refused
+    return None
+
+
 class PackageRequest(BaseModel):
     """`POST /premortem/package` 본문. result(분석 결과 JSON)는 반드시 있어야 한다(plan_text만으로는 분석하지 않는다)."""
 
     model_config = ConfigDict(extra="forbid")
 
     result: dict[str, Any] | None = None
+    result_sig: str | None = Field(default=None, max_length=200, description="화면 응답의 서버 서명(v1.<hex>)")
     plan_text: str | None = Field(default=None, max_length=MAX_PLAN_CHARS)
     decisions: list[dict[str, Any]] | None = None
+    # E3-L2r(선택): 수정 권고·연구자 결정·통합본 → revision.json·revised_plan.md
+    revision: dict[str, Any] | None = None
+    revision_decisions: list[dict[str, Any]] | None = None
+    revised_plan: dict[str, Any] | None = None
+    revision_sig: str | None = Field(default=None, max_length=200)
+    result_sig: str | None = Field(default=None, max_length=200)
 
 
 def _errors(exc: ValidationError) -> list[dict[str, Any]]:
@@ -911,7 +1252,7 @@ def _safe_filename_part(plan_id: str) -> str:
     response_class=Response,
     responses={200: {"content": {"application/zip": {}}, "description": "ZIP 9파일"}},
 )
-def premortem_package(payload: dict[str, Any] = Body(...)) -> Response:
+def premortem_package(request: Request, payload: dict[str, Any] = Body(...)) -> Response:
     """분석 결과 JSON → 내보내기 ZIP.
 
     본문 형식: `{"result": {...}, "plan_text": "...", "decisions": [...]}`. result는 반드시 있어야 한다.
@@ -919,6 +1260,14 @@ def premortem_package(payload: dict[str, Any] = Body(...)) -> Response:
     plan_text만 오면 파이프라인을 돌리지 않고 422 + 사용자 문구로 거절한다(SEC-1 S-02, PM 결정 2026-09-30:
     내보내기는 결과만 받는다. 분석은 /premortem의 관문·속도 제한·예산을 거쳐야 한다).
     """
+    srv = getattr(request.app.state, "serving", None)
+    limits = {} if srv is None else {"max_plan_lines": srv.config.max_plan_lines,
+                                    "max_plan_chars": srv.config.max_plan_chars}
+    check_payload_plan(payload, max_lines=limits.get("max_plan_lines", 5_000))
+    refusal = package_limit_refusal(payload, **limits)
+    if refusal:
+        status, code, message = refusal
+        raise HTTPException(status_code=status, detail={"error_code": code, "message": message})
     if "result" not in payload and "plan_text" not in payload and {"session_id", "plan_id"} <= payload.keys():
         payload = {"result": payload}
     try:
@@ -933,8 +1282,18 @@ def premortem_package(payload: dict[str, Any] = Body(...)) -> Response:
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=_errors(exc)) from None
 
+    from neumann.api.signing import verify_result
+
+    origin: ResultOrigin = (
+        "server_signed" if verify_result(req.result, req.result_sig) else "client_submitted_unverified"
+    )
     try:
-        data = build_package(result, plan_text=req.plan_text if has_text else None, decisions=req.decisions)
+        plan, plan_source = _resolve_plan(result, req.plan_text if has_text else None)
+        plan_association = _plan_association(plan, plan_source, origin)
+        data = build_package(result, plan_text=req.plan_text if has_text else None, decisions=req.decisions,
+                             result_origin=origin,
+                             revision=req.revision, revision_decisions=req.revision_decisions,
+                             revised_plan=req.revised_plan, revision_sig=req.revision_sig, result_sig=req.result_sig)
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=_errors(exc)) from None
     except ValueError as exc:
@@ -948,6 +1307,8 @@ def premortem_package(payload: dict[str, Any] = Body(...)) -> Response:
             "Content-Disposition": f'attachment; filename="{filename}"',
             "X-Neumann-Status": result.status,
             "X-Neumann-Cards": str(len(result.risk_cards)),
+            "X-Neumann-Result-Origin": origin,
+            "X-Neumann-Plan-Association": plan_association,
         },
     )
 
@@ -956,6 +1317,7 @@ __all__ = [
     "DECISION_LABELS",
     "FILE_NAMES",
     "PACKAGE_FORMAT",
+    "RESULT_ORIGINS",
     "DecisionEntry",
     "PackageRequest",
     "build_package",

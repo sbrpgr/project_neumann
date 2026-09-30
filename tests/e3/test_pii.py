@@ -200,9 +200,10 @@ def test_fixture_plans_have_no_false_positive(name: str) -> None:
 
 
 def _timed(text: str) -> tuple[float, str, dict[str, int]]:
-    t0 = time.perf_counter()
+    # 적대 입력 크기·1초 계산 예산은 유지하고 다른 프로세스에 빼앗긴 시간은 제외한다.
+    t0 = time.process_time()
     out, counts = mask_pii_counts(text)
-    return time.perf_counter() - t0, out, counts
+    return time.process_time() - t0, out, counts
 
 
 def test_long_line_of_space_joined_numbers_is_fast() -> None:
@@ -244,9 +245,9 @@ def test_phone_found_inside_long_number_chain() -> None:
 
 
 def test_plan_document_from_adversarial_text_is_fast() -> None:
-    t0 = time.perf_counter()
+    t0 = time.process_time()
     plan, _ = plan_document_from_text("a." * 20000 + "\n" + " ".join(["12"] * 3000), "sess-dos")
-    assert time.perf_counter() - t0 < 1.0
+    assert time.process_time() - t0 < 1.0
     assert len(plan.lines) == 2
 
 

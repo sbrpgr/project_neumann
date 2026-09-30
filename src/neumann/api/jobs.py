@@ -55,6 +55,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
 from neumann.api import serving
+from neumann.api.plan_limits import PlanLimitError, check_plan_text
 from neumann.api.view import build_ui_view
 
 log = logging.getLogger("neumann.jobs")
@@ -258,6 +259,7 @@ class JobStore:
         for jid in [k for k, j in self._jobs.items()
                     if j.finished_at is not None and now - j.finished_at > self.ttl_for(j)]:
             del self._jobs[jid]
+            serving.forget_log_secret(jid)
             self.counters["expired"] += 1
 
     def ttl_for(self, job: Job) -> float:
@@ -274,7 +276,9 @@ class JobStore:
                 if j.finished and j.ipk == ipk and not (counted_only and j.shared)]
         if not done:
             return False
-        del self._jobs[min(done)[1]]
+        jid = min(done)[1]
+        del self._jobs[jid]
+        serving.forget_log_secret(jid)
         self.counters["evicted"] += 1
         return True
 
@@ -307,6 +311,10 @@ class JobStore:
         """
         cfg = self.srv.config
         text = req.plan_text
+        try:
+            check_plan_text(text, max_lines=cfg.max_plan_lines)
+        except PlanLimitError as exc:
+            return _json(serving._err(exc.detail["error_code"], exc.message, ctx.ticket), exc.status_code)
         if len(text) > cfg.max_plan_chars:  # serving과 이중: 파서 차이 등으로 미들웨어가 못 봤어도 여기서 막는다
             self.srv.counters["too_large_413"] += 1
             return _json(serving._err("too_large", serving.user_message("too_large", limit=cfg.max_plan_chars,
@@ -315,6 +323,9 @@ class JobStore:
         if longest > cfg.max_token_chars:
             return _json(serving._err("long_token", serving.user_message("long_token", limit=cfg.max_token_chars,
                                                                          longest=longest), ctx.ticket), 422)
+        if serving.count_lines(text) > cfg.max_plan_lines:  # SEC-7: serving과 이중
+            return _json(serving._err("too_many_lines", serving.user_message("too_many_lines", limit=cfg.max_plan_lines),
+                                      ctx.ticket), 422)
         ipk = serving.ip_key(ctx.ip)
         ok, retry_f = self.limiter.hit(ipk)
         if not ok:
@@ -345,6 +356,7 @@ class JobStore:
                   shared=job_ctx.reservation is None,  # 미들웨어가 자리를 안 잡음 = 캐시 적중·합류
                   lines=sum(1 for ln in req.plan_text.splitlines() if ln.strip()), created=self.clock())
         self._jobs[jid] = job
+        serving.register_log_secret(jid)  # SEC-7: 로그에서 정확 일치로도 가린다(쪼갠·겹 인코딩 모양 포함)
         self.counters["created"] += 1
         job.task = asyncio.ensure_future(self._run(job, req.plan_text))
         st = self.status(job)

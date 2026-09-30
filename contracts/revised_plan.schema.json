@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neumann.local/contracts/revised_plan.schema.json",
+  "title": "RevisedPlan",
+  "description": "통합된 수정 계획서(E3-L2r, 대표 정의 '완전한 유기체'). `assemble_revised_plan(plan_text, revision, decisions)`의 출력이자 `POST /premortem/revise/assemble` 응답. 연구자가 채택(adopt)하거나 직접 수정(modify)한 안만 줄 단위로 합친다. 같은 줄을 여러 안이 바꾸면 conflicts에 담고 자동으로 고르지 않는다(그 줄은 원문 유지). 변경마다 카드 id·근거 id가 붙는다. 자리표시([확인 필요: …])는 placeholders에 따로 담는다. 문장 다듬기(polish)는 선택이며 코드 게이트를 못 넘으면 버린다. 추가만 한다.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["version", "plan_id", "revised_plan_id", "generated_at", "revised_text", "lines", "changes", "conflicts", "placeholders", "stats", "polish"],
+  "properties": {
+    "version": {"type": "string", "description": "revised_plan@v1"},
+    "plan_id": {"type": "string", "description": "원 계획서 sha256"},
+    "revised_plan_id": {"type": "string", "description": "수정본 본문 sha256"},
+    "generated_at": {"type": "string"},
+    "revised_text": {"type": "string", "description": "(a) 깨끗한 원고(줄바꿈 LF)"},
+    "lines": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": true,
+        "required": ["no", "text", "changed"],
+        "properties": {
+          "no": {"type": "integer", "minimum": 1, "description": "수정본 줄 번호"},
+          "orig_no": {"type": ["integer", "null"], "description": "원 계획서 줄 번호(새로 끼운 줄은 null)"},
+          "text": {"type": "string"},
+          "changed": {"type": "boolean"},
+          "edit_id": {"type": "string"},
+          "card_id": {"type": "string"},
+          "polished": {"type": "boolean"}
+        }
+      }
+    },
+    "changes": {
+      "type": "array",
+      "description": "변경 목록(근거 추적): 줄 범위·원문·수정문·카드 id·근거 id·결정",
+      "items": {
+        "type": "object", "additionalProperties": true,
+        "required": ["edit_id", "card_id", "kind", "old_range", "old_text", "new_text", "new_range", "excerpt_ids", "decision", "revised_by"],
+        "properties": {
+          "edit_id": {"type": "string"},
+          "card_id": {"type": "string"},
+          "kind": {"type": "string", "enum": ["replace", "insert_after"]},
+          "old_range": {"type": "array", "items": {"type": "integer"}, "minItems": 2, "maxItems": 2},
+          "old_text": {"type": "string", "description": "insert_after면 빈 문자열"},
+          "new_text": {"type": "string"},
+          "new_range": {"type": "array", "items": {"type": "integer"}, "minItems": 2, "maxItems": 2},
+          "excerpt_ids": {"type": "array", "items": {"type": "string"}},
+          "rationale": {"type": "string"},
+          "decision": {"type": "string", "enum": ["adopt", "modify"]},
+          "decision_ko": {"type": "string"},
+          "revised_by": {"type": "string", "enum": ["proposal", "researcher"], "description": "proposal = 제안 문안 그대로 채택 · researcher = 연구자가 직접 쓴 문장"},
+          "proposed_label": {"type": "string"},
+          "note": {"type": ["string", "null"]},
+          "decided_at": {"type": ["string", "null"]},
+          "placeholders": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "conflicts": {
+      "type": "array",
+      "description": "미해결 충돌. same_line = 같은 줄 replace 둘 이상 · stale_line = 안의 current_text가 계획서 줄과 다름 · unknown_line = 계획서에 없는 줄",
+      "items": {
+        "type": "object", "additionalProperties": true,
+        "required": ["kind", "plan_line", "edit_ids", "detail"],
+        "properties": {
+          "kind": {"type": "string", "enum": ["same_line", "stale_line", "unknown_line"]},
+          "plan_line": {"type": "integer"},
+          "edit_ids": {"type": "array", "items": {"type": "string"}},
+          "card_ids": {"type": "array", "items": {"type": "string"}},
+          "detail": {"type": "string"},
+          "candidates": {"type": "array", "items": {"type": "object", "additionalProperties": true}},
+          "current_text": {"type": "string"},
+          "expected_text": {"type": "string"}
+        }
+      }
+    },
+    "placeholders": {
+      "type": "array",
+      "items": {"type": "object", "additionalProperties": true, "required": ["text", "edit_id", "line"],
+                "properties": {"text": {"type": "string"}, "edit_id": {"type": "string"}, "card_id": {"type": "string"}, "line": {"type": "integer"}}}
+    },
+    "skipped": {"type": "array", "items": {"type": "object", "additionalProperties": true, "required": ["edit_id", "reason"]}},
+    "undecided": {"type": "array", "items": {"type": "string"}},
+    "rejected": {"type": "array", "items": {"type": "string"}},
+    "stats": {
+      "type": "object", "additionalProperties": true,
+      "required": ["edits_total", "applied", "conflicts", "placeholders"],
+      "properties": {
+        "edits_total": {"type": "integer"}, "applied": {"type": "integer"}, "adopted": {"type": "integer"},
+        "modified": {"type": "integer"}, "rejected": {"type": "integer"}, "undecided": {"type": "integer"},
+        "conflicts": {"type": "integer"}, "skipped": {"type": "integer"}, "placeholders": {"type": "integer"},
+        "lines_original": {"type": "integer"}, "lines_revised": {"type": "integer"}
+      }
+    },
+    "notices": {"type": "array", "items": {"type": "string"}},
+    "polish": {
+      "type": "object", "additionalProperties": true,
+      "required": ["requested", "applied"],
+      "properties": {
+        "requested": {"type": "boolean"},
+        "applied": {"type": "boolean", "description": "게이트 통과 뒤 적용됐나. false면 통합본 그대로"},
+        "reason": {"type": ["string", "null"], "description": "미적용 사유(gate_rejected: …, llm_failed, nothing_changed …)"},
+        "generator": {"type": ["string", "null"]},
+        "model": {"type": ["string", "null"]},
+        "gate": {"type": "string"},
+        "lines_polished": {"type": "integer"}
+      }
+    },
+    "markdown": {
+      "type": "object",
+      "description": "API 응답에만: (a) clean (b) footnoted(각주 판) (c) history(수정 이력 + 근거 부록)",
+      "additionalProperties": false,
+      "properties": {"clean": {"type": "string"}, "footnoted": {"type": "string"}, "history": {"type": "string"}}
+    },
+    "label": {"type": "string", "description": "'Neumann 수정 제안 · LLM (모델명) · 생성 시각 …' 표기"},
+    "docx_available": {"type": "boolean", "description": "같은 요청에 format=docx로 .docx를 받을 수 있는지"}
+  }
+}

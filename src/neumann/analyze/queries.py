@@ -29,7 +29,7 @@ from neumann.models import PlanDocument
 log = logging.getLogger(__name__)
 
 TASK = "query_axes"
-PROMPT_VERSION = "query_axes.v1"
+PROMPT_VERSION = "query_axes.v2"  # v2(E3-L1s): 연구 배경·아이디어만 있는 짧은 글도 검색어를 쓴다
 MAX_QUERIES = 6
 MAX_QUERY_CHARS = 200
 CACHE_VERSION = "query_cache.v1"
@@ -49,7 +49,10 @@ The input is a document as numbered lines. It is often Korean with English techn
    Translate Korean terms faithfully. Do not add facts the plan does not state: no invented dataset names, numbers, or methods.
 3. axes: one English sentence each for method, data, evaluation, based only on the plan. Use "" when the plan has none.
 4. domain: a short English label such as "materials science / battery electrolytes".
-If it is not a research plan, return queries as [] and all axes as "".
+If the text is research-related but not a full plan (for example only research background, an abstract without the
+plan, or a short idea), set is_research_plan to false but STILL write the queries and domain for its research topic
+and method, and axes only from what it states.
+Return queries as [] and all axes as "" only when the text is not about research at all.
 """
 
 SCHEMA: dict[str, Any] = {

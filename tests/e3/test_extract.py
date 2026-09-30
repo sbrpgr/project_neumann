@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import time
+import threading
 
 from neumann.analyze import extract
 from neumann.analyze.backend import split_sentences
@@ -137,17 +137,26 @@ def test_batches_and_partial_failure():
 
 def test_stage_deadline_falls_back():
     exs = _excerpts()
+    entered, release, returned = threading.Event(), threading.Event(), threading.Event()
 
     class Slow:
         name, model = "mock", "slow"
 
         def complete_json(self, call):
-            time.sleep(1.5)
-            return LLMResult(ok=True, data={"issues": []}, provider="mock", model="slow", task=call.task)
+            entered.set()
+            try:
+                assert release.wait(20), "시험이 지연 호출을 해제하지 않았다"
+                return LLMResult(ok=True, data={"issues": []}, provider="mock", model="slow", task=call.task)
+            finally:
+                returned.set()
 
-    t0 = time.perf_counter()
-    res = extract_issues([("w1", "T", exs)], Slow(), tagger=keyword_tagger, cache_dir=None, stage_timeout_s=0.2)
-    assert time.perf_counter() - t0 < 1.4
+    try:
+        res = extract_issues([("w1", "T", exs)], Slow(), tagger=keyword_tagger, cache_dir=None, stage_timeout_s=0.2)
+        assert entered.is_set(), "추출 호출 자체가 시작되지 않았다"
+        assert not returned.is_set(), "상한 뒤에도 미완료 호출을 기다렸다"
+    finally:
+        release.set()
+        assert returned.wait(20), "시험의 지연 호출이 정리되지 않았다"
     assert len(res.fallback_batches) == 1 and "상한" in res.fallback_batches[0].fallback_reason
 
 
