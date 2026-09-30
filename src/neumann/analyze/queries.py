@@ -1,21 +1,35 @@
 """astra ① 계획서 → 영어 검색어 3~6개 + 방법·데이터·평가 축 + 연구계획서 여부(호출 1회).
 
 번역은 검색 보조로만 쓴다. 계획서 사실로 쓰지 않는다. 실패하면 계획서의 영문 기술어로 대신한다(비상 경로).
+
+검색어 캐시(E3-L1w): 같은 계획서(plan_id)·provider·모델·추론 강도·지시문 판이면 astra가 한 번 만든 검색어를
+`cache_dir`(기본 `data/cache/queries/`)에 두고 다시 쓴다. 같은 계획서는 같은 검색어 → 같은 유사 연구가 나온다.
+astra 결과만 캐시한다(규칙 비상 경로·mock 결과는 캐시하지 않는다: 다음 실행에서 astra를 다시 시도하게).
+적중 여부는 `QueryPlan.cache`에 남고 파이프라인이 결과(`plan_checks.queries.cache`)에 싣는다.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
+import logging
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from neumann.analyze import rules
-from neumann.llm import LLMCall, LLMProvider, LLMResult, task_options
+from neumann.llm import LLMCall, LLMProvider, LLMResult, generator_for, task_options, validate_output
 from neumann.models import PlanDocument
+
+log = logging.getLogger(__name__)
 
 TASK = "query_axes"
 PROMPT_VERSION = "query_axes.v1"
 MAX_QUERIES = 6
 MAX_QUERY_CHARS = 200
+CACHE_VERSION = "query_cache.v1"
+CACHE_GENERATORS = frozenset({"astra"})  # 캐시하는 생성 주체
 
 INSTRUCTIONS = """\
 You prepare retrieval for a tool that finds prior papers whose peer-review records reveal risks for a new research plan.
@@ -70,6 +84,8 @@ class QueryPlan:
     llm: LLMResult | None = None
     fallback_reason: str | None = None
     notes: list[str] = field(default_factory=list)
+    # 검색어 캐시: enabled(캐시 대상인가), hit(적중), stored(이번에 저장), key(앞 16자), created_at(적중 항목의 생성 시각)
+    cache: dict[str, Any] = field(default_factory=lambda: {"enabled": False, "hit": False, "stored": False})
 
 
 def plan_payload(plan: PlanDocument) -> dict[str, Any]:
@@ -90,15 +106,85 @@ def build_call(plan: PlanDocument, settings: Any = None) -> LLMCall:
     )
 
 
-def make_queries(plan: PlanDocument, llm: LLMProvider, settings: Any = None) -> QueryPlan:
-    """astra로 검색어·축을 만든다. 실패하거나 결과가 쓸 수 없으면 규칙으로 대신하고 사유를 남긴다."""
-    res = llm.complete_json(build_call(plan, settings))
+def cache_key(plan: PlanDocument, provider: str, model: str, effort: str | None) -> str:
+    """같은 계획서(plan_id)·provider·모델·추론 강도·지시문 판이면 같은 키."""
+    body = json.dumps(
+        {"v": CACHE_VERSION, "prompt": PROMPT_VERSION, "plan_id": plan.plan_id, "provider": provider, "model": model,
+         "effort": effort},
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+
+def _cache_read(cache_dir: Path, key: str) -> dict[str, Any] | None:
+    """캐시 항목을 읽고 응답 스키마로 다시 검사한다. 없거나 깨졌으면 None(그때는 astra를 다시 부른다)."""
+    try:
+        entry = json.loads((cache_dir / f"{key}.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(entry, dict) or entry.get("v") != CACHE_VERSION:
+        return None
+    data, err, _ = validate_output(json.dumps(entry.get("data")), SCHEMA)
+    if err or data is None:
+        log.warning("검색어 캐시 항목 무시(스키마 위반): %s", key[:16])
+        return None
+    return {**entry, "data": data}
+
+
+def _cache_write(cache_dir: Path, key: str, res: LLMResult, plan_id: str) -> bool:
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        entry = {
+            "v": CACHE_VERSION, "prompt": PROMPT_VERSION, "plan_id": plan_id, "provider": res.provider,
+            "model": res.model, "effort": res.effort, "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
+            "data": res.data,
+        }
+        tmp = cache_dir / f"{key}.tmp"
+        tmp.write_text(json.dumps(entry, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(cache_dir / f"{key}.json")
+        return True
+    except OSError as exc:
+        log.warning("검색어 캐시 쓰기 실패: %s", type(exc).__name__)
+        return False
+
+
+def make_queries(
+    plan: PlanDocument, llm: LLMProvider, settings: Any = None, *, cache_dir: Path | None = None
+) -> QueryPlan:
+    """astra로 검색어·축을 만든다. 실패하거나 결과가 쓸 수 없으면 규칙으로 대신하고 사유를 남긴다.
+
+    cache_dir: 검색어 캐시 폴더(None이면 캐시 안 씀). astra 결과만 읽고 쓴다.
+    """
+    call = build_call(plan, settings)
+    key = cache_key(plan, llm.name, llm.model, call.effort)
+    enabled = cache_dir is not None and generator_for(llm.name) in CACHE_GENERATORS
+    cache: dict[str, Any] = {"enabled": enabled, "hit": False, "stored": False, "key": key[:16]}
+    if enabled:
+        assert cache_dir is not None
+        entry = _cache_read(cache_dir, key)
+        if entry is not None:
+            res = LLMResult(ok=True, data=entry["data"], provider=str(entry.get("provider") or llm.name),
+                            model=str(entry.get("model") or llm.model), task=TASK, effort=entry.get("effort"))
+            qp, problem = _from_llm(plan, res)
+            if problem is None:
+                qp.cache = {**cache, "hit": True, "created_at": entry.get("created_at")}
+                qp.notes.append("검색어 캐시 적중: 이 계획서에 astra가 앞서 만든 검색어를 다시 썼다")
+                return qp
+            cache["invalid"] = problem
+    res = llm.complete_json(call)
     if res.ok and res.data is not None:
         qp, problem = _from_llm(plan, res)
         if problem is None:
+            if enabled and res.generator in CACHE_GENERATORS:
+                assert cache_dir is not None
+                cache["stored"] = _cache_write(cache_dir, key, res, plan.plan_id)
+            qp.cache = cache
             return qp
-        return _fallback(plan, res, f"{res.provider} 응답 사용 불가: {problem}")
-    return _fallback(plan, res, res.reason())
+        qp = _fallback(plan, res, f"{res.provider} 응답 사용 불가: {problem}")
+    else:
+        qp = _fallback(plan, res, res.reason())
+    qp.cache = cache
+    return qp
 
 
 def _from_llm(plan: PlanDocument, res: LLMResult) -> tuple[QueryPlan, str | None]:
