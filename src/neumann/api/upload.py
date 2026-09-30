@@ -32,6 +32,7 @@ import sys
 import threading
 import time
 import zipfile
+from contextlib import ExitStack, contextmanager
 from dataclasses import asdict, dataclass, field
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Literal
@@ -281,16 +282,21 @@ def _decode_text(data: bytes) -> tuple[str, str, list[str]]:
     return text, "utf-8", [f"UTF-8로 읽지 못한 글자 {bad}곳을 �로 바꿨습니다"]
 
 
+@contextmanager
 def _pdf_limits():  # noqa: ANN202 - pypdf 설정 문맥
     """pypdf 스트림 해제 크기 상한(SEC-7). 제한 API가 없으면 보호 없이 PDF를 읽지 않는다."""
-    try:
-        from pypdf import apply_configuration
+    with ExitStack() as stack:
+        try:
+            from pypdf import apply_configuration
 
-        n = MAX_PDF_STREAM_DECODE
-        return apply_configuration(zlib_maximum_output_length=n, lzw_maximum_output_length=n,
-                                   run_length_maximum_output_length=n, array_based_stream_maximum_output_length=n)
-    except (ImportError, TypeError):
-        raise UploadRejected(503, "PDF 안전 제한을 준비하지 못했습니다. DOCX나 텍스트로 올려 주세요") from None
+            n = MAX_PDF_STREAM_DECODE
+            # contextmanager는 진입할 때 설정을 검증한다. 생성·진입 실패를 모두 추출 전에 처리한다.
+            stack.enter_context(apply_configuration(zlib_maximum_output_length=n, lzw_maximum_output_length=n,
+                                                    run_length_maximum_output_length=n,
+                                                    array_based_stream_maximum_output_length=n))
+        except (ImportError, TypeError, ValueError):
+            raise UploadRejected(503, "PDF 안전 제한을 준비하지 못했습니다. DOCX나 텍스트로 올려 주세요") from None
+        yield
 
 
 def _content_parts(page):  # noqa: ANN001, ANN202 - pypdf 객체

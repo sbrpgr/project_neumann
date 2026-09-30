@@ -325,13 +325,21 @@ def test_pdf_page_character_budget_and_empty_heavy_document():
     assert err.status_code == 422 and "텍스트를 찾지 못했습니다" in err.message
 
 
-def test_pdf_refuses_when_stream_limits_are_unavailable(monkeypatch):
+@pytest.mark.parametrize("deferred", [False, True])
+def test_pdf_refuses_when_stream_limits_are_unavailable(monkeypatch, deferred):
+    from contextlib import contextmanager
+
     import pypdf
 
     def unavailable(**kwargs):
         raise TypeError("unsupported configuration")
 
-    monkeypatch.setattr(pypdf, "apply_configuration", unavailable)
+    @contextmanager
+    def unavailable_on_entry(**kwargs):
+        unavailable(**kwargs)
+        yield  # 실제 contextmanager처럼 __enter__ 시점에 실패한다.
+
+    monkeypatch.setattr(pypdf, "apply_configuration", unavailable_on_entry if deferred else unavailable)
     err = pytest.raises(upload.UploadRejected, upload.extract_plan, "plan.pdf", make_pdf([KOREAN_LINES])).value
     assert err.status_code == 503 and "안전 제한" in err.message
 
