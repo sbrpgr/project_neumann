@@ -326,3 +326,9 @@ async def premortem_view(req: PremortemRequest) -> JSONResponse:
 from neumann.api import jobs  # noqa: E402
 
 jobs.install(app, load_pipeline=lambda: _load_pipeline(), sample_result=lambda reason: _sample_result(reason))
+
+# ───────────────────────── 수정 권고(E3-L2r) ─────────────────────────
+# POST /premortem/revise(카드별 해석·대응·수정안) · POST /premortem/revise/assemble(통합본·md·docx). 관문은 serving과 같다.
+from neumann.api import revise as revise_api  # noqa: E402
+
+revise_api.install(app)

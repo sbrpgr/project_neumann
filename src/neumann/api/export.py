@@ -45,6 +45,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 from neumann.analyze.checklist import gate_checklist_items
 from neumann.analyze.gate import EvidenceIndex, MALFORMED, NO_EVIDENCE_FAMILY, SECTIONS, review_evidence_problem
 from neumann.api.view import display_generator, display_text
+from neumann.api import export_revision  # E3-L2r: ZIP에 덧붙이는 수정 권고·통합본 파일(선택)
 from neumann.models import (
     SCHEMA_VERSION,
     Excerpt,
@@ -249,6 +250,8 @@ class _Ctx:
     decisions: list[DecisionEntry]
     warnings: list[str] = field(default_factory=list)
     origin: str = "in_process"
+    extra_files: list[str] = field(default_factory=list)  # E3-L2r: 덧붙인 파일 이름(revision.json·revised_plan.md)
+    extra_summary: list[str] = field(default_factory=list)
 
     @property
     def n_cards(self) -> int:
@@ -570,7 +573,10 @@ def _readme(c: _Ctx) -> bytes:
         "|---|---|",
     ]
     L += [f"| `{name}` | {FILE_ROLES[name]} |" for name in FILE_NAMES]
+    L += [f"| `{name}` | {export_revision.FILE_ROLES[name]} |" for name in c.extra_files]  # E3-L2r(있을 때만)
     L += ["", JSON_GENERATOR_NOTE if c.verified else JSON_GENERATOR_NOTE_UNVERIFIED]
+    if c.extra_summary:
+        L += ["", "## 수정 권고(E3-L2r)", "", *c.extra_summary]
     L += ["", "## 생성 방식", ""]
     L += [f"- **{_gen_short(c, g)}** {c.gen_counts[g.value]}장: {_gen_desc(c, g)}" for g in Generator]
     if c.refs:
@@ -997,9 +1003,10 @@ def _manifest_json(c: _Ctx, files: Mapping[str, bytes], created_at: datetime) ->
             "warnings": c.warnings,
             "files": [
                 {"path": name, "sha256": _sha256(files[name]), "bytes": len(files[name])}
-                for name in FILE_NAMES
+                for name in (*FILE_NAMES, *c.extra_files)
                 if name != "manifest.json"
             ],
+            "extra_files": list(c.extra_files),  # E3-L2r: 9파일 밖에 덧붙인 것(없으면 빈 목록)
         }
     )
 
@@ -1018,11 +1025,22 @@ def build_package_files(
     decisions: Sequence[DecisionEntry | Mapping[str, Any]] | None = None,
     created_at: datetime | None = None,
     result_origin: ResultOrigin = "in_process",
+    revision: Mapping[str, Any] | None = None,
+    revision_decisions: Sequence[Mapping[str, Any]] | None = None,
+    revised_plan: Mapping[str, Any] | None = None,
+    revision_sig: str | None = None,
+    result_sig: str | None = None,
 ) -> dict[str, bytes]:
-    """9개 파일 {이름: 바이트}(FILE_NAMES 순서). 입력이 계약을 어기면 ValueError(ValidationError 포함)."""
+    """9개 파일 {이름: 바이트}(FILE_NAMES 순서). 입력이 계약을 어기면 ValueError(ValidationError 포함).
+
+    E3-L2r: `revision`(수정 권고)·`revised_plan`(통합본)이 오면 `revision.json`·`revised_plan.md`를 뒤에 덧붙인다(10·11번째).
+    """
     if not isinstance(result, PremortemResult):
         result = PremortemResult.model_validate(result)
     c = _make_ctx(result, plan_text, decisions, result_origin)
+    extras = export_revision.extra_files(result, revision, revision_decisions, revised_plan, revision_sig, result_sig)
+    c.extra_files = list(extras)
+    c.extra_summary = export_revision.summary_lines(revision, revision_decisions, revised_plan)
     files: dict[str, bytes] = {
         "README.md": _readme(c),
         "risk_cards.json": _risk_cards_json(c),
@@ -1033,9 +1051,10 @@ def build_package_files(
         "ai_context.md": _ai_context(c),
         "decision_log.json": _decision_log_json(c),
     }
+    files.update(extras)
     when = created_at or datetime.now(UTC).replace(microsecond=0)
     files["manifest.json"] = _manifest_json(c, files, when)
-    return {name: files[name] for name in FILE_NAMES}
+    return {name: files[name] for name in (*FILE_NAMES, *c.extra_files)}
 
 
 def build_package(
@@ -1045,8 +1064,9 @@ def build_package(
     decisions: Sequence[DecisionEntry | Mapping[str, Any]] | None = None,
     created_at: datetime | None = None,
     result_origin: ResultOrigin = "in_process",
+    **extras: Any,
 ) -> bytes:
-    """분석 결과 → ZIP 바이트(9파일).
+    """분석 결과 → ZIP 바이트(9파일 + E3-L2r 선택 파일: revision·revision_decisions·revised_plan·revision_sig).
 
     - plan_text: result.plan이 없을 때만 쓴다. PlanDocument 규칙대로 정규화·마스킹한 줄만 담는다.
     - decisions: 카드별 채택·보류·기각 기록(선택). card_id가 결과에 없으면 ValueError.
@@ -1056,12 +1076,12 @@ def build_package(
     if not isinstance(result, PremortemResult):
         result = PremortemResult.model_validate(result)
     files = build_package_files(result, plan_text=plan_text, decisions=decisions, created_at=created_at,
-                                result_origin=result_origin)
+                                result_origin=result_origin, **extras)
     ts = result.generated_at.astimezone(UTC)
     date_time = max((ts.year, ts.month, ts.day, ts.hour, ts.minute, ts.second), (1980, 1, 1, 0, 0, 0))
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for name in FILE_NAMES:
+        for name in files:  # FILE_NAMES 순서 + 덧붙인 파일
             info = zipfile.ZipInfo(name, date_time=date_time)
             info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = 0o644 << 16
@@ -1086,6 +1106,12 @@ class PackageRequest(BaseModel):
     result_sig: str | None = Field(default=None, max_length=200, description="화면 응답의 서버 서명(v1.<hex>)")
     plan_text: str | None = Field(default=None, max_length=MAX_PLAN_CHARS)
     decisions: list[dict[str, Any]] | None = None
+    # E3-L2r(선택): 수정 권고·연구자 결정·통합본 → revision.json·revised_plan.md
+    revision: dict[str, Any] | None = None
+    revision_decisions: list[dict[str, Any]] | None = None
+    revised_plan: dict[str, Any] | None = None
+    revision_sig: str | None = Field(default=None, max_length=200)
+    result_sig: str | None = Field(default=None, max_length=200)
 
 
 def _errors(exc: ValidationError) -> list[dict[str, Any]]:
@@ -1133,7 +1159,9 @@ def premortem_package(payload: dict[str, Any] = Body(...)) -> Response:
     )
     try:
         data = build_package(result, plan_text=req.plan_text if has_text else None, decisions=req.decisions,
-                             result_origin=origin)
+                             result_origin=origin,
+                             revision=req.revision, revision_decisions=req.revision_decisions,
+                             revised_plan=req.revised_plan, revision_sig=req.revision_sig, result_sig=req.result_sig)
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=_errors(exc)) from None
     except ValueError as exc:

@@ -1,0 +1,215 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neumann.local/contracts/revision.schema.json",
+  "title": "PlanRevision",
+  "description": "계획서 수정 권고(E3-L2r). 분석 결과(PremortemResult)의 위험카드 뒤에 붙는 정해진 단계 `revise_card`의 출력이다. `POST /premortem/revise` 응답 모양. 근거 원칙: 해석·대응·수정 이유 문장마다 근거 발췌 id가 1개 이상 있고, 인용문(`quotes`·`records[].text`)은 코드가 원문 오프셋으로 자른 것이다. LLM은 번호(id)만 고르고 문안을 쓴다. 제안 문안(`edits[].proposed_text`)은 근거가 아니라 제안이며 `proposed_label`로 구분한다. 근거 없는 문장은 폐기하고 폐기 수를 `audit`에 적는다. 추가만 한다(기존 필드 의미 변경 금지).",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["version", "plan_id", "session_id", "generated_at", "generator", "status", "revisions", "records", "audit", "cost"],
+  "properties": {
+    "version": {"type": "string", "description": "계약 버전. 지금은 revision@v1"},
+    "plan_id": {"type": "string", "description": "분석 결과의 plan_id(계획서 본문 sha256)"},
+    "session_id": {"type": "string"},
+    "generated_at": {"type": "string", "description": "ISO 8601, timezone-aware"},
+    "generator": {"$ref": "#/$defs/Generator", "description": "전체 표기. 카드마다 다르면 가장 약한 쪽(rule < mock < astra 순으로 하나라도 rule이면 rule)"},
+    "model": {"type": ["string", "null"], "description": "LLM 모델 id(실제 값, 예 gpt-6.1-sol). 규칙 경로면 null"},
+    "effort": {"type": ["string", "null"], "description": "추론 강도(기본 medium)"},
+    "prompt_version": {"type": "string", "description": "프롬프트 버전(예 revise_card@v1)"},
+    "status": {"type": "string", "enum": ["ok", "degraded", "skipped", "error"], "description": "ok = 요청한 카드 모두 LLM 권고. degraded = 일부 카드 실패·폐기·규칙 경로. skipped = 권고할 카드 없음. error = 전부 실패"},
+    "reason": {"type": ["string", "null"], "description": "status가 ok가 아닐 때 사유(사용자 문구, 비밀값·경로 없음)"},
+    "cards_requested": {"type": "array", "items": {"type": "string"}, "description": "요청한 card_id(비었으면 결과의 모든 카드)"},
+    "cards_skipped": {
+      "type": "array",
+      "description": "권고를 만들지 못한 카드와 사유(결과에 없는 id, 근거 없음, R0 등)",
+      "items": {"type": "object", "additionalProperties": false, "required": ["card_id", "reason"],
+                "properties": {"card_id": {"type": "string"}, "reason": {"type": "string"}}}
+    },
+    "revisions": {"type": "array", "items": {"$ref": "#/$defs/CardRevision"}},
+    "records": {
+      "type": "array",
+      "description": "이 권고가 새로 조회한 근거 발췌(저자 답변·메타리뷰·결정). 카드 근거(결과 `evidence`)에 없는 id는 모두 여기 있다. 인용문은 원문[start:end]",
+      "items": {"$ref": "#/$defs/RecordExcerpt"}
+    },
+    "works": {
+      "type": "array",
+      "description": "근거 발췌가 속한 논문의 결정(채택·거절)과 링크. 신원 정보 없음",
+      "items": {"$ref": "#/$defs/WorkOutcome"}
+    },
+    "audit": {"$ref": "#/$defs/Audit", "description": "전체 게이트 기록(카드별 audit의 합)"},
+    "cost": {"$ref": "#/$defs/Cost"},
+    "coverage": {
+      "type": "object",
+      "description": "이번 권고에 쓸 수 있던 기록의 범위(정직 표기): 카드 근거 논문 중 결정·저자 답변·메타리뷰가 있는 편 수",
+      "additionalProperties": true,
+      "properties": {
+        "works_considered": {"type": "integer", "minimum": 0},
+        "works_with_decision": {"type": "integer", "minimum": 0},
+        "works_accepted": {"type": "integer", "minimum": 0},
+        "works_rejected": {"type": "integer", "minimum": 0},
+        "works_with_responses": {"type": "integer", "minimum": 0},
+        "works_with_meta_review": {"type": "integer", "minimum": 0},
+        "record_source": {"type": ["string", "null"], "description": "기록을 읽은 곳(예 processed/author_responses.jsonl + index reviews). 없으면 null"}
+      }
+    },
+    "notices": {"type": "array", "items": {"type": "string"}, "description": "mock 표기·강등·폐기 안내 등 사용자 문구"},
+    "elapsed_s": {"type": "number", "minimum": 0}
+  },
+  "$defs": {
+    "Generator": {"type": "string", "enum": ["astra", "rule", "mock"], "description": "astra = 제품 LLM(계약 이름, 실제 모델은 model) · rule = 규칙 비상 경로 · mock = 테스트용 가짜"},
+    "Sentence": {
+      "type": "object",
+      "description": "근거가 붙은 문장. excerpt_ids는 결과 `evidence` 또는 이 응답 `records`의 id(그 카드의 풀 안)여야 한다. quotes는 문장 안 따옴표 인용의 원문 위치(코드가 검사)",
+      "additionalProperties": false,
+      "required": ["text", "excerpt_ids"],
+      "properties": {
+        "text": {"type": "string", "minLength": 1},
+        "excerpt_ids": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+        "plan_lines": {"type": "array", "items": {"type": "integer", "minimum": 1}},
+        "quotes": {"type": "array", "items": {"type": "object", "additionalProperties": true}}
+      }
+    },
+    "Precedent": {
+      "type": "object",
+      "description": "같은 지적을 받고도 채택된 연구의 대응. excerpt_ids 중 최소 1개는 채택된 논문의 저자 답변·메타리뷰·결정 발췌",
+      "additionalProperties": false,
+      "required": ["text", "excerpt_ids", "work_id", "outcome"],
+      "properties": {
+        "text": {"type": "string", "minLength": 1},
+        "excerpt_ids": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+        "work_id": {"type": "string", "description": "대응한 논문(채택)"},
+        "outcome": {"type": "string", "description": "그 논문의 결정(DecisionOutcome 값, 예 accept_poster)"},
+        "outcome_label": {"type": "string", "description": "화면 라벨(채택·Poster·Spotlight·Oral)"},
+        "quotes": {"type": "array", "items": {"type": "object", "additionalProperties": true}}
+      }
+    },
+    "Edit": {
+      "type": "object",
+      "description": "계획서 수정안 하나. plan_line은 결과의 줄 번호 체계(1부터, 빈 줄 제외). current_text는 코드가 계획서에서 채운다(LLM이 쓰지 않는다). proposed_text는 제안이지 근거가 아니다. rationale(이 수정이 왜 지적을 해소하나)은 근거 id가 1개 이상",
+      "additionalProperties": false,
+      "required": ["edit_id", "plan_line", "kind", "current_text", "proposed_text", "proposed_label", "rationale"],
+      "properties": {
+        "edit_id": {"type": "string", "description": "카드 안 고유 id(예 card_x/e1)"},
+        "plan_line": {"type": "integer", "minimum": 1},
+        "kind": {"type": "string", "enum": ["replace", "insert_after"], "description": "replace = 그 줄을 바꾼다 · insert_after = 그 줄 뒤에 새 줄을 넣는다"},
+        "current_text": {"type": "string", "description": "계획서 그 줄의 현재 문장(코드가 채움, 글자 그대로)"},
+        "proposed_text": {"type": "string", "minLength": 1, "description": "제안 문안(LLM). 근거가 아니다"},
+        "proposed_label": {"type": "string", "const": "제안(근거 아님)"},
+        "rationale": {"$ref": "#/$defs/Sentence", "description": "왜 이 수정이 지적을 해소하는지(근거 id 필수)"}
+      }
+    },
+    "Question": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text"],
+      "properties": {
+        "text": {"type": "string", "minLength": 1},
+        "plan_lines": {"type": "array", "items": {"type": "integer", "minimum": 1}}
+      }
+    },
+    "Audit": {
+      "type": "object",
+      "description": "근거 게이트 기록. generated = 모델이 낸 문장·항목 수, passed = 통과, dropped = 폐기(근거 없음·없는 id·다른 카드 id·없는 줄·인용 불일치·근거 없는 수치·개인정보·형식 오류·중복)",
+      "additionalProperties": true,
+      "required": ["generated", "passed", "dropped"],
+      "properties": {
+        "generated": {"type": "integer", "minimum": 0},
+        "passed": {"type": "integer", "minimum": 0},
+        "dropped": {"type": "integer", "minimum": 0},
+        "no_evidence": {"type": "integer", "minimum": 0, "description": "폐기 중 근거 연결 실패(근거 없음·없는 id·다른 카드 id) 수"},
+        "reasons": {"type": "object", "additionalProperties": {"type": "integer"}},
+        "dropped_detail": {
+          "type": "array",
+          "items": {"type": "object", "additionalProperties": true,
+                    "properties": {"section": {"type": "string"}, "reason": {"type": "string"}, "text": {"type": "string"}, "detail": {"type": "string"}}}
+        },
+        "gate": {"type": "string", "description": "게이트 버전(예 revision-grounding@v1)"}
+      }
+    },
+    "CardRevision": {
+      "type": "object",
+      "description": "카드 한 장의 수정 권고: (a) 거절 사유 해석 interpretation, (b) 채택 연구의 대응 precedents, (c) 계획서 수정안 edits, (d) 확인 질문 questions, (e) generator·model·effort·elapsed_s·audit",
+      "additionalProperties": true,
+      "required": ["card_id", "risk_code", "generator", "status", "interpretation", "precedents", "edits", "questions", "audit"],
+      "properties": {
+        "card_id": {"type": "string"},
+        "risk_code": {"type": "string", "pattern": "^R[0-9]$"},
+        "title": {"type": "string"},
+        "generator": {"$ref": "#/$defs/Generator"},
+        "model": {"type": ["string", "null"]},
+        "effort": {"type": ["string", "null"]},
+        "status": {"type": "string", "enum": ["ok", "degraded", "skipped", "error"]},
+        "reason": {"type": ["string", "null"]},
+        "interpretation": {"type": "array", "items": {"$ref": "#/$defs/Sentence"}, "description": "(a) 이 위험이 유사 연구에서 왜 문제로 지적·거절됐는지. 문장마다 근거 id 1개 이상(심사평·메타리뷰 발췌)"},
+        "precedents": {
+          "type": "object",
+          "description": "(b) 같은 지적을 받고도 채택된 연구의 대응. 없으면 status=none, note='대응 사례 없음'",
+          "additionalProperties": false,
+          "required": ["status", "items"],
+          "properties": {
+            "status": {"type": "string", "enum": ["found", "none"]},
+            "note": {"type": ["string", "null"]},
+            "items": {"type": "array", "items": {"$ref": "#/$defs/Precedent"}}
+          }
+        },
+        "edits": {"type": "array", "items": {"$ref": "#/$defs/Edit"}, "description": "(c) 계획서 수정안"},
+        "questions": {"type": "array", "items": {"$ref": "#/$defs/Question"}, "maxItems": 2, "description": "(d) 연구자에게 되물을 확인 질문 0~2개"},
+        "audit": {"$ref": "#/$defs/Audit"},
+        "elapsed_s": {"type": "number", "minimum": 0},
+        "llm_calls": {"type": "integer", "minimum": 0},
+        "fallback_reason": {"type": ["string", "null"]},
+        "evidence_pool": {"type": "array", "items": {"type": "string"}, "description": "이 카드가 인용할 수 있던 발췌 id(카드 근거 + 새 기록)"}
+      }
+    },
+    "RecordExcerpt": {
+      "type": "object",
+      "description": "새로 조회한 발췌. models.Excerpt와 같은 필드 + work_id·record_kind·outcome. text == 원문[start:end], text_sha256 = sha256(text)",
+      "additionalProperties": true,
+      "required": ["excerpt_id", "source_kind", "source_id", "start", "end", "text", "text_sha256", "source_url", "work_id", "record_kind"],
+      "properties": {
+        "excerpt_id": {"type": "string"},
+        "source_kind": {"type": "string", "enum": ["review", "author_response", "decision", "post_status"]},
+        "source_id": {"type": "string"},
+        "start": {"type": "integer", "minimum": 0},
+        "end": {"type": "integer", "minimum": 1},
+        "text": {"type": "string"},
+        "text_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "source_url": {"type": "string"},
+        "source_sha256": {"type": ["string", "null"]},
+        "work_id": {"type": "string"},
+        "record_kind": {"type": "string", "enum": ["meta_review", "author_response", "decision", "review"], "description": "meta_review = 결정 근거(AC 메타리뷰, source_kind review) · author_response = 저자 답변 · decision = 결정 원문 문자열"},
+        "outcome": {"type": ["string", "null"], "description": "그 논문의 결정(DecisionOutcome 값)"}
+      }
+    },
+    "WorkOutcome": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["work_id", "outcome"],
+      "properties": {
+        "work_id": {"type": "string"},
+        "title": {"type": ["string", "null"]},
+        "url": {"type": ["string", "null"]},
+        "outcome": {"type": "string", "description": "DecisionOutcome 값 또는 unknown"},
+        "outcome_raw": {"type": ["string", "null"]},
+        "outcome_label": {"type": ["string", "null"], "description": "채택·거절·Poster·Spotlight·Oral·미정"},
+        "n_responses": {"type": "integer", "minimum": 0},
+        "n_meta_reviews": {"type": "integer", "minimum": 0}
+      }
+    },
+    "Cost": {
+      "type": "object",
+      "description": "비용 추정. usage는 provider가 돌려준 실측(mock은 없음). estimated_*는 입력 글자 수로 어림한 값",
+      "additionalProperties": true,
+      "required": ["llm_calls"],
+      "properties": {
+        "llm_calls": {"type": "integer", "minimum": 0},
+        "llm_calls_failed": {"type": "integer", "minimum": 0},
+        "prompt_chars": {"type": "integer", "minimum": 0},
+        "usage": {"type": "object", "additionalProperties": {"type": "integer"}, "description": "input_tokens·output_tokens·total_tokens·reasoning_tokens 합(실측이 있을 때)"},
+        "estimated_input_tokens": {"type": "integer", "minimum": 0},
+        "estimated_output_tokens": {"type": "integer", "minimum": 0},
+        "estimated_usd": {"type": ["number", "null"], "description": "단가 설정(NEUMANN_LLM_PRICE_IN_PER_M·OUT_PER_M)이 있을 때만. 없으면 null"},
+        "note": {"type": "string"}
+      }
+    }
+  }
+}
