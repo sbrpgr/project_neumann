@@ -7,7 +7,8 @@ LLM이 아니다. 규칙 검사만 한다. 문장 하나가 통과하려면:
 3. 계획서 줄 번호를 달았다면 계획서 범위 안이다.
 4. 따옴표 인용이 있으면, 인용한 근거 원문(또는 인용한 계획서 줄)과 글자 그대로 같거나
    그 원문의 20자 이상 연속 부분문자열이다. 짝이 맞지 않는 따옴표도 실패다.
-5. 숫자는 인용한 근거·계획서·인용 카드 문구·결과 집계값(유사 연구 수 등)·인용 줄 번호에 있는 것만 쓴다
+5. 숫자는 인용한 근거·계획서 본문(제목 줄·줄 앞 번호 매기기 제외)·인용 카드 문구·인용 줄 번호에 있는 것만 쓴다.
+   결과 집계값(유사 연구 수·근거 수·카드 수)은 개수 단위(편·건·개·장·곳)가 바로 붙을 때만 허용한다
    (근거 없는 수치는 그 문장만 뺀다 — 계획서 §4 E3 불변식).
 6. 개인정보(이메일·ORCID)가 없다. 빈 문장·형식 오류·중복이 아니다.
 
@@ -23,7 +24,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from neumann.models import PremortemResult, contains_pii, redact_pii
+from neumann.models import PlanDocument, PremortemResult, contains_pii, redact_pii
 
 GATE_VERSION = "grounding@v1"
 MIN_QUOTE_LEN = 20
@@ -70,7 +71,9 @@ _PAIRS: tuple[tuple[str, str], ...] = (
     ("‘", "’"),  # ‘ ’
     ("「", "」"),  # 「 」
     ("『", "』"),  # 『 』
+    ("《", "》"),  # 《 》
     ("«", "»"),  # « »
+    ("＂", "＂"),  # ＂ ＂ (전각)
 )
 _PAIR_RES = [re.compile(re.escape(o) + r"([^" + re.escape(o + c) + r"]+)" + re.escape(c)) for o, c in _PAIRS]
 # 여는 '는 앞이 글자·숫자가 아니고, 닫는 '는 뒤가 라틴 글자가 아닐 때만 인용으로 본다.
@@ -166,6 +169,25 @@ def extract_numbers(text: str) -> list[str]:
     return nums
 
 
+# 계획서 줄 앞의 번호 매기기("1. ", "2) ", "(3) ", "2.1. ")는 사실 수치가 아니다
+_ENUM_PREFIX_RE = re.compile(r"^\s*(?:\(?\d+(?:\.\d+)*[.)]\s+|[-*+]\s+)")
+# 집계값(유사 연구 수·근거 수·카드 수)은 개수 단위가 바로 붙을 때만 허용한다("3편"은 되고 "3배"·"3%"는 안 된다)
+_COUNT_UNIT_RE = re.compile(r"\s?(?:편|건|개|장|곳)")
+
+
+def plan_fact_numbers(plan: PlanDocument | None) -> set[str]:
+    """계획서에서 사실로 쓸 수 있는 숫자. 제목 줄(#로 시작)과 줄 앞 번호 매기기는 뺀다."""
+    if plan is None:
+        return set()
+    out: set[str] = set()
+    for ln in plan.lines:
+        text = ln.text.lstrip()
+        if not text or text.startswith("#"):
+            continue
+        out.update(extract_numbers(_ENUM_PREFIX_RE.sub("", text, count=1)))
+    return out
+
+
 # ── 입력 정리 ─────────────────────────────────────────────────────────────
 
 
@@ -243,7 +265,7 @@ class EvidenceIndex:
             for x in c.evidence:
                 self.card_of_excerpt.setdefault(x, set()).add(c.card_id)
         self.plan_lines: dict[int, str] = {ln.no: ln.text for ln in result.plan.lines} if result.plan else {}
-        self.plan_numbers = set(extract_numbers(result.plan.text)) if result.plan else set()
+        self.plan_numbers = plan_fact_numbers(result.plan)
         self.global_counts = {
             str(len(result.similar_works)),
             str(len(result.evidence)),
@@ -259,17 +281,19 @@ class EvidenceIndex:
                     ids.append(cid)
         return ids
 
-    def allowed_numbers(self, d: Draft) -> set[str]:
-        allowed = set(self.plan_numbers) | self.global_counts
+    def allowed_numbers(self, d: Draft) -> tuple[set[str], set[str]]:
+        """(사실 숫자, 집계 숫자). 사실 숫자는 단위와 상관없이 허용, 집계 숫자는 개수 단위가 붙을 때만 허용."""
+        facts = set(self.plan_numbers)
+        counts = set(self.global_counts)
         for x in d.excerpt_ids:
-            allowed.update(extract_numbers(self.excerpts[x].text))
+            facts.update(extract_numbers(self.excerpts[x].text))
         for cid in self.cited_cards(d):
             card = self.cards[cid]
-            allowed.update(extract_numbers(card.title))
-            allowed.update(extract_numbers(card.why_applies.text))
-            allowed.update({str(len(card.evidence)), str(len(card.works))})
-        allowed.update(str(n) for n in d.plan_lines)
-        return allowed
+            facts.update(extract_numbers(card.title))
+            facts.update(extract_numbers(card.why_applies.text))
+            counts.update({str(len(card.evidence)), str(len(card.works))})
+        facts.update(str(n) for n in d.plan_lines)
+        return facts, counts
 
 
 # ── 게이트 ────────────────────────────────────────────────────────────────
@@ -352,8 +376,13 @@ def check_sentence(d: Draft, index: EvidenceIndex) -> tuple[str | None, str, lis
     outside = text
     for sp in sorted(spans, key=lambda s: s.start, reverse=True):
         outside = outside[: sp.start] + " " + outside[sp.end :]
-    allowed = index.allowed_numbers(d)
-    unknown = [n for n in extract_numbers(outside) if n not in allowed]
+    facts, counts = index.allowed_numbers(d)
+    unknown: list[str] = []
+    for m in _NUM_RE.finditer(outside):
+        for n in _norm_number(m.group(0)):
+            if n in facts or (n in counts and _COUNT_UNIT_RE.match(outside, m.end())):
+                continue
+            unknown.append(n)
     if unknown:
         return FABRICATED_NUMBER, f"근거·계획서에 없는 수치 {unknown[:5]}", []
     return None, "", quotes
@@ -427,5 +456,6 @@ __all__ = [
     "find_quotes",
     "gate_sentences",
     "match_quote",
+    "plan_fact_numbers",
     "verify_expected_review",
 ]

@@ -129,6 +129,13 @@ def test_paraphrase_in_korean_quotes_is_dropped(result):
     assert reason_of(rep) == g.QUOTE_MISMATCH
 
 
+@pytest.mark.parametrize("pair", [("《", "》"), ("＂", "＂")])
+def test_double_angle_and_fullwidth_quotes_are_checked(result, pair):
+    o, c = pair
+    rep = one(result, text=f"리뷰어는 {o}random splits always leak everything{c}이라고 했다.")
+    assert reason_of(rep) == g.QUOTE_MISMATCH
+
+
 def test_unbalanced_quote_is_dropped(result):
     rep = one(result, text='리뷰어는 "Random splits are known to leak 라고 썼다.')
     assert reason_of(rep) == g.QUOTE_MISMATCH
@@ -175,6 +182,38 @@ def test_number_inside_verified_quote_is_allowed(fx, result):
         result,
     )
     assert not rep.dropped
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "이 설계는 성능을 5% 개선하는 데 그칠 것이다.",  # 5는 계획서 제목 줄(## 5. 기대 성과)에만 있다
+        "기준 모델보다 3배 느릴 수 있다.",  # 3은 유사 연구 수(집계값)지만 개수 단위가 아니다
+        "1단계부터 누출 위험이 있다.",  # 1은 제목 줄 번호뿐
+        "유사 연구 7편에서 같은 지적이 나왔다.",  # 7은 어떤 집계값도 아니다
+    ],
+)
+def test_header_numbers_and_unitless_counts_are_not_facts(result, text):
+    rep = one(result, text=text, plan_lines=[])
+    assert reason_of(rep) == g.FABRICATED_NUMBER
+
+
+def test_counts_need_a_count_unit(result):
+    rep = gate_sentences(
+        [
+            {"section": "weakness", "text": t, "excerpt_ids": [EX_LEAK], "card_ids": [LEAK], "plan_lines": []}
+            for t in ("유사 연구 3편에서 같은 지적이 나왔다.", "근거 4건이 같은 문제를 가리킨다.", "카드 2장이 이 위험을 다룬다.")
+        ],
+        result,
+    )
+    assert not rep.dropped, [d.as_dict() for d in rep.dropped]
+
+
+def test_plan_fact_numbers_skip_headers_and_enumeration():
+    from neumann.models import PlanDocument
+
+    plan = PlanDocument.from_text("# 3. 제목\n1. 데이터 250건을 쓴다\n(2) 시드 5개\n- 7 fold\n## 9 결론\n  4) 기준 0.8", "s")
+    assert g.plan_fact_numbers(plan) == {"250", "5", "7", "0.8"}
 
 
 def test_extract_numbers_ignores_names_and_handles_thousands():

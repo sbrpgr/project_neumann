@@ -42,7 +42,7 @@ from neumann.analyze.gate import gate_sentences, verify_expected_review
 report = verify_expected_review(result.expected_review, result)   # 조립된 심사평을 결과에 대고 다시 검사(평가·API용)
 ```
 
-- `generator` 표기 순서: 인자 → `llm_call.generator` 속성 → 설정(`NEUMANN_LLM_PROVIDER`: openai→astra, mock→mock). 어느 것에서 왔는지는 `generator_source`에 남긴다.
+- `generator` 표기는 (1) 명시 인자 (2) `llm_call.generator` 속성, 둘 중에서만 정한다(검증 뒤 수정, 아래 참고). 둘 다 없으면 **호출 전에 `ValueError`**다. `provider_llm_call`은 만들 때 provider 이름으로 속성을 단다(openai→astra, mock→mock, off→rule, 그 밖은 `generator=` 인자 필요). 어느 쪽에서 왔는지는 `generator_source`(`param`|`llm_call`|`fallback`)에 남긴다.
 - 반환 dict 키: `version, generator, model, generator_source, effort, status(ok|degraded|skipped), reason, strength[], weakness[], request[], audit{gen,pass,drop,dropped[[사유,문장]],dropped_detail[],reasons{},gate,linked_rate}, attempts[], elapsed_s`
 - 문장: `{"t": 문장, "c": [excerpt_id…], "cards": [card_id…], "plan_lines": [int…], "quotes": [{text, excerpt_id|plan_line, start, end}]}`. `c`는 excerpt id 문자열이다. 목업의 `#번호`로 바꾸는 일은 E4 뷰 변환이 한다.
 
@@ -153,7 +153,7 @@ verify 통과
 - **카드와 excerpt가 어긋난 문장**(`excerpt_card_mismatch`): 인용한 카드의 근거가 아닌 excerpt를 달았으면 버린다. 카드를 안 달았으면 excerpt가 속한 카드를 코드가 채운다.
 - **인용 대조의 대상**: 그 문장이 **인용한** 근거만 본다. 다른 근거와 맞는 인용은 잘못 귀속된 것으로 보고 버린다. 인용한 계획서 줄과 글자 그대로 같은 따옴표 인용은 허용한다. 계획서도 원문이기 때문이다. 끝 문장부호(`.`, `,` 등)만 다른 것은 같은 원문 부분문자열로 인정한다.
 - **ASCII 작은따옴표**: 영어 축약형·소유격(`model's`, `reviewers'`)과 헷갈리지 않도록 경계 조건이 맞을 때만 인용으로 본다. `’`는 아포스트로피로도 쓰이므로 짝 검사에서 뺐다.
-- **숫자 검사**를 게이트에 넣었다(`fabricated_number`). 과제 파일에는 없고, 계획서 §4 E3 불변식("근거 없는 수치는 그 문장만 뺀다")과 목업 audit 예시를 따랐다. 허용 범위는 인용 근거, 계획서 전문, 인용 카드 제목·이유, 집계값, 인용 줄 번호다.
+- **숫자 검사**를 게이트에 넣었다(`fabricated_number`). 과제 파일에는 없고, 계획서 §4 E3 불변식("근거 없는 수치는 그 문장만 뺀다")과 목업 audit 예시를 따랐다. 허용 범위는 인용 근거, 계획서 본문, 인용 카드 제목·이유, 인용 줄 번호다. 집계값은 개수 단위가 붙을 때만 허용한다. 계획서 본문에서 제목 줄과 줄 앞 번호 매기기는 뺀다(검증 뒤 좁힘, 아래 참고).
 - **전부 탈락하면 규칙 합성으로 간다.** 옛 GEN-3는 이때 `review=None`이었다. 이번에는 LLM이 낸 문장이 전부 떨어지면 규칙 합성으로 대신하고 `reason=llm_all_sentences_dropped`로 남긴다. audit에는 LLM 폐기 기록도 함께 남긴다(`gen = pass + drop`이 항상 성립).
 - **규칙 합성은 강점을 만들지 않는다.** 규칙으로는 강점을 판단할 근거가 없다.
 - **모델 id는 별칭(C1·E1)으로 보낸다.** 16자리 16진 id를 베끼다 틀리는 일을 줄이고 토큰을 아끼려는 것이다. 별칭 enum 밖의 값은 그대로 두어 게이트가 버린다. 결과 안에 있는 실제 id를 그대로 돌려준 경우는 받아 준다.
@@ -174,7 +174,54 @@ verify 통과
 - E4: 목업 `review` 렌더링은 `strength/weakness/request[].t`와 `c`(excerpt id → 근거 번호), `audit.gen/pass/drop/dropped`를 쓰면 된다. `generator`가 `rule`이면 화면에 "규칙 합성" 표기가 필요하다.
 - 새 패키지는 필요 없었다(`jsonschema`·`openai`는 이미 의존성에 있다).
 
+## 검증 뒤 수정 (PASS-조건부 → 병합 전 수정 1건 + 권고 반영)
+
+검증 보고서(`docs/reports/E3-L1a.verify.md`, main)의 병합 전 수정 1과 한계 2·3의 일부를 반영했다.
+
+1. **생성 주체를 설정에서 추정하지 않는다(병합 전 수정 1).**
+   - `_resolve_generator`에서 설정(provider=openai → astra/gpt-6-astra) 경로를 없앴다. 생성 주체는 명시 인자 `generator=` 또는 callable의 `generator` 속성에서만 정한다.
+   - 둘 다 없거나 값이 `astra|mock|rule` 밖이면 **호출 전에 `ValueError`**로 거부한다. 카드가 0장인 결과에도, `attach_expected_review`에도 똑같이 적용된다.
+   - `model`도 인자 또는 `model` 속성에서만 정한다. 없으면 `None`이다(설정의 `gpt-6-astra`로 채우지 않는다).
+   - `ProviderLLMCall`은 만들 때 `generator` 속성을 반드시 단다. provider 이름으로 정하고(openai→astra, mock→mock, off/none/disabled→rule), 모르는 이름이면 `generator=` 인자를 요구한다(`ValueError`). 호출 뒤에는 실제 `LLMResult.generator`로 갱신한다.
+   - 테스트는 conftest의 mock 강제에 기대지 않는다. `monkeypatch.setenv("NEUMANN_LLM_PROVIDER", "openai")`와 `get_settings.cache_clear()`로 설정이 openai인 상태를 만든 뒤 검사한다.
+     - 속성 없는 callable → `ValueError`이고 호출 0회
+     - 속성 `mock|astra|rule` → 그 값 그대로 표기(`generator_source="llm_call"`, model 없음 → `None`)
+     - 인자가 속성보다 우선하고, 틀린 값은 거부
+     - 어댑터: provider 이름에서 표기, 실제 결과로 갱신, 모르는 이름 거부
+2. **숫자 게이트를 좁혔다(한계 2).**
+   - 계획서 숫자에서 제목 줄(`#`로 시작)과 줄 앞 번호 매기기(`1. `, `(2) `, `4) `, `- `)를 뺐다(`plan_fact_numbers`).
+   - 집계값(유사 연구·근거·카드 수)은 개수 단위(편·건·개·장·곳)가 바로 붙을 때만 허용한다.
+   - 이제 `5% 개선`(제목 `## 5.`), `3배`(유사 연구 수 3), `1단계`(제목 번호), `7편`은 떨어진다. `유사 연구 3편`, `근거 4건`, `카드 2장`, 계획서의 `12,000건`은 통과한다.
+3. **인용 부호 2종 추가(한계 3 일부).** `《…》`와 전각 `＂…＂`도 인용으로 보고 대조한다. 규칙 합성의 인용 회피 문자 목록에도 넣었다.
+
+```
+$ PYTHONPATH="src;." python -m pytest tests/e3/ -q -rs      (tests/e3 전체: E3-L1a 파일)
+56 passed, 2 skipped      # skip: neumann.llm 없음 1, NEUMANN_LIVE_TESTS 아님 1
+
+# E3-L0 llm.py(task/E3-L0)를 저장소 밖 임시 폴더에서 올려 NEUMANN_LLM_PROVIDER=openai 상태로 어댑터 재확인
+strict problems: []
+neumann.llm expected_review mock mock-deterministic-v1 ok 1
+rule degraded llm_call_failed: off:none disabled (LLM provider 꺼짐)
+rule degraded llm_call_failed: mock:mock-deterministic-v1 schema_invalid (2건, 첫 오류 (root): 'weakness' is a required property)
+
+$ python scripts/verify.py        (main 병합 뒤)
+397 passed, 17 skipped in 11.08s
+보안: 파일 169개
+계약: 2개
+테스트: 통과
+verify 통과
+```
+
+- 라이브 astra는 다시 부르지 않았다(과제 허락은 1회). 앞의 라이브 결과 4문장에는 숫자가 없어서 숫자 게이트 변경의 영향을 받지 않는다.
+- 남은 한계
+  - 백틱 `` `…` ``은 식별자 표기와 겹쳐 인용으로 보지 않는다.
+  - 문자에 붙은 숫자(`x30`)와 한글 수사(`삼십 퍼센트`)는 잡지 못한다.
+  - 계획서 숫자는 아직 계획서 본문 전체에서 허용한다. 인용 줄로 좁히면 astra 폐기율이 오를 수 있어 보류했다.
+  - LLM 경로의 `quotes`는 모델이 인용을 쓰지 않으면 비어 있다. 원문 인용 표시는 E4가 `c`의 excerpt id로 붙인다.
+- **파이프라인 연결 시 주의:** `generate_expected_review`/`attach_expected_review`에 속성 없는 callable을 넘기면 `ValueError`다. `provider_llm_call(llm)`로 감싸거나 `generator=`를 넘긴다.
+
 ## 커밋
 
 - `8c14807` [E3-L1a] 예상 심사평(astra, llm_call 주입) + 근거 게이트
-- main 병합(`e0e564f`) 뒤 이 보고서 커밋
+- `e0e564f` main 병합, `74bbe79` 보고서
+- 검증 뒤 수정 커밋(이 절)

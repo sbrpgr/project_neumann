@@ -84,9 +84,9 @@ RULE_REQUESTS: dict[RiskCode, str] = {
     RiskCode.R9: "연구윤리·데이터 이용 조건과 사후 정정 위험 점검 절차를 명시할 것",
 }
 
-_QUOTE_CHARS = "\"'“”‘’「」『』«»"
+_QUOTE_CHARS = "\"'“”‘’「」『』《》«»＂"
 # 규칙 문장에 카드 제목을 넣을 때 인용으로 오인될 따옴표를 뺀다(제목은 인용이 아니다)
-_TITLE_STRIP = str.maketrans("", "", "\"“”「」『』«»")
+_TITLE_STRIP = str.maketrans("", "", "\"“”「」『』《》«»＂")
 
 
 # ── 입력 조립 ─────────────────────────────────────────────────────────────
@@ -287,30 +287,35 @@ def rule_review_drafts(result: PremortemResult) -> list[dict[str, Any]]:
 # ── 조립 ─────────────────────────────────────────────────────────────────
 
 
+_GENERATORS = frozenset(g.value for g in Generator)
+
+
 def _resolve_generator(llm_call: Any, explicit: Generator | str | None) -> tuple[str, str]:
-    """생성 주체 표기: 인자 > llm_call 속성(generator) > 설정(provider). (값, 출처)"""
+    """생성 주체 표기: (1) 명시 인자 (2) llm_call의 `generator` 속성. 둘 다 없거나 값이 틀리면 ValueError.
+
+    설정(provider)에서 추정하지 않는다 — 무엇이 호출됐는지 모르는 callable을 astra로 적지 않기 위해서다.
+    """
     if explicit is not None:
+        if explicit not in _GENERATORS:
+            raise ValueError(f"generator 인자 값이 틀렸다: {explicit!r} (허용 {sorted(_GENERATORS)})")
         return Generator(explicit).value, "param"
     attr = getattr(llm_call, "generator", None)
-    if attr in {g.value for g in Generator}:
-        return Generator(attr).value, "llm_call"
-    from neumann.config import get_settings
+    if attr is None:
+        raise ValueError(
+            "llm_call의 생성 주체를 알 수 없다: generator= 인자를 주거나 llm_call에 generator 속성"
+            "(astra|mock|rule)을 달아라. provider는 provider_llm_call()로 감싸면 속성이 달린다"
+        )
+    if attr not in _GENERATORS:
+        raise ValueError(f"llm_call.generator 값이 틀렸다: {attr!r} (허용 {sorted(_GENERATORS)})")
+    return Generator(attr).value, "llm_call"
 
-    provider = get_settings().llm_provider
-    return (Generator.astra.value if provider == "openai" else Generator.mock.value), "settings"
 
-
-def _resolve_model(llm_call: Any, explicit: str | None, generator: str) -> str | None:
+def _resolve_model(llm_call: Any, explicit: str | None) -> str | None:
+    """모델 id: 명시 인자 > llm_call의 `model` 속성 > None(추정하지 않는다)."""
     if explicit is not None:
         return explicit
     attr = getattr(llm_call, "model", None)
-    if attr:
-        return str(attr)
-    if generator == Generator.astra.value:
-        from neumann.config import get_settings
-
-        return get_settings().llm_model
-    return None
+    return str(attr) if attr else None
 
 
 def _assemble(
@@ -366,12 +371,16 @@ def generate_expected_review(
     generator: Generator | str | None = None,
     model: str | None = None,
 ) -> dict[str, Any]:
-    """예상 심사평을 만든다. 예외로 죽지 않는다(llm_call 예외도 실패로 받아 규칙 합성으로 간다).
+    """예상 심사평을 만든다. 실행 중 실패로는 죽지 않는다(llm_call 예외도 실패로 받아 규칙 합성으로 간다).
 
     - llm_call(schema, instructions, input, *, effort) -> dict | None. None이면 실패.
-    - generator/model: 정직 표기용. 안 주면 llm_call의 `generator`·`model` 속성, 그다음 설정(provider)에서 정한다.
+    - generator: 정직 표기용. 명시 인자 또는 llm_call의 `generator` 속성에서만 정한다. llm_call을 줬는데 둘 다
+      없으면 **호출 전에** ValueError(사용 오류)로 거부한다. 호출 뒤 속성이 실제 provider 결과로 바뀌면(ProviderLLMCall)
+      그 값을 쓴다(인자가 있으면 인자가 이긴다).
+    - model: 명시 인자 > llm_call의 `model` 속성 > None.
     """
     t0 = time.perf_counter()
+    pre_label = _resolve_generator(llm_call, generator) if llm_call is not None else None  # 호출 전 거부(추정 금지)
     if not usable_cards(result):
         why = "위험카드가 없어 예상 심사평을 만들지 않았다" if not result.risk_cards else "근거가 연결된 위험카드가 없다"
         return _assemble(report=None, generator=None, model=None, status="skipped", reason=why,
@@ -393,8 +402,12 @@ def generate_expected_review(
         except Exception as exc:  # noqa: BLE001 — 어떤 실패든 규칙 합성으로 넘긴다
             data, error = None, f"llm_call_exception: {type(exc).__name__}"
         latency = round(time.perf_counter() - t_call, 3)
-        llm_label = _resolve_generator(llm_call, generator)
-        llm_model = _resolve_model(llm_call, model, llm_label[0])
+        try:  # 호출 뒤 다시 읽는다: 어댑터는 실제 provider 결과로 속성을 갱신한다
+            llm_label = _resolve_generator(llm_call, generator)
+        except ValueError:
+            llm_label = pre_label
+        assert llm_label is not None
+        llm_model = _resolve_model(llm_call, model)
         attempt: dict[str, Any] = {"generator": llm_label[0], "model": llm_model, "latency_s": latency, "gen": 0}
         if data is None:
             detail = getattr(llm_call, "last_error", None)
@@ -465,6 +478,16 @@ def attach_expected_review(
 # ── E3-L0 llm.py provider 어댑터 ─────────────────────────────────────────
 
 
+# provider 이름 → 생성 주체 (E3-L0 llm.generator_for와 같은 대응. 모르는 이름은 추정하지 않는다)
+_PROVIDER_GENERATOR: dict[str, str] = {
+    "openai": Generator.astra.value,
+    "mock": Generator.mock.value,
+    "off": Generator.rule.value,
+    "none": Generator.rule.value,
+    "disabled": Generator.rule.value,
+}
+
+
 @dataclass(frozen=True)
 class _CallSpec:
     """neumann.llm.LLMCall이 없을 때 쓰는 같은 모양의 호출 명세(덕 타이핑)."""
@@ -485,7 +508,9 @@ class _CallSpec:
 class ProviderLLMCall:
     """`provider.complete_json(LLMCall) -> LLMResult`(E3-L0 llm.py)를 이 모듈의 llm_call 모양으로 감싼다.
 
-    호출 뒤 `generator`·`model`·`last_error`·`last_result`가 실제 provider 결과로 채워진다(정직 표기).
+    `generator` 속성은 **만들 때 반드시 정해진다**: 인자 → provider 이름(openai→astra, mock→mock, off→rule).
+    이름을 모르면 ValueError(추정 금지). 호출 뒤에는 `generator`·`model`·`last_error`·`last_result`를
+    실제 provider 결과(LLMResult.generator·model)로 갱신한다.
     """
 
     def __init__(
@@ -495,12 +520,20 @@ class ProviderLLMCall:
         task: str = TASK,
         timeout_s: float | None = None,
         max_output_tokens: int | None = None,
+        generator: Generator | str | None = None,
     ) -> None:
         self.provider = provider
         self.task = task
         self.timeout_s = timeout_s
         self.max_output_tokens = max_output_tokens
-        self.generator: str | None = None
+        if generator is None:
+            name = str(getattr(provider, "name", "") or "").lower()
+            generator = _PROVIDER_GENERATOR.get(name)
+            if generator is None:
+                raise ValueError(f"provider {name or type(provider).__name__!r}의 생성 주체를 알 수 없다: generator= 인자를 줘라")
+        if generator not in _GENERATORS:
+            raise ValueError(f"generator 값이 틀렸다: {generator!r}")
+        self.generator: str = Generator(generator).value
         self.model: str | None = getattr(provider, "model", None)
         self.last_error: str | None = None
         self.last_result: Any = None
@@ -518,7 +551,8 @@ class ProviderLLMCall:
         self.last_result = res
         self.model = getattr(res, "model", None) or self.model
         gen = getattr(res, "generator", None)
-        self.generator = gen if gen in {g.value for g in Generator} else None
+        if gen in _GENERATORS:  # 실제 결과의 표기로 갱신. 모르는 값이면 만들 때 정한 값을 유지한다
+            self.generator = Generator(gen).value
         if getattr(res, "ok", False) and isinstance(getattr(res, "data", None), dict):
             self.last_error = None
             return res.data

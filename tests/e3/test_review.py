@@ -222,19 +222,67 @@ def test_rule_skips_quote_when_evidence_has_quote_marks(result):
 
 def test_no_cards_skips_without_calling_llm(result):
     empty = result.model_copy(update={"risk_cards": []})
-    call = FakeCall(mixed_response)
+    call = FakeCall(mixed_response, generator="astra")
     review = generate_expected_review(empty, call)
     assert call.calls == []
     assert review["status"] == "skipped" and review["generator"] is None and review["reason"]
     assert expected_review_stage(review).state == "skipped"
 
 
-def test_generator_label_comes_from_llm_call_or_settings(result):
-    ok = {"strength": [], "request": [], "weakness": [s("누출 위험.", [EX_LEAK], [LEAK])]}
-    assert generate_expected_review(result, FakeCall(ok, generator="mock"))["generator"] == "mock"
-    # conftest가 NEUMANN_LLM_PROVIDER=mock으로 둔다 → 속성 없는 callable은 mock으로 표기(astra로 부풀리지 않는다)
-    review = generate_expected_review(result, FakeCall(ok))
-    assert review["generator"] == "mock" and review["generator_source"] == "settings"
+# ── 생성 주체 표기: 인자 또는 callable 속성에서만. 설정에서 추정하지 않는다 ─────
+
+
+@pytest.fixture()
+def provider_openai(monkeypatch):
+    """conftest의 mock 강제와 무관하게, 설정 provider가 openai(기본값)인 상태를 만든다."""
+    from neumann.config import get_settings
+
+    monkeypatch.setenv("NEUMANN_LLM_PROVIDER", "openai")
+    get_settings.cache_clear()
+    assert get_settings().llm_provider == "openai"
+    yield
+    get_settings.cache_clear()  # monkeypatch가 환경을 되돌린 뒤 다시 읽히게
+
+
+OK_RESPONSE = {"strength": [], "request": [], "weakness": [s("누출 위험.", [EX_LEAK], [LEAK])]}
+
+
+def test_bare_callable_is_rejected_before_call_even_when_provider_is_openai(result, provider_openai):
+    call = FakeCall(OK_RESPONSE)  # generator 속성 없음
+    with pytest.raises(ValueError, match="생성 주체"):
+        generate_expected_review(result, call)
+    assert call.calls == []  # 호출 전에 거부
+    with pytest.raises(ValueError):
+        attach_expected_review(result, call)
+    with pytest.raises(ValueError):  # 카드가 없어도 사용 오류는 똑같이 거부
+        generate_expected_review(result.model_copy(update={"risk_cards": []}), call)
+    assert call.calls == []
+
+
+@pytest.mark.parametrize("label", ["mock", "astra", "rule"])
+def test_callable_attribute_is_used_as_is(result, provider_openai, label):
+    call = FakeCall(OK_RESPONSE, generator=label)
+    review = generate_expected_review(result, call)
+    assert review["generator"] == label and review["generator_source"] == "llm_call"
+    assert review["model"] is None  # model 속성이 없으면 설정에서 채우지 않는다
+    call.model = "some-model"
+    assert generate_expected_review(result, call)["model"] == "some-model"
+
+
+def test_explicit_argument_wins_and_bad_values_are_rejected(result, provider_openai):
+    review = generate_expected_review(result, FakeCall(OK_RESPONSE, generator="mock"), generator="astra", model="m1")
+    assert review["generator"] == "astra" and review["model"] == "m1" and review["generator_source"] == "param"
+    for bad in (FakeCall(OK_RESPONSE, generator="gpt"),):
+        with pytest.raises(ValueError):
+            generate_expected_review(result, bad)
+        assert bad.calls == []
+    with pytest.raises(ValueError):
+        generate_expected_review(result, FakeCall(OK_RESPONSE), generator="llm")
+
+
+def test_no_llm_call_needs_no_label_and_is_rule(result, provider_openai):
+    review = generate_expected_review(result, None)
+    assert review["generator"] == "rule" and review["model"] is None and review["status"] == "degraded"
 
 
 def test_review_matches_ui_contract_and_result_contract(result):
@@ -255,7 +303,7 @@ def test_attach_records_stage_and_degrades_result_status(result):
     assert st.stage == "expected_review" and st.state == "ok" and ok.status == "ok"
     assert st.counts == {"gen": 7, "pass": 3, "drop": 4}
     assert ok.expected_review["generator"] == "astra"
-    bad = attach_expected_review(result, FakeCall(None))
+    bad = attach_expected_review(result, FakeCall(None, generator="astra"))
     assert bad.stages[-1].state == "degraded" and bad.stages[-1].impl == "fallback:rule"
     assert bad.status == "degraded" and bad.expected_review["generator"] == "rule"
 
@@ -274,8 +322,9 @@ class FakeLLMResult:
 class FakeProvider:
     model = "fake-model"
 
-    def __init__(self, result):
+    def __init__(self, result, name="openai"):
         self.result = result
+        self.name = name
         self.calls = []
 
     def complete_json(self, call):
@@ -286,7 +335,9 @@ class FakeProvider:
 def test_provider_adapter_passes_call_and_labels_honestly(result):
     ok = {"strength": [], "request": [], "weakness": [s("누출 위험.", [EX_LEAK], [LEAK])]}
     prov = FakeProvider(FakeLLMResult(True, ok, "astra", "gpt-6-astra"))
-    review = generate_expected_review(result, ProviderLLMCall(prov, timeout_s=30))
+    adapter = ProviderLLMCall(prov, timeout_s=30)
+    assert adapter.generator == "astra"  # 호출 전에 이미 속성이 있다
+    review = generate_expected_review(result, adapter)
     (call,) = prov.calls
     assert call.task == "expected_review" and call.effort == "medium" and call.timeout_s == 30
     assert call.schema["required"] == ["strength", "weakness", "request"]
@@ -296,6 +347,21 @@ def test_provider_adapter_passes_call_and_labels_honestly(result):
     prov_fail = FakeProvider(FakeLLMResult(False, None, "astra", "gpt-6-astra", error="timeout"))
     review = generate_expected_review(result, ProviderLLMCall(prov_fail))
     assert review["generator"] == "rule" and "timeout" in review["reason"]
+
+
+def test_provider_adapter_label_comes_from_provider_not_settings(result, provider_openai):
+    ok = {"strength": [], "request": [], "weakness": [s("누출 위험.", [EX_LEAK], [LEAK])]}
+    assert ProviderLLMCall(FakeProvider(None, name="mock")).generator == "mock"
+    assert ProviderLLMCall(FakeProvider(None, name="off")).generator == "rule"
+    # 호출 결과가 다른 표기를 주면 실제 결과를 따른다
+    review = generate_expected_review(result, ProviderLLMCall(FakeProvider(FakeLLMResult(True, ok, "mock", "m"), name="openai")))
+    assert review["generator"] == "mock"
+    # 모르는 provider 이름은 추정하지 않고 거부. 인자로 주면 받는다
+    with pytest.raises(ValueError):
+        ProviderLLMCall(FakeProvider(None, name="anthropic"))
+    with pytest.raises(ValueError):
+        ProviderLLMCall(object())
+    assert ProviderLLMCall(FakeProvider(None, name="anthropic"), generator="mock").generator == "mock"
 
 
 def test_real_llm_mock_provider_reaches_review_path(result):
