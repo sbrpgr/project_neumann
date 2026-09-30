@@ -27,7 +27,7 @@
 | SEC-4 이메일 정규식 ReDoS | 🔍 task/SEC-4 386621a(PM), Sonnet 검증 중 | `models.contains_pii`·`redact_pii` 선형화(`email_spans`), 결과 동일. 공개 전 필수 |
 | E3-L1x rule_fitness "neural" 오분류 | ✅ 병합(Sonnet PASS) | 남은 한계: `~인지 과제` 오탐, neuromorphic(후속 소과제, 선택) |
 | E4-L1f 화면 업로드 | ✅ 병합(cf43101, Sonnet PASS) | 8020 재기동 시 반영. 발표 9쪽 "PDF·DOCX 포함" |
-| E5-L1e2e 라이브 E2E AI4S 세트 | ⏳ 구축 세션(개발 mock, 8020 sol 라이브 정확히 1회, 재실행은 PM 승인) | v1 확인 실행 |
+| E5-L1e2e 라이브 E2E AI4S 세트 | ❌ 라이브 1회(8020 sol): plan.md·범위 밖 PASS, 단백질·신경 연산자 FAIL(체크리스트 1항목씩 근거 번호 없음). 결과 JSON 미저장 | E3-L1e(체크리스트 근거 게이트)·E3-L1s(분량 두 단계) 병합 → 라이브 1회(v1 확인+결과 JSON, 약 $2)+백테스트 사후 재실행(약 $2)을 한 번에 대표 승인 → v1 태그 |
 | E3-L1y 카드 뒤 단계 병렬·진행 보고 | 🔍 795ec31 검증 중(구축 세션): 54.1→42.0초(mock), 결과 순차와 동일 | PM 결정: 순서 단언은 체크리스트→2차 검증만+병렬=순차 결과 동일 고정, EXTRACT_PARALLEL 24 유지, 캐시 임시 파일명 고유화. jobs.py 단계 표시는 E4-L2d 쪽 |
 | SEC-5 다중 사용자 동시성 | ⏳ PM 세션 빌더(mock) | E4-L2e 부하 시험 지적: 검색 상태 스레드별(index/search.py), OpenAI 동시 요청 프로세스 상한 `NEUMANN_LLM_MAX_INFLIGHT`(llm.py). 공개 전 필수 |
 | E4-L2e 부하 시험 | ✅ 병합(Sonnet PASS), 보고서 문구 정정 | 공개 기동 `NEUMANN_MAX_CONCURRENT=6` |
