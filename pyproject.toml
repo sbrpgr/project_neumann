@@ -20,6 +20,7 @@ dependencies = [
     "jsonschema",
     "pypdf",
     "python-docx",
+    "mcp>=2.2,<3",
 ]
 
 [project.optional-dependencies]
