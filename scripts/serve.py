@@ -183,6 +183,9 @@ def preflight_public(settings: object | None = None) -> tuple[bool, str]:
         has_key = bool(getattr(settings, "has_openai_key", False))
     if not has_key:
         return False, "공개 모드인데 OPENAI_API_KEY가 없다(값은 보지 않고 있음/없음만 확인)"
+    index_dir = Path(os.getenv("NEUMANN_INDEX_DIR") or Path(getattr(settings, "data_dir", ROOT / "data")) / "index")
+    if (index_dir / "DO_NOT_SERVE.txt").exists():  # SEC-2r: 서비스 금지 표시 색인(예: 리뷰어 실명 잔존 index_elife*)
+        return False, f"색인 폴더 {index_dir.name}에 DO_NOT_SERVE.txt가 있다(서비스 금지 색인). NEUMANN_INDEX_DIR를 확인한다"
     return True, f"provider=openai model={getattr(settings, 'llm_model', '?')} key=있음"
 
 
