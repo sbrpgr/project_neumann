@@ -47,9 +47,16 @@ def make(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fn: Any, *, jobs_cfg: 
     srv = serving.Serving(serving.ServingConfig(**base))
     app = integrate(srv, fn, monkeypatch.setattr)
     store = jobs.install(app, load_pipeline=load_pipeline or (lambda: api_main._load_pipeline()),
-                         sample_result=api_main._sample_result, config=jobs_cfg or jobs.JobsConfig(ttl_s=60, poll_s=1))
+                         sample_result=api_main._sample_result, config=jobs_cfg or cfg_nolimit())
     assert store is not None
     return srv, app, store
+
+
+def cfg_nolimit(**kw: Any) -> jobs.JobsConfig:
+    """IP별 상한·속도 제한을 끈 작업 설정(이 파일은 흐름·관문을 잰다. IP별 상한은 test_jobs_limits.py)."""
+    base: dict[str, Any] = dict(ttl_s=60, poll_s=1, per_ip=0, rate_per_min=0, poll_per_min=0)
+    base.update(kw)
+    return jobs.JobsConfig(**base)
 
 
 def client(app: Any, ip: str = "127.0.0.1") -> httpx.AsyncClient:
@@ -380,7 +387,7 @@ def test_readmission_when_join_or_cache_vanished(tmp_path, monkeypatch):
 def test_store_full_503_returns_slot_and_budget(tmp_path, monkeypatch):
     fake = Gated()
     srv, app, store = make(tmp_path, monkeypatch, fake, daily_budget=10, budget_file=tmp_path / "b.json",
-                           jobs_cfg=jobs.JobsConfig(max_jobs=2, ttl_s=60, poll_s=1))
+                           jobs_cfg=cfg_nolimit(max_jobs=2))
 
     async def go() -> None:
         async with client(app) as c:
@@ -428,7 +435,7 @@ def test_error_is_user_message_only(tmp_path, monkeypatch, caplog):
 def test_timeout_is_user_message_then_cache_serves(tmp_path, monkeypatch):
     fn = slow(0.6)
     srv, app, store = make(tmp_path, monkeypatch, fn, cache_enabled=True,
-                           jobs_cfg=jobs.JobsConfig(timeout_s=0.2, ttl_s=60, poll_s=1))
+                           jobs_cfg=cfg_nolimit(timeout_s=0.2))
 
     async def go() -> None:
         async with client(app) as c:
@@ -462,7 +469,7 @@ def test_pipeline_unavailable_gives_marked_sample(tmp_path, monkeypatch):
 
 
 def test_results_are_discarded_after_ttl(tmp_path, monkeypatch):
-    srv, app, store = make(tmp_path, monkeypatch, slow(0.02), jobs_cfg=jobs.JobsConfig(ttl_s=30, poll_s=1))
+    srv, app, store = make(tmp_path, monkeypatch, slow(0.02), jobs_cfg=cfg_nolimit(ttl_s=30))
     now = {"t": 1000.0}
     store.clock = lambda: now["t"]
 

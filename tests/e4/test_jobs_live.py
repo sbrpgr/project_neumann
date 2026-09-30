@@ -44,6 +44,11 @@ def plan_text(tag: str) -> str:
     return PLAN_FILE.read_text(encoding="utf-8") + f"\n\n(작업 API 시험 계획서 변형 {tag})\n"
 
 
+def user(i: int) -> dict[str, str]:
+    """사용자 i(서로 다른 IP). 로컬 peer(터널)에서 온 CF-Connecting-IP는 serving이 믿는다."""
+    return {"CF-Connecting-IP": f"198.51.100.{i + 1}"}
+
+
 def staged_pipeline(run_s: float) -> Any:
     """6단계를 알리며 run_s초 자는 가짜 파이프라인(스레드에서 돈다)."""
     from scripts.serve_fake_app import fake_result
@@ -94,7 +99,7 @@ def test_five_concurrent_jobs_scaled(monkeypatch, tmp_path):
     run_s = 60 * 0.02
     srv = serving.Serving(serving.ServingConfig(max_concurrent=2, queue_max=20, rate_per_min=6, cache_enabled=False,
                                                 avg_run_s=run_s, block_file=tmp_path / "block.flag"))
-    app = build_app(srv, run_s, monkeypatch.setattr, jobs.JobsConfig(poll_s=1))
+    app = build_app(srv, run_s, monkeypatch.setattr, jobs.JobsConfig(poll_s=1, per_ip=3, rate_per_min=6))
 
     async def go() -> None:
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t", timeout=30) as c:
@@ -108,7 +113,8 @@ def test_five_concurrent_jobs_scaled(monkeypatch, tmp_path):
                 return r
 
             t_start = time.monotonic()
-            posts = await asyncio.gather(*(timed(c.post("/premortem/jobs", json={"plan_text": plan_text(f"S{i}")}))
+            posts = await asyncio.gather(*(timed(c.post("/premortem/jobs", json={"plan_text": plan_text(f"S{i}")},
+                                                        headers=user(i)))
                                            for i in range(5)))
             assert [r.status_code for r in posts] == [202] * 5
             assert sorted(r.json()["position"] for r in posts) == [0, 0, 1, 2, 3]
@@ -118,7 +124,7 @@ def test_five_concurrent_jobs_scaled(monkeypatch, tmp_path):
             while len(done) < 5:
                 await asyncio.sleep(0.1)
                 for jid in [k for k in pending if k not in done]:
-                    j = (await timed(c.get(f"/premortem/jobs/{jid}"))).json()
+                    j = (await timed(c.get(f"/premortem/jobs/{jid}", headers=user(99)))).json()
                     if j["status"] == "queued":
                         positions[jid].append(j["position"])
                     if j["status"] == "done":
@@ -164,7 +170,7 @@ class Server:
         self.port, self.base = port, f"http://127.0.0.1:{port}"
         self.tmp = Path(tempfile.mkdtemp(prefix="neumann_e4l2d_"))
         self.env = dict(os.environ, PYTHONIOENCODING="utf-8", NEUMANN_WARMUP="0", NEUMANN_FAKE_RUN_S=str(run_s),
-                        NEUMANN_AVG_RUN_S=str(run_s), NEUMANN_MAX_CONCURRENT="2", NEUMANN_QUEUE_MAX="20",
+                        NEUMANN_AVG_RUN_S=str(run_s), NEUMANN_MAX_CONCURRENT="2", NEUMANN_QUEUE_MAX="30",
                         NEUMANN_RATE_PER_MIN="6", NEUMANN_DAILY_BUDGET="100", NEUMANN_RESULT_CACHE="0",
                         NEUMANN_BUDGET_FILE=str(self.tmp / "budget.json"),
                         NEUMANN_BLOCK_FILE=str(self.tmp / "block.flag"))
@@ -209,7 +215,7 @@ class Server:
         shutil.rmtree(self.tmp, ignore_errors=True)
 
 
-async def load_scenario(base: str, n: int, run_s: float) -> bool:
+async def load_scenario(base: str, n: int, run_s: float, conc: int = 2) -> bool:
     timings: list[tuple[str, float, int]] = []
 
     async with httpx.AsyncClient(base_url=base, timeout=100) as c:
@@ -219,9 +225,11 @@ async def load_scenario(base: str, n: int, run_s: float) -> bool:
             timings.append((kind, time.monotonic() - t, r.status_code))
             return r
 
-        say(f"== 동시 {n}건을 POST /premortem/jobs로(서로 다른 계획서, 가짜 분석 1건 {run_s:.0f}s, 동시 상한 2)")
+        say(f"== 동시 {n}건을 POST /premortem/jobs로(서로 다른 사용자 IP·계획서, 가짜 분석 1건 {run_s:.0f}s, "
+            f"동시 상한 {conc})")
         t_start = time.monotonic()
-        posts = await asyncio.gather(*(req("POST", c.post("/premortem/jobs", json={"plan_text": plan_text(f"L{i}")}))
+        posts = await asyncio.gather(*(req("POST", c.post("/premortem/jobs", json={"plan_text": plan_text(f"L{i}")},
+                                                          headers=user(i)))
                                        for i in range(n)))
         jobs_: dict[str, dict[str, Any]] = {}
         for i, r in enumerate(posts):
@@ -235,7 +243,8 @@ async def load_scenario(base: str, n: int, run_s: float) -> bool:
         while any(v["done_at"] is None for v in jobs_.values()):
             await asyncio.sleep(1.5)
             live = [k for k, v in jobs_.items() if v["done_at"] is None]
-            rs = await asyncio.gather(*(req("GET", c.get(f"/premortem/jobs/{k}")) for k in live))
+            rs = await asyncio.gather(*(req("GET", c.get(f"/premortem/jobs/{k}", headers=user(int(jobs_[k]["tag"][1:]))))
+                                        for k in live))
             for k, r in zip(live, rs):
                 j, v = r.json(), jobs_[k]
                 key = (j.get("status"), j.get("position"), j.get("stage"))
@@ -279,11 +288,11 @@ async def load_scenario(base: str, n: int, run_s: float) -> bool:
 
 def cmd_load(a: argparse.Namespace) -> int:
     say(f"E4-L2d 동시 {a.jobs}건 시험 시작 (포트 {a.port}, 가짜 분석 1건 {a.run_s:.0f}s)")
-    srv = Server(a.port, a.run_s)
+    srv = Server(a.port, a.run_s, NEUMANN_MAX_CONCURRENT=str(a.concurrent))
     ok = False
     try:
         with srv:
-            ok = asyncio.run(load_scenario(srv.base, a.jobs, a.run_s))
+            ok = asyncio.run(load_scenario(srv.base, a.jobs, a.run_s, a.concurrent))
         say(f"판정: {'PASS' if ok else 'FAIL'}")
         lines = srv.log_lines()
         say("-- 서버 로그(neumann.jobs 작업 완료 줄)")
@@ -396,6 +405,7 @@ def main(argv: list[str] | None = None) -> int:
     lo.add_argument("--port", type=int, default=8136)
     lo.add_argument("--run-s", type=float, default=60.0)
     lo.add_argument("--jobs", type=int, default=5)
+    lo.add_argument("--concurrent", type=int, default=2, help="동시 분석 상한(NEUMANN_MAX_CONCURRENT)")
     lo.add_argument("--out", default=None)
     ui = sub.add_parser("ui")
     ui.add_argument("--port", type=int, default=8137)
