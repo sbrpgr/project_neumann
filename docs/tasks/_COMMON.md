@@ -45,3 +45,8 @@ export NEUMANN_EMBED_MODEL="C:/Users/User/Desktop/노이만_본선자료/공개�
 - 출처(원문 URL·접근 시각·원문 해시) 없는 레코드는 만들지 않는다. 리뷰어 신원 필드는 없다.
 - 인용은 원문에서 오프셋으로 잘라 붙인 것만 쓴다. LLM이 쓴 문자열을 인용으로 쓰지 않는다.
 - 규칙으로 만든 결과를 LLM 결과라고 표시하지 않는다. 비상 경로로 돌면 `status`에 남긴다.
+
+## 추가 규칙 (20:1x)
+
+- **worktree에서 `git stash` 금지.** stash는 모든 worktree가 공유해서 다른 과제 변경이 섞인다(E4-L1e → E4-L2c 사고). 임시 보관은 커밋(`wip:`)으로 한다.
+- 실제 OpenAI 호출은 `NEUMANN_LIVE_LLM_OK=1`이 있어야 열린다(SEC-3). 빌더·검증자는 이 플래그를 켜지 않는다. 옛 프로세스가 사용자 환경변수를 물려받았을 수 있으니 명령마다 `NEUMANN_LLM_PROVIDER=mock`도 명시한다.

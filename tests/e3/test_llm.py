@@ -194,9 +194,10 @@ def test_disabled_provider():
     assert not res.ok and res.error == "disabled" and res.generator == "rule"
 
 
-def test_make_llm_selects_provider():
+def test_make_llm_selects_provider(monkeypatch):
     assert make_llm(provider="off").name == "off"
     assert make_llm(provider="mock").name == "mock"
+    monkeypatch.setenv("NEUMANN_LIVE_LLM_OK", "1")  # 실제 클라이언트는 키가 없어 만들지 않는다
     s = SimpleNamespace(llm_provider="openai", llm_model="gpt-6-astra", openai_api_key=None, llm_timeout_s=5.0)
     p = make_llm(s, provider="openai")
     assert p.name == "openai" and p.model == "gpt-6-astra"

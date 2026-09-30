@@ -110,6 +110,14 @@ class OpenAIBaseline:
 
     def _get_client(self) -> Any:
         if self._client is None:
+            try:  # SEC-3: 실제 호출은 NEUMANN_LIVE_LLM_OK가 있을 때만
+                from neumann.config import live_llm_allowed
+
+                allowed = live_llm_allowed()
+            except Exception:  # noqa: BLE001
+                allowed = False
+            if not allowed:
+                raise RuntimeError("실제 호출 잠김(NEUMANN_LIVE_LLM_OK 없음)")
             from openai import OpenAI
 
             key = None

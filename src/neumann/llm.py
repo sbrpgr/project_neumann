@@ -220,6 +220,9 @@ class OpenAIProvider:
             key = _secret_value(api_key)
             if not key:
                 self._config_error = "OPENAI_API_KEY가 없다"
+            elif not _live_llm_allowed():
+                # SEC-3: 실제 클라이언트는 허용 플래그가 있을 때만 만든다(직접 생성 경로도 막는다)
+                self._config_error = "실제 호출 잠김(NEUMANN_LIVE_LLM_OK 없음)"
             else:
                 from openai import OpenAI
 
@@ -441,12 +444,25 @@ def task_options(task: str, settings: Any = None) -> dict[str, Any]:
     return {"effort": effort, "timeout_s": float(timeout)}
 
 
+def _live_llm_allowed() -> bool:
+    try:
+        from neumann.config import live_llm_allowed
+    except Exception:  # noqa: BLE001 - 설정 모듈을 못 읽으면 닫힌 쪽
+        return False
+    return live_llm_allowed()
+
+
 def make_llm(settings: Any = None, provider: str | None = None) -> LLMProvider:
     """설정에서 provider를 만든다. provider 인자가 있으면 설정보다 우선한다.
 
     모델명이 비었거나 키가 없으면 조용히 끄지 않는다: 호출마다 config_error 실패를 돌려 status에 드러난다.
     """
     name = (provider or setting(settings, "llm_provider", "NEUMANN_LLM_PROVIDER", "mock") or "mock").lower()
+    if name == "openai" and not _live_llm_allowed():
+        # SEC-3: 허용 플래그 없는 프로세스(에이전트·worktree·테스트)는 설정이 openai여도 실제 호출을 하지 않는다.
+        # 결과의 generator가 mock이 되므로 화면·결과에 그대로 드러난다.
+        log.warning("provider=openai 요청이지만 NEUMANN_LIVE_LLM_OK가 없어 mock으로 강등한다")
+        name = "mock"
     if name == "openai":
         model = str(setting(settings, "llm_model", "NEUMANN_LLM_MODEL", DEFAULT_MODEL))
         key = getattr(settings, "openai_api_key", None) if settings is not None else None

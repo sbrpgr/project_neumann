@@ -231,7 +231,26 @@ def health() -> dict[str, Any]:
             "sample" if state == "unavailable" else "error"), "label": SAMPLE_LABEL if state == "unavailable" else ""},
         "stages": stages,
         "routers": dict(ROUTER_STATE),
+        "llm": _llm_state(),
     }
+
+
+def _llm_state() -> dict[str, Any]:
+    """실제 호출이 열려 있는지(SEC-3). 키 값·설정 전체는 싣지 않는다."""
+    try:
+        from neumann.config import get_settings, live_llm_allowed
+
+        s = get_settings()
+        allowed = live_llm_allowed()
+        requested = s.llm_provider
+        return {
+            "provider_requested": requested,
+            "live_llm_ok": allowed,
+            "effective": "openai" if requested == "openai" and allowed else "mock",
+            "model": s.llm_model if requested == "openai" and allowed else "",
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {"error": type(exc).__name__}
 
 
 @app.post("/premortem")
