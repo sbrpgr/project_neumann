@@ -1007,8 +1007,10 @@ def build_ui_view(
         return view
 
 
-# 원결과의 자유형 dict 칸(계약이 dict[str, Any]로 둔 곳)에서 화면·내보내기로 넘길 키(E4-L2f F2). 나머지 키는 뺀다.
-# manifest: pipeline.py·precomputed.py가 쓰는 키와 view가 읽는 모델 이름 키. checklist: E3 checklist.py 항목 키와 별칭.
+# 원결과의 자유형 칸(계약이 dict[str, Any]·list[dict]로 둔 곳)에서 화면·내보내기로 넘길 키(E4-L2f F2·R3). 나머지 키는 뺀다.
+# 키 출처: 실제 결과 29건(사전 계산본 3·백테스트 실행 26)과 mock 실행에서 모은 키 + 각 칸을 쓰는 코드(E3 pipeline·checklist·
+# review·validate·fitness, sources/retraction.compute_field_prior, models.PostStatus) + view가 읽는 별칭.
+# 한 단계(최상위 키, 목록이면 항목의 키)만 거른다. 그 아래 값은 결과 값 그대로다.
 MANIFEST_EXPORT_KEYS = frozenset({
     "backend", "llm_model", "llm_provider", "pipeline_version", "prompt_versions", "query_cache", "stage_limits_s",
     "timings_s", "total_s", "v1_parallel", "v1_wall_s", "model_id", "model_provider", "model", "provider",
@@ -1020,22 +1022,54 @@ CHECKLIST_EXPORT_KEYS = frozenset({
     "card_verdict", "validation", "dropped", "decision", "s", "choice", "note", "m", "memo", "decided_at",
     "decision_log", "why",
 })
+FREE_DICT_EXPORT_KEYS: dict[str, frozenset[str]] = {
+    "manifest": MANIFEST_EXPORT_KEYS,
+    "expected_review": frozenset({
+        "strength", "weakness", "request", "strengths", "weaknesses", "requests", "audit", "generator", "gen",
+        "generator_source", "model", "status", "reason", "error", "attempts", "effort", "elapsed_s", "version",
+    }),
+    "plan_stats": frozenset({"chars", "lines"}),
+    "plan_checks": frozenset({"fitness", "queries", "search", "suitability"}),
+    "verification": frozenset({
+        "findings_drop_rate", "findings_drop_reasons", "findings_dropped", "findings_kept", "findings_rule",
+        "findings_total", "linkage_rate", "quotes_total", "quotes_verified", "semantic",
+    }),
+    "risk_synthesis": frozenset({
+        "drops", "fallback_reason", "generator", "no_card_reason", "pool_size", "score_formula", "tags",
+    }),
+    "field_prior": frozenset({
+        "citation", "kinds", "matched_subjects", "n_baseline", "n_records", "procedural_excluded", "reasons",
+        "records", "risk_codes", "snapshot", "source", "status", "subject", "subject_keywords", "unit", "url",
+    }),
+    "research_questions": frozenset(),  # 채우는 코드가 아직 없다: 오는 키는 모두 뺀다
+}
+FREE_LIST_EXPORT_KEYS: dict[str, frozenset[str]] = {
+    "checklist": CHECKLIST_EXPORT_KEYS,
+    "post_status": frozenset({
+        # models.PostStatus 필드 그대로
+        "post_status_id", "kind", "work_id", "target_doi", "notice_doi", "reason_codes", "text", "url", "provenance",
+        "schema_version",
+    }),
+    "plan_side_candidates": frozenset(),  # 채우는 코드가 아직 없다
+}
 
 
 def _whitelist(data: dict[str, Any]) -> list[str]:
-    """manifest·checklist 항목의 모르는 키를 뺀다. 뺀 키 이름(값 아님) 목록을 돌려준다."""
+    """자유형 칸의 모르는 키를 뺀다. 뺀 키 이름(값 아님) 목록을 돌려준다."""
     dropped: set[str] = set()
-    man = data.get("manifest")
-    if isinstance(man, dict):
-        dropped.update(f"manifest.{k}" for k in man if k not in MANIFEST_EXPORT_KEYS)
-        data["manifest"] = {k: v for k, v in man.items() if k in MANIFEST_EXPORT_KEYS}
-    items = []
-    for it in data.get("checklist") or []:
-        if isinstance(it, dict):
-            dropped.update(f"checklist[].{k}" for k in it if k not in CHECKLIST_EXPORT_KEYS)
-            it = {k: v for k, v in it.items() if k in CHECKLIST_EXPORT_KEYS}
-        items.append(it)
-    data["checklist"] = items
+    for name, allowed in FREE_DICT_EXPORT_KEYS.items():
+        d = data.get(name)
+        if isinstance(d, dict):
+            dropped.update(f"{name}.{k}" for k in d if k not in allowed)
+            data[name] = {k: v for k, v in d.items() if k in allowed}
+    for name, allowed in FREE_LIST_EXPORT_KEYS.items():
+        items = []
+        for it in data.get(name) or []:
+            if isinstance(it, dict):
+                dropped.update(f"{name}[].{k}" for k in it if k not in allowed)
+                it = {k: v for k, v in it.items() if k in allowed}
+            items.append(it)
+        data[name] = items
     return sorted(dropped)
 
 
@@ -1043,9 +1077,9 @@ def export_result(result: Any) -> tuple[dict[str, Any] | None, str | None, list[
     """내보내기(``POST /premortem/package``)에 그대로 넘길 원결과(E4-L2f). 실패하면 ``(None, 사유, [])``.
 
     - ``PremortemResult`` 계약으로 검증한 뒤 JSON으로 되돌린다. 모델이 extra=forbid라 계약에 없는 **최상위** 필드는
-      검증에서 걸린다(그런 결과는 싣지 않는다). 계약이 자유형 dict로 둔 칸(manifest·checklist 항목·expected_review·
-      plan_checks 등)은 검증을 통과하므로, manifest·checklist 항목은 아는 키만 남긴다(뺀 키 이름을 셋째 값으로 돌려준다).
-      그 밖의 자유형 칸은 결과 값 그대로다.
+      검증에서 걸린다(그런 결과는 싣지 않는다). 계약이 자유형으로 둔 칸(manifest·checklist·expected_review·plan_checks·
+      verification·risk_synthesis·post_status 등)은 검증을 통과하므로, 칸마다 아는 키만 남긴다(한 단계, 뺀 키 이름을
+      셋째 값으로 돌려준다). 그 아래 값은 결과 값 그대로다.
     - 진단 문구 칸(notices·detail 등)은 서빙 계층과 같은 규칙(``serving.scrub_ok_payload``: 키·절대 경로·트레이스 가림)을
       미리 적용한다. 그래야 jobs 응답이 한 번 더 가려도 값이 같아 서명이 맞는다.
     - 계획서 줄·인용·카드는 결과 값 그대로다(화면과 같다). 계획서의 이메일·ORCID는 분석 입구(``PlanDocument``)에서 가려졌다.
