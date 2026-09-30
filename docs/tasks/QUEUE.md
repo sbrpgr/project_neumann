@@ -2,7 +2,7 @@
 
 인계 받는 쪽(Codex PM)은 이 표 위에서부터 진행한다. 실행은 `bash scripts/codex_task.sh build <과제ID>`, 검증은 `bash scripts/codex_task.sh verify <과제ID>`, 병합은 PM 규칙(`AGENTS.md`)대로. 상태: ✅ main 병합 · 🔍 검증 대기/중 · ⏳ 빌더 작업 중 · ⬜ 대기(착수 전) · ⛔ 막힘
 
-마지막 갱신: 2026-09-30 20:0x (PM "로컬 세팅")
+마지막 갱신: 2026-09-30 20:5x (PM "로컬 세팅")
 
 ## ⚠ 최종 마감: 발표자료 제출 10/01 09:00 (HANDOFF 표). 발표 작업(E6)을 모든 L3 확장보다 앞에 둔다
 
@@ -25,11 +25,11 @@
 | E4-L2c 서빙 안정성 | 🔍 재작업 83754ff(BOM·UTF-16 fail-closed, IPv6 /64, 업로드 IP당 분당 10·동시 1·10MB) 재검증 중(구축 세션). **공개 금지** | PASS → PM이 diff에 templates·index.html 없는지 확인 → 병합 + `E4-L2c_main.patch`, 새 키 3개(TRUST_XFF·UPLOAD_RATE_PER_MIN·UPLOAD_PER_IP) |
 | E4-L2d 비동기 작업 API | 🔍 PASS-조건부 → 재작업 중(구축 세션): E4-L2c 재병합·create_job 글자 상한, 작업 저장소 고갈 DoS(IP별 보관 상한·합류/캐시 POST 속도 제한) | E4-L2c 뒤 병합 + `E4-L2d_main.patch`. **터널 공개 전제** |
 | SEC-4 이메일 정규식 ReDoS | 🔍 task/SEC-4 386621a(PM), Sonnet 검증 중 | `models.contains_pii`·`redact_pii` 선형화(`email_spans`), 결과 동일. 공개 전 필수 |
-| E3-L1x rule_fitness "neural" 오분류 | ⏳ PM 세션 빌더(mock) | PDE 신경 연산자 → 신경과학으로 잘못 분류(비상 경로) |
+| E3-L1x rule_fitness "neural" 오분류 | ✅ 병합(Sonnet PASS) | 남은 한계: `~인지 과제` 오탐, neuromorphic(후속 소과제, 선택) |
 | E4-L1f 화면 업로드 | ✅ 병합(cf43101, Sonnet PASS) | 8020 재기동 시 반영. 발표 9쪽 "PDF·DOCX 포함" |
 | SEC-2 재점검 | 대기 | E4-L2c·L2d 병합 뒤 → 통과하면 cloudflared 터널 공개(주소는 발표자료로) |
 | E4-L1a 업로드 | ✅ 병합(2e38839, 긴 경계 400 수정 80e024c 포함) | 공개 전 `/upload/plan` 속도 제한(E4-L2c 보호 경로), 화면 문구 "정리 뒤 50,000자 상한" |
-| E6-docs 문서·README | 🔍 재작업 2(608373b) 재검증 3 중(Sonnet, PM 세션) | PASS → 병합 + 루트 README를 `docs/reports/E6-docs_README_draft.md`로 갱신(PM 소유). 07:00 동결 때 숫자·상태 한 번 더 맞춤 |
+| E6-docs 문서·README | ✅ 병합(7049da9), 루트 README 교체(38b01e4) | 07:00 동결 때 숫자·상태 한 번 더 맞춤. SEC-3 병합 뒤 RUNNING에 LIVE_LLM_OK 두 줄 |
 | E4-L1f 화면 업로드 → `/upload/plan` | ✅ 병합(cf43101) | 선택 개선: 업로드 AbortController 40초 |
 | E6-pres2 발표자료 숫자 | 🔍 PASS-조건부(숫자 불일치 0) → 12·11쪽 문구, GPU "약 77초" 수정 중(구축 세션) | 설계 쪽 "설계"+"예정", 결과 쪽 실측만. 07:00 체크리스트: 테스트 수 동결 main 실측 1개, 백테스트 못 돌리면 "미측정"(15편 삭제), 터널 없으면 주소 칸 "로컬 시연·영상", 작업 메모·형광 제거 |
 | E3-L1d 사전 추출 스크립트 | 중지·선택 병합 | 재개는 대표 승인 뒤, 데모 상위 논문만 `--work-ids` |
