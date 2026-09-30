@@ -44,6 +44,9 @@ cp .env.example .env      # .env는 .gitignore로 막혀 있다. 절대 커밋�
 | `NEUMANN_DATA_DIR` | 가공 데이터 폴더(코퍼스·색인·평가 산출·사전 계산본) | `<저장소>/data` |
 | `NEUMANN_EMBED_MODEL` | bge-m3 로컬 폴더(색인 빌드·검색). 없으면 검색은 어휘(BM25)만 쓰고 강등을 기록한다 | 없음 |
 | `NEUMANN_INDEX_DIR`, `NEUMANN_EMBED_DEVICE`, `NEUMANN_EMBED_BATCH`, `NEUMANN_EMBED_MAX_SEQ` | 색인 폴더·임베딩 장치·배치·최대 토큰(`src/neumann/index/settings.py`) | `<데이터 폴더>/index`, `auto`(cuda 있으면 cuda), `16`, `512` |
+
+> `DO_NOT_SERVE.txt`가 있는 색인 폴더(예: `index_elife`, `index_elife_epmc`)로 `NEUMANN_INDEX_DIR`를 바꾸지 않는다. 리뷰어 실명 가림 재작업(E1-L1b)이 통과하고 재빌드해 입력 해시 대조가 통과해야 쓸 수 있다.
+
 | `NEUMANN_SEARCH_ALPHA` | 검색 결합 점수의 임베딩 비중(나머지는 BM25) | `0.6` |
 | `NEUMANN_SEARCH_SCORE_FLOOR` | 점수 하한. 비우면 임베딩 모델별 실측 보정값(bge-m3 0.45), 보정값 없는 모델·어휘만 검색이면 0 | 비움 |
 | `NEUMANN_SEARCH_FUSION` | 여러 질의 결합: `rrf`(질의별 순위 융합) 또는 `max` | `rrf` |

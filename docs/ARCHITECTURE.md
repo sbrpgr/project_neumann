@@ -12,7 +12,7 @@ Neumann은 연구계획서를 받아, 비슷한 연구가 실제로 받은 심�
 |---|---|---|
 | 데이터 계약(엔티티·불변식) | 있음 | `src/neumann/models.py`, `contracts/*.schema.json` |
 | 설정 로더(환경변수 > `.env`) | 있음 | `src/neumann/config.py` |
-| 분석 파이프라인 v1(`neumann-e3-l1w`, 단계 기록 10개: 적합성 → 검색어 → 검색 → 지적 추출 → 카드 합성 → 원문 대조 → 예상 심사평 → 체크리스트 → 2차 의미검증) | 있음 | `src/neumann/pipeline.py` |
+| 분석 파이프라인 v1(`neumann-e3-l1w`, 단계 기록 10개: 계획서 정규화 → 적합성 → 검색어 → 검색 → 지적 추출 → 카드 합성 → 원문 대조 → 예상 심사평 → 체크리스트 → 2차 의미검증) | 있음 | `src/neumann/pipeline.py` |
 | LLM 호출 층(provider `openai`·`mock`·`off`) | 있음 | `src/neumann/llm.py` |
 | 검색어·축 추출, 지적 추출, 카드 합성, 비상 규칙 | 있음 | `src/neumann/analyze/queries.py`, `extract.py`, `cards.py`, `rules.py`, `backend.py` |
 | 코퍼스: ResearchArcade → AI for Science 1,128편 | 있음 | `src/neumann/sources/researcharcade.py`, `corpus.py`, `scripts/collect_researcharcade.py` |
