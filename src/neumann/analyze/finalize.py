@@ -44,6 +44,8 @@ _PLACEHOLDER_VOCAB = frozenset({
 
 def _placeholder_problem(text: str, scope_words: set[str]) -> str:
     """Reason code when a [확인 필요: …] body carries links, markup or vocabulary outside the grounded scope."""
+    if re.search(PLACEHOLDER_RE.pattern + r"\s*\(", text):  # markdown link wrapped around a placeholder
+        return "placeholder_unsafe"
     for body in PLACEHOLDER_RE.findall(text):
         inner = body[len("[확인 필요:"):-1]
         if _PLACEHOLDER_UNSAFE_RE.search(inner):
