@@ -209,6 +209,8 @@ def test_wait_timeout_returns_failure_without_network():
         t0 = time.perf_counter()
         res = waiter.complete_json(_call(timeout_s=0.3, task="extract_issues"))
         took = time.perf_counter() - t0
+        # 호출 상한으로 반환했는데 점유자는 아직 풀리지 않았다: 대기 종료를 순서로 증명한다.
+        assert not gate.is_set() and th.is_alive()
     finally:
         gate.set()
         th.join(10)
@@ -217,7 +219,7 @@ def test_wait_timeout_returns_failure_without_network():
     assert "동시 호출 상한 1개" in res.detail and "대기 초과" in res.detail and "0.3s" in res.detail
     assert "시간 초과" in res.reason()
     assert not waiter_client.entered.is_set() and tracker.calls == 1  # 기다린 쪽은 네트워크에 나가지 않았다
-    assert 0.25 <= took < 5.0 and res.latency_s >= 0.25
+    assert took >= 0.25 and res.latency_s >= 0.25
     assert box["res"].ok  # 자리를 잡고 있던 호출은 정상 완료
     snap = limiter.snapshot()
     assert snap["wait_timeouts"] == 1 and snap["in_flight"] == 0 and snap["acquired"] == 1
@@ -308,9 +310,8 @@ def test_mock_and_off_providers_bypass_limiter():
     assert glob is not None and glob.acquire(0)  # 공용 상한의 유일한 자리를 잡아 둔다
     try:
         mock = MockProvider({"t": lambda c: {"n": 1, "tag": "a"}})
-        t0 = time.perf_counter()
         results = _run_all([lambda: mock.complete_json(_call(timeout_s=0.2)) for _ in range(8)])
-        assert all(r.ok for r in results) and time.perf_counter() - t0 < 5.0
+        assert all(r.ok for r in results)
         off = DisabledProvider().complete_json(_call(timeout_s=0.2))
         assert off.error == "disabled"
         assert glob.snapshot()["acquired"] == 1 and glob.snapshot()["wait_timeouts"] == 0

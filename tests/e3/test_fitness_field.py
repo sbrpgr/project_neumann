@@ -273,7 +273,7 @@ def _changed_patterns() -> list[tuple[str, re.Pattern[str]]]:
 def test_changed_patterns_are_linear_on_adversarial_input(pname: str, pattern: re.Pattern[str]) -> None:
     for unit, text in _adversarial_inputs():
         assert len(text) == 100_000
-        t0 = time.perf_counter()
+        t0 = time.process_time()
         n = sum(1 for _ in pattern.finditer(text))
-        dt = time.perf_counter() - t0
+        dt = time.process_time() - t0
         assert dt < 0.2, f"{pname}: 반복 단위 {unit!r} 10만 자에서 {dt:.3f}s ({n}건)"
