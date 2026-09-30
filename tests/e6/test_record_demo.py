@@ -43,6 +43,21 @@ def test_classify_health_only_connected_is_live(health, mode):
     assert why
 
 
+@pytest.mark.parametrize(
+    ("status", "sample"),
+    [
+        ({"source": "sample"}, True),
+        ({"source": "pipeline", "sample": True}, True),
+        ({"source": "pipeline"}, False),
+        ({"source": "pipeline", "sample": False}, False),
+        ({}, False),
+        (None, False),
+    ],
+)
+def test_response_is_sample(status, sample):
+    assert rd.response_is_sample(status) is sample
+
+
 def test_basename_carries_mode():
     when = dt.datetime(2026, 9, 30, 18, 5, 7)
     assert rd.make_basename("sample", when) == "demo_20260930-180507_sample"
@@ -180,7 +195,20 @@ steps(); input();
 </script></body></html>"""
 
 
-def _fake_server(response_source: str, export_on: bool, seen: list[str]):
+BADGE_WATCH_JS = """
+(() => {  // 테스트 쪽 감시: 배지 요소의 글자가 바뀔 때마다 파이썬으로 알린다(스크립트의 배지 읽기와 독립)
+  let last = null;
+  const report = () => {
+    const e = document.getElementById('__demo_badge');
+    const t = e && getComputedStyle(e).display !== 'none' ? e.textContent : '';
+    if (t !== last) { last = t; window.__testBadge(t); }
+  };
+  new MutationObserver(report).observe(document, { subtree: true, childList: true, characterData: true });
+})();
+"""
+
+
+def _fake_server(status: dict, export_on: bool, seen: list[str], badges: list[str]):
     def setup(context):
         def block(route):
             seen.append("BLOCKED " + route.request.url)
@@ -192,33 +220,44 @@ def _fake_server(response_source: str, export_on: bool, seen: list[str]):
             if url.endswith("/health"):
                 route.fulfill(json={"pipeline": {"state": "unavailable"}})
             elif url.endswith("/premortem/view"):
-                route.fulfill(json={"cards": [{}], "plan": {}, "_status": {"source": response_source, "label": f"라벨 {response_source}"}})
+                route.fulfill(json={"cards": [{}], "plan": {}, "_status": {"label": "라벨", **status}})
             else:
                 route.fulfill(body=FAKE_APP.replace("__EXPORT__", "true" if export_on else "false"), content_type="text/html; charset=utf-8")
 
         context.route("**/*", block)  # 가짜 앱 밖으로는 나가지 않는다
         context.route("http://demo.test/**", handle)
+        context.expose_function("__testBadge", lambda text: badges.append(text))
+        context.add_init_script(BADGE_WATCH_JS)
 
     return setup
 
 
+STEP_IDS = ["input", "paste", "analyze", "report", "risk_card", "evidence", "export"]
+
+
 @pytest.mark.parametrize(
-    ("health_state", "response_source", "export_on", "mode"),
+    ("health_state", "status", "export_on", "mode", "badge_from"),
     [
-        ("unavailable", "sample", False, "sample"),  # 점검 서버와 같은 경우
-        ("connected", "sample", False, "sample"),  # 헬스는 연결이라 해도 응답이 샘플이면 샘플
-        ("connected", "pipeline", True, "live"),
+        # 점검 서버(미연결)와 같은 경우: 처음부터 배지
+        ("unavailable", {"source": "sample"}, False, "sample", "input"),
+        # 헬스는 연결인데 응답이 샘플: 응답을 받은 analyze 단계부터 배지 + 파일 이름 sample
+        ("connected", {"source": "sample"}, False, "sample", "analyze"),
+        # 응답이 source는 pipeline이라도 sample 플래그가 참이면 샘플
+        ("connected", {"source": "pipeline", "sample": True}, False, "sample", "analyze"),
+        # 둘 다 실제: 배지 없음
+        ("connected", {"source": "pipeline"}, True, "live", None),
     ],
 )
-def test_demo_flow_offline(tmp_path, chromium_ok, capsys, health_state, response_source, export_on, mode):
+def test_demo_flow_offline(tmp_path, chromium_ok, capsys, health_state, status, export_on, mode, badge_from):
     seen: list[str] = []
+    badges: list[str] = []
     code, meta = rd.run_demo(
         "http://demo.test",
         PLAN,
         tmp_path,
         pace=0.05,
         health_fetcher=lambda _url: {"version": "t", "pipeline": {"state": health_state, "mode": "sample" if health_state != "connected" else None}},
-        setup=_fake_server(response_source, export_on, seen),
+        setup=_fake_server(status, export_on, seen, badges),
         now=dt.datetime(2026, 9, 30, 12, 0, 0),
     )
     assert code == 0, meta.get("error")
@@ -235,13 +274,31 @@ def test_demo_flow_offline(tmp_path, chromium_ok, capsys, health_state, response
     assert saved["duration_s"] and saved["duration_s"] > 1
 
     steps = saved["steps"]
-    assert [s["id"] for s in steps] == ["input", "paste", "analyze", "report", "risk_card", "evidence", "export"]
+    assert [s["id"] for s in steps] == STEP_IDS
     assert all(s["status"] == "ok" for s in steps[:-1])
     assert steps[-1]["status"] == ("ok" if export_on else "skipped")
     starts = [s["t_start"] for s in steps]
     assert starts == sorted(starts) and all(s["t_end"] >= s["t_start"] for s in steps)
-    assert saved["observed"]["response_source"] == response_source
-    assert saved["observed"]["export"] == ("shown" if export_on else "unavailable")
+    obs = saved["observed"]
+    assert obs["response_source"] == status["source"]
+    assert obs["response_sample"] is (status.get("source") == "sample" or status.get("sample") is True)
+    assert obs["export"] == ("shown" if export_on else "unavailable")
+
+    # 화면 배지: 샘플이면 반드시 보이고, 실제면 절대 없다
+    by_step = obs["badge_by_step"]
+    assert list(by_step) == STEP_IDS
+    if mode == "sample":
+        on_from = STEP_IDS.index(badge_from)
+        assert all(by_step[s] == "" for s in STEP_IDS[:on_from]), by_step
+        assert all("SAMPLE" in by_step[s] for s in STEP_IDS[on_from:]), by_step
+        assert obs["badge_from"] == badge_from and "SAMPLE" in obs["badge"]
+        assert any("SAMPLE" in b for b in badges), f"테스트 감시가 화면에서 SAMPLE 배지를 보지 못했다: {badges}"
+        assert saved["sample_reason"] == (["health"] if health_state != "connected" else []) + (["response"] if obs["response_sample"] else [])
+    else:
+        assert all(v == "" for v in by_step.values()), by_step
+        assert obs["badge_from"] is None and obs["badge"] == ""
+        assert not any(badges), f"실제 녹화인데 배지가 떴다: {badges}"
+        assert saved["sample_reason"] == []
 
     out = capsys.readouterr().out
     if mode == "sample":

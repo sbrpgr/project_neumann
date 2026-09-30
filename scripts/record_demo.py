@@ -6,9 +6,10 @@
 순서: 입력 → 계획서 붙여넣기 → 분석 대기 → 리포트 → 위험카드 → 근거 열람 → (있으면) 내보내기.
 사람 속도로 움직이고(가짜 커서·부드러운 스크롤), 단계마다 화면 아래에 짧은 주석(자막)을 띄운다.
 
-- 녹화 전에 `GET /health`로 파이프라인 연결 상태를 본다. `connected`가 아니면(미연결·오류) 샘플로 보고
-  파일 이름·로그·JSON에 `sample`을 붙이고 화면 구석에 "샘플 데이터" 표지를 띄운다. 응답의 `_status.source`가
-  `sample`이어도 샘플로 친다. 샘플 영상을 실제 시연처럼 쓰지 않게 하려는 것이다.
+- 샘플 판정: **헬스와 분석 응답 중 하나라도 샘플이면 샘플.** 녹화 전 `GET /health`가 `connected`가 아니면(미연결·오류)
+  처음부터, 분석 응답 `_status`가 `source == "sample"` 또는 `sample: true`면 그 순간부터 화면 왼쪽 아래에
+  "SAMPLE" 배지를 띄우고, 파일 이름·로그·JSON에 `sample`을 붙인다. 샘플 영상을 실제 시연처럼 쓰지 않게 하려는 것이다.
+  단계마다 화면에 실제로 보인 배지 문구를 DOM에서 읽어 JSON `observed.badge_by_step`에 남긴다.
 - 결과: `<out>/demo_<시각>_<sample|live>.webm`과 같은 이름의 `.json`(길이·해상도·단계별 타임스탬프).
   길이·해상도는 webm 헤더에서 읽는다(ffmpeg 없이).
 - `--out`이 `data/`로 시작하는 상대 경로면 `NEUMANN_DATA_DIR`(공유 데이터 폴더) 아래로 푼다.
@@ -54,6 +55,7 @@ STEPS: list[tuple[str, str]] = [
     ("export", "내보내기"),
 ]
 STEP_LABEL = dict(STEPS)
+SAMPLE_BADGE = "SAMPLE · 샘플 데이터 — 분석 결과 아님"
 
 # ── 화면 주석·가짜 커서 (녹화 영상에는 OS 커서가 찍히지 않는다) ──────────────
 OVERLAY_JS = r"""
@@ -380,6 +382,13 @@ class Director:
     def badge(self, text: str) -> None:
         self.page.evaluate("(t) => window.__demo && window.__demo.badge(t)", text)
 
+    def badge_text(self) -> str:
+        """지금 화면에 보이는 배지 문구(없거나 숨겨져 있으면 빈 문자열). DOM에서 직접 읽는다."""
+        return self.page.evaluate(
+            "() => { const e = document.getElementById('__demo_badge');"
+            " return e && getComputedStyle(e).display !== 'none' ? e.textContent : ''; }"
+        )
+
     def move_to(self, locator: Any) -> None:
         locator.scroll_into_view_if_needed()
         box = locator.bounding_box()
@@ -417,9 +426,19 @@ class DemoInfo:
     response_status: int | None = None
     response_source: str | None = None
     response_label: str | None = None
+    response_sample: bool = False  # 응답 `_status`가 샘플이라고 했나
     analysis_s: float | None = None
     status_notice: str | None = None
     export: str = "unknown"
+    badge: str = ""  # 녹화 끝에 화면에 있던 배지 문구(DOM에서 읽음)
+    badge_from: str | None = None  # 배지가 처음 보인 단계
+    badge_by_step: dict[str, str] = field(default_factory=dict)  # 단계 끝마다 화면의 배지 문구
+
+
+def response_is_sample(status: dict[str, Any] | None) -> bool:
+    """분석 응답의 `_status`가 샘플이면 참: `source == "sample"` 또는 `sample: true`."""
+    status = status or {}
+    return status.get("source") == "sample" or status.get("sample") is True
 
 
 def demo_scenario(
@@ -446,11 +465,21 @@ def demo_scenario(
             if stills_dir is not None:
                 page.screenshot(path=str(stills_dir / f"{stills_prefix}{len(tl.steps):02d}_{step_id}.png"))
 
-        with tl.step("input"):
+        @contextmanager
+        def step(step_id: str) -> Iterator[Step]:
+            """tl.step + 단계 끝에 화면의 배지 문구를 기록(샘플 표지가 실제로 보였는지 JSON·테스트가 확인)."""
+            with tl.step(step_id) as s:
+                yield s
+                shown = d.badge_text()
+                info.badge_by_step[step_id] = shown
+                if shown and info.badge_from is None:
+                    info.badge_from = step_id
+
+        with step("input"):
             page.goto(url, wait_until="domcontentloaded")
             page.wait_for_selector('body[data-view="input"][data-ready="1"]')
             if mode == "sample":
-                d.badge("SAMPLE · 샘플 데이터 — 분석 결과 아님")
+                d.badge(SAMPLE_BADGE)
             d.caption(STEP_LABEL["input"])
             try:  # 헤더의 서버 상태 표시가 채워질 때까지(없어도 계속)
                 page.wait_for_function("() => { const e = document.getElementById('hdrState'); return !e || e.textContent.trim() !== '서버 확인 중'; }", timeout=5_000)
@@ -459,7 +488,7 @@ def demo_scenario(
             d.pause(2.2)
             still("input")
 
-        with tl.step("paste"):
+        with step("paste"):
             if page.locator("#ta").count() == 0:
                 d.click(page.locator('[data-mode="text"]').first)
                 page.wait_for_selector("#ta")
@@ -473,7 +502,7 @@ def demo_scenario(
             d.pause(2.0)
             still("paste")
 
-        with tl.step("analyze") as s:
+        with step("analyze") as s:
             d.caption(STEP_LABEL["analyze"])
             btn = page.locator("#btnStart")
             d.move_to(btn)
@@ -487,8 +516,11 @@ def demo_scenario(
             try:
                 st = (resp.json() or {}).get("_status") or {}
                 info.response_source, info.response_label = st.get("source"), st.get("label")
+                info.response_sample = response_is_sample(st)
             except Exception:
                 pass
+            if info.response_sample:  # 헬스가 연결이라 했어도 응답이 샘플이면 여기서부터 화면에 표지
+                d.badge(SAMPLE_BADGE)
             page.wait_for_selector('body[data-view="report"], #jobErr', timeout=int(analysis_timeout_s * 1000))
             info.analysis_s = round(time.monotonic() - t_click, 3)
             if page.locator("#jobErr").count():
@@ -497,7 +529,7 @@ def demo_scenario(
                 raise RuntimeError(f"분석 실패: {s.note}")
             s.note = f"응답 {info.response_status} · source {info.response_source} · {info.analysis_s:.1f}s"
 
-        with tl.step("report"):
+        with step("report"):
             page.wait_for_selector('body[data-view="report"][data-ready="1"]')
             d.caption(STEP_LABEL["report"])
             if page.locator("#statusNotice").count():
@@ -507,7 +539,7 @@ def demo_scenario(
             if d.scroll_to("#s-map", ms=1100):
                 d.pause(2.4)
 
-        with tl.step("risk_card") as s:
+        with step("risk_card") as s:
             card = page.locator("#s-cards .rc").first
             if page.locator("#s-cards .rc").count() == 0:
                 s.status = "skipped"
@@ -526,7 +558,7 @@ def demo_scenario(
                     d.pause(2.0)
                 s.note = f"카드 {page.locator('#s-cards .rc').count()}장"
 
-        with tl.step("evidence") as s:
+        with step("evidence") as s:
             cite = page.locator("#s-cards .rc .cite[data-ev]").first
             if page.locator("#s-cards .rc .cite[data-ev]").count() == 0:
                 cite = page.locator(".cite[data-ev]").first
@@ -547,7 +579,7 @@ def demo_scenario(
                     d.pause(2.6)
                 s.note = f"근거 #{ev_id}"
 
-        with tl.step("export") as s:
+        with step("export") as s:
             d.scroll_to(None, offset=0, ms=700)
             exp = page.locator("#steps .stp", has_text="내보내기").first
             if page.locator("#steps .stp", has_text="내보내기").count() and exp.is_enabled():
@@ -567,6 +599,7 @@ def demo_scenario(
 
         d.caption("끝 · 최종 판단은 연구자에게", numbered=False)
         d.pause(2.0)
+        info.badge = d.badge_text()
 
     return run
 
@@ -609,8 +642,9 @@ def run_demo(
     _log(mode, f"녹화 시작: {base_url} · {plan_path.name} ({len(plan_text)}자) · {VIEWPORT[0]}×{VIEWPORT[1]}")
     result = record(out_dir, basename, scenario, viewport=VIEWPORT, headless=headless, setup=setup)
 
-    # 응답이 샘플이라고 하면 헬스가 뭐라 했든 샘플이다
-    if mode == "live" and info.response_source == "sample":
+    # 헬스 또는 응답 중 하나라도 샘플이면 샘플이다(응답 쪽 화면 배지는 시나리오가 이미 켰다)
+    reasons = (["health"] if mode == "sample" else []) + (["response"] if info.response_sample else [])
+    if mode == "live" and info.response_sample:
         mode = "sample"
         new = make_basename(mode, when)
         new_video = result.video.with_name(f"{new}.webm")
@@ -619,7 +653,7 @@ def run_demo(
             for p in stills_dir.glob(f"{basename}_*.png"):
                 p.replace(p.with_name(p.name.replace(basename, new, 1)))
         result.video, basename = new_video, new
-        _log(mode, "응답 _status.source=sample → sample로 이름 바꿈")
+        _log(mode, f"응답 _status가 샘플 → sample로 이름 바꿈 · 화면 배지는 {info.badge_from or '없음'} 단계부터")
 
     try:
         vinfo = read_webm_info(result.video)
@@ -631,6 +665,7 @@ def run_demo(
         "bytes": result.video.stat().st_size if result.video.exists() else 0,
         "mode": mode,
         "sample": mode == "sample",
+        "sample_reason": reasons,
         "health": {k: (health.get("pipeline") or {}).get(k) for k in ("state", "mode", "label")} | {"version": health.get("version")},
         "recorded_at": when.astimezone().isoformat(timespec="seconds"),
         "base_url": base_url,
@@ -657,6 +692,7 @@ def run_demo(
     for s in result.steps:
         _log(mode, f"  {s.t_start:7.2f}s → {s.t_end if s.t_end is not None else float('nan'):7.2f}s  {s.id:<10} {s.status:<8} {s.note}")
     _log(mode, f"영상: {result.video} · {meta['bytes'] / 1024 / 1024:.2f} MB · {vinfo['width']}×{vinfo['height']} · 길이 {vinfo['duration_s']}s ({vinfo['duration_source']}) · 벽시계 {result.wall_s:.1f}s")
+    _log(mode, f"화면 배지: {info.badge_from or '없음'}" + (f" 단계부터 '{info.badge}'" if info.badge_from else "") + (f" · 샘플 사유 {'+'.join(reasons)}" if reasons else ""))
     _log(mode, f"JSON: {json_path}")
     if result.error:
         _log(mode, f"실패: {result.error}")
