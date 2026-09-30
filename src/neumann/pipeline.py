@@ -440,7 +440,8 @@ def run_premortem(
         with run.stage("search", "EVIDENCE") as st:
             st["impl"] = getattr(backend, "impl", backend.name)
             search_queries = qp.queries or rules.fallback_queries(plan)
-            queries_source = "llm" if qp.queries else "rule"  # 검색어 단계가 검색어를 안 주면 규칙 대체(표시한다, E5-L2d)
+            # 실패 시 query_axes도 규칙 검색어를 채운다. 목록 유무 대신 실제 생성 주체를 따른다.
+            queries_source = ("llm" if qp.generator == "astra" else qp.generator) if qp.queries else "rule"
             hits = backend.search(search_queries, k=k, exclude_work_ids=exclude_work_ids)
             low_similarity = False
             on_topic = fit is not None and _on_topic_rule_signal(fit) and fit.get("verdict") != "unfit"
@@ -454,8 +455,9 @@ def run_premortem(
                             "low_similarity": int(low_similarity)}
             st["detail"] = f"상위 점수 {top:.3f}" if top is not None else "검색 결과 0건"
             if queries_source == "rule":
-                st["detail"] += f"; 검색어 {len(search_queries)}개는 규칙 대체(검색어 단계가 검색어를 주지 않음)"
-                run.notice(f"검색어 단계가 검색어를 주지 않아 규칙 검색어 {len(search_queries)}개(계획서의 영문 기술어·첫 줄)로 "
+                query_reason = "검색어 생성 실패" if qp.fallback_reason else "검색어 단계가 검색어를 주지 않음"
+                st["detail"] += f"; 검색어 {len(search_queries)}개는 규칙 대체({query_reason})"
+                run.notice(f"{query_reason}: 규칙 검색어 {len(search_queries)}개(계획서의 영문 기술어·첫 줄)로 "
                            "유사 연구를 찾았다(검색어 규칙 대체).")
             if low_similarity and top is not None:
                 st["detail"] += f"; 점수 하한을 넘은 논문이 없어 하한 없이 상위 {len(hits)}편을 낮은 유사도로 사용"
@@ -1028,4 +1030,3 @@ __all__ = [
     "safe_text",
     "summarize",
 ]
-
