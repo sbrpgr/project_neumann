@@ -47,6 +47,7 @@ from pathlib import Path
 from typing import Any
 
 from eval.macro_f1 import REFERENCE_LINES
+from neumann.api.view import display_generator, display_text
 
 GENERIC_SCHEMA = "neumann.metrics/1"
 LINKAGE_SCHEMA = "neumann.linkage/1"
@@ -54,7 +55,7 @@ MACRO_F1_PREFIX = "review-level multilabel Tier-1 Macro-F1"
 NOT_MEASURED = "측정 전"
 
 SYSTEM_LABELS: dict[str, str] = {
-    "neumann": "Neumann (astra)",
+    "neumann": "Neumann (LLM)",  # 계약 값 astra = 제품 LLM. 실제 모델은 조건 칸(DISP-1)
     "neumann_rule": "Neumann 비상 규칙",
     "llm_baseline": "일반 LLM 기준선",
     "freq_baseline": "빈도 기준선(안 읽음)",
@@ -252,7 +253,7 @@ def _read_macro_f1(obj: dict, name: str, col: Collected) -> None:
     cond = (
         f"리뷰 단위 멀티라벨 Tier-1, 골드 {gold_name} n={n} (sha256 {gold_sha[:12] or '없음'}), "
         f"부트스트랩 {boot.get('n_resamples', '?')}회 시드 {boot.get('seed', '?')} percentile, "
-        f"generator {gens}, 예측 없음 {pred.get('missing', '?')}건은 빈 예측으로 채점"
+        f"generator {_gens_text(gens) or '없음'}, 예측 없음 {pred.get('missing', '?')}건은 빈 예측으로 채점"
     )
     lim = f"골드 support 0 클래스 {excluded or '없음'} 제외[주3], R7 근사[주1], 골드 대체[주2]"
     if system == "freq_baseline":
@@ -343,6 +344,11 @@ def _linkage_system(obj: dict) -> str:
     return "mixed"
 
 
+def _gens_text(gens: dict) -> str:
+    """generator별 개수 → 사람이 읽는 한 줄(DISP-1: 계약 값 astra는 "LLM"으로 보인다). 비었으면 빈 문자열."""
+    return " · ".join(f"{display_generator(g)} {c}" for g, c in gens.items())
+
+
 def _check_rate(rate: Any, ok: int, total: int, where: str) -> None:
     """보고서에 적힌 비율이 개수와 맞는지. 맞지 않으면 어느 쪽을 믿을지 정할 수 없어 멈춘다."""
     if rate is None:
@@ -410,17 +416,18 @@ def _linkage_group(system: str, reports: list[tuple[dict, str]], col: Collected)
     n_gen = sum(real.values())
     single = len(reports) == 1
     one = reports[0][0]
-    cond = f"결과 {len(reports)}건 전수(표본 아님), 원문 글자 단위 대조, 카드 generator {real or '없음'}, 판정 {verdicts}"
+    cond = (f"결과 {len(reports)}건 전수(표본 아님), 원문 글자 단위 대조, 카드 generator {_gens_text(real) or '없음'}, "
+            f"판정 {verdicts}")
     lim = "전수 계산이라 구간 없음. 폐기율과 같이 읽는다(폐기율 없는 100%는 의미가 약하다, 04_평가_명세 §2.2)"
     note = ""
     if real.get("rule"):
         note = f"비상 규칙 카드 {real['rule']}/{n_gen}장 포함"
         cond += f", {note}"
-        lim = "비상 규칙(비LLM) 카드가 들어 있다. astra 카드만의 값이 아니다. " + lim
+        lim = "비상 규칙(비LLM) 카드가 들어 있다. LLM 카드만의 값이 아니다. " + lim
     if system in ("mock", "mixed_mock"):
         lim = f"mock 카드 {real.get('mock', 0)}/{n_gen}장이 들어 있다. 성능 수치가 아니고 약속 판정에 쓰지 않는다. " + lim
     elif system in ("mixed", "unknown_generator"):
-        lim = "카드 generator가 astra·규칙이 아니거나 비어 있다. 약속 판정에 쓰지 않는다. " + lim
+        lim = "카드 generator가 LLM·규칙이 아니거나 비어 있다. 약속 판정에 쓰지 않는다. " + lim
     rate = one.get("linkage_rate") if single else (links_ok / links_total if links_total else None)
     col.metrics.append(
         Metric("linkage_rate", system, _num(rate, "linkage_rate"), links_total, None, None,
@@ -507,7 +514,8 @@ def fmt_n(m: Metric | None) -> str:
 
 
 def _cell(s: str) -> str:
-    return s.replace("|", "\\|").replace("\n", " ")
+    # 계약 이름 astra → "LLM"(DISP-1). 모델명(gpt-6-astra)·파일 이름(score_astra.json)은 그대로 둔다.
+    return display_text(s).replace("|", "\\|").replace("\n", " ")
 
 
 def _sys(system: str) -> str:

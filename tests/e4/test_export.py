@@ -249,7 +249,7 @@ def test_degraded_stages_and_rule_cards_are_labelled_honestly() -> None:
     cards = base["risk_cards"]
     cards[0]["generator"] = "rule"
     cards[1]["generator"] = "astra"
-    cards[1]["model"] = "gpt-6-astra"
+    cards[1]["model"] = "gpt-6.1-sol"
     stages = base["stages"]
     stages[1].update(status="degraded", reason="astra 호출 시간 초과 → 규칙 태거", impl="fallback:rule_tagger")
     stages[2].update(status="error", reason="카드 합성 스키마 검증 실패")
@@ -261,22 +261,22 @@ def test_degraded_stages_and_rule_cards_are_labelled_honestly() -> None:
     report = text(files, "neumann_report.md")
     for doc in (readme, report):
         assert "**degraded**" in doc
-        assert "astra 호출 시간 초과 → 규칙 태거" in doc
+        assert "LLM 호출 시간 초과 → 규칙 태거" in doc  # 계약 이름 astra는 사람용 문서에서 LLM(DISP-1)
         assert "카드 합성 스키마 검증 실패" in doc
-        assert "**rule** 1장: 규칙(비상 경로" in doc and "LLM 결과가 아니다" in doc
-        assert "**astra** 1장: 제품 LLM(OpenAI, 모델은 manifest 참조)" in doc
-    assert "- C1 `card-fx-leak` — rule(규칙 비상 경로)" in readme
-    assert "- C2 `card-fx-seed` — astra(LLM), 모델 gpt-6-astra" in readme
+        assert "**비상 규칙** 1장: 규칙(비상 경로" in doc and "LLM 결과가 아니다" in doc
+        assert "**LLM (gpt-6.1-sol)** 1장: 제품 LLM(OpenAI, 모델은 manifest 참조)" in doc
+    assert "- C1 `card-fx-leak` — 비상 규칙" in readme
+    assert "- C2 `card-fx-seed` — LLM (gpt-6.1-sol)" in readme
     assert "| extract | degraded | fallback:rule_tagger |" in readme
     assert "| cards | error |" in readme
     # 규칙 카드를 LLM 카드로 적지 않는다
     rule_line = next(ln for ln in report.splitlines() if "카드 `card-fx-leak`" in ln)
-    assert "rule(규칙 비상 경로)" in rule_line and "astra" not in rule_line
+    assert "비상 규칙" in rule_line and "LLM" not in rule_line and "astra" not in rule_line
     manifest = as_json(files, "manifest.json")
     assert manifest["cards_by_generator"] == {"astra": 1, "rule": 1, "mock": 0}
     assert [s["name"] for s in manifest["not_ok_stages"]] == ["extract", "cards"]
     ai = text(files, "ai_context.md")
-    assert "generator: rule" in ai and "정상이 아닌 단계: extract: degraded" in ai
+    assert "생성: 비상 규칙" in ai and "정상이 아닌 단계: extract: degraded" in ai
 
 
 def test_status_error_without_cards() -> None:
@@ -327,7 +327,7 @@ def test_checklist_items_render_and_accept_item_decisions() -> None:
     decisions = [{"item_id": "A2", "card_id": "card-fx-seed", "decision": "보류", "note": "GPU 예산 확인 후"}]
     files = unzip(build_package(result, decisions=decisions))
     report = text(files, "neumann_report.md")
-    assert "- [A1] scaffold 기반 분할 추가 (카드 card-fx-leak · 계획서 줄 16 · 생성 rule)" in report
+    assert "- [A1] scaffold 기반 분할 추가 (카드 card-fx-leak · 계획서 줄 16 · 생성 비상 규칙)" in report
     assert "- [A2] 5회 반복 실험 평균±표준편차 보고 (R2) — 결정: 보류 — GPU 예산 확인" in report
     assert "카드 `card-fx-seed` · 행동 `A2`: 보류 — GPU 예산 확인 후" in report
     log = as_json(files, "decision_log.json")
