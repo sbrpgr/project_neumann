@@ -434,6 +434,18 @@
   /* 입력칸 끝에서 치거나 붙여넣을 때 캐럿이 sticky 고지 밑으로 가지 않게: 접힘 37px → 56px, 펼침 82px → 100px */
   html { scroll-padding-bottom: 56px; }
   html:has(#sendNote[open]) { scroll-padding-bottom: 100px; }
+  /* ===== E4-L2f 내보내기 단계·버튼(ZIP 9파일, 결정 로그 포함) ===== */
+  .stp.exp { color: var(--text2); cursor: pointer; }
+  .stp.exp:hover { color: var(--ink); }
+  .expbox { padding: 18px 24px 20px 24px; }
+  .expfiles { display: flex; flex-wrap: wrap; gap: 2px 16px; margin-bottom: 12px; font-family: var(--mono); font-size: 12px; color: var(--text2); }
+  .expdec { font-size: 14px; color: var(--ink); margin-bottom: 4px; }
+  .expsrc { font-size: 12.5px; color: var(--muted); margin-bottom: 14px; max-width: 760px; }
+  .exprow { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .expmsg { font-size: 13px; color: var(--text2); }
+  .expmsg.err { color: var(--red); }
+  .expwhy { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--red-l); color: var(--red-d); font-size: 13.5px; }
+  @media print { #s-export { display: none !important; } }
 </style>
 </head>
 <body data-view="boot">
@@ -473,7 +485,7 @@
   function genName(g, l) { var s = (D && D._status && D._status.generator_labels) || {}; return l || s[g] || GEN[g] || ('생성 방식 ' + g); }
   function genLabel(g, l) { return '<span class="gen ' + esc(GEN[g] ? g : 'unknown') + '">' + esc(genName(g, l)) + '</span>'; }
   function toast(m) { var t = $('toast'); t.textContent = m; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(function () { t.classList.remove('on'); }, 2200); }
-  function renderSteps() { $('steps').innerHTML = STEPS.map(function (s, i) { if (i === 3) return '<button class="stp" type="button" disabled title="내보내기 · 준비 중"><span class="n">IV</span>' + s + '<span class="soon">준비 중</span></button>'; var c = i === S.step ? 'cur' : (i < S.maxStep ? 'done' : ''); return '<button class="stp ' + c + '" type="button" data-step="' + i + '"' + (c ? '' : ' disabled') + '><span class="n">' + (c === 'done' ? CHECK : ['I', 'II', 'III', 'IV'][i]) + '</span>' + s + '</button>'; }).join(''); }
+  function renderSteps() { $('steps').innerHTML = STEPS.map(function (s, i) { if (i === 3) return expStepHtml(s); var c = i === S.step ? 'cur' : (i < S.maxStep ? 'done' : ''); return '<button class="stp ' + c + '" type="button" data-step="' + i + '"' + (c ? '' : ' disabled') + '><span class="n">' + (c === 'done' ? CHECK : ['I', 'II', 'III', 'IV'][i]) + '</span>' + s + '</button>'; }).join(''); }
   function go(step) { S.step = step; S.maxStep = Math.max(S.maxStep, step); renderSteps(); window.scrollTo(0, 0); render(); }
   function docLines(hl, sel) { return '<div class="doclines">' + D.plan.lines.map(function (l) { var cls = 'l' + (l.h ? ' h' : '') + (l.f ? ' flag' : '') + (hl === l.n ? ' hl' : '') + (sel && sel.indexOf(l.n) >= 0 ? ' sel' : ''); return '<div class="ln' + (l.f ? ' f' : '') + '">' + l.n + '</div><div class="' + cls + '"' + (l.h === 'title' ? ' style="font-size:14px;"' : '') + '>' + esc(l.t) + '</div>'; }).join('') + '</div>'; }
 
@@ -834,7 +846,7 @@
       '<div class="sm muted" style="margin-top:14px; padding-top:12px; border-top:1px solid var(--line);">모든 출력은 \'문서화된 위험 신호\'이며 특정 저자·리뷰어에 대한 판단이 아닙니다. 리뷰어는 익명 번호로만 표기됩니다. 최종 판단은 연구자에게 있습니다.</div></div></section>';
     var panel = '<aside class="panel card" style="padding:12px;"><div class="ptabs"><button class="' + (S.ptab === 'ev' ? 'on' : '') + '" data-ptab="ev" type="button">근거</button><button class="' + (S.ptab === 'plan' ? 'on' : '') + '" data-ptab="plan" type="button">계획서</button></div><div class="pbody" id="pbody"></div></aside>';
     var planApp = '<section id="s-plan" class="print-only"><div class="sec"><span class="num">§</span><h2>부록 · 계획서 원문</h2><span class="d">' + esc(D.plan.file) + ' · 붉은 밑줄 = 위험카드가 대응하는 문장</span></div><div class="card" style="padding:16px 18px;">' + docLines(null) + '</div></section>';
-    return '<div class="rep"><article class="doc">' + summary + map + cardsSec + review + check + trace + planApp + '</article>' + panel + '</div>';
+    return '<div class="rep"><article class="doc">' + summary + map + cardsSec + review + check + trace + expHtml() + planApp + '</article>' + panel + '</div>';
   }
   var KINDQ = { review: '심사평 원문 · 축자', author_response: '저자 답변 원문 · 축자', decision: '결정문 원문 · 축자', post_status: '사후 기록 원문 · 축자' };
   function panelWarn() {
@@ -881,6 +893,104 @@
     secs.forEach(function (s) { io.observe(s); });
   }
   var order = ['채택', '보류', '기각'];
+
+  /* ---------- E4-L2f 내보내기: POST /premortem/package → ZIP 9파일(결정은 decision_log.json) ----------
+     원결과는 화면 응답(/premortem/view, jobs 화면 결과)의 result와 서버 서명 result_sig를 그대로 보낸다. 재분석하지 않는다.
+     서버가 서명을 확인하면 ZIP에 server_signed, 못 하면(서버 재기동 등) client_submitted_unverified와 경고가 적힌다.
+     result가 없으면(샘플·오류·옛 서버) 버튼을 끄고 사유를 보인다. 결정은 연구자가 고른 항목만(결정 전 기본값 보류는 싣지 않음). */
+  var EXP_FILES = ['README.md', 'manifest.json', 'risk_cards.json', 'evidence_pack.json', 'similar_works.csv', 'plan_annotated.md', 'neumann_report.md', 'ai_context.md', 'decision_log.json'];
+  var EXP_DEC = { '채택': 'adopt', '보류': 'hold', '기각': 'reject' };
+  var EXP = { d: null, busy: false, msg: '', err: false };
+  function expState() { if (EXP.d !== D) EXP = { d: D, busy: false, msg: '', err: false }; return EXP; }
+  function expBlock() {  /* 내보낼 수 없는 사유(없으면 '') */
+    if (!D) return '분석 결과 없음';
+    var st = D._status || {};
+    if (st.source === 'sample') return '샘플 데이터(분석 결과 아님)';
+    if (st.result_status === 'error' || st.contract_ok === false) return '분석 오류 결과';
+    var raw = expInline(D), ex = st.export || {};
+    if (!raw) return '화면 응답에 원결과가 없음' + (ex.reason ? ' · ' + ex.reason : '');
+    if (raw.plan_id !== D.plan_id) return '원결과와 화면의 계획서 id가 다름';
+    return '';
+  }
+  function expShort(why) { return why.indexOf('샘플') === 0 ? '샘플' : (why.indexOf('오류') >= 0 ? '오류' : (why.indexOf('원결과') >= 0 ? '원결과 없음' : '결과 없음')); }
+  function expStepHtml(s) {
+    var why = expBlock();
+    if (why) return '<button class="stp" type="button" id="stpExport" disabled title="' + esc('내보내기 · ' + why) + '"><span class="n">IV</span>' + s + '<span class="soon">' + esc(expShort(why)) + '</span></button>';
+    return '<button class="stp exp" type="button" id="stpExport" title="내보내기 · ZIP 9파일"><span class="n">IV</span>' + s + '</button>';
+  }
+  function expInline(d) { var r = d && d.result; return r && typeof r === 'object' && r.plan_id && r.session_id ? r : null; }
+  function expDecided(d) { return (d.checklist || []).filter(function (it) { return it.set !== false; }); }
+  function expDecisions(d) {
+    return expDecided(d).map(function (it) {
+      var e = { item_id: it.id, decision: EXP_DEC[it.s] || it.s };
+      if (it.m) e.note = it.m;
+      if (it.at) e.decided_at = it.at;
+      return e;
+    });
+  }
+  function expDecText() {
+    if (!D) return '';
+    var dd = expDecided(D), c = { '채택': 0, '보류': 0, '기각': 0 }, rest = (D.checklist || []).length - dd.length;
+    dd.forEach(function (it) { c[it.s] = (c[it.s] || 0) + 1; });
+    return '결정 로그에 싣는 결정 ' + dd.length + '건 · 채택 ' + c['채택'] + ' · 보류 ' + c['보류'] + ' · 기각 ' + c['기각'] + (rest > 0 ? ' · 결정 전 ' + rest + '건은 싣지 않음(화면 기본값 보류)' : '');
+  }
+  var EXP_ORIGIN = { server_signed: '서버 서명 확인됨', client_submitted_unverified: '서버 서명 확인 안 됨(서버 재기동 등) · ZIP에 경고가 적힘' };
+  function expSrcText() { return '원결과: 화면 응답에 함께 실린 분석 결과와 서버 서명을 그대로 보냅니다(재분석 없음). ' + (D && D.result_sig ? '서버가 서명을 확인하면 ZIP에 server_signed로 적힙니다.' : '이 결과에는 서버 서명이 없어 ZIP에 "서버가 서명한 결과 아님" 경고가 적힙니다.'); }
+  function expHtml() {
+    var e = expState(), why = expBlock();
+    return '<section id="s-export"><div class="sec"><span class="num">VI</span><h2>내보내기</h2><span class="d">ZIP 9파일 · 체크리스트 결정은 decision_log.json</span></div><div class="card expbox">' +
+      '<div class="expfiles">' + EXP_FILES.map(function (f) { return '<span>' + esc(f) + '</span>'; }).join('') + '</div>' +
+      '<div class="expdec" id="expDec">' + esc(expDecText()) + '</div>' +
+      '<div class="expsrc" id="expSrc">' + esc(expSrcText()) + '</div>' +
+      '<div class="exprow"><button class="btn dark" id="btnExport" type="button"' + (why || e.busy ? ' disabled' : '') + '>ZIP 내려받기</button><span class="expmsg' + (e.err ? ' err' : '') + '" id="expMsg" role="status" aria-live="polite">' + esc(e.msg) + '</span></div>' +
+      (why ? '<div class="expwhy" id="expWhy">' + esc('내보낼 수 없음 · ' + why) + '</div>' : '') + '</div></section>';
+  }
+  function expPaint() {  /* 서버 문구·사유는 textContent로만 넣는다 */
+    var e = expState(), m = $('expMsg'), w = $('expWhy'), b = $('btnExport'), d = $('expDec'), s = $('expSrc'), why = expBlock();
+    if (m) { m.textContent = e.msg; m.classList.toggle('err', !!e.err); }
+    if (w) w.textContent = why ? '내보낼 수 없음 · ' + why : '';
+    if (b) b.disabled = !!(why || e.busy);
+    if (d) d.textContent = expDecText();
+    if (s) s.textContent = expSrcText();
+  }
+  function expMsg(m, err) { var e = expState(); e.msg = m; e.err = !!err; expPaint(); }
+  function expServerMsg(j, code) {
+    j = j || {};
+    if (typeof j.message === 'string' && j.message) return j.message;
+    if (typeof j.detail === 'string' && j.detail) return j.detail;
+    if (Array.isArray(j.detail) && j.detail.length) return j.detail.map(function (x) { return x && x.msg ? String(x.msg) : String(x); }).join(' · ');
+    if (typeof j.reason === 'string' && j.reason) return j.reason;
+    return 'HTTP ' + code;
+  }
+  function expJson(r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error(expServerMsg(j, r.status)); return j; }); }
+  function expFileName(cd) { var m = /filename="?([^";]+)"?/.exec(cd || ''); var n = m ? m[1].replace(/[^0-9A-Za-z_.-]/g, '') : ''; return /\.zip$/i.test(n) ? n : 'neumann_package.zip'; }
+  function expSave(blob, name) {
+    var u = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = u; a.download = name; a.style.display = 'none'; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(u); }, 5000);
+  }
+  function doExport() {
+    var e = expState(), d = D, why = expBlock();
+    if (e.busy) return;
+    if (why) { expMsg('내보낼 수 없음 · ' + why, true); return; }
+    e.busy = true; expPaint();
+    var raw = expInline(d), decisions = expDecisions(d), n = decisions.length;
+    expMsg('ZIP 만드는 중 · POST /premortem/package · 결정 ' + n + '건');
+    fetch('premortem/package', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ result: raw, result_sig: d.result_sig || null, decisions: decisions }) }).then(function (r) {
+      if (!r.ok) return expJson(r);
+      var name = expFileName(r.headers.get('Content-Disposition')), origin = r.headers.get('X-Neumann-Result-Origin') || '';
+      return r.blob().then(function (b) { if (EXP.d !== d) return; expSave(b, name); e.busy = false; expMsg('내려받음 · ' + name + ' · ' + upSize(b.size) + ' · 결정 ' + n + '건' + (origin ? ' · ' + (EXP_ORIGIN[origin] || origin) : ''), origin === 'client_submitted_unverified'); });
+    }).catch(function (err) {
+      if (EXP.d !== d) return;
+      e.busy = false; expMsg('내보내기 실패 · ' + (err && err.message ? err.message : '서버 응답 없음'), true);
+    });
+  }
+  document.addEventListener('click', function (ev) {
+    var t;
+    if ((t = ev.target.closest('.dec')) && D) { var it = (D.checklist || [])[+t.dataset.i]; if (it) { it.set = true; it.at = new Date().toISOString(); } setTimeout(expPaint, 0); return; }
+    if ((t = ev.target.closest('#stpExport')) && !t.disabled) { closeAll(); if (S.step !== 2) go(2); var sec = $('s-export'); if (sec) { sec.scrollIntoView({ block: 'start' }); var b = $('btnExport'); if (b && !b.disabled) b.focus({ preventScroll: true }); } return; }
+    if ((t = ev.target.closest('#btnExport')) && !t.disabled) { doExport(); }
+  });
 
   /* ---------- 라우터 ---------- */
   function render() {

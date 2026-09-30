@@ -227,8 +227,9 @@ def test_zero_cards_does_not_crash_and_states_reason() -> None:
     assert list(files) == EXPECTED_FILES
     readme = text(files, "README.md")
     report = text(files, "neumann_report.md")
-    assert "위험카드 0장" in readme and reason in readme
-    assert "위험카드 0장" in report and reason in report
+    shown = reason.replace("<", "&lt;")  # E4-L2f F4: 마크다운에 옮긴 결과 문자열의 < > &는 HTML 엔티티
+    assert "위험카드 0장" in readme and shown in readme
+    assert "위험카드 0장" in report and shown in report
     assert "카드 0장" in text(files, "ai_context.md")
     assert as_json(files, "decision_log.json")["decisions"] == []
     assert as_json(files, "risk_cards.json")["risk_cards"] == []
