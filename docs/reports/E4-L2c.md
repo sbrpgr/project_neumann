@@ -1,5 +1,8 @@
 # E4-L2c 보고서 — 공개 라이브 서버 안정성(대기열·속도 제한·캐시·예열·감시) + SEC-1 대응
 
+> **재작업 반영(검증 FAIL 대응, 2026-09-30 20:05).** 맨 아래 "재작업(FAIL 대응)" 절이 최신이다. 그 절이 이 위 내용과
+> 다르면 그 절을 따른다(공개 기본값: 요청 시간 90초·대기 4·일일 예산 끔·XFF 무시, 업로드 IP별 상한 추가, 내보내기 예산 미소모).
+
 - 빌더: Claude Opus 5.5 · 검증 예정: Claude Sonnet 5.5 · 브랜치 `task/E4-L2c`(작업 중 `main` 병합 1회)
 - 추가 지시 반영: SEC-1 보안 점검 결과(S-01~S-06), PM 결정 19:20(내보내기는 결과만·업로드도 관문·디스크 캐시는 데모만), 화면 고지 "이 서버는 계획서 본문을 파일로 저장하지 않습니다."
 
@@ -24,7 +27,7 @@
 - **IP 속도 제한**: 공개 프로필에서 분석 분당 6건, 업로드·내보내기(보조) 분당 30건. 넘치면 429 + 사용자 문구 + `Retry-After`. IP는 `CF-Connecting-IP` → `X-Forwarded-For` 첫 값 → client.host. 헤더는 직접 연결 peer가 로컬(터널)일 때만 믿는다(`NEUMANN_TRUST_PROXY`로 켜고 끔).
 - **입력 상한**: 본문 바이트 상한을 미들웨어에서 Content-Length와 스트리밍 누적 둘 다로(파싱 전 413). plan_text 50,000자(413, 입력을 되돌려 싣지 않음). 요청 시간 상한 300초(504).
 - **시간 상한을 넘겨도** 분석은 끝까지 돌고 슬롯은 그때 반납한다(과부하가 쌓이지 않게). 결과는 캐시에 들어가 같은 계획서로 다시 누르면 즉시 받는다(504 문구가 그렇게 안내).
-- **일일 예산**: 새 분석 건수 상한(공개 200건, 설정). 입장 때 떼고, 쓰지 않으면(샘플·캐시·합류) 돌려준다. 파일에 남겨 재시작해도 이어진다. 넘치면 503 "오늘 한도" 문구, 캐시 응답은 계속.
+- **일일 예산**: 새 분석 건수 상한(설정, **기본 끔**: 대표 결정). 입장 때 떼고, 쓰지 않으면(샘플·캐시·합류) 돌려준다. 파일에 남겨 재시작해도 이어진다. 넘치면 503 "오늘 한도" 문구, 캐시 응답은 계속.
 - **차단 스위치**: `NEUMANN_BLOCK_NEW=1` 또는 파일 `<data_dir>/serving_block.flag`가 있으면 즉시 새 분석 거부(503), 캐시 응답은 계속. 파일은 요청마다 보므로 재시작 없이 켜고 끈다.
 - **결과 캐시(S-06)**: 사용자 입력 결과는 **메모리에만**(TTL 6시간, 64건 LRU). 디스크(`<data_dir>/cache/results/<plan_id>.json`)는 **데모 계획서 3건의 plan_id 허용 목록만**. 메모리·디스크 모두 계획서 줄 텍스트를 뺀 저장본이고, 적중 때 요청 본문으로 줄을 다시 붙인다. `status: ok`만 저장(강등 결과는 다시 돌림), provider·모델·버전이 다르면 다른 결과로 본다.
 - **예열**: 서버 시작 때 배경으로 `neumann.pipeline.warmup()` 훅(있으면: 색인·모델 로드) → 데모 3건을 돌려 캐시(디스크)에 채운다. 요청은 바로 받는다. 이미 디스크에 있으면 다시 안 돌린다.
@@ -74,17 +77,19 @@ serving.install(app)
 |---|---|---|---|
 | `NEUMANN_PUBLIC` | 1 | 0 | 공개 프로필(serve.py `--public`이 켬) |
 | `NEUMANN_MAX_CONCURRENT` | 2 | 2 | 동시 분석 상한 |
-| `NEUMANN_QUEUE_MAX` | 20 | 20 | 대기 수 상한(넘으면 503) |
+| `NEUMANN_QUEUE_MAX` | **4** | 20 | 대기 수 상한(넘으면 503). 긴 대기는 E4-L2d 비동기 작업이 맡는다 |
 | `NEUMANN_RATE_PER_MIN` | 6 | 0(끔) | IP별 분당 새 분석 수 |
 | `NEUMANN_MAX_PLAN_CHARS` | 50000 | 50000 | plan_text 글자 상한 |
 | `NEUMANN_MAX_BODY_BYTES` | 글자×6+64KB | 같음 | 분석 경로 본문 바이트 상한 |
 | `NEUMANN_MAX_EXPORT_BYTES` | 4MB | 4MB | 내보내기·기타 보호 경로 바이트 상한 |
 | `NEUMANN_MAX_UPLOAD_BYTES` | 10MB+64KB | 같음 | 업로드 바이트 상한 |
-| `NEUMANN_REQUEST_TIMEOUT_S` | 300 | 300 | 분석 요청 시간 상한(대기+실행) |
+| `NEUMANN_REQUEST_TIMEOUT_S` | **90** | 300 | 분석 요청 시간 상한(대기+실행). Cloudflare 약 100초보다 먼저 JSON 504 |
 | `NEUMANN_AVG_RUN_S` | 60 | 60 | 예상 대기 시간 초깃값(실측으로 갱신) |
 | `NEUMANN_AUX_CONCURRENT` / `_AUX_QUEUE_MAX` / `_AUX_TIMEOUT_S` | 2 / 10 / 60 | 같음 | 업로드·내보내기 관문 |
-| `NEUMANN_AUX_RATE_PER_MIN` | 30 | 0 | 업로드·내보내기 IP별 분당 |
-| `NEUMANN_DAILY_BUDGET` | 200 | 0(끔) | 전역 일일 새 분석 건수 |
+| `NEUMANN_AUX_RATE_PER_MIN` | 30 | 0 | 내보내기·기타 보조 경로 IP(/64)별 분당 |
+| `NEUMANN_UPLOAD_RATE_PER_MIN` | 10 | 0 | 업로드 전용 IP(/64)별 분당 |
+| `NEUMANN_UPLOAD_PER_IP` | 1 | 0(끔) | 업로드 IP(/64)별 동시 처리 상한(느린 파일로 슬롯 독점 방지) |
+| `NEUMANN_DAILY_BUDGET` | **0(끔)** | 0(끔) | 전역 일일 새 분석 건수(대표 결정: 기능은 두되 기본 끔) |
 | `NEUMANN_BUDGET_FILE` | `<data_dir>/cache/serving_budget.json` | 같음 | 예산 사용량(날짜·건수만) |
 | `NEUMANN_BLOCK_NEW` | 0 | 0 | 1이면 새 분석 거부 |
 | `NEUMANN_BLOCK_FILE` | `<data_dir>/serving_block.flag` | 같음 | 이 파일이 있으면 새 분석 거부(즉시) |
@@ -94,6 +99,8 @@ serving.install(app)
 | `NEUMANN_DISK_CACHE_ALLOW` | 비움 | 비움 | 디스크 허용 plan_id 추가(`;` 구분). 기본은 데모 3건 |
 | `NEUMANN_TRUST_PROXY` | loopback | loopback | 프록시 헤더 신뢰: loopback(로컬 peer일 때만)·always·never |
 | `NEUMANN_XFF_PICK` | first | first | X-Forwarded-For에서 첫 값·마지막 값 |
+| `NEUMANN_TRUST_XFF` | **0** | 1 | X-Forwarded-For를 믿을지. 공개는 `CF-Connecting-IP`만 믿는다 |
+| `NEUMANN_PSEUDONYM_SALT` | (기존 키 재사용) | | 로그 IP 해시(HMAC) 솔트. 없으면 프로세스마다 무작위. 값은 어디에도 쓰지 않는다 |
 | `NEUMANN_HIDE_DOCS` | 1 | 0 | /docs·/redoc·/openapi.json 404 |
 | `NEUMANN_PROTECTED_PATHS` | 아래 | 같음 | `/premortem=analysis;/premortem/view=analysis;/premortem/package=export;/upload/plan=upload` |
 | `NEUMANN_WARMUP` / `NEUMANN_WARMUP_PLANS` | 1 / 데모 3건 | 0 | 시작 예열 |
@@ -279,3 +286,82 @@ verify 통과
 
 - worker는 1개여야 한다(대기열·속도 제한 상태가 프로세스 메모리에 있다). 여러 개가 필요하면 상태를 공유 저장소로 옮겨야 한다.
 - 차단 스위치 사용법: 공개 중 비용이 걱정되면 `data/serving_block.flag` 파일을 만든다(재시작 불필요). 지우면 다시 받는다. 예산 사용량은 `GET /queue/status`의 `budget`.
+
+## 재작업(FAIL 대응)
+
+검증 보고서 `docs/reports/E4-L2c.verify.md`(FAIL)와 PM 추가 요청(E4-L1a 병합 뒤 업로드)에 대한 수정이다. 실제 OpenAI 호출 0회, 가짜 파이프라인만 썼다. 시험·부하 시험은 모두 `NEUMANN_LLM_PROVIDER=mock`을 명시해 돌렸다.
+
+### 커밋
+
+| 커밋 | 내용 |
+|---|---|
+| `fb4ee8c` | 본문 인코딩 우회 차단(fail-closed)·run() 2차 입장 검사·IPv6 /64·공개 XFF 무시·내보내기 예산 미소모·공개 기본값·/queue/status 예산 수치 제거·IP 해시 솔트·공백 키 거부 |
+| `eedf1b5` | 부하 시험: CF-Connecting-IP로 IP 지정, 차단 스위치 켠 채 BOM·UTF-16·UTF-32 우회 시도 시나리오(G) |
+| `651718b` | `main` 병합(E4-L1a 업로드 파서 받기) |
+| `81b8328` | 업로드: IP별 속도 제한·IP별 동시 1건·Content-Type fail-closed·업로드 전용 10MB 상한 시험 |
+
+### 항목별 수정·테스트·재현이 막히는 증거
+
+| # | 지적 | 수정 | 테스트(새로 넣음) | 재현이 막히는 증거 |
+|---|---|---|---|---|
+| 1 치명 | BOM·UTF-16으로 보내면 미들웨어가 plan_text를 못 읽어 입장 검사를 건너뛰고, `Serving.run()`이 `force=True`로 대기열 상한·예산·차단을 무시 | (a) 미들웨어가 앱과 같은 파서 `json.loads(bytes)`(BOM·UTF-16·UTF-32 자동 판별)로 읽는다. (b) 분석 경로는 plan_text를 문자열로 못 읽으면(잘못된 JSON·깊은 중첩·문자열 아님·키 없음·빈 본문) **앱에 넘기지 않고 422**. (c) `Serving.run()`: 미들웨어 예약이 없으면 `admit_new()`로 차단·IP 속도 제한·예산·대기열을 다시 검사하고, 거절이면 `AdmissionRefused` → 미들웨어가 사용자 문구 503/429로 바꾼다. `force=True`는 예열(`internal=True`)만. 입장 검사는 `Serving.admit_new()` 한 곳에서 미들웨어와 run()이 같이 쓴다. `plan_key`는 짝 없는 서로게이트에도 예외 없이 동작 | `test_encoded_bodies_are_parsed_like_the_app_and_cannot_bypass_admission`(BOM·UTF-16·UTF-16LE·UTF-32 × 차단 스위치·글자 상한), `test_encoded_bodies_hit_budget_rate_and_queue_limits`(대기열·속도 제한·예산), `test_unreadable_or_invalid_analysis_body_is_rejected_before_the_app`(깨진 UTF-16·잘못된 JSON·10만 단계 중첩·문자열 아님·키 없음·배열·공백·빈 본문 → 422, 파이프라인 0회), `test_run_rechecks_admission_when_middleware_did_not_reserve` | 이전 serving.py(af008bb)로 새 테스트를 돌리면 `assert (200 == 503)`(BOM·UTF-16이 차단 스위치를 통과)으로 실패한다. 수정본은 통과. 부하 시험 G: 실제 uvicorn 서버에서 차단 파일을 켠 채 `utf-8`·`utf-8+BOM`·`utf-16`·`utf-32` 본문 → **전부 `(503, 'blocked')`** |
+| 2 | IPv6 같은 /64 안에서 주소만 바꾸면 속도 제한 통과. XFF 첫 값은 위조 가능 | 속도 제한 키(`ip_key`)를 IPv6는 /64, IPv4-매핑은 IPv4로 묶는다(분석·보조·업로드 모두). 공개 프로필은 `NEUMANN_TRUST_XFF=0`(기본): X-Forwarded-For를 보지 않고 `CF-Connecting-IP`만 믿는다(없으면 한 통) | `test_ipv6_addresses_in_same_64_share_one_rate_limit`(같은 /64 5개 주소 → 200,200,200,429,429), `test_public_profile_ignores_x_forwarded_for`(XFF 4개 회전 → 200,200,429,429) | 이전 코드에서 /64 시험은 5/5 통과(한도 3)로 실패, 수정본은 3건 뒤 429 |
+| 3 | `/premortem/package`에 plan_text만 보내면 422인데 예산·분석 슬롯 소모 | `analysis_mw` 분기 삭제. 내보내기는 항상 보조 관문 → 앱이 422 | `test_package_plan_text_only_is_422_without_touching_analysis_gate_or_budget`(실제 export 라우터, 3건 → 422, 예산 0·분석 슬롯 0·분석 속도 제한 0) | 이전 코드는 이 시험에서 분석 속도 제한(분당 1)에 걸려 `assert (429 == 422)`로 실패 |
+| 4 | 기본값(Cloudflare 약 100초) | 공개 프로필 기본: `NEUMANN_REQUEST_TIMEOUT_S=90`, `NEUMANN_QUEUE_MAX=4`, `NEUMANN_DAILY_BUDGET=0`(끔, 대표 결정). 개발 기본은 300초·20 그대로 | `test_config_defaults_and_public_profile` | 설정값 확인(시험 통과) |
+| 5 | /queue/status 예산 수치 노출, IP 해시 솔트 없음 | `/queue/status`에서 `budget`과 `limits.daily_budget` 제거. 공개 프로필은 `counters`·`cache`·`warmup`도 뺌(화면에 필요한 `ticket`·`accepting`·대기 수는 남김). 로그 IP 표시는 `HMAC-SHA256(솔트, IP/64)` 앞 10자. 솔트는 `NEUMANN_PSEUDONYM_SALT`(있으면, 값은 출력·기록 안 함) 또는 프로세스마다 무작위 | `test_queue_status_public_hides_budget_and_counters`, `test_daily_budget_503_cache_still_served_and_persists`(예산 키 없음 확인), `test_ip_tag_is_salted_hmac_and_hides_env_salt` | 부하 시험: 공개 프로필 `/queue/status` 키 = `accepting·active·aux·avg_run_s·blocked·eta_new_s·limits·max_active·max_waiting·waiting` |
+| (권고) | 공백뿐인 `OPENAI_API_KEY`가 `--public` 사전 점검 통과 | 키 값을 출력하지 않고 공백을 뺀 길이만 확인 | `test_serve_public_preflight_refuses_whitespace_key` | 시험 통과 |
+| (권고) | 깊게 중첩된 JSON → 500 | 분석 경로 파싱에서 `RecursionError`도 잡아 422 | 위 1번 `test_unreadable_...` | 시험 통과 |
+
+### PM 추가 요청(E4-L1a 병합 뒤 업로드)
+
+`git merge main`으로 E4-L1a(`upload.py`)를 받은 뒤 실제 업로드 라우터로 시험했다.
+
+| 요청 | 수정 | 테스트 |
+|---|---|---|
+| 1. /upload/plan을 IP별 속도 제한 보호 경로에 | 업로드 전용 IP(/64)별 분당 상한 `NEUMANN_UPLOAD_RATE_PER_MIN`(공개 10, 내보내기와 따로 셈) + **IP별 동시 처리 상한** `NEUMANN_UPLOAD_PER_IP`(공개 1): 느린 PDF 2건을 한 IP가 올려 두 슬롯을 모두 잡을 수 없다(두 번째는 429 `busy_ip`, 다른 IP는 계속 올림). 시간 상한(504)을 넘겨도 처리가 실제로 끝날 때까지 그 IP의 동시 수를 쥔다 | `test_upload_per_ip_concurrency_so_slow_files_cannot_hold_every_slot`, `test_upload_timeout_releases_per_ip_count_only_when_work_ends`, `test_upload_rate_limit_is_separate_bucket`, `test_upload_defaults_public_profile` |
+| 2. 요청 크기 상한은 업로드에만 10MB | 업로드 상한 = 파일 10MB + multipart 64KB(`upload.py`의 `MAX_UPLOAD_BYTES + MULTIPART_OVERHEAD_BYTES`와 같다), 분석 경로(글자×6+64KB ≈ 0.36MB)와 따로. multipart 본문 전체 기준, Content-Length 먼저, 없거나 거짓이면 스트리밍 누적으로 앱에 닿기 전 413 | `test_upload_body_cap_is_upload_only_10mb_by_length_chunked_and_lying_length`(정상 md 200, 10MB+64KB+1 → 413, chunked 11MB → 413, `Content-Length: 100`이라 적고 11MB 흘림 → 413이며 앱 호출 0) |
+| 3. 업로드도 BOM·인코딩 우회 fail-closed | 본문을 읽기 전에 **앱과 같은 python-multipart 파서**로 Content-Type을 본다. multipart가 아니면(BOM 붙은 JSON·UTF-16 JSON·text/plain·Content-Type 없음·앞에 BOM이 붙은 Content-Type) 415, 경계 없음 400, 앱과 같은 문구(`detail`). 입장 검사(속도 제한·동시 상한·바이트 상한)는 본문 해석과 무관하게 걸리므로 인코딩으로 우회할 수 없다 | `test_upload_fail_closed_on_content_type_and_encoding`(6가지 거절 + BOM·UTF-16·UTF-32 multipart 본문이 분당 3에서 4번째 429) |
+
+오류 본문에는 이제 `detail`(같은 사용자 문구)도 싣는다. 업로드 화면(E4-L1f)처럼 FastAPI 기본 모양(`detail`)을 읽는 화면이 관문 거절 문구도 그대로 보인다.
+
+### 완료 기준 재측정
+
+```
+$ NEUMANN_LLM_PROVIDER=mock python -m pytest tests/e4/test_serving.py tests/e4/test_serving_sec.py -q
+48 passed
+
+$ git apply --check docs/reports/E4-L2c_main.patch        # main 병합 뒤 main.py 기준
+(출력 없음 = 통과)
+# 패치를 적용한 사본(HEAD 81b8328 + 패치)에서 전체 테스트, NEUMANN_LLM_PROVIDER=mock
+1042 passed, 41 skipped in 68.27s
+
+$ NEUMANN_LLM_PROVIDER=mock python scripts/serve_loadtest.py --port 8122 --out docs/reports/E4-L2c_loadtest.txt
+  요약 A 동시 10건(서로 다른 계획서·IP): {"200": 10}          (동시 2, 대기 순번 1~8)
+  요약 B 같은 10건 다시(캐시): {"200": 10} 최장=0.39s
+  요약 C 동시 12건(대기열 상한 8): {"200": 10, "503": 2}
+  요약 D 한 IP에서 7건(분당 6건): {"200": 6, "429": 1}
+  G 결과: {'utf-8': (503, 'blocked'), 'utf-8+BOM': (503, 'blocked'), 'utf-16': (503, 'blocked'), 'utf-32': (503, 'blocked')}
+  재시작 #1 이유: 프로세스 종료(code=3) → 재시작 뒤 데모 디스크 캐시 hit
+  판정: PASS / 서버 종료 확인(포트 8122 닫힘) / 서버 로그 630줄 중 계획서 본문·트레이스가 든 줄: 0
+```
+
+```
+$ NEUMANN_LLM_PROVIDER=mock python scripts/verify.py      # E4-L1e 파일 정리 뒤, worktree(패치 미적용)
+1059 passed, 24 skipped in 103.34s
+보안: 파일 361개 / 계약: 2개 / 테스트: 통과 / verify 통과
+```
+
+### git stash 사고와 정리(내 실수)
+
+- **원인**: 재작업 중 새 테스트가 옛 코드에서 실패하는지 보려고 `git stash push src/neumann/api/serving.py`(내 stash `69c9414`) → 시험 → `git stash pop`을 했다. stash 목록은 모든 worktree가 같이 쓴다. 그 사이 E4-L1e가 자기 stash(`544fb16`)를 쌓아서, 내 `pop`이 **E4-L1e의 stash를 내 작업 트리에 적용하고 목록에서 지웠다**(19:56). 내 stash는 목록에 남았다.
+- **내 작업 복구**: `git checkout 69c9414 -- src/neumann/api/serving.py`로 내 serving.py를 되살리고 그 stash 항목을 목록에서 지웠다. 커밋 객체 `69c9414`는 남아 있다. `fb4ee8c`의 serving.py는 `69c9414`의 내용 그대로다(그 뒤 `81b8328`에서 업로드 부분만 더함). `git stash apply 69c9414`는 따로 할 필요가 없었다.
+- **E4-L1e 변경 정리(커밋 안 함, 버림)**: 되돌린 파일 `src/neumann/api/templates.py`, `src/neumann/api/templates/catalog.json`, `src/neumann/api/templates/catalog.schema.json`, 지워졌던 `templates/medical_imaging.md`·`neuro_fmri.md`·`physics_pde_climate.md`·`protein_molecule.md`(복원), `src/neumann/webui/index.html`(SCOPE 한 줄), `tests/e4/test_templates.py` → `git restore --staged --worktree`. 새로 생긴 `templates/examples/neural_operator_weather.md`·`protein_ligand_affinity.md`(스테이징돼 있었음)와 `templates/climate_emulator.md`·`molecule_reaction.md`·`pde_operator.md`·`protein_binding.md` → 스테이징 해제 뒤 삭제. 정리 뒤 `git status`에 E4-L1e 파일 없음.
+- **내 커밋에는 섞이지 않았다**: 그동안 커밋은 모두 `git commit -- <내 파일>`로 내 파일만 담았다. `main` 병합(`651718b`) 직전에는 `index.html`을 잠시 HEAD로 돌리고 스테이징 2개를 내렸다가 병합 뒤 되돌려 놓았으므로 병합 커밋에도 E4-L1e 파일이 없다(`git show --stat 651718b -- src/neumann/api/templates* tests/e4/test_templates.py` 결과 없음).
+- E4-L1e 변경의 사본(추적 파일 diff, 스테이징 목록, 새 파일)은 스크래치 폴더에 있다. 원본은 커밋 객체 `544fb16`으로 남아 있다(E4-L1e worktree에서 `git stash apply 544fb16`).
+- 앞으로 `git stash`를 쓰지 않는다(작게 커밋하거나 파일 복사로).
+
+### 여전히 남은 것(재작업 범위 밖)
+
+- 비동기 작업 API(긴 대기, Cloudflare 100초): E4-L2d.
+- 캐시 적중·합류의 별도 넉넉한 IP 제한, plan당 합류자 상한, 본문 읽기 시간 제한, 강등 결과 짧은 보관, 공개 모드 샘플 경로 503, IP별 일일 상한: 검증 보고서의 비차단 권고. 이번에는 넣지 않았다.
+- 실제 cloudflared 터널 뒤 실측, 실제 파이프라인 비용 측정(실호출 금지).
