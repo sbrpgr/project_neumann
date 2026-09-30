@@ -70,6 +70,10 @@ PM이 병합할 때마다 갱신한다. Claude 한도가 다 되면 이 문서�
 - verify는 **venv 파이썬**으로: `NEUMANN_LLM_PROVIDER=mock PYTHONPATH="src;." C:/Users/User/.venvs/neumann/Scripts/python.exe scripts/verify.py`
 - worktree에서 `git stash` 금지(공유돼서 과제 변경이 섞인다)
 
+## 대시보드 메시지함
+
+- 대시보드(http://127.0.0.1:8099)에 메시지함(대표 ↔ Claude·Codex·PM, `inbox.jsonl`)과 확인 항목 체크가 있다. **Codex(또는 인계받은 에이전트)는 메시지함을 읽고 확인·처리·완료로 답한다.** 대시보드 서버는 감시 스크립트가 죽으면 다시 띄우고 로그인 때 자동 시작한다.
+
 ## 도구·경로
 
 - Python venv: `C:/Users/User/.venvs/neumann/Scripts/python.exe`. pip이 없으니 설치는 `uv pip install --python <venv python> <패키지>`. mcp SDK 2.2.0 설치됨
