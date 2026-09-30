@@ -23,7 +23,7 @@ from typing import Any
 
 from neumann.analyze.risk_brief import TAXONOMY_BRIEF
 from neumann.analyze.rules import RuleTagger
-from neumann.llm import LLMCall, LLMProvider, LLMResult, task_options
+from neumann.llm import LLMCall, LLMProvider, LLMResult, setting, task_options
 from neumann.models import Excerpt, RiskCode, RiskTag, sha256_text
 
 log = logging.getLogger(__name__)
@@ -31,8 +31,8 @@ log = logging.getLogger(__name__)
 TASK = "extract_issues"
 PROMPT_VERSION = "extract_issues.v1"
 POLARITIES = ("negative", "positive", "neutral")
-DEFAULT_BATCH = 40
-DEFAULT_PARALLEL = 10
+DEFAULT_BATCH = 50
+DEFAULT_PARALLEL = 24
 
 INSTRUCTIONS = f"""\
 You label sentences from peer reviews of ONE scientific paper with research-risk types.
@@ -384,17 +384,27 @@ def extract_issues(
     tagger: RuleTagger,
     settings: Any = None,
     cache_dir: Path | None = None,
-    batch_size: int = DEFAULT_BATCH,
-    parallel: int = DEFAULT_PARALLEL,
+    batch_size: int | None = None,
+    parallel: int | None = None,
     stage_timeout_s: float | None = None,
 ) -> ExtractionResult:
-    """works: (work_id, 제목, 심사평 문장 목록). 묶음을 병렬로 부르고, 단계 상한을 넘긴 묶음은 규칙으로 대신한다."""
+    """works: (work_id, 제목, 심사평 문장 목록). 묶음을 병렬로 부르고, 단계 상한을 넘긴 묶음은 규칙으로 대신한다.
+
+    묶음 크기·동시 호출 수·단계 상한은 인자 > 설정/환경변수(NEUMANN_EXTRACT_BATCH, NEUMANN_EXTRACT_PARALLEL,
+    NEUMANN_EXTRACT_STAGE_TIMEOUT_S) > 기본값(50, 24, 호출 상한+60초).
+    """
     opts = task_options(TASK, settings)
+    batch_size = int(batch_size or setting(settings, "extract_batch", "NEUMANN_EXTRACT_BATCH", DEFAULT_BATCH))
+    parallel = int(parallel or setting(settings, "extract_parallel", "NEUMANN_EXTRACT_PARALLEL", DEFAULT_PARALLEL))
+    if stage_timeout_s is None:
+        stage_timeout_s = float(
+            setting(settings, "extract_stage_timeout_s", "NEUMANN_EXTRACT_STAGE_TIMEOUT_S", opts["timeout_s"] + 60.0)
+        )
     jobs: list[tuple[str, str | None, list[Excerpt]]] = []
     for work_id, title, excerpts in works:
         for batch in _batches(excerpts, max(1, batch_size)):
             jobs.append((work_id, title, batch))
-    deadline = stage_timeout_s if stage_timeout_s is not None else opts["timeout_s"] + 30.0
+    deadline = stage_timeout_s
     outcomes: list[BatchOutcome | None] = [None] * len(jobs)
     if jobs:
         pool = ThreadPoolExecutor(max_workers=max(1, min(parallel, len(jobs))), thread_name_prefix="extract")

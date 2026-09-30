@@ -59,6 +59,21 @@ def test_mock_end_to_end_cards_and_contract():
     jsonschema.validate(r.model_dump(mode="json"), CONTRACT)
 
 
+def test_e5_linkage_checker_passes_and_reads_drop_rate():
+    """E5-L0 근거 연결 검사기(eval.linkage)로 결과를 다시 잰다: 연결률 1.0, 폐기율을 verification에서 읽는다."""
+    from eval.linkage import check_result
+
+    be = build_backend()
+    r = _run(PLAN_BATTERY, backend=be)
+    reviews = {rv.review_id: rv.text for rs in be.reviews.values() for rv in rs}
+    rep = check_result(r, reviews)
+    assert rep.passed and rep.linkage_rate == 1.0 and rep.card_pass_rate == 1.0
+    assert rep.drop.available and rep.drop.source == "verification"
+    assert rep.drop.findings_total == r.verification["findings_total"]
+    # JSON으로 오간 결과도 같다
+    assert check_result(r.model_dump(mode="json"), reviews).passed
+
+
 def test_provider_off_gives_rule_cards_and_marks_degradation():
     be = build_backend()
     r = _run(PLAN_BATTERY, provider="off", backend=be)

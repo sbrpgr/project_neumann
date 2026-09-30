@@ -16,12 +16,12 @@ from typing import Any
 
 from neumann.analyze import rules
 from neumann.analyze.extract import Issue
-from neumann.analyze.risk_brief import CARD_CODES, SEVERITY_LEVEL, SEVERITY_UNIT
+from neumann.analyze.risk_brief import CARD_CODES, SEVERITY_LEVEL, SEVERITY_UNIT, TAXONOMY_BRIEF
 from neumann.llm import LLMCall, LLMProvider, LLMResult, task_options
 from neumann.models import Excerpt, PlanDocument, RiskCard, RiskCode, RiskScore, WhyApplies
 
 TASK = "synthesize_cards"
-PROMPT_VERSION = "synthesize_cards.v2"
+PROMPT_VERSION = "synthesize_cards.v3"
 MAX_CARDS = 8
 MIN_EVIDENCE = 3
 MIN_WORKS = 2
@@ -31,7 +31,7 @@ MAX_TITLE = 80
 SCORE_FORMULA = "product_v1: similarity * frequency * severity * confidence"
 SCORE_WEIGHTS = {"similarity": 1.0, "frequency": 1.0, "severity": 1.0, "confidence": 1.0}
 
-INSTRUCTIONS = """\
+INSTRUCTIONS = f"""\
 You write pre-mortem risk cards for a research plan, using ONLY risks that reviewers actually raised on similar prior papers.
 
 Input:
@@ -40,8 +40,10 @@ Input:
 - pool: reviewer issues from those papers' peer reviews: id, paper id, risk code, and the reviewer's sentence.
 
 Write up to 8 cards, most important first. Each card:
-- risk_code: one risk type that applies to THIS plan: the plan states the weakness, or it omits a safeguard that the
-  plan's own design needs. Point to the plan lines (plan_lines) that show it. Make no card you cannot tie to plan lines.
+- risk_code: one risk type (R1 to R8, definitions below) that applies to THIS plan: the plan states the weakness, or it
+  omits a safeguard that the plan's own design needs. Choose the code by the definitions for the plan's risk itself,
+  even if some pool issues carry a different code (e.g. train/test overlap from a random split is R3, not R2).
+  Point to the plan lines (plan_lines) that show it. Make no card you cannot tie to plan lines.
 - evidence_ids: 3 to 6 ids from the pool showing that reviewers flagged the same kind of problem, from at least
   2 different papers. Use only ids that exist in the pool. Prefer issues whose risk code matches the card, papers that
   are closer to the plan's domain (higher similarity), and the most specific sentences.
@@ -52,7 +54,8 @@ Write up to 8 cards, most important first. Each card:
 One card per distinct risk; no duplicates.
 If no reviewer issue in the pool applies to this plan, return cards as [] and give no_card_reason (Korean, one sentence).
 Otherwise no_card_reason is null.
-"""
+
+{TAXONOMY_BRIEF}"""
 
 
 def build_schema(ids: list[str]) -> dict[str, Any]:

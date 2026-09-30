@@ -345,7 +345,7 @@ class DisabledProvider:
 # ── 설정 → provider ──────────────────────────────────────────────────────
 
 
-def _setting(settings: Any, attr: str, env: str, default: Any = None) -> Any:
+def setting(settings: Any, attr: str, env: str, default: Any = None) -> Any:
     """설정 객체 속성 → 환경변수 → 기본값. (config.py에 키가 아직 없을 때를 위한 우회)"""
     val = getattr(settings, attr, None) if settings is not None else None
     if val in (None, ""):
@@ -357,11 +357,11 @@ def task_options(task: str, settings: Any = None) -> dict[str, Any]:
     """호출별 추론 강도·시간 상한. 설정 키: llm_effort_<task> / NEUMANN_LLM_EFFORT_<TASK>,
     llm_timeout_<task>_s / NEUMANN_LLM_TIMEOUT_<TASK>_S. 없으면 TASK_DEFAULTS, 그다음 NEUMANN_LLM_TIMEOUT_S."""
     defaults = TASK_DEFAULTS.get(task, {"effort": "low", "timeout_s": 60.0})
-    effort = str(_setting(settings, f"llm_effort_{task}", f"NEUMANN_LLM_EFFORT_{task.upper()}", defaults["effort"]))
+    effort = str(setting(settings, f"llm_effort_{task}", f"NEUMANN_LLM_EFFORT_{task.upper()}", defaults["effort"]))
     if effort not in EFFORTS:
         log.warning("알 수 없는 추론 강도 %r (task=%s) → %s", effort, task, defaults["effort"])
         effort = defaults["effort"]
-    timeout = _setting(settings, f"llm_timeout_{task}_s", f"NEUMANN_LLM_TIMEOUT_{task.upper()}_S", None)
+    timeout = setting(settings, f"llm_timeout_{task}_s", f"NEUMANN_LLM_TIMEOUT_{task.upper()}_S", None)
     if timeout is None:
         timeout = defaults["timeout_s"]
     return {"effort": effort, "timeout_s": float(timeout)}
@@ -372,13 +372,13 @@ def make_llm(settings: Any = None, provider: str | None = None) -> LLMProvider:
 
     모델명이 비었거나 키가 없으면 조용히 끄지 않는다: 호출마다 config_error 실패를 돌려 status에 드러난다.
     """
-    name = (provider or _setting(settings, "llm_provider", "NEUMANN_LLM_PROVIDER", "openai") or "openai").lower()
+    name = (provider or setting(settings, "llm_provider", "NEUMANN_LLM_PROVIDER", "openai") or "openai").lower()
     if name == "openai":
-        model = str(_setting(settings, "llm_model", "NEUMANN_LLM_MODEL", DEFAULT_MODEL))
+        model = str(setting(settings, "llm_model", "NEUMANN_LLM_MODEL", DEFAULT_MODEL))
         key = getattr(settings, "openai_api_key", None) if settings is not None else None
         if key is None or not _secret_value(key):
             key = os.environ.get("OPENAI_API_KEY")
-        timeout = float(_setting(settings, "llm_timeout_s", "NEUMANN_LLM_TIMEOUT_S", 60.0))
+        timeout = float(setting(settings, "llm_timeout_s", "NEUMANN_LLM_TIMEOUT_S", 60.0))
         return OpenAIProvider(api_key=key, model=model, default_timeout_s=timeout)
     if name in ("mock", "rules"):
         from neumann.analyze.mock_responders import default_responders
@@ -399,6 +399,7 @@ __all__ = [
     "OpenAIProvider",
     "TASK_DEFAULTS",
     "check_strict_schema",
+    "setting",
     "generator_for",
     "make_llm",
     "task_options",
