@@ -21,8 +21,8 @@
 | E4-L1e 입력 예시·템플릿 AI4S 정렬(대표 지시) | ⏳ 구축 세션(API 금지) | 예시: 전해액 GNN 유지 + 단백질-리간드·신경 연산자 PDE 기후 새로. 템플릿 5종 AI4S. 병합 뒤 사전 계산본·정적 판·시연 녹화의 예시도 맞출 것 |
 | E1-L1c eLife(+EPMC) 색인(우선순위 낮아짐: 예시에서 fMRI·의료영상 제외) | a3a4251, `index_elife`·`index_elife_epmc`에 DO_NOT_SERVE 표시(E1-L1b 실명 FAIL) | 데모 3건 모두 살리려면 `index_elife_epmc` 후보. E2-L1 병합 뒤 `NEUMANN_INDEX_DIR` 전환 결정·서버 재시작(첫 분석에 API 사용 = 허용) |
 | E1-L1b eLife·EPMC 수집 | ❌ FAIL(리뷰어 실명 22+3건) → PM 세션 빌더 재작업(오프라인) | 잔존 서명 0 증명 후 재검증 → 병합. **그 전에는 eLife/EPMC 색인을 서비스에 쓰지 않는다** |
-| E4-L2c 서빙 안정성 | 🔍 af008bb 공격적 검증 중(구축 세션) | 병합 + `docs/reports/E4-L2c_main.patch` 적용. 공개 모드 `NEUMANN_DAILY_BUDGET=0`(대표 정정), 동시 상한·대기열·속도 제한 유지 |
-| E4-L2d 비동기 작업 API | ⏳ 구축 세션 | E4-L2c 뒤 병합 + `E4-L2d_main.patch`. **터널 공개 전제**(Cloudflare 100초 제한) |
+| E4-L2c 서빙 안정성 | ❌ FAIL(BOM·UTF-16 본문으로 입장 검사 우회, IPv6 /64 우회) → 재작업 중(구축 세션). **공개 금지** | 병합 + `docs/reports/E4-L2c_main.patch` 적용. 공개 모드 `NEUMANN_DAILY_BUDGET=0`(대표 정정), 동시 상한·대기열·속도 제한 유지 |
+| E4-L2d 비동기 작업 API | 🔍 999f3f9 빌드 끝(동시 5건 응답 최장 0.08초). E4-L2c 재작업 병합 뒤 재검증 | E4-L2c 뒤 병합 + `E4-L2d_main.patch`. **터널 공개 전제**(Cloudflare 100초 제한) |
 | SEC-2 재점검 | 대기 | E4-L2c·L2d 병합 뒤 → 통과하면 cloudflared 터널 공개(주소는 발표자료로) |
 | E4-L1a 업로드 | 🔍 S-03 수정(31f0b88) 재검증 필요 | 재검증 PASS → 병합(라우터 자동 연결) |
 | E6-docs 문서·README | 🔍 재검증 중 | 병합 + 루트 README를 `docs/reports/E6-docs_README_draft.md`로 갱신(PM 소유) |
