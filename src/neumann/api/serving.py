@@ -294,6 +294,19 @@ def install_log_filter() -> None:
                 h.addFilter(_FILTER)
 
 
+def ensure_log_handler() -> None:
+    """uvicorn 기본 설정은 neumann.* INFO 로그를 어디에도 내보내지 않는다. 핸들러가 없으면 하나 붙인다(필터 포함)."""
+    lg = logging.getLogger("neumann")
+    if lg.handlers or logging.getLogger().handlers:
+        return
+    h = logging.StreamHandler()
+    h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
+    h.addFilter(_FILTER)
+    lg.addHandler(h)
+    if lg.level == logging.NOTSET:
+        lg.setLevel(logging.INFO)
+
+
 def _ip_tag(ip: str) -> str:
     """로그용 IP 표시: 원래 값 대신 해시 앞 10자(같은 IP끼리 묶어 볼 수만 있다)."""
     return "ip_" + hashlib.sha256(("neumann-ip:" + ip).encode("utf-8")).hexdigest()[:10]
@@ -1089,6 +1102,7 @@ def install(app: Any, serving: Serving | None = None, *, pipeline: Callable[...,
     install_log_filter()
 
     async def _on_startup() -> None:
+        ensure_log_handler()
         install_log_filter()  # uvicorn이 핸들러를 다시 만든 뒤에도 붙게
         srv.start_warmup(pipeline)
 
@@ -1099,5 +1113,5 @@ def install(app: Any, serving: Serving | None = None, *, pipeline: Callable[...,
 __all__ = [
     "MESSAGES", "AnalysisTimeout", "Gate", "QueueFull", "RateLimiter", "RedactingFilter", "RequestCtx", "ResultCache",
     "Serving", "ServingConfig", "ServingMiddleware", "client_ip", "current_request", "get_serving", "install",
-    "install_log_filter", "plan_key", "router", "scrub_secrets", "user_message", "wrap_pipeline",
+    "ensure_log_handler", "install_log_filter", "plan_key", "router", "scrub_secrets", "user_message", "wrap_pipeline",
 ]
