@@ -149,10 +149,19 @@ _OFFTOPIC_EN = _en(
     r"discount", r"lyrics", r"chorus", r"diary",
 )
 
-_FIELDS: tuple[tuple[str, tuple[str, ...], re.Pattern[str]], ...] = (
+# 신경과학 표지(E3-L1x). 인공 신경망(neural network, 신경망·심층신경망·신경회로망)과 신경 연산자(neural operator)는
+# AI 방법이지 신경과학이 아니다. 영어는 neur\w*가 아니라 neuro\w*(neuron·neuronal·neuroscience·neuroimaging)만 잡는다.
+# 한국어는 "신경" 단독 대신 신경과학 복합어만 잡고, "뇌우"(기상)와 "~인지"(어미)는 빼려고 정규식으로 둔다.
+_NEURO_KO = re.compile(
+    r"신경\s?(?:과학|세포|생리|영상|활동|신호|질환)|신경\s?회로(?!망)|신경계|뉴런|뇌(?!우)"
+    r"|인지\s?(?:과학|과제|기능|능력|부하|저하|장애|심리)"
+)
+_NEURO_EN = _en(r"neuro\w*", r"fmri", r"eeg", r"brains?", r"cognit\w*")
+
+_FIELDS: tuple[tuple[str, tuple[str, ...] | re.Pattern[str], re.Pattern[str]], ...] = (
     ("재료·화학", ("전해액", "배터리", "전지", "분자", "소재", "촉매", "화합물", "고분자"),
      _en(r"electrolyt\w*", r"batter(?:y|ies)", r"molecul\w*", r"materials?", r"catalys\w*", r"polymers?", r"chemi\w*")),
-    ("신경과학·뇌영상", ("뇌", "신경", "인지"), _en(r"fmri", r"eeg", r"neur\w*", r"brain", r"cognit\w*")),
+    ("신경과학·뇌영상", _NEURO_KO, _NEURO_EN),
     ("의료·의료영상", ("의료", "임상", "환자", "진단", "폐렴", "X선", "병변"),
      _en(r"clinic\w*", r"patients?", r"diagnos\w*", r"x-?ray", r"radiolog\w*", r"medical", r"patholog\w*")),
     ("자연어처리", ("자연어", "언어모델", "언어 모델", "텍스트", "말뭉치"),
@@ -166,8 +175,9 @@ _FIELDS: tuple[tuple[str, tuple[str, ...], re.Pattern[str]], ...] = (
 )
 
 
-def _line_hits(text: str, ko: tuple[str, ...], en: re.Pattern[str]) -> list[str]:
-    terms = [w for w in ko if w in text]
+def _line_hits(text: str, ko: tuple[str, ...] | re.Pattern[str], en: re.Pattern[str]) -> list[str]:
+    """한 줄에서 찾은 표지. 한국어 `ko`는 부분 문자열 목록이거나(대부분) 제외 조건이 필요한 정규식이다."""
+    terms = [m.group(0) for m in ko.finditer(text)] if isinstance(ko, re.Pattern) else [w for w in ko if w in text]
     terms += [m.group(0).lower() for m in en.finditer(text)]
     return terms
 
