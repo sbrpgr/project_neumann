@@ -1,3 +1,31 @@
+## ★ 녹화 판 99b775b — 2026-10-01 07:15 KST, PM(Claude) · 이 절이 가장 최신(아래 06:15 절을 대체)
+
+- **8020 = 99b775b**(07:08:50 기동). origin/main과 main 작업 폴더가 같다.
+  - 조건: LIVE_LLM_OK=1, 키 상속, 동시 1, keep-alive 30, REVISE_TIMEOUT 240.
+  - /health: openai·key_present·gpt-6.1-sol, warmup 15.2초.
+  - **07:30 녹화까지 재기동하지 않고 main 작업 폴더도 감지 않는다.**
+- **전체 pytest(mock, 키 제거) 99b775b: 2990 통과·68 건너뜀·실패 0**(327초).
+- **9ffaceb 뒤에 들어간 것:**
+  - DECK-FREEZE e1a05bc: numbers_frozen.json, scripts/deck, 시연 시나리오, 감사 보고서.
+  - FIX-AUTOFIX 4255a61: 코드 계산값으로 자동 수정한다. SEEDED에서 오프라인 0→4, 날조·미검사는 계속 차단.
+- **발표자료 07:00 동결:**
+  - data/deck/본선_발표자료_작업본.pdf: 17쪽, sha256 앞 16자리 56F1115BEBE1F447.
+  - .pptx: 24373DBCD182338D.
+  - 수치 원본: 88d9f73.
+  - 다시 빌드하려면 scripts/deck/pres5_build.py를 쓰고 해시를 갱신해 기록한다.
+- **라이브 확인:**
+  - FINAL-LIVE-2: 샘플 2편 전체 흐름 통과.
+  - FINAL-LIVE-3C: SEEDED에서 z3 5·pint 4 실행, 실패가 issues로 올라감.
+  - FINAL-LIVE-4: 녹화 입력 1회, 99b775b. 결과는 구축 세션 보고서로 받는다.
+  - 비용 누계 추정: 약 $4.7(상한 $5.7) + 3·3C 약 $2 + 4.
+- **녹화 입력:** out/dashboard/demo_input/seeded_plan_녹화용.md(git 밖).
+  - 오류와 가짜 DOI를 심은 **가상 계획서**다. 화면·내레이션에 밝힌다.
+  - 갤러리 샘플이 아니라 붙여넣기·업로드로 넣는다.
+- **남은 제약:**
+  - 공개 불가다(SEC-PUBLIC, V-B1-C). 터널을 열지 않는다.
+  - 독립 판정은 V-COMBINED뿐이다. 나머지 후보는 PM 재측정으로 대신했다.
+  - finalize 최종 status는 partial이다(검사 범위 제한 고지).
+
 ## ★ 녹화용 판 — 2026-10-01 06:15 KST, PM(Claude) · 이 절이 가장 최신
 
 - **녹화용 main = 9ffaceb.** origin/main과 main 작업 폴더가 같다. 06:13에 8020 재기동을 요청했다.
