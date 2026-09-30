@@ -78,6 +78,7 @@ def test_live_summary_converts_to_counts_from_file():
     for mid in ("macro_f1", "linkage_rate", "drop_rate", "demo_e2e"):
         row = by[(mid, PRODUCT_SYS)]
         assert row["value"] is None and "측정 전" in row["conditions"]
+    assert not any("model" in m for m in out["metrics"])  # 요약에 모델 기록이 없다 → 카드 '모델' 칸은 "(모델 기록 없음)"
 
 
 def test_sample_summary_refused():
@@ -121,17 +122,63 @@ def test_model_checked_against_recorded_llm_model():
     assert "1/2건과 일치, 나머지는 명령행 값" in part[("demo_e2e", "all")]["conditions"]
 
 
-def test_e5_l1e2e_summary_shape_stays_reference():
-    """task/E5-L1e2e 요약 모양(plans[*].models.llm_model 있음, linkage.card_generators 없음)이면
-    모델은 대조되고 P2·P6는 참고 행으로 남는다(그쪽에 linkage.card_generators 한 줄이 필요하다)."""
+def test_summary_before_linkage_card_generators_stays_reference():
+    """task/E5-L1e2e에 커밋된 라이브 요약(949d628 판) 모양: models.llm_model은 있지만 linkage.card_generators가 없다.
+    그러면 모델은 대조되고 P2·P6는 참고 행으로 남는다. 2423834 이후 코드로 새 라이브 요약을 만들어야 채워진다."""
     s = _summary(**{"a.md": _plan(link_gens=None), "b.md": _plan(link_gens=None)})
     for e in s["plans"].values():
         if "linkage" in e:
-            e["models"] = {"llm_model": "gpt-6.1-sol"}
+            e["models"] = {"llm_model": "gpt-6.1-sol", "view_model_id": "gpt-6.1-sol"}
             e["card_generators"] = {"astra:gpt-6.1-sol": 3}  # 계획서 단위 "generator:model" 키는 읽지 않는다
     by = _by(mfe.convert(s, model="gpt-6.1-sol"))
     assert ("linkage_rate", "neumann") not in by and ("demo_e2e", "all") not in by
     assert by[("demo_e2e", REF_SYS)]["detail"].endswith("generator 미기록 실행")
+
+
+def test_new_e5_l1e2e_summary_shape_fills_p2_p6_with_recorded_model(tmp_path):
+    """2423834 이후 모양(linkage.card_generators 평문 키 "astra" + models.llm_model·view_model_id)이면
+    P2·P6가 채워지고 카드 '모델' 칸에 요약에 기록된 모델이 들어간다."""
+    s = _summary(**{n: _plan() for n in ("a.md", "b.md", "c.md")})
+    for e in s["plans"].values():
+        if "linkage" in e:
+            e["models"] = {"llm_model": "gpt-6.1-sol", "view_model_id": "gpt-6.1-sol"}
+    out = mfe.convert(s, model="gpt-6.1-sol")
+    by = _by(out)
+    for key in (("linkage_rate", "neumann"), ("drop_rate", "neumann"), ("demo_e2e", "all"), ("e2e_cards", "neumann")):
+        assert by[key]["model"] == "gpt-6.1-sol"
+    p = tmp_path / "m.json"
+    p.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
+    md = rc.build([p], now="T", commit="c", command="x")
+    for key in ("| P2 |", "| P6 |"):
+        cells = [c.strip() for c in next(ln for ln in md.splitlines() if ln.startswith(key)).strip().strip("|").split("|")]
+        assert cells[6].startswith("**달성") and cells[8] == "gpt-6.1-sol"
+
+
+def test_recorded_view_model_mismatch_refused():
+    s = _summary()
+    for e in s["plans"].values():
+        if "linkage" in e:
+            e["models"] = {"llm_model": "gpt-6.1-sol", "view_model_id": "gpt-6-astra"}
+    with pytest.raises(mfe.InputError, match="view_model_id"):
+        mfe.convert(s, model="gpt-6.1-sol")
+
+
+def test_demo_model_needs_both_runs_recorded():
+    """결과 manifest 모델만 있고 화면 실행 모델이 없으면: 연결 지표 행만 모델, 시연·화면 카드 수 행은 기록 없음."""
+    s = _summary()
+    for e in s["plans"].values():
+        if "linkage" in e:
+            e["models"] = {"llm_model": "gpt-6.1-sol"}
+    by = _by(mfe.convert(s, model="gpt-6.1-sol"))
+    assert by[("linkage_rate", "neumann")]["model"] == "gpt-6.1-sol"
+    assert "model" not in by[("demo_e2e", "all")] and "model" not in by[("e2e_cards", "neumann")]
+
+
+def test_partial_model_record_leaves_row_without_model():
+    s = _summary()
+    s["plans"]["a.md"]["models"] = {"llm_model": "gpt-6.1-sol", "view_model_id": "gpt-6.1-sol"}
+    by = _by(mfe.convert(s, model="gpt-6.1-sol"))
+    assert "model" not in by[("linkage_rate", "neumann")] and "model" not in by[("demo_e2e", "all")]
 
 
 def test_model_required():
@@ -245,24 +292,65 @@ def test_one_plan_without_generators_makes_all_linkage_reference():
     assert ("demo_e2e", "all") not in by and by[("demo_e2e", REF_SYS)]["value"] == 2
 
 
-def test_report_card_eval_model_marks_neumann_promise_rows(tmp_path):
-    """--eval-model(검증 권고): 약속 표의 Neumann 행(P1) 측정값 옆과 머리에 평가 모델을 적는다. 없으면 표기 없음."""
+def _macro_with_pred(tmp_path, models):
+    """예측 파일(행별 model)과 그 sha256을 가진 Macro-F1 결과 JSON."""
+    pred = tmp_path / "pred_astra_gold.jsonl"
+    pred.write_text("".join(json.dumps({"review_id": f"r{i}", "generator": "astra", "model": m}) + chr(10)
+                            for i, m in enumerate(models)), encoding="utf-8")
     macro = {
         "metric": "review-level multilabel Tier-1 Macro-F1", "n": 148, "macro_f1": 0.4864, "micro_f1": 0.5644,
         "macro_f1_ci95": {"low": 0.4276, "high": 0.5394}, "micro_f1_ci95": {"low": 0.5125, "high": 0.612},
         "predictions": {"generator_counts": {"astra": 148}}, "scored_classes": [], "excluded_classes": [],
+        "pred_file": str(pred), "pred_sha256": hashlib.sha256(pred.read_bytes()).hexdigest(),
     }
     f = tmp_path / "score_astra.json"
     f.write_text(json.dumps(macro), encoding="utf-8")
-    md = rc.build([f], now="T", commit="c", command="x", eval_model="gpt-6-astra")
-    assert "| P1 | 지적 추출 Macro-F1 | ≥ 0.70 | 0.4864 (gpt-6-astra) | [0.4276, 0.5394] | 148 | **미달** |" in md
-    assert "- Neumann 행의 평가 모델: `gpt-6-astra` (명령행 `--eval-model` 값" in md
-    assert "| P4 | 표본 연결 | ≥ 300편 | 측정 전 |" in md  # 측정 전·Neumann 아닌 행은 그대로
-    plain = rc.build([f], now="T", commit="c", command="x")
-    assert "| 0.4864 | [0.4276, 0.5394] |" in plain and "평가 모델: `" not in plain
-    out = tmp_path / "rc.md"
-    assert rc.main(["--inputs", str(f), "--out", str(out), "--eval-model", "gpt-6-astra"]) == 0
-    assert "--eval-model gpt-6-astra`" in out.read_text(encoding="utf-8")
+    return f, pred
+
+
+def _cells_of(md, starts):
+    row = next(ln for ln in md.splitlines() if ln.startswith(starts))
+    return [c.strip() for c in row.strip().strip("|").split("|")]
+
+
+def test_model_column_from_each_input_record(tmp_path):
+    """모델 칸은 행마다 자기 입력의 기록: P1은 예측 파일의 model(gpt-6-astra), 백테스트 행은 행의 model(gpt-6.1-sol).
+    기록 없는 행은 "(모델 기록 없음)", 측정 전 행은 비운다."""
+    f, _ = _macro_with_pred(tmp_path, ["gpt-6-astra"] * 3)
+    g = tmp_path / "bt.json"
+    g.write_text(json.dumps({"schema": "neumann.metrics/1", "metrics": [
+        {"id": "bt_hit_at_3", "system": "neumann", "value": 0.4, "n": 5, "model": "gpt-6.1-sol"},
+        {"id": "bt_hit_at_3", "system": "llm_baseline", "value": 0.2, "n": 5},
+        {"id": "bt_precision_at_3", "system": "neumann", "value": None, "model": "gpt-6.1-sol"},
+    ]}), encoding="utf-8")
+    md = rc.build([f, g], now="T", commit="c", command="x")
+    assert _cells_of(md, "| P1 |")[3] == "0.4864" and _cells_of(md, "| P1 |")[8] == "gpt-6-astra"
+    assert _cells_of(md, "| P3 |")[3] == "0.4" and _cells_of(md, "| P3 |")[8] == "gpt-6.1-sol"
+    assert _cells_of(md, "| P4 |")[8] == "—"  # 측정 전
+    assert _cells_of(md, "| 백테스트 Top-3 적중 hit@3 | 일반 LLM 기준선 |")[8] == "(모델 기록 없음)"
+    assert _cells_of(md, "| 백테스트 적중률 precision@3 (A 비율) | Neumann (astra) |")[8] == "—"  # null 값
+    assert _cells_of(md, "| 지적 추출 Macro-F1 (리뷰 단위) | Neumann (astra) |")[8] == "gpt-6-astra"
+    assert "| 판정 일치율 (대표 10편 vs AI 다수결, A/B/C) | 전체 | 측정 전 | — | — | — | — | 입력 없음 | — |" in md
+    assert "--eval-model" not in md
+
+
+def test_model_column_partial_record_and_mismatch_stop(tmp_path):
+    f, pred = _macro_with_pred(tmp_path, ["gpt-6-astra", None])
+    md = rc.build([f], now="T", commit="c", command="x")
+    assert _cells_of(md, "| P1 |")[8] == "gpt-6-astra (기록 없음 1/2행)"
+    pred.write_text(pred.read_text(encoding="utf-8") + chr(10), encoding="utf-8")  # 채점 뒤 바뀐 예측 파일
+    with pytest.raises(rc.InputError, match="채점 때와 다르다"):
+        rc.build([f], now="T", commit="c", command="x")
+    bad = tmp_path / "bad.json"
+    bad.write_text(json.dumps({"schema": "neumann.metrics/1", "metrics": [
+        {"id": "bt_hit_at_3", "system": "neumann", "value": 0.4, "model": 7}]}), encoding="utf-8")
+    with pytest.raises(rc.InputError, match="model"):
+        rc.build([bad], now="T", commit="c", command="x")
+
+
+def test_eval_model_option_removed(tmp_path):
+    with pytest.raises(SystemExit):
+        rc.main(["--inputs", "--out", str(tmp_path / "x.md"), "--eval-model", "gpt-6-astra"])
 
 
 def test_report_card_backtest_limit_and_label():

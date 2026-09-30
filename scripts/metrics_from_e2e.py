@@ -27,7 +27,9 @@
 - 샘플 모드 요약(mode != live)이나 파이프라인 미연결 요약은 거부한다(성능 수치가 아니다).
 - 요약에 적힌 비율이 개수와 다르거나, 요약 문자열의 개수와 필드의 개수가 다르면 멈춘다(어느 쪽을 믿을지 정할 수 없다).
 - 비율은 소수 4자리로 적되, 1.0이 아닌 값을 1.0으로, 0이 아닌 값을 0으로 반올림하지 않는다. 정확한 개수는 detail에 둔다.
-- 모델은 `--model`로 받아 조건 칸에 적는다(기본값 없음). 요약에 `plans[*].models.llm_model`(E5-L1e2e 이후)이 있으면
+- 모델은 `--model`로 받아 조건 칸에 적는다(기본값 없음). 지표 행의 `model`(카드 '모델' 칸)은 요약에 기록된 모델만 쓴다:
+  연결·폐기·카드 통과는 `models.llm_model`, 화면 카드 수는 `models.view_model_id`, 시연은 둘이 같을 때. 기록이 없으면 행에
+  `model`을 두지 않는다(카드에 "(모델 기록 없음)"). 요약에 `plans[*].models.llm_model`(E5-L1e2e 이후)이 있으면
   대조해서 다르면 멈추고, 없으면 조건 칸에 "모델은 명령행 값(요약에 기록 없음)"이라고 적는다.
 """
 
@@ -159,6 +161,16 @@ def model_source(demo: dict[str, Any], model: str) -> str:
     return f"요약 models.llm_model {len(recorded)}/{len(demo)}건과 일치, 나머지는 명령행 값(요약에 기록 없음)"
 
 
+def recorded_model(demo: dict[str, Any], key: str, model: str) -> str | None:
+    """데모 계획서 전부의 `models.<key>`가 기록돼 있고 모두 같을 때만 그 값. 카드 '모델' 칸은 이 기록만 쓴다
+    (명령행 `--model`은 조건 칸에만). 기록이 `--model`과 다르면 멈춘다."""
+    vals = [((e.get("models") or {}) if isinstance(e, dict) else {}).get(key) for e in demo.values()]
+    got = {str(v) for v in vals if v}
+    if got - {model}:
+        raise InputError(f"--model {model!r}이 요약의 models.{key} {sorted(got)}와 다르다")
+    return model if vals and all(vals) else None
+
+
 def linkage_system(measured: dict[str, dict[str, Any]]) -> tuple[str, str, str]:
     """연결 검사 실행의 카드 generator로 (시스템, 약속 칸 병기 문구, 한계 문구 머리)를 정한다."""
     missing = [n for n, v in measured.items() if v["gens"] is None]
@@ -223,6 +235,9 @@ def convert(summary: dict[str, Any], *, model: str, product_model: str | None = 
             measured[name] = got
 
     metrics: list[dict[str, Any]] = []
+    rec_result = recorded_model(demo, "llm_model", model)  # /premortem 결과 manifest(연결 검사 실행)
+    rec_view = recorded_model(demo, "view_model_id", model)  # 화면 실행
+    rec_demo = rec_result if rec_result and rec_result == rec_view else None  # 시연은 두 실행 모두
     shown = {n: int(e.get("n_cards") or 0) for n, e in demo.items()}
     gens: dict[str, int] = {}
     for e in demo.values():
@@ -253,10 +268,12 @@ def convert(summary: dict[str, Any], *, model: str, product_model: str | None = 
             "id": "linkage_rate", "system": lsys, "value": ratio(l_ok, l_tot) if l_tot else None,
             "n": l_tot, "detail": f"{l_ok}/{l_tot}; {per('links')}; {lnote}", "conditions": cond,
             "limits": lim + ". 폐기율과 같이 읽는다(04_평가_명세 §2.2)",
+            **({"model": rec_result} if rec_result else {}),
         })
         metrics.append({
             "id": "card_pass_rate", "system": lsys, "value": ratio(c_ok, c_tot) if c_tot else None,
             "n": c_tot, "detail": f"{c_ok}/{c_tot}; {per('cards')}", "conditions": cond, "limits": lim,
+            **({"model": rec_result} if rec_result else {}),
         })
         with_drop = {n: v["drop"] for n, v in measured.items() if v["drop"]}
         no_drop = [n for n, v in measured.items() if not v["drop"]]
@@ -270,6 +287,7 @@ def convert(summary: dict[str, Any], *, model: str, product_model: str | None = 
                 "conditions": f"{cond}. 폐기 출처 {', '.join(srcs)}(검증 단계에서 버린 지적)",
                 "limits": (f"{lhead}. " if lhead else "") + "전수 계산"
                 + (f". 폐기율이 없는 {', '.join(no_drop)}은 합계에서 빠졌다" if no_drop else "") + miss_note,
+                **({"model": rec_result} if rec_result else {}),
             })
         else:
             metrics.append({
@@ -285,6 +303,7 @@ def convert(summary: dict[str, Any], *, model: str, product_model: str | None = 
         "detail": " · ".join(f"{n} {c}" for n, c in shown.items()),
         "conditions": f"{run}. 화면(/premortem/view)에 나온 위험카드 수, 데모 계획서 합. 화면 카드 generator {gens or '없음'}",
         "limits": "개수일 뿐 품질 지표가 아니다. 연결 검사 카드 수(card_pass_rate의 n)와 다른 실행이라 다를 수 있다",
+        **({"model": rec_view} if rec_view else {}),
     })
 
     passed = [
@@ -315,6 +334,7 @@ def convert(summary: dict[str, Any], *, model: str, product_model: str | None = 
             "쓰지 않는 참고값이다(PM 결정 2026-09-30: generator·model을 기록한 라이브 결과로 채운다). "
             if demo_ref else ""
         ) + "리포트 화면까지. 결과 패키지(ZIP) 내보내기는 재지 않았다. 1회 실행",
+        **({"model": rec_demo} if rec_demo else {}),
     })
 
     if product_model:
