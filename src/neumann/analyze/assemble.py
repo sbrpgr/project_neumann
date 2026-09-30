@@ -29,7 +29,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 from neumann.analyze import gate as gate_mod
-from neumann.analyze.revise import PLACEHOLDER_RE, PROPOSED_LABEL, placeholders
+from neumann.analyze.revise import (CONTROL_RE, PLACEHOLDER_RE, PROPOSED_LABEL, UNSAFE_MARKUP_RE, contains_identity,
+                                    placeholders, unsupported_facts, written_numbers)
 from neumann.models import PlanDocument, contains_pii, redact_pii
 
 log = logging.getLogger(__name__)
@@ -106,8 +107,10 @@ def collect_edits(revision: Mapping[str, Any] | Sequence[Mapping[str, Any]]) -> 
     for card_id, e in items:
         eid = str(e.get("edit_id") or "")
         no = e.get("plan_line")
-        if not eid or isinstance(no, bool) or not isinstance(no, int):
+        if not eid:
             continue
+        if isinstance(no, bool) or not isinstance(no, int):
+            raise ValueError("edit plan_line must be an integer")
         rat = e.get("rationale") if isinstance(e.get("rationale"), Mapping) else {}
         ids = [x for x in (rat.get("excerpt_ids") or e.get("excerpt_ids") or []) if isinstance(x, str)]
         out.setdefault(eid, EditRef(
@@ -135,12 +138,12 @@ def collect_decisions(decisions: Sequence[Mapping[str, Any]] | None) -> tuple[di
             problems.append(f"결정 {i}({eid}): decision은 채택·수정·기각(adopt·modify·reject) 중 하나다")
             continue
         text = raw.get("revised_text")
-        text = redact_pii(" ".join(str(text).split())) if isinstance(text, str) and text.strip() else None
+        text = redact_pii(" ".join(CONTROL_RE.sub("", str(text)).split())) if isinstance(text, str) and text.strip() else None
         if text is not None and len(text) > MAX_REVISED_CHARS:
             problems.append(f"결정 {i}({eid}): revised_text가 {MAX_REVISED_CHARS}자를 넘는다")
             continue
         note = raw.get("note")
-        note = redact_pii(str(note))[:2000] if isinstance(note, str) and note.strip() else None
+        note = redact_pii(CONTROL_RE.sub("", str(note)))[:2000] if isinstance(note, str) and note.strip() else None
         at = raw.get("decided_at")
         out[eid] = DecisionRef(eid, dec, text, note, str(at) if isinstance(at, str) else None)
     return out, problems
@@ -202,7 +205,7 @@ def assemble_revised_plan(
             conflicts.append({"kind": "unknown_line", "plan_line": e.plan_line, "edit_ids": [eid], "card_ids": [e.card_id],
                               "detail": "계획서에 없는 줄"})
             continue
-        if e.kind == "replace" and e.current_text and e.current_text != original[e.plan_line]:
+        if e.current_text != original[e.plan_line]:
             conflicts.append({"kind": "stale_line", "plan_line": e.plan_line, "edit_ids": [eid], "card_ids": [e.card_id],
                               "detail": "안의 current_text가 계획서 줄과 다르다(계획서가 바뀌었다)",
                               "current_text": original[e.plan_line], "expected_text": e.current_text})
@@ -301,8 +304,12 @@ def _regate_adoptions(plan: PlanDocument, revision: Any, edits: dict[str, EditRe
         if decision.decision != "adopt" or edit is None:
             continue
         text = edit.proposed_text
-        if contains_pii(text):
+        if contains_pii(text) or contains_identity(text):
             raise ValueError("proposed_text contains personal information")
+        if CONTROL_RE.search(text) or UNSAFE_MARKUP_RE.search(text):
+            raise ValueError("proposed_text contains unsafe characters or markup")
+        if unsupported_facts(text, plan.text):
+            raise ValueError("proposed_text contains unsupported facts")
         if "[확인 필요" in PLACEHOLDER_RE.sub("", text):
             raise ValueError("proposed_text has an invalid placeholder")
         if not edit.excerpt_ids or any(x not in ev or x not in pools.get(edit.card_id, set()) for x in edit.excerpt_ids):
@@ -320,10 +327,10 @@ def _regate_adoptions(plan: PlanDocument, revision: Any, edits: dict[str, EditRe
                                                                                        if k in Excerpt.model_fields}))
             unknown = fabricated_numbers(text, Draft("edit", text, tuple(edit.excerpt_ids), (), (edit.plan_line,)), index)
         else:
-            allowed = set(gate_mod.extract_numbers(plan.text))
+            allowed = set([*gate_mod.extract_numbers(plan.text), *written_numbers(plan.text)])
             for x in edit.excerpt_ids:
-                allowed.update(gate_mod.extract_numbers(ev[x]["text"]))
-            unknown = [n for n in gate_mod.extract_numbers(text) if n not in allowed]
+                allowed.update([*gate_mod.extract_numbers(ev[x]["text"]), *written_numbers(ev[x]["text"])])
+            unknown = [n for n in [*gate_mod.extract_numbers(text), *written_numbers(text)] if n not in allowed]
         if unknown:
             raise ValueError("proposed_text contains unsupported numbers")
 
@@ -371,9 +378,11 @@ def polish_gate(before: list[dict[str, Any]], after: Any) -> tuple[list[dict[str
         text = " ".join(text.split())
         if not text:
             return None, f"empty_line at {old['no']}"
-        if contains_pii(text):
+        if contains_pii(text) or contains_identity(text):
             return None, f"pii at {old['no']}"
-        if sorted(gate_mod.extract_numbers(PLACEHOLDER_RE.sub(" ", text))) != sorted(gate_mod.extract_numbers(PLACEHOLDER_RE.sub(" ", old["text"]))):
+        if CONTROL_RE.search(text) or UNSAFE_MARKUP_RE.search(text):
+            return None, f"unsafe_text at {old['no']}"
+        if sorted([*gate_mod.extract_numbers(text), *written_numbers(text)]) != sorted([*gate_mod.extract_numbers(old["text"]), *written_numbers(old["text"])]):
             return None, f"numbers_changed at {old['no']}"
         if sorted(placeholders(text)) != sorted(placeholders(old["text"])):
             return None, f"placeholders_changed at {old['no']}"
@@ -382,8 +391,20 @@ def polish_gate(before: list[dict[str, Any]], after: Any) -> tuple[list[dict[str
         ratio = len(text) / max(len(old["text"]), 1)
         if not 0.5 <= ratio <= 2.0:
             return None, f"length_ratio {ratio:.2f} at {old['no']}"
+        if unsupported_facts(text, old["text"]):
+            return None, f"new_fact at {old['no']}"
+        if _content_words(text) - _content_words(old["text"]):
+            return None, f"new_content_word at {old['no']}"
         out.append({**old, "text": text, "polished": text != old["text"]})
     return out, ""
+
+
+def _content_words(text: str) -> set[str]:
+    """보수적인 다듬기: 새 내용 낱말은 확인 없이 추가하지 않는다."""
+    allowed_style = {"다듬음", "제안", "이러한", "해당", "또한", "그리고", "따라서", "명확히", "자연스럽게", "위한", "위해서"}
+    words = re.findall(r"[A-Za-z][A-Za-z0-9._-]{2,}|[가-힣]{3,}", PLACEHOLDER_RE.sub("", text).lower())
+    return {re.sub(r"(?:한다|합니다|된다|됩니다|하며|하고|하도록|하는|하여|이다|입니다)$", "", w)
+            for w in words if w not in allowed_style}
 
 
 def polish_revised_plan(assembled: Mapping[str, Any], llm_call: Callable[..., Any] | None, *, effort: str = "medium") -> dict[str, Any]:
@@ -444,12 +465,12 @@ def evidence_lookup(result: Mapping[str, Any] | Any = None, revision: Mapping[st
     res = result.model_dump(mode="json") if hasattr(result, "model_dump") else (dict(result) if isinstance(result, Mapping) else {})
     for ex in res.get("evidence", []) or []:
         if isinstance(ex, Mapping) and ex.get("excerpt_id"):
-            out[str(ex["excerpt_id"])] = {"text": _display_excerpt(str(ex.get("text", ""))), "source_url": redact_pii(str(ex.get("source_url", ""))),
+            out[str(ex["excerpt_id"])] = {"text": _display_excerpt(str(ex.get("text", ""))), "source_url": _display_url(str(ex.get("source_url", ""))),
                                           "source_kind": str(ex.get("source_kind", "review")), "record_kind": "review",
                                           "work_id": None}
     for rec in (revision or {}).get("records", []) or []:
         if isinstance(rec, Mapping) and rec.get("excerpt_id"):
-            out.setdefault(str(rec["excerpt_id"]), {"text": _display_excerpt(str(rec.get("text", ""))), "source_url": redact_pii(str(rec.get("source_url", ""))),
+            out.setdefault(str(rec["excerpt_id"]), {"text": _display_excerpt(str(rec.get("text", ""))), "source_url": _display_url(str(rec.get("source_url", ""))),
                                                      "source_kind": str(rec.get("source_kind", "")),
                                                      "record_kind": str(rec.get("record_kind", "")), "work_id": rec.get("work_id")})
     return out
@@ -457,7 +478,15 @@ def evidence_lookup(result: Mapping[str, Any] | Any = None, revision: Mapping[st
 
 def _display_excerpt(text: str) -> str:
     # 개인정보 포함 입력의 문자열을 원문 인용처럼 렌더링하지 않는다.
-    return "(개인정보가 포함된 발췌는 표시하지 않음)" if contains_pii(text) else text
+    if contains_pii(text) or contains_identity(text):
+        return "(개인정보가 포함된 발췌는 표시하지 않음)"
+    if CONTROL_RE.search(text) or UNSAFE_MARKUP_RE.search(text):
+        return "(안전하지 않은 문자가 포함된 발췌는 표시하지 않음)"
+    return text
+
+
+def _display_url(url: str) -> str:
+    return redact_pii(url) if url.startswith(("https://", "http://")) and not re.search(r"[<>\x00-\x20]", url) else ""
 
 
 KIND_KO = {"review": "심사평", "meta_review": "메타리뷰", "author_response": "저자 답변", "decision": "결정", "post_status": "사후 기록"}
@@ -551,6 +580,18 @@ def build_docx(assembled: Mapping[str, Any], ev: EvidenceLookup, *, model: str |
     """python-docx로 .docx를 만든다: 제목·표기 줄·본문(변경 문장 옆 위첨자 미주 번호)·미주·수정 이력 표·근거 부록."""
     from docx import Document
     from docx.shared import Pt
+
+    def xml_safe(value: Any) -> Any:
+        if isinstance(value, str):
+            return CONTROL_RE.sub("", value)
+        if isinstance(value, Mapping):
+            return {k: xml_safe(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [xml_safe(v) for v in value]
+        return value
+
+    assembled, ev = xml_safe(assembled), xml_safe(ev)
+    title, model, generator, generated_at = (xml_safe(v) for v in (title, model, generator, generated_at))
 
     gen_at = generated_at or str(assembled.get("generated_at", ""))
     label = _label_line(model, gen_at, generator)

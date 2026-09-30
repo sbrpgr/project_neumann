@@ -29,7 +29,7 @@ from typing import Any, Protocol
 from pydantic import BaseModel
 
 from neumann.analyze import rules
-from neumann.models import AuthorResponse, Decision, Excerpt, PremortemResult, ReviewEvent, ReviewKind, RiskCard, RiskCode, Work
+from neumann.models import AuthorResponse, Decision, Excerpt, PremortemResult, ReviewEvent, ReviewKind, RiskCard, RiskCode, Work, contains_pii
 
 log = logging.getLogger(__name__)
 
@@ -358,7 +358,7 @@ def _sentence_excerpts(text: str, *, source_kind: str, source_id: str, source_ur
         piece = text[s:e]
         if not (MIN_SENTENCE_CHARS <= len(piece) <= MAX_SENTENCE_CHARS) or not piece.strip():
             continue
-        if contains_identity(piece):
+        if contains_identity(piece) or contains_pii(piece):
             continue
         try:
             ex = Excerpt.from_source(text, s, e, source_kind=source_kind, source_id=source_id, source_url=source_url)  # type: ignore[arg-type]
@@ -373,6 +373,10 @@ def _decision_excerpt(dec: Decision) -> Excerpt | None:
     """결정 본문이 있으면 그 전체, 없으면 결정 원문 문자열(outcome_raw)을 글자 그대로 자른다."""
     text = dec.text if dec.text and dec.text.strip() else dec.outcome_raw
     if not text or not text.strip():
+        return None
+    from neumann.analyze.revise import contains_identity
+
+    if contains_identity(text) or contains_pii(text):
         return None
     try:
         return Excerpt.from_source(text, 0, len(text), source_kind="decision", source_id=dec.decision_id,

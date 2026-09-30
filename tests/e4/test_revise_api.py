@@ -452,7 +452,7 @@ def test_assembly_signing_requires_result_and_revision_authenticity(tmp_path, mo
     run(go())
 
 
-@pytest.mark.parametrize("case", ["number", "pii", "placeholder", "unknown_evidence", "other_card_evidence"])
+@pytest.mark.parametrize("case", ["number", "pii", "placeholder", "unknown_evidence", "other_card_evidence", "institution", "handle", "markup", "written_number", "placeholder_number"])
 def test_assembly_regates_returned_proposals_and_refunds(tmp_path, monkeypatch, case):
     srv, app = make(tmp_path, monkeypatch)
 
@@ -467,10 +467,57 @@ def test_assembly_regates_returned_proposals_and_refunds(tmp_path, monkeypatch, 
                 edit["proposed_text"] = "연락 forged@example.org로 협의한다."
             elif case == "placeholder":
                 edit["proposed_text"] = "[확인 필요: 닫히지 않은 자리표시"
+            elif case == "institution":
+                edit["proposed_text"] = "서울대병원과 공동 수행한다."
+            elif case == "handle":
+                edit["proposed_text"] = "Reviewer XYZq의 지적을 반영한다."
+            elif case == "markup":
+                edit["proposed_text"] = "<img src=x onerror=alert()>"
+            elif case == "written_number":
+                edit["proposed_text"] = "오천만 원을 이미 확보했다."
+            elif case == "placeholder_number":
+                edit["proposed_text"] = "[확인 필요: 표본 3000건 규모]"
             else:
                 edit["rationale"]["excerpt_ids"] = ["unknown-excerpt" if case == "unknown_evidence" else result_json()["risk_cards"][1]["evidence"][0]]
             response = await c.post("/premortem/revise/assemble", json={"plan_text": PLAN, "revision": bundle, "result": result_json(),
                                                                       "decisions": [{"edit_id": edit["edit_id"], "decision": "adopt"}]})
             assert response.status_code == 422 and response.json()["error_code"] == "invalid_revision_proposal"
             assert srv.gate.active == srv.gate.waiting == 0 and srv.budget.used == baseline
+    run(go())
+
+
+def test_invalid_result_burst_does_not_starve_other_ip(tmp_path, monkeypatch):
+    srv, app = make(tmp_path, monkeypatch, max_concurrent=4, queue_max=30, sync_queue_max=4,
+                    rate_per_min=6, daily_budget=100)
+
+    async def go():
+        async with client(app, ip="10.0.0.1") as c:
+            for _ in range(6):
+                response = await c.post("/premortem/revise", json={"result": {}, "plan_text": PLAN})
+                assert response.status_code == 422
+                assert srv.gate.active == srv.gate.waiting == srv.budget.used == 0
+        async with client(app, ip="10.0.0.2") as c:
+            analysis = await c.post("/premortem", json={"plan_text": PLAN})
+            assert analysis.status_code == 200
+            revision = await c.post("/premortem/revise", json={"result": result_json(), "plan_text": PLAN})
+            assert revision.status_code == 200
+            assert srv.gate.active == srv.gate.waiting == 0
+    run(go())
+
+
+def test_modify_control_character_exports_docx_without_server_error(tmp_path, monkeypatch):
+    from docx import Document
+
+    srv, app = make(tmp_path, monkeypatch)
+
+    async def go():
+        async with client(app) as c:
+            bundle = await _bundle(c)
+            edit = bundle["revisions"][0]["edits"][0]
+            response = await c.post("/premortem/revise/assemble", json={"plan_text": PLAN, "revision": bundle,
+                                                                      "decisions": [{"edit_id": edit["edit_id"], "decision": "modify", "revised_text": "직접\x00 수정 문안"}],
+                                                                      "format": "docx"})
+            assert response.status_code == 200
+            doc = Document(io.BytesIO(response.content))
+            assert "직접 수정 문안" in "\n".join(p.text for p in doc.paragraphs)
     run(go())

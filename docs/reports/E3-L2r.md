@@ -39,6 +39,16 @@
 - 명령은 수정 3의 대상 4파일 → **101 passed in 2.63s**. 한글/영어 파서, placeholder 내 3000건, 질문 92%, 핸들 4종, 원문 오프셋 유지, 타 논문 답변, 새 기관/데이터셋/이미 확인 결과/markup/PII를 검사했다.
 - 한계: 정규식은 모든 수사·기관 별칭·데이터셋·서술 의미를 판별하지 못한다. 수치 없는 새 주장, 기존 단어를 재배열한 의미 변화는 일반 의미 검증으로 보장하지 않는다. 확인되지 않은 고유명칭은 연구자 확인이 필요하다. 실패는 폐기 사유로 기록한다.
 
+## Codex 인수 수정 6 — F6 다듬기·F8 통합 가장자리 (2026-10-01)
+
+- 다듬기는 새 기관/이미 달성한 주장·핸들·수사·내용 낱말 추가를 거절한다. placeholder 안 수치도 동일해야 한다. 스타일 낱말 일부와 어미 변화만 허용하는 보수적 게이트라 정상적인 폭넓은 바꿔쓰기까지 거절할 수 있다. 거절 사유를 기록하고 원 통합본을 유지한다. 기본은 여전히 polish=false.
+- 조립 재게이트에 추가 사실·핸들·실행 가능한 markup·제어문자·수사를 연결했다(F8a 포함). insert_after와 빈 current_text도 기준 줄이 글자 그대로 같아야 적용한다(F8c). float/str/bool plan_line은 조용히 무시하지 않고 오류로 돌려준다(F8f). 범위 밖 줄은 unknown_line 충돌로 원문 유지(V7).
+- 연구자 문안·메모의 XML 제어문자를 제거하며 docx 렌더링 입력도 정리한다(F8b). 연구자 직접 수정에는 제안 근거 각주를 자동으로 붙이지 않는다(F8d, 수정 4). 거절된 다듬기의 generator/model은 audit에 남지만 라벨에는 사용하지 않는다(F8e, 수정 4).
+- 결정 발췌도 신원/PII 포함이면 선택하지 않는다. 안전하지 않은 발췌는 미표시, 비HTTP/제어문자 URL은 미표시한다. docx 신원 검사에서 기존 `or True`를 제거해 실제 실패 가능한 단언으로 바꿨다.
+- 대상 4파일 표준 실행 → **119 passed in 2.90s**. 공개 프로필 동시4·대기30·IP당6 조건에서 한 IP의 잘못된 result 6건 뒤 다른 IP `/premortem`과 `/revise` 모두 200, 거절 직후 active/waiting/budget=0을 확인했다.
+- E4-L2f 현재 signing.py를 **읽기 전용으로 모듈 주입**하고 나머지 코드는 이 worktree에서 실행한 실제 HMAC 연결 시험 → **119 passed in 2.81s**. 명령: `python -c "import importlib.util,sys,pytest,neumann.api; ... spec_from_file_location('neumann.api.signing', '<E4-L2f worktree>/src/neumann/api/signing.py'); ... pytest.main([<대상 4파일>, '-p','no:cacheprovider','--basetemp',<허용된 경로>,'-q'])"`. signing.py를 복사/수정하지 않았고 전체 main 병합 시뮬레이션을 대신하지 않는다. 서명은 사용자 응답에 남을 진단 필드를 scrub한 뒤 생성하도록 했다.
+- 환경은 mock/LIVE_TESTS=0/LIVE_LLM_OK 미설정/OPENBLAS_NUM_THREADS=1. API 0회, 다른 프로세스/포트 조작 0회. 전체 verify·security 단독·독립 다른 모델 검증·최신 main 병합 호환은 PM 큐에 남긴다.
+
 - 빌더: Claude Fable 5.1 · 브랜치 `task/E3-L2r`(main `03503d6` 기준) · 2026-09-30
 - 모든 명령은 `NEUMANN_LLM_PROVIDER=mock`, `NEUMANN_LIVE_LLM_OK=0`으로 돌렸다. **OpenAI 호출 0회.** 라이브 확인은 대표 승인 뒤 구축 세션(§9).
 

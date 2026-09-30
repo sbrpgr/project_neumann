@@ -173,6 +173,7 @@ def run_revision(req: ReviseRequest, *, provider: str | None = None,
     out["origin"] = "server_signed" if verified else "client_submitted_unverified"
     if not verified:
         out["notices"].append("입력 분석 결과의 서버 서명을 확인하지 못했다. 근거 원문·출처는 미확인이다.")
+    out = serving.scrub_ok_payload(out)
     out["revision_sig"] = sign_payload("revision", out) if verified else None
     return out
 
@@ -215,6 +216,7 @@ def run_assembly(req: AssembleRequest, *, provider: str | None = None, timeout_s
     out["markdown"] = asm.render_markdown(out, ev, model=label_model, generator=label_gen, title=req.title or "수정된 연구계획서")
     out["label"] = asm._label_line(label_model, out["generated_at"], label_gen)
     out["docx_available"] = True
+    out = serving.scrub_ok_payload(out)
     out["revised_plan_sig"] = sign_payload("revised-plan", {k: v for k, v in out.items() if k != "revised_plan_sig"}) if verified else None
     return out
 

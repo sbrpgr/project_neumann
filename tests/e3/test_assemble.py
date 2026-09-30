@@ -53,7 +53,7 @@ def with_extra_edit(bundle: dict[str, Any], base: dict[str, Any], **changes: Any
 
 def test_non_overlapping_edits_merge_with_line_tracking(bundle, plan):
     e = edits_of(bundle)  # leak/e1 → 16, leak/e2 → 17, seed/e1 → 22
-    b = with_extra_edit(bundle, e[2], edit_id="card-fx-seed/e9", kind="insert_after", plan_line=22, current_text="",
+    b = with_extra_edit(bundle, e[2], edit_id="card-fx-seed/e9", kind="insert_after", plan_line=22, current_text=e[2]["current_text"],
                         proposed_text="반복 실험 횟수와 오차 보고 형식을 착수 전에 정한다.")
     decisions = [{"edit_id": e[0]["edit_id"], "decision": "adopt"}, {"edit_id": e[1]["edit_id"], "decision": "채택"},
                  {"edit_id": "card-fx-seed/e9", "decision": "adopt"}]
@@ -242,7 +242,7 @@ def test_docx_builds_and_reads_back_without_identity(bundle, plan):
         assert ch["new_text"] in text
     for note in {x for c in a["changes"] for x in c["excerpt_ids"]}:
         assert ev[note]["text"] in text
-    assert not PSEUDONYM.search(text) and "[EMAIL]" not in text or True
+    assert not PSEUDONYM.search(text) and "@" not in text
     # 위첨자 미주 번호가 바뀐 문장에 붙어 있다
     sup = [r for p in doc.paragraphs for r in p.runs if r.font.superscript]
     assert len(sup) >= len(a["changes"])
@@ -256,3 +256,60 @@ def test_revised_plan_example_matches_contract():
     data = json.loads(p.read_text(encoding="utf-8"))
     assert asm.validate_revised_plan(data) == []
     assert data["conflicts"] and data["placeholders"]
+
+
+@pytest.mark.parametrize("kind, current", [("replace", ""), ("insert_after", ""), ("insert_after", "바뀐 기준 줄")])
+def test_every_edit_kind_checks_current_text(bundle, plan, kind, current):
+    b = copy.deepcopy(bundle)
+    e = edits_of(b)[0]
+    e["kind"], e["current_text"] = kind, current
+    out = asm.assemble_revised_plan(plan, b, [{"edit_id": e["edit_id"], "decision": "adopt"}])
+    assert out["stats"]["applied"] == 0 and out["conflicts"][0]["kind"] == "stale_line"
+
+
+def test_out_of_range_assembly_line_is_reported_without_applying(bundle, plan):
+    b = copy.deepcopy(bundle)
+    e = edits_of(b)[0]
+    e["plan_line"] = 999
+    out = asm.assemble_revised_plan(plan, b, [{"edit_id": e["edit_id"], "decision": "adopt"}])
+    assert out["stats"]["applied"] == 0 and out["conflicts"][0]["kind"] == "unknown_line"
+    assert out["revised_text"] == plan
+
+
+@pytest.mark.parametrize("value", [16.0, "16", True])
+def test_assembly_does_not_silently_ignore_invalid_line_types(bundle, plan, value):
+    b = copy.deepcopy(bundle)
+    e = edits_of(b)[0]
+    e["plan_line"] = value
+    with pytest.raises(ValueError, match="integer"):
+        asm.assemble_revised_plan(plan, b, [{"edit_id": e["edit_id"], "decision": "adopt"}])
+
+
+@pytest.mark.parametrize("suffix, reason", [(" 서울대병원과 공동 수행한다.", "new_fact"),
+                                          (" Reviewer XYZq의 제안을 따른다.", "pii"),
+                                          (" 성공을 보장한다.", "new_content_word")])
+def test_polish_does_not_add_institution_identity_or_claim(bundle, plan, suffix, reason):
+    a = assembled(bundle, plan)
+
+    def fn(call):
+        rows = [{"no": ln["no"], "text": ln["text"]} for ln in call.payload["lines"]]
+        target = next(r for r, ln in zip(rows, call.payload["lines"], strict=True) if ln["changed"])
+        target["text"] += suffix
+        return {"lines": rows}
+
+    out = asm.polish_revised_plan(a, scripted(fn))
+    assert out["polish"]["applied"] is False and reason in out["polish"]["reason"]
+    assert out["revised_text"] == a["revised_text"]
+
+
+def test_researcher_control_characters_do_not_break_docx(bundle, plan):
+    from docx import Document
+
+    e = edits_of(bundle)[0]
+    out = asm.assemble_revised_plan(plan, bundle, [{"edit_id": e["edit_id"], "decision": "modify",
+                                                  "revised_text": "연구자\x00 문안", "note": "직접\x00 메모"}])
+    data = asm.build_docx(out, asm.evidence_lookup(None, bundle), title="제목\x00 시험", generator="mock")
+    doc = Document(io.BytesIO(data))
+    assert "연구자 문안" in "\n".join(p.text for p in doc.paragraphs)
+    assert doc.paragraphs[0].text == "제목 시험"
+    assert "\x00" not in out["revised_text"] and out["changes"][0]["excerpt_ids"] == []
