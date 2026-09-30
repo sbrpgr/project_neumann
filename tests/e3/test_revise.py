@@ -85,7 +85,7 @@ def test_mock_bundle_matches_contract_and_pool(result, store, mock_llm):
     item = leak["precedents"]["items"][0]
     assert item["work_id"] == ACCEPTED_WORK and item["outcome"] == "accept_poster"
     kinds = {r["record_kind"] for r in out["records"] if r["excerpt_id"] in item["excerpt_ids"]}
-    assert kinds & {"author_response", "decision"}
+    assert "author_response" in kinds
     # 새 발췌는 모두 원문 오프셋 인용(text_sha256 = sha256(text), 길이 = end-start)
     from neumann.models import sha256_text
 
@@ -181,10 +181,32 @@ def test_no_accepted_case_is_reported_honestly(result, mock_llm):
     store = make_store(with_accepted_response=False)
     out = revise.revise_result(result, store=store, llm=mock_llm, card_ids=[LEAK])
     rev = out["revisions"][0]
-    # fixture 채택 논문(gnn-002)의 결정 원문 문자열은 남아 있지만 저자 답변이 없다: mock은 결정 기록만으로 대응을 쓴다
-    if rev["precedents"]["status"] == "none":
-        assert "대응 사례 없음" in rev["precedents"]["note"]
+    assert rev["precedents"]["status"] == "none" and rev["precedents"]["items"] == []
+    assert "대응 사례 없음" in rev["precedents"]["note"] and "저자 답변 없음" in rev["precedents"]["note"]
     assert out["coverage"]["works_with_responses"] == 0
+
+
+@pytest.mark.parametrize("case", ["decision_only", "meta_only", "rejected_mixed", "review_mixed", "other_work_mixed"])
+def test_precedent_requires_same_accepted_author_response(result, store, case):
+    from dataclasses import replace
+
+    card = next(c for c in result.risk_cards if c.card_id == LEAK)
+    records = collect_card_records(card, result, store)
+    author = next(r for r in records.excerpts if r.record_kind == "author_response" and r.work_id == ACCEPTED_WORK)
+    decision = next(r for r in records.excerpts if r.record_kind == "decision" and r.work_id == ACCEPTED_WORK)
+    aid, did = author.excerpt.excerpt_id, decision.excerpt.excerpt_id
+    if case == "meta_only":
+        records.excerpts = [replace(r, record_kind="meta_review") if r is decision else r for r in records.excerpts]
+    if case in ("rejected_mixed", "other_work_mixed"):
+        records.excerpts = [replace(r, outcome="reject" if case == "rejected_mixed" else r.outcome,
+                                   work_id="fixture:other-work") if r is decision else r for r in records.excerpts]
+    ids = [did] if case in ("decision_only", "meta_only") else [aid, card.evidence[0] if case == "review_mixed" else did]
+    pool = set(card.evidence) | {r.excerpt.excerpt_id for r in records.excerpts}
+    index = revise.RevisionIndex(result, records.by_id(), {LEAK: pool})
+    gated = revise.gate_card({"precedents": [{"text": "저자 답변에서 지적에 대응했다.", "excerpt_ids": ids}]},
+                            card, index, records, result.plan, generator="mock")
+    assert gated.precedents == []
+    assert [d.reason for d in gated.dropped] == [revise.PRECEDENT_NOT_ACCEPTED]
 
 
 def test_edit_line_out_of_range_or_blank_dropped(result, store):

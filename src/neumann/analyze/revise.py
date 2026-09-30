@@ -108,8 +108,9 @@ Input (JSON):
 Write in Korean, for the researcher:
 - interpretation: 1 to 4 sentences. Why reviewers of similar work flagged this risk and how it bore on the decision.
   Every sentence cites 1 to 4 ids in excerpt_ids, at least one of them an E* or M* id.
-- precedents: 0 to 3 items. How a paper that received the same objection and was ACCEPTED responded, citing A*, M* or D*
-  ids of accepted papers only. If the input has no accepted paper with such records, return an empty list.
+- precedents: 0 to 3 items. How a paper that received the same objection and was ACCEPTED responded. Every item must
+  cite an A* author-response id; all cited records must belong to that same accepted paper. M* or D* alone cannot
+  establish an author response. If the input has no accepted paper with author responses, return an empty list.
 - edits: 1 to 4 concrete rewrites of specific plan lines. plan_line is a line number from the input plan; kind is
   "replace" (rewrite that line) or "insert_after" (add a new line after it); proposed_text is the new Korean sentence for
   the plan (it is a proposal: keep the plan's own facts, do not invent datasets, numbers or resources); rationale says why
@@ -413,10 +414,10 @@ def gate_card(
         g.generated += 1
         text, ids = item.get("text"), list(item.get("excerpt_ids", []))
         reason, detail, quotes = _check(text, ids, [], "precedent", index, pool)
-        accepted = [by_id[x] for x in ids if x in by_id and is_accepted(by_id[x].outcome)
-                    and by_id[x].record_kind in ("author_response", "meta_review", "decision")]
-        if reason is None and not accepted:
-            reason, detail = PRECEDENT_NOT_ACCEPTED, "채택된 논문의 저자 답변·메타리뷰·결정 발췌가 없다"
+        accepted = [by_id[x] for x in ids if x in by_id and is_accepted(by_id[x].outcome)]
+        if reason is None and (len(accepted) != len(ids) or len({r.work_id for r in accepted}) != 1
+                               or not any(r.record_kind == "author_response" for r in accepted)):
+            reason, detail = PRECEDENT_NOT_ACCEPTED, "같은 채택 논문의 저자 답변 인용이 필요하며 모든 인용이 그 논문의 기록이어야 한다"
         if reason is not None:
             drop("precedent", reason, text, detail)
             continue
@@ -591,13 +592,13 @@ def _run_card(card: RiskCard, result: PremortemResult, plan: PlanDocument | None
                   else "llm_empty_output: 모델이 문장을 내지 않았다")
         rev = rule_card_revision(card, index, reason, elapsed_s=time.perf_counter() - t0, llm_calls=1, carried=g.dropped)
         return _CardRun(rev, records, prompt_chars, usage, True)
-    has_case = any(r.record_kind in ("author_response", "meta_review", "decision") and is_accepted(r.outcome)
+    has_case = any(r.record_kind == "author_response" and is_accepted(r.outcome)
                    for r in records.excerpts)
     if g.precedents:
         precedents = {"status": "found", "note": None, "items": g.precedents}
     else:
         note = NO_PRECEDENT_NOTE + ("(채택 논문의 기록은 있었으나 모델이 연결하지 못했거나 게이트에서 빠졌다)" if has_case
-                                    else "(카드 근거 논문·유사 연구 중 같은 지적에 답한 채택 사례를 찾지 못했다)")
+                                    else "(카드 근거 논문·유사 연구 중 채택 논문의 저자 답변 없음)")
         precedents = {"status": "none", "note": note, "items": []}
     status = "ok" if not g.dropped else "degraded"
     rev = {

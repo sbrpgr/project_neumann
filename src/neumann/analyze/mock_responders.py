@@ -189,7 +189,11 @@ def revise_card(call: LLMCall) -> dict[str, Any]:
     kind = card.get("risk_type", "")
     accepted = {w["id"] for w in p.get("works", []) if w.get("accepted")}
     case_ids = [r["id"] for r in p.get("records", [])
-                if r.get("work") in accepted and r.get("kind") in ("author_response", "meta_review", "decision")]
+                if r.get("work") in accepted and r.get("kind") == "author_response"]
+    if case_ids:
+        case_work = next(r.get("work") for r in p.get("records", []) if r["id"] == case_ids[0])
+        case_ids = [r["id"] for r in p.get("records", [])
+                    if r.get("work") == case_work and r.get("kind") == "author_response"]
     plan_lines = [ln["no"] for ln in p.get("plan", {}).get("lines", [])]
     target = [n for n in card.get("plan_lines", []) if n in plan_lines][:2] or plan_lines[:1]
     out: dict[str, Any] = {

@@ -8,6 +8,12 @@
 - 환경: provider mock, LIVE_TESTS=0, LIVE_LLM_OK 미설정, OPENBLAS_NUM_THREADS=1. 실제 API 0회. 전체 verify는 PM 직렬 큐에서 별도 시행한다.
 - 다음: F2 채택 저자 답변 필수, F3 카드 8장·협력 취소, F4 서명·조립 재검사. E4-L2f 공개 서명 인터페이스는 PM에 요청했다.
 
+## Codex 인수 수정 2 — F2 채택 대응의 저자 답변 (2026-09-30)
+
+- `found`는 같은 채택 논문의 저자 답변 발췌가 포함되고 모든 인용이 그 논문 기록일 때만 가능하다. 결정·메타리뷰만으로 저자 대응을 만들지 않는다. mock도 저자 답변만 선택한다. 아래 기존 보고서의 결정·메타리뷰만 허용한다는 서술은 이 수정으로 폐기한다.
+- 느슨한 조건부 테스트를 `status=none`, 빈 items, 저자 답변 없음 문구 필수로 바꿨다. 결정만·메타리뷰만·거절 기록 혼합·심사평 혼합·다른 채택 논문 혼합 5개 회귀를 추가했다.
+- 명령: `python -m pytest tests/e3/test_revise.py tests/e4/test_revise_api.py -p no:cacheprovider --basetemp <허용된 임시 경로> -q` → **35 passed in 1.98s**. 환경은 수정 1과 같고 실제 API 0회.
+
 - 빌더: Claude Fable 5.1 · 브랜치 `task/E3-L2r`(main `03503d6` 기준) · 2026-09-30
 - 모든 명령은 `NEUMANN_LLM_PROVIDER=mock`, `NEUMANN_LIVE_LLM_OK=0`으로 돌렸다. **OpenAI 호출 0회.** 라이브 확인은 대표 승인 뒤 구축 세션(§9).
 
