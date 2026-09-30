@@ -40,6 +40,7 @@ from typing import Any, Literal
 from pydantic import Field, field_validator
 
 from neumann.models import SCHEMA_VERSION, NeumannModel, PremortemResult, redact_pii
+from neumann.api.export_title import markdown_title, plan_title
 
 REVISION_FILE = "revision.json"
 REVISED_PLAN_FILE = "revised_plan.md"
@@ -471,7 +472,7 @@ def compose(
 # ── 파일·요약 ─────────────────────────────────────────────────────────────
 
 
-def render_files(comp: Composition, result: PremortemResult) -> dict[str, bytes]:
+def render_files(comp: Composition, result: PremortemResult, *, title: str | None = None) -> dict[str, bytes]:
     """덧붙일 파일 {이름: 바이트}. 판정(comp)은 compose()가 이미 끝냈다."""
     files: dict[str, bytes] = {}
     if comp.revision is not None:
@@ -485,7 +486,8 @@ def render_files(comp: Composition, result: PremortemResult) -> dict[str, bytes]
         from neumann.analyze import assemble as asm
 
         rendered = asm.render_markdown(comp.revised_plan, asm.evidence_lookup(result, comp.revision),
-                                      model=comp.label_model, generator=comp.label_generator)
+                                      model=comp.label_model, generator=comp.label_generator,
+                                      title=markdown_title(plan_title(comp.revised_plan, title)))
         text = rendered["footnoted"].rstrip("\n") + "\n\n" + rendered["history"]
         files[REVISED_PLAN_FILE] = text.encode("utf-8")
     return files

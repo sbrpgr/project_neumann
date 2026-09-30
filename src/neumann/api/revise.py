@@ -38,6 +38,7 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from neumann.api import serving
+from neumann.api.export_title import content_disposition, display_title, markdown_title
 
 log = logging.getLogger("neumann.revise")
 
@@ -259,7 +260,8 @@ def run_assembly(req: AssembleRequest, *, provider: str | None = None, timeout_s
     ev = asm.evidence_lookup(req.result, req.revision)
     label_model = model or (rev_model if verified and isinstance(rev_model, str) else None)
     label_gen = generator or (rev_gen if verified and isinstance(rev_gen, str) else "client_submitted_unverified")
-    out["markdown"] = asm.render_markdown(out, ev, model=label_model, generator=label_gen, title=req.title or "수정된 연구계획서")
+    out["title"] = display_title(req.title)
+    out["markdown"] = asm.render_markdown(out, ev, model=label_model, generator=label_gen, title=markdown_title(out["title"]))
     out["label"] = asm._label_line(label_model, out["generated_at"], label_gen)
     out["docx_available"] = True
     out = serving.scrub_ok_payload(out)
@@ -277,7 +279,7 @@ def build_docx_bytes(req: AssembleRequest, assembled: Mapping[str, Any]) -> byte
     rev_gen = req.revision.get("generator") if isinstance(req.revision, Mapping) else None
     return asm.build_docx(assembled, ev, model=(pol.get("model") if pol.get("applied") else None) or (rev_model if verified and isinstance(rev_model, str) else None),
                           generator=(pol.get("generator") if pol.get("applied") else None) or (rev_gen if verified and isinstance(rev_gen, str) else "client_submitted_unverified"),
-                          title=req.title or "수정된 연구계획서")
+                          title=display_title(req.title))
 
 
 # ───────────────────────── 라우터 ─────────────────────────
@@ -470,12 +472,12 @@ async def premortem_revise_assemble(request: Request) -> Response:
     short = re.sub(r"[^0-9A-Za-z_-]", "", str(out.get("revised_plan_id", "")))[:12] or "plan"
     if req.format == "docx":
         return Response(content=data, media_type=DOCX_MEDIA, headers={
-            "Content-Disposition": f'attachment; filename="neumann_revised_plan_{short}.docx"', "Cache-Control": "no-store",
+            "Content-Disposition": content_disposition("neumann_revised_plan", short, out["title"], "docx"), "Cache-Control": "no-store",
             "X-Neumann-Changes": str(out["stats"]["applied"]), "X-Neumann-Conflicts": str(out["stats"]["conflicts"])})
     if req.format == "md":
         md = out["markdown"]["footnoted"] + "\n\n" + out["markdown"]["history"]
         return Response(content=md, media_type="text/markdown; charset=utf-8", headers={
-            "Content-Disposition": f'attachment; filename="neumann_revised_plan_{short}.md"', "Cache-Control": "no-store"})
+            "Content-Disposition": content_disposition("neumann_revised_plan", short, out["title"], "md"), "Cache-Control": "no-store"})
     return _json(serving.scrub_ok_payload(out))
 
 

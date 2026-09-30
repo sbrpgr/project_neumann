@@ -1303,7 +1303,7 @@
     return 'HTTP ' + code;
   }
   function expJson(r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error(expServerMsg(j, r.status)); return j; }); }
-  function expFileName(cd) { var m = /filename="?([^";]+)"?/.exec(cd || ''); var n = m ? m[1].replace(/[^0-9A-Za-z_.-]/g, '') : ''; return /\.zip$/i.test(n) ? n : 'neumann_package.zip'; }
+  function expFileName(cd) { var m = /filename\*=UTF-8''([^;]+)/i.exec(cd || '') || /filename="?([^";]+)"?/i.exec(cd || ''); var n = ''; try { n = m ? decodeURIComponent(m[1]).replace(/[^\p{L}\p{N}_. -]/gu, '').replace(/\s+/g, '_').slice(0, 120) : ''; } catch (_) {} return /\.zip$/i.test(n) && n.indexOf('..') < 0 ? n : 'neumann_package.zip'; }
   function expSave(blob, name) {
     var u = URL.createObjectURL(blob), a = document.createElement('a');
     a.href = u; a.download = name; a.style.display = 'none'; document.body.appendChild(a); a.click(); a.remove();
@@ -1317,7 +1317,7 @@
     var raw = expInline(d), decisions = expDecisions(d), n = decisions.length;
     expMsg('ZIP 만드는 중 · POST /premortem/package · 결정 ' + n + '건');
     var revisionPayload = window.NeumannRevise && !window.NeumannRevise.mock ? window.NeumannRevise.exportPayload() : {};
-    fetch('premortem/package', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ result: raw, result_sig: d.result_sig || null, decisions: decisions }, revisionPayload)) }).then(function (r) {
+    fetch('premortem/package', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ result: raw, result_sig: d.result_sig || null, decisions: decisions, title: String((d.plan || {}).title || '수정된 연구계획서').slice(0, 200) }, revisionPayload)) }).then(function (r) {
       if (!r.ok) return expJson(r);
       var name = expFileName(r.headers.get('Content-Disposition')), origin = r.headers.get('X-Neumann-Result-Origin') || '';
       return r.blob().then(function (b) { if (EXP.d !== d) return; expSave(b, name); e.busy = false; expMsg('내려받음 · ' + name + ' · ' + upSize(b.size) + ' · 결정 ' + n + '건' + (origin ? ' · ' + (EXP_ORIGIN[origin] || origin) : ''), origin === 'client_submitted_unverified'); });
@@ -1855,9 +1855,10 @@
     }).catch(function (e) { if (state().gen !== gen || st.asmStamp !== stamp) return; st.asm = null; var msg = e && e.message ? String(e.message) : '서버 연결 실패'; st.asmMsg = msg + (msg.indexOf('화면 조립') >= 0 ? '' : ' → 화면 조립'); paintViewer(); });
   }
   function saveBlob(blob, name) { var u = URL.createObjectURL(blob), a = document.createElement('a'); a.href = u; a.download = name; a.style.display = 'none'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(u); }, 5000); }
-  function downloadMd() { var final = state().finalization; if (final) { var result = final.finalization || {}; var text = '> 수정 확정·검증 · ' + T(result.status) + ' · ' + originText(final) + '\n\n' + T(final.final_text) + '\n\n## 변경 목록\n\n' + JSON.stringify(result.corrections || [], null, 2) + '\n\n## 잔여 쟁점\n\n' + JSON.stringify(result.issues || [], null, 2); saveBlob(new Blob([text], { type: 'text/markdown;charset=utf-8' }), 'neumann_final_plan.md'); U.toast('최종 수정 초안 내려받음'); return; } var asm = currentAsm(); if (!asm.counts.adopted) U.toast('채택한 수정안이 없어 수정본이 원본과 같음'); var name = asm.source === 'server' && asm.rid ? 'neumann_revised_plan_' + asm.rid.slice(0, 12) + '.md' : mdName('md'); saveBlob(new Blob([mdText(asm)], { type: 'text/markdown;charset=utf-8' }), name); U.toast('수정본 내려받음 · ' + name + (asm.source === 'server' ? ' · 서버 각주 판+이력' : ' · 화면 조립')); }
+  function revisedName(asm, ext) { var title = String((asm.raw || {}).title || '수정된 연구계획서').replace(/[^\p{L}\p{N} _-]/gu, '').trim().replace(/\s+/g, '_').slice(0, 60) || 'plan'; var id = String(asm.rid || 'plan').replace(/[^0-9A-Za-z_-]/g, '').slice(0, 12) || 'plan'; return 'neumann_revised_plan_' + title + '_' + id + '.' + ext; }
+  function downloadMd() { var final = state().finalization; if (final) { var result = final.finalization || {}; var text = '> 수정 확정·검증 · ' + T(result.status) + ' · ' + originText(final) + '\n\n' + T(final.final_text) + '\n\n## 변경 목록\n\n' + JSON.stringify(result.corrections || [], null, 2) + '\n\n## 잔여 쟁점\n\n' + JSON.stringify(result.issues || [], null, 2); saveBlob(new Blob([text], { type: 'text/markdown;charset=utf-8' }), 'neumann_final_plan.md'); U.toast('최종 수정 초안 내려받음'); return; } var asm = currentAsm(); if (!asm.counts.adopted) U.toast('채택한 수정안이 없어 수정본이 원본과 같음'); var name = asm.source === 'server' && asm.rid ? revisedName(asm, 'md') : mdName('md'); saveBlob(new Blob([mdText(asm)], { type: 'text/markdown;charset=utf-8' }), name); U.toast('수정본 내려받음 · ' + name + (asm.source === 'server' ? ' · 서버 각주 판+이력' : ' · 화면 조립')); }
   function docxMsg(m, err) { var st = state(); st.docxMsg = m; var e = $('rvDocxMsg'); if (e) { e.textContent = m; e.classList.toggle('inerr', !!err); } }
-  function fileNameOf(cd, fallback) { var m = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(cd || ''); var n = m ? decodeURIComponent(m[1]).replace(/[^0-9A-Za-z가-힣_.-]/g, '') : ''; return n || fallback; }
+  function fileNameOf(cd, fallback) { var m = /filename\*=UTF-8''([^;]+)/i.exec(cd || '') || /filename="?([^";]+)"?/i.exec(cd || ''); var n = ''; try { n = m ? decodeURIComponent(m[1]).replace(/[^\p{L}\p{N}_. -]/gu, '').replace(/\s+/g, '_').slice(0, 120) : ''; } catch (_) {} return n && n.indexOf('..') < 0 ? n : fallback; }
   /* .docx는 서버가 만든다(assemble format=docx: 본문 + 미주 + 수정 이력 표 + 근거 부록) */
   function downloadDocx() {
     var st = state(), b = $('rvDocx'); if (st.docxBusy) return;
@@ -2325,7 +2326,7 @@
   document.addEventListener('focusout', function (ev) { var t = ev.target.closest && ev.target.closest('[data-rvtip]'); if (t && !state().pin) hideTip(); });
 
   /* E4-L2f 내보내기(POST /premortem/package) 연결용: body에 exportPayload()를 펼치면 ZIP에 revision.json·revised_plan.md가 덧붙는다(export_revision.py) */
-  function exportPayload() { var st = state(), rev = mergedRevision(); if (!rev) return {}; return { revision: rev, revision_decisions: serverDecisions(), revised_plan: st.asm && st.asm.source === 'server' ? st.asm.raw : null, revision_sig: rev.revision_sig || null }; }
+  function exportPayload() { var st = state(), rev = mergedRevision(); if (!rev) return {}; var plan = st.asm && st.asm.source === 'server' ? st.asm.raw : null; return { title: String((plan && plan.title) || D().plan.title || '수정된 연구계획서').slice(0, 200), revision: rev, revision_decisions: serverDecisions(), revised_plan: plan, revision_sig: rev.revision_sig || null }; }
   window.NeumannRevise = { open: goRevise, decisions: decisionsLog, serverDecisions: serverDecisions, undo: undoLast, forget: forget, mock: MOCK, assemble: currentAsm, assembleLocal: assembleLocal, markdown: function () { return mdText(currentAsm()); }, exportPayload: exportPayload, openViewer: openViewer, closeViewer: closeViewer, config: REV, state: state };
   paintSteps();
   if (MOCK) bootMock();

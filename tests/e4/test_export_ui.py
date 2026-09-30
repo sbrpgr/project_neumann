@@ -91,10 +91,11 @@ def test_package_request_shape_matches_export_py():
     src = _src()
     do = _func(src, "doExport")
     assert "fetch('premortem/package'" in do
-    body_match = re.search(r"JSON\.stringify\(Object\.assign\(\{ (result): raw, (result_sig): d\.result_sig \|\| null, (decisions): decisions \}, revisionPayload\)\)", do)
+    body_match = re.search(r"JSON\.stringify\(Object\.assign\(\{ (.*?) \}, revisionPayload\)\)", do, re.DOTALL)
     assert body_match, "기본 분석 결과와 수정 권고 payload를 같은 요청에 포함해야 한다"
     assert "!window.NeumannRevise.mock" in do and "window.NeumannRevise.exportPayload()" in do
-    body_keys = set(body_match.groups()) | {"revision", "revision_decisions", "revised_plan", "revision_sig"}
+    body_keys = set(re.findall(r"(\w+): ", body_match.group(1))) | {"revision", "revision_decisions", "revised_plan", "revision_sig"}
+    assert {"result", "result_sig", "decisions", "title"} <= body_keys
     assert body_keys <= set(PackageRequest.model_fields), body_keys
 
     dec = _func(src, "expDecisions")
