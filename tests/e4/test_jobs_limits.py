@@ -479,3 +479,102 @@ def test_on_stage_running_and_end_reports_with_parallel_stages(tmp_path, monkeyp
                     "semantic_validate": "2차 검증"}.items() <= jobs.STAGE_LABELS.items()
 
     asyncio.run(go())
+
+
+# ───────────────────────── 재작업 4: 퍼센트 인코딩된 job_id(접근 로그) ─────────────────────────
+
+
+def _enc(s: str, which: Any) -> str:
+    return "".join(f"%{ord(c):02X}" if which(i) else c for i, c in enumerate(s))
+
+
+def _exposed(text: str, jid: str) -> bool:
+    """원래 id·푼(unquote) id 어느 쪽이든 12자 이상 조각이 보이면 누출."""
+    import urllib.parse as up
+
+    views = (text, up.unquote(text), up.unquote(up.unquote(text)))
+    return any(jid[s:s + 12] in v for v in views for s in range(len(jid) - 11))
+
+
+class _AccessLogCapture:
+    """실제 uvicorn 접근 로그 경로: uvicorn.access 로거 + uvicorn AccessFormatter + 서빙 층 로그 필터(로거·핸들러 둘 다)."""
+
+    def __enter__(self) -> _AccessLogCapture:
+        import io
+
+        from uvicorn.logging import AccessFormatter
+
+        self.buf = io.StringIO()
+        self.lg = logging.getLogger("uvicorn.access")
+        self.saved = (self.lg.level, self.lg.propagate, list(self.lg.handlers), list(self.lg.filters))
+        self.h = logging.StreamHandler(self.buf)
+        self.h.setFormatter(AccessFormatter('%(levelprefix)s %(client_addr)s - "%(request_line)s" %(status_code)s',
+                                            use_colors=False))
+        self.lg.handlers = [self.h]
+        self.lg.setLevel(logging.INFO)
+        self.lg.propagate = False
+        serving.install_log_filter()   # 로거와 핸들러에 모두 붙는다(두 번 걸림)
+        return self
+
+    def log(self, full_path: str) -> str:
+        start = len(self.buf.getvalue())
+        # uvicorn h11/httptools 프로토콜이 부르는 것과 같은 모양
+        self.lg.info('%s - "%s %s HTTP/%s" %d', "198.51.100.7:50000", "GET", full_path, "1.1", 200)
+        return self.buf.getvalue()[start:]
+
+    def __exit__(self, *exc: Any) -> None:
+        level, prop, handlers, filters = self.saved
+        self.lg.handlers, self.lg.filters = handlers, filters
+        self.lg.setLevel(level)
+        self.lg.propagate = prop
+
+
+def test_access_log_masks_percent_encoded_job_ids_through_uvicorn_formatter():
+    import secrets
+
+    with _AccessLogCapture() as cap:
+        for _ in range(5):
+            jid = secrets.token_urlsafe(24)
+            cases = {
+                "q-job-first": f"/health?job={_enc(jid, lambda i: i == 0)}",
+                "q-job-mid": f"/health?job={_enc(jid, lambda i: i in (0, 15))}",
+                "q-job-all": f"/health?job={_enc(jid, lambda i: True)}",
+                "q-x-plain": f"/health?x={jid}",
+                "q-x-%2D": f"/health?x={jid[:10]}%2D{jid[11:]}",
+                "q-x-all": f"/health?x={_enc(jid, lambda i: True)}",
+                "q-other-key-one": f"/templates?next={_enc(jid, lambda i: i == 20)}",
+                "q-encoded-key": f"/x?%6Aob={_enc(jid, lambda i: i % 3 == 0)}",
+                "q-path-in-query": f"/x?next=%2Fpremortem%2Fjobs%2F{_enc(jid, lambda i: i == 1)}",
+                "path": f"/premortem/jobs/{jid}",
+                "path-%2F": f"/premortem%2Fjobs%2F{jid}",
+                "path-then-query": f"/premortem/jobs/{jid}?job={_enc(jid, lambda i: i < 3)}",
+            }
+            for name, path in cases.items():
+                line = cap.log(path)
+                assert '"GET ' in line and "HTTP/1.1" in line and "200" in line, line   # 접근 로그 형식 그대로
+                assert not _exposed(line, jid), (name, line)
+                assert "…" in line, (name, line)
+        # 정상 경로는 그대로(요청 번호·템플릿 이름 등 짧은 토큰)
+        assert "/templates/physics_pde_climate" in cap.log("/templates/physics_pde_climate")
+        assert "ticket=cb07f6ed523e4785" not in cap.log("/queue/status?ticket=cb07f6ed523e4785")   # 쿼리 ticket은 가림
+
+
+def test_access_log_mask_fuzz_300_no_leak_and_idempotent():
+    import random
+    import secrets
+
+    rnd = random.Random(20260930)
+    shapes = ["/x?job={}", "/x?x={}", "/premortem/jobs?job_id={}", "/premortem/jobs/{}", "/x?a=1&ticket={}", "/x/{}",
+              "/x?next={}", "/x?a=%41&b={}&c=1", "/premortem%2Fjobs%2F{}", "/x?q=%22{}%22"]
+    leaks = []
+    with _AccessLogCapture() as cap:
+        for n in range(300):
+            jid = secrets.token_urlsafe(24)
+            pr = rnd.choice((0.0, 0.03, 0.1, 0.3, 0.6, 1.0))
+            path = rnd.choice(shapes).format(_enc(jid, lambda i: rnd.random() < pr))
+            line = cap.log(path)
+            if _exposed(line, jid):
+                leaks.append((path, line))
+            once = serving.mask_job_paths(path, access=True)
+            assert serving.mask_job_paths(once, access=True) == once   # 두 번 걸어도 같다
+    assert leaks == [], leaks[:3]
