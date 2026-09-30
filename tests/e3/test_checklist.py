@@ -18,6 +18,7 @@ from neumann.analyze.checklist import (
     attach_checklist,
     build_checklist,
     checklist_schema,
+    decision_entries,
     decision_log,
     record_decision,
 )
@@ -326,6 +327,22 @@ def test_items_render_in_ui_view_checklist() -> None:
     assert [r["id"] for r in rows] == [it["item_id"] for it in out.checklist]
     assert [r["t"] for r in rows] == [it["action"] for it in out.checklist]
     assert rows[0]["r"] == "R3" and rows[0]["s"] == "기각" and rows[0]["m"] == "과제 범위 밖"
+
+
+def test_decision_entries_feed_export_package() -> None:
+    """E4 내보내기(DecisionEntry·decision_log.json)가 체크리스트 결정을 그대로 받는지."""
+    export = pytest.importorskip("neumann.api.export")
+    res, plan = _result(), _plan()
+    out = attach_checklist(res, plan, FakeLLM(_good))
+    record_decision(out.checklist, "C1", "채택", note="바로 반영")
+    record_decision(out.checklist, "C3", "보류")
+    entries = decision_entries(out.checklist)
+    assert [e["item_id"] for e in entries] == ["C1", "C3"]
+    parsed = [export.DecisionEntry.model_validate(e) for e in entries]
+    assert [p.decision for p in parsed] == ["adopt", "hold"] and parsed[1].note is None
+    files = export.build_package_files(out, decisions=entries)
+    log = json.loads(files["decision_log.json"])
+    assert [d["item_id"] for d in log["decisions"]] == ["C1", "C3"]
 
 
 def test_schema_without_excerpts_still_strict() -> None:

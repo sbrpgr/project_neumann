@@ -525,6 +525,21 @@ def decision_log(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ]
 
 
+def decision_entries(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """결정이 기록된 항목만, 내보내기 API(`neumann.api.export.DecisionEntry`) 모양으로."""
+    return [
+        {
+            "item_id": it["item_id"],
+            "card_id": it["card_id"],
+            "decision": it["decision"],
+            "note": it.get("note") or None,
+            "decided_at": it.get("decided_at"),
+        }
+        for it in items
+        if it.get("decision") in DECISION_STATES
+    ]
+
+
 __all__ = [
     "CHECKLIST_INSTRUCTIONS",
     "DECISION_STATES",
@@ -533,6 +548,7 @@ __all__ = [
     "build_checklist",
     "checklist_schema",
     "checklist_stage",
+    "decision_entries",
     "decision_log",
     "record_decision",
     "rule_actions",
