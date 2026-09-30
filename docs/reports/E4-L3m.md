@@ -1,7 +1,20 @@
 # E4-L3m 반응형 화면(휴대폰·태블릿) 보고서
 
-- 브랜치 `task/E4-L3m`(시작 88f1b51, 끝나기 전 `git merge main` = c8ba766 병합, 충돌 없음)
+- 브랜치 `task/E4-L3m`(시작 88f1b51 → `git merge main` 세 번: c8ba766, ffd67f3(E4-L2d 작업 API 화면), 4753b3d(DISP-1 표시 이름). 모두 충돌 없음)
 - 빌더 claude-opus-5.5 · provider mock만 사용(실제 OpenAI 호출 0) · 서버 8150(8010·8020 안 씀, 끝나면 종료 확인)
+
+## 검증 지적 반영 (PASS-조건부 58191fc → 대표 지시로 2~5도 필수)
+
+| # | 지적 | 고친 것(모두 `≤1180`·`≤600` 블록 안) | Playwright 측정(390 · 601 · 616 · 768) |
+|---|---|---|---|
+| 1 | 601~616px 리포트 가로 넘침(64자 세션 해시가 `.trace` 칸을 밈) | `≤1180`: `.trace { repeat(2, minmax(0,1fr)) }` + `.trace .mono { break-all }`. `≤600`은 1열 유지. 태블릿 2열을 1열로 바꾸지 않으려고 "옮기기" 대신 2열 판으로 넣었다 | 고치기 전(HEAD e93fe9d를 `--html`로): 601·616 리포트 scrollWidth **617**. 고친 뒤: 601/601, 616/616. 테스트 VIEWPORTS에 601·616 추가 |
+| 2 | 터치 대상 44px | `≤1180`: 서랍 탭·닫기 `height:44px`, 떠 있는 버튼 `.btn.sm.pfab { height:44px }`(`.btn.sm` 32px를 이겨야 해서 선택자 셋). `≤600`: 결정 버튼 44px, 단계 탭 위아래 12px, 근거·행 번호는 `::after`로 누르는 자리만 위아래 12px(글줄은 그대로) | 탭 44 · 닫기 44 · 떠 있는 버튼 44(네 폭 모두). 390: 결정 최소 44, 단계 탭 최소 45, 근거 번호 20px인데 위·아래 10px 바깥을 눌러도 그 번호가 잡힘(`elementFromPoint`) |
+| 3 | 서랍 초점 관리 | JS: 패널이 `position:fixed`(서랍)일 때만 열면 현재 탭 버튼으로 초점 + `role=dialog`·`aria-modal=true`, Tab/Shift+Tab이 서랍 안에서 돈다, 닫기·Esc·바깥을 누르면 연 요소(없으면 떠 있는 버튼)로 복귀 | 열면 초점 `button.on`(근거/계획서 탭), Tab·Shift+Tab 각각 (초점 요소 수+3)번 눌러도 늘 서랍 안, 닫기 뒤 초점 = 떠 있는 버튼, 근거 번호로 열고 Esc 뒤 초점 = 그 근거 번호. 1440: 근거 번호를 눌러도 초점이 패널로 안 감·dialog 속성 없음 |
+| 4 | iOS 확대 방지 | `≤600`: `textarea.ta { font-size:16px }` | 390 입력칸 16px(601 이상은 14px 그대로) |
+| 5 | 떠 있는 버튼이 맨 아래에서 푸터를 가림 | `≤1180`: 리포트 화면 `.foot { padding-bottom:84px }`(16 + 44 + 여유) | 맨 아래로 내렸을 때 떠 있는 버튼과 푸터 글자(`.foot .sc`·`.by`) 겹친 넓이 **0px²**(네 폭) |
+
+병합으로 들어온 E4-L2d 작업 API 대기 화면(`POST /premortem/jobs` → `GET /premortem/jobs/{id}`)도 쟀다: 테스트가 작업 API를 가로채
+queued → running · SEARCH 단계를 보여 준 뒤 fixture 뷰로 끝낸다(서버 파이프라인은 돌지 않음). 네 폭 모두 대기 화면 넘침 0.
 
 ## 무엇을 했나
 
@@ -60,9 +73,27 @@ BEFORE 768 input 768/768 off0 pad[18,18] | report 768/768 · 서랍 안을 누�
 1440 input  (1440, 1454) (1440, 1454) diff bbox None   ← 0픽셀 다름
 1440 report (1440, 4536) (1440, 4536) diff bbox None   ← 0픽셀 다름
 ```
+검증 지적 반영 뒤 다시(최신 main 4753b3d의 index.html vs 이번 판, 1440만 세 번씩):
+```
+main vs now  input  run1 11픽셀(카드 모서리, x 330·1106~1109 y 488~491) · run2 0 · run3 0
+main vs main input  run1↔run2 같은 11픽셀 · run2↔run3 0      ← 첫 실행 렌더 흔들림, 이번 변경과 무관
+main vs now  report run2 0 · run3 0   (run1은 리포트 머리 경과 시간 "2.1s"↔"2.0s" 글자만 다름)
+```
 
 ### 테스트 · verify
 
+검증 지적 반영·두 번째 병합 뒤:
+```
+$ NEUMANN_UI_TESTS=1 NEUMANN_LLM_PROVIDER=mock pytest tests/e4/test_responsive.py tests/e4/test_notice_ui.py tests/e4/test_templates_ui.py tests/e4/test_webui_upload_ui.py -q
+4 passed in 122.25s
+$ python tests/e4/test_responsive.py     # 390·601·616·768·1440
+problems [] {'console_errors': 0, 'page_errors': 0, 'failed_requests': 0, 'external_requests': 0}
+$ python scripts/verify.py
+보안: 파일 473개 · 계약: 2개 · 테스트: 통과 · verify 통과
+```
+(`test_notice_ui`·`test_webui_upload_ui`가 다시 쓴 `E4-S06_*`·`E4-L1f_*` png는 내 파일이 아니라 `git checkout`으로 되돌렸다.)
+
+첫 판:
 ```
 $ NEUMANN_UI_TESTS=1 NEUMANN_LLM_PROVIDER=mock pytest tests/e4/test_responsive.py tests/e4/test_notice_ui.py tests/e4/test_templates_ui.py -q
 3 passed in 46.67s          (병합 뒤. 기존 1440 화면 검사 둘도 그대로 통과)
@@ -78,14 +109,15 @@ $ python scripts/verify.py  (병합 뒤)
 |---|---|
 | `E4-L3m_390_input.png`, `E4-L3m_768_input.png`, `E4-L3m_1440_input.png` | 입력(예시 1 불러옴). 창을 문서 높이로 늘려 찍어 sticky 전송 고지가 제자리(실행 버튼 바로 위)에 보인다 |
 | `E4-L3m_390_report.png`, `E4-L3m_768_report.png`, `E4-L3m_1440_report.png` | 리포트 전체 페이지(요약·지도·위험카드·예상 심사평·체크리스트·추적). 좁은 화면의 오른쪽 아래 "근거 · 계획서"는 화면에 떠 있는 버튼이라 전체 페이지 사진에서는 첫 화면 높이에 찍힌다 |
-| `E4-L3m_390_job.png`, `E4-L3m_768_job.png` | 대기 화면(응답 대기 중) |
+| `E4-L3m_390_job.png`, `E4-L3m_768_job.png`, `E4-L3m_1440_job.png` | 대기 화면(작업 API running · SEARCH 단계) |
 | `E4-L3m_390_panel.png`, `E4-L3m_768_panel.png` | 근거 번호 #1로 연 서랍(휴대폰은 전체 화면) |
 
 리포트 데이터는 `/premortem/view` 응답을 가로채 넣은 fixture 뷰(`test_view_shots.rich_view`, 샘플 표시가 화면에 남음)다.
 
 ## 바꾼 파일
 
-- `src/neumann/webui/index.html`: 스타일 블록 끝 반응형 규칙(+약 95줄), 패널 문자열 한 줄(닫기·여는 버튼), 클릭 처리 두 줄
+- `src/neumann/webui/index.html`: 스타일 블록 끝 반응형 규칙(약 110줄), 패널 문자열 한 줄(닫기·여는 버튼), 클릭 처리 두 줄,
+  서랍 초점 관리(`openPanel`·`closeAll`·Tab 가두기, 약 25줄)
 - `tests/e4/test_responsive.py`(새 파일)
 - `docs/reports/E4-L3m.md`, `docs/reports/E4-L3m_*.png`
 
@@ -98,11 +130,15 @@ $ python scripts/verify.py  (병합 뒤)
 - 인라인 스타일(입력 카드 여백, 대기 제목 32px, 리포트 제목 30px)은 JS를 안 건드리려고 휴대폰 규칙에서만 `!important`로 덮었다.
 - 입력 스크린샷은 창을 문서 높이로 늘려 찍었다(Playwright 전체 페이지 모드는 sticky 고지를 첫 화면 높이에 그려 입력칸 가운데에 떠 보인다).
 - `test_notice_ui.py`를 회귀 확인으로 돌리면 `docs/reports/E4-S06_*.png`를 다시 쓴다. 내 파일이 아니라 `git checkout`으로 되돌렸다.
+- 근거·행 번호는 44px 버튼으로 키우면 심사평 문단의 글줄이 벌어져서, 보이는 크기(20px)는 두고 `::after`로 누르는 자리만 넓혔다.
+  위아래 이웃 줄의 번호와 누르는 자리가 조금 겹칠 수 있다(겹치면 뒤 요소가 잡힌다).
+- 서랍 초점 관리는 패널이 `position:fixed`일 때만(1180px 이하) 한다. 1440에서 근거 번호를 누를 때 초점이 옮겨가면 기존 동작이 바뀐다.
+- 대기 화면 검사는 작업 API를 가로챈다(fixture 결과). 서버의 mock 파이프라인을 돌리면 색인·임베딩 모델을 올려야 해 느리고 결과가 매번 달라진다.
 
 ## 못 한 것
 
 - 실제 휴대폰 브라우저(iOS Safari·Android Chrome)와 가로 모드는 재지 않았다. Chromium 창 크기 에뮬레이션(`is_mobile` 없이)만 했다. 서랍은 `top/bottom:0`이라 주소창 높이(100vh) 문제는 피하게 했다.
-- 내보내기 화면(단계 IV)은 이 판에서 아직 "준비 중"이라 재지 않았다. 병합 시점 main(c8ba766)에는 E4-L2f의 index.html 변경이 없었다. E4-L2f가 들어오면 `.pk`·`.ai`(1180 이하 1열 규칙 있음)를 390에서 한 번 재야 한다: `NEUMANN_UI_TESTS=1 pytest tests/e4/test_responsive.py`의 BOXES·FIX 목록에 내보내기 선택자를 더하면 된다.
+- 내보내기 화면(단계 IV)은 이 판에서 아직 "준비 중"이라 재지 않았다. 마지막 병합 시점 main(4753b3d)에도 E4-L2f의 내보내기 화면은 없었다. PM이 E4-L2f를 먼저 병합하면 style 끝은 "L2f 내보내기 블록 먼저, L3m 반응형 블록 뒤" 순서로 맞춘다. E4-L2f가 들어오면 `.pk`·`.ai`(1180 이하 1열 규칙 있음)를 390에서 한 번 재야 한다: `NEUMANN_UI_TESTS=1 pytest tests/e4/test_responsive.py`의 BOXES·FIX 목록에 내보내기 선택자를 더하면 된다.
 - 떠 있는 "근거 · 계획서" 버튼은 페이지 맨 아래에서 오른쪽 아래 몇 줄을 가린다(서랍이 열리면 숨는다).
 
 ## 다음
