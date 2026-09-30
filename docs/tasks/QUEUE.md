@@ -17,17 +17,20 @@
 | 과제 | 상태 | 다음 |
 |---|---|---|
 | E3-L1w v1 파이프라인 연결 | ✅ 병합(f204d0c, Sonnet PASS·mock), 단계별 설정 키 .env.example(cd0a3ca) | 8020을 main 최신으로 재기동(sol 명시) → 대표 점검 → 승인 확인 실행 1회 → 태그 `v1` |
-| **SEC-3 실제 호출 잠금** | 🔍 task/SEC-3 ab3270f, Sonnet 검증 중 | 사용자 환경변수 provider=openai 사고 대응(변수는 대표 승인으로 삭제됨). 병합 뒤 실서버는 `NEUMANN_LIVE_LLM_OK=1 NEUMANN_LLM_PROVIDER=openai NEUMANN_LLM_MODEL=gpt-6.1-sol`로 기동, `/health.llm` 확인 |
+| **SEC-3 실제 호출 잠금** | 🔍 PASS-조건부 5건 → 9a20726 반영, 좁은 재검증 중 | 플래그는 **프로세스 환경변수만**(.env 무시). 병합 뒤 실서버는 `NEUMANN_LIVE_LLM_OK=1 NEUMANN_LLM_PROVIDER=openai NEUMANN_LLM_MODEL=gpt-6.1-sol`로 기동, `/health.llm.effective=openai` 확인 |
 | E2-L1 검색 보정 | ✅ 병합(33dd641), .env.example 키 추가됨 | 병합 시 `.env.example`에 새 키 5개(SCORE_FLOOR는 비움), similar_works 유사도 정렬·무관 사유 노출은 E3 후속 |
-| E4-L1e 입력 예시·템플릿 AI4S 정렬(대표 지시) | 🔍 task/E4-L1e 66c0b82 검증 중(구축 세션, API 0) | 병합 → E4-L1f를 그 위에. 새 예시 사전 계산본·정적 판 DEMO_PLANS 교체는 API 사용 → 대표 승인 |
+| E4-L1e 입력 예시·템플릿 AI4S 정렬(대표 지시) | ✅ 병합(0504255, Sonnet PASS) | 새 예시 사전 계산본·정적 판 DEMO_PLANS 교체는 API 사용 → 대표 승인 대기 |
 | E1-L1c eLife(+EPMC) 색인 | ✅ 코드만 병합(43d116f). 색인 `index_elife*`는 DO_NOT_SERVE 유지 | E1-L1b PASS 뒤 재빌드(입력 해시 rc 0). 권고: 색인 로더가 DO_NOT_SERVE를 거부(E2, 선택) |
 | E1-L1b eLife·EPMC 수집 | ❌ 재검증 FAIL(이전 25건 해소, 새 형식 3건: 대문자 성 서명·`&amp;` 공동 서명·답변 감사문) → PM 세션 빌더 재작업 2(오프라인) | 잔존 0(두 방법) 증명 후 재검증 → **squash 병합**. 그 전에는 eLife/EPMC 색인을 서비스에 쓰지 않는다 |
 | E4-L2c 서빙 안정성 | 🔍 재작업 83754ff(BOM·UTF-16 fail-closed, IPv6 /64, 업로드 IP당 분당 10·동시 1·10MB) 재검증 중(구축 세션). **공개 금지** | PASS → PM이 diff에 templates·index.html 없는지 확인 → 병합 + `E4-L2c_main.patch`, 새 키 3개(TRUST_XFF·UPLOAD_RATE_PER_MIN·UPLOAD_PER_IP) |
-| E4-L2d 비동기 작업 API | 🔍 999f3f9 빌드 끝(동시 5건 응답 최장 0.08초). E4-L2c 재작업 병합 뒤 재검증 | E4-L2c 뒤 병합 + `E4-L2d_main.patch`. **터널 공개 전제**(Cloudflare 100초 제한) |
+| E4-L2d 비동기 작업 API | 🔍 PASS-조건부 → 재작업 중(구축 세션): E4-L2c 재병합·create_job 글자 상한, 작업 저장소 고갈 DoS(IP별 보관 상한·합류/캐시 POST 속도 제한) | E4-L2c 뒤 병합 + `E4-L2d_main.patch`. **터널 공개 전제** |
+| SEC-4 이메일 정규식 ReDoS | 🔍 task/SEC-4 386621a(PM), Sonnet 검증 중 | `models.contains_pii`·`redact_pii` 선형화(`email_spans`), 결과 동일. 공개 전 필수 |
+| E3-L1x rule_fitness "neural" 오분류 | ⏳ PM 세션 빌더(mock) | PDE 신경 연산자 → 신경과학으로 잘못 분류(비상 경로) |
+| E4-L1f 화면 업로드 | ✅ 병합(cf43101, Sonnet PASS) | 8020 재기동 시 반영. 발표 9쪽 "PDF·DOCX 포함" |
 | SEC-2 재점검 | 대기 | E4-L2c·L2d 병합 뒤 → 통과하면 cloudflared 터널 공개(주소는 발표자료로) |
 | E4-L1a 업로드 | ✅ 병합(2e38839, 긴 경계 400 수정 80e024c 포함) | 공개 전 `/upload/plan` 속도 제한(E4-L2c 보호 경로), 화면 문구 "정리 뒤 50,000자 상한" |
 | E6-docs 문서·README | 🔍 재작업 2(608373b) 재검증 3 중(Sonnet, PM 세션) | PASS → 병합 + 루트 README를 `docs/reports/E6-docs_README_draft.md`로 갱신(PM 소유). 07:00 동결 때 숫자·상태 한 번 더 맞춤 |
-| E4-L1f 화면 업로드 → `/upload/plan` | ⏳ PM 세션 빌더(mock) | index.html은 readFile·드롭존·파일 카드만. **E4-L1e 먼저 병합, 그 위에 올림**. 발표 9쪽 표기가 이 병합 여부를 따름 |
+| E4-L1f 화면 업로드 → `/upload/plan` | ✅ 병합(cf43101) | 선택 개선: 업로드 AbortController 40초 |
 | E6-pres2 발표자료 숫자 | 🔍 PASS-조건부(숫자 불일치 0) → 12·11쪽 문구, GPU "약 77초" 수정 중(구축 세션) | 설계 쪽 "설계"+"예정", 결과 쪽 실측만. 07:00 체크리스트: 테스트 수 동결 main 실측 1개, 백테스트 못 돌리면 "미측정"(15편 삭제), 터널 없으면 주소 칸 "로컬 시연·영상", 작업 메모·형광 제거 |
 | E3-L1d 사전 추출 스크립트 | 중지·선택 병합 | 재개는 대표 승인 뒤, 데모 상위 논문만 `--work-ids` |
 | **E5-L2b 백테스트** | ⏸ 보류(19:36 중지) | **대표 승인 뒤** `gpt-6.1-sol`로 Neumann·기준선 둘 다 15편(`--limit 15`), 새 검색(E2-L1) 병합 뒤 조건으로. 이어서 판정 Claude Sonnet 3명(§5.7) → 지표 → 태그 `v2` |
