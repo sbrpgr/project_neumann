@@ -2,7 +2,7 @@
 
 인계 받는 쪽(Codex PM)은 이 표 위에서부터 진행한다. 실행은 `bash scripts/codex_task.sh build <과제ID>`, 검증은 `bash scripts/codex_task.sh verify <과제ID>`, 병합은 PM 규칙(`AGENTS.md`)대로. 상태: ✅ main 병합 · 🔍 검증 대기/중 · ⏳ 빌더 작업 중 · ⬜ 대기(착수 전) · ⛔ 막힘
 
-마지막 갱신: 2026-09-30 20:5x (PM "로컬 세팅")
+마지막 갱신: 2026-09-30 21:2x (PM "로컬 세팅") — **Codex 인수: HANDOFF 맨 위 "★ Codex 즉시 인수" 표가 최신**
 
 ## ⚠ 최종 마감: 발표자료 제출 10/01 09:00 (HANDOFF 표). 발표 작업(E6)을 모든 L3 확장보다 앞에 둔다
 
