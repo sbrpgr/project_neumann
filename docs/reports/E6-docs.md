@@ -2,7 +2,9 @@
 
 - 브랜치: `task/E6-docs` · 빌더: claude-opus-5.5 · 2026-09-30
 - 스펙: `docs/tasks/E6-docs.md`. 읽은 것: `AGENTS.md`, `docs/tasks/_COMMON.md`, 계획서 §0·§2·§4.0·§4(E0~E6), main의 `src/`·`eval/`·`scripts/`·`tests/`, `docs/tasks/`, `docs/reports/`, 진행 중 브랜치의 변경 파일 목록과 스크립트 머리말, 공개자료 `MANIFEST.md`(라이선스)
-- 기획서의 `01_구조_뼈대`·`06_교훈_함정`은 열지 않았고 옮기지 않았다. 옛 `neumann/` 폴더는 열지 않았다.
+- 기획 키트의 폐기된 옛 구현 설명 문서 2종은 열지 않았고 옮기지 않았다. 옛 `neumann/` 폴더는 열지 않았다.
+
+> 아래 "무엇을 했나"~"다음 과제에 넘길 것"은 첫 제출(문서 기준 `5e14b1c`) 기록이다. 그 뒤 main에 파이프라인이 연결돼 여러 서술이 바뀌었다. 현재 문서 상태와 재측정은 "재작업" 절을 본다.
 
 ## 무엇을 했나
 
@@ -227,7 +229,7 @@ docs/RUNNING.md:3:- 기준: `main` 커밋 `5e14b1c`. 이 문
 docs/API.md:3:- 기준: `main` 커밋 `5e14b1c`. 아래 응ë
 ```
 
-### 3. 루트 README 개정 초안: 아래 "README 개정 초안"
+### 3. 루트 README 개정 초안: 재작업에서 `docs/reports/E6-docs_README_draft.md`로 대체(아래 "재작업")
 
 ### 4. `python scripts/verify.py` 통과
 
@@ -266,100 +268,110 @@ docs/API.md:3:- 기준: `main` 커밋 `5e14b1c`. 아래 응ë
 6. **`/premortem/package`의 `plan_text`만 받는 경로**: 결정 기록 19:20은 없앤다고 했으나 `5e14b1c`에서는 아직 200을 돌려준다. 고치면 API.md의 `plan_text` 행을 바꾼다.
 7. **`/health`의 EVIDENCE 단계 모듈 이름**: `STAGE_MODULES["EVIDENCE"]`가 `neumann.index.hybrid`를 보는데 색인은 `neumann.index.search`로 들어왔다. 파이프라인이 붙어도 `neumann.index.hybrid`가 없으면 EVIDENCE가 계속 `false`로 보인다(PM 소유 `main.py`).
 
-## README 개정 초안
+## README 개정 초안 (폐기)
 
-루트 `README.md`를 아래로 바꾸자고 제안한다(PM 소유라 고치지 않았다). 기준은 main `5e14b1c`이고, v0 병합 때 "상태" 표와 첫 문단의 "샘플" 문장을 고친다.
+첫 제출의 초안은 파이프라인 연결 전 상태를 적어 사실이 아니게 됐다. 재작업에서 PM 배정 범위로 새로 써서 `docs/reports/E6-docs_README_draft.md`에 두었다.
 
-````markdown
-# Neumann
+## 재작업 (검증 PASS-조건부 → 조건 해소)
 
-연구계획서를 넣으면, 비슷한 연구가 실제로 받은 **심사평·저자 답변·결정·정정/철회 기록**에서 위험을 찾아 근거가 연결된 위험카드로 돌려주는 서비스다.
+검증 보고서 `docs/reports/E6-docs.verify.md`의 결함은 하나였다: 문서 기준 커밋(`5e14b1c`)이 낡아, 병합 시점 main(v0, 파이프라인 연결)에서 "파이프라인 없음·샘플만"·"OpenAI를 부르지 않는다" 같은 서술이 거짓이 됐다.
 
-- 분석 대상은 논문 본문이 아니라 평가 과정 기록이다.
-- 개입 시점은 투고 직전이 아니라 연구 착수 전이다.
-- 카드마다 실제 심사평 문장을 원문 오프셋 그대로 인용하고 원문 링크를 단다. 근거 없는 문장은 내보내지 않는다.
-- 생성 방식(LLM `gpt-6-astra` / 비상 규칙 / 테스트용 mock)과 강등 여부를 결과와 화면에 그대로 표시한다.
+### 한 것
 
-2026 NAIS AI 해커톤 본선(2026-09-30 17:00 ~ 10-01 12:00)에서 처음부터 만들고 있다. 커밋 이력이 곧 현장 개발 기록이다.
+1. `git merge main` 두 번(`304e91e`, 그 뒤 `588da63`). 충돌 없음. 문서 기준은 "병합 직전 main"으로 적고 작성 때 확인한 커밋(`588da63`)을 밝혔다.
+2. 검증 보고서 §4 #1~#12, §6 조건 1~3 반영:
 
-## 지금 상태
-
-| 영역 | 상태 |
-|---|---|
-| 데이터 계약·설정·검증 러너 | 있음 |
-| 코퍼스: OpenReview 공개 심사 기록(ResearchArcade 경유) AI for Science 1,128편, 심사평 4,298건 | 있음 |
-| 정정·철회 사후 상태(Retraction Watch) | 있음(소스) |
-| 검색 색인: 문장 133,769개(원문 오프셋 전량 대조), BM25 + bge-m3 하이브리드 | 있음 |
-| API 서버·화면(템플릿 선택기)·메타 API·내보내기 ZIP·MCP 서버(읽기 전용 도구 3종) | 있음 |
-| 평가: 근거 연결 검사, DISAPERE 골드 148건 Macro-F1(빈도 기준선 0.3308) | 있음 |
-| 예상 심사평·근거 게이트, 예방 체크리스트·2차 의미검증 | 있음(모듈, 파이프라인 연결 전) |
-| astra 분석 파이프라인(지적 추출·카드 합성) | 진행 중 |
-
-아직 분석 파이프라인이 main에 없다. 지금 서버는 입력한 계획서를 분석하지 않고 가짜 샘플을 "분석 파이프라인 미연결(샘플 데이터)" 표시와 함께 돌려준다.
-
-| 단계 | 내용 | 태그 |
+| 검증 항목 | 고친 것 | 커밋 |
 |---|---|---|
-| L0 | 계획서 입력 → 유사 연구 + 위험카드(실제 심사평 인용) | `v0` |
-| L1 | 위험점수, 예상 심사평, 근거 열람 패널 | `v1` |
-| L2 | 체크리스트·결정 로그, 백테스트, 내보내기 | `v2` |
-| L3 | 디자인, 규모 확대, 리포트 카드 | `v3` |
+| §4 #1, §6 ① "파이프라인 없음·샘플" | 세 문서에서 삭제. 파이프라인 6단계 이름, `pipeline.state: connected`, `pipeline_version: neumann-e3-l0`, astra 주력·비상 규칙·mock 표시로 다시 씀. 샘플은 "모듈이 없을 때만(지금 main에서는 일어나지 않음)"으로 내림 | 857582b, 1325507, 156d2cb |
+| §4 #2, §6 ② RUNNING "OpenAI를 부르지 않는다" | 삭제. RUNNING·API 머리에 비용 경고: 기본 provider `openai`라 분석 요청·파이프라인 명령·`plan_text` 패키지가 OpenAI를 부른다, 시험은 `NEUMANN_LLM_PROVIDER=mock` | 1325507, 156d2cb |
+| §4 #3, §6 ⑤ API `plan_text` 설명 | "서버가 파이프라인을 돌린다(provider가 openai면 OpenAI 호출)"로 교체. SEC-1 언급은 뺐다(검증 권고) | 156d2cb |
+| §4 #4 사전 계산본 | "있음"으로. API에 목록·단건·404·헤더·표시 문구, RUNNING §5-3 사용법 | 857582b, 1325507, 156d2cb |
+| §4 #5·#6 리포트 카드·백테스트 | "있음"으로. RUNNING §8에 `backtest_sample`·`report_card` 사용법, 나머지 단계는 호출 비용 때문에 실행 안 함을 명시 | 857582b, 1325507 |
+| §4 #7 적합성·PII | "있음(모듈만)"(파이프라인이 아직 부르지 않음, `pipeline.py`에 호출 0건 확인) | 857582b |
+| §4 #8 규모 확대 | 확대 코퍼스·확대 색인(`index_l3`) "있음", 기본 색인은 1,128편이고 `NEUMANN_INDEX_DIR`로 전환 | 857582b, c1a1895 |
+| §4 #9 정적 배포·녹화 | 모듈 지도와 RUNNING §5-4에 추가 | 857582b, 1325507 |
+| §4 #10, §6 ④ `/health` 예시 | 실측으로 교체(단계 모듈 실제 이름, `llm: ok`, `routers.precomputed: ok`) | 156d2cb |
+| §4 #11, §6 ④ `/config/weights` 예시 | 실측으로 교체(`formula: product`, `weights: null`, `display: "곱 · 가중치 없음"`, `pipeline.state: ok`). 주의 문단 삭제 | 156d2cb |
+| §4 #12 샘플 → package 422 | 알려진 제약 삭제. 실측: `/premortem` 응답(mock)을 그대로 보내면 200 | 156d2cb |
+| §6 조건 2 응답 예시 | `/premortem`·`/view`를 실제 파이프라인 응답(mock provider, 임베딩 없음)으로 다시 받아 쓰고 mock·어휘 검색 강등임을 문서 머리와 예시에 밝힘 | 156d2cb |
+| 기타: 테스트 수, `tests/e6`·`e2e`, 환경변수 | `908 passed, 22 skipped`(588da63 병합 상태), 모듈 지도에 e6·e2e, 환경변수 표에 검색·임베딩·추론 강도·단계 시간 키 | 1325507, c1a1895 |
 
-## 시작하기
+3. 병합 뒤 새로 들어온 것(E2-L3 확대 색인, E5-L0e2e 라이브 E2E, E5-L1b DISAPERE 추출 채점)도 반영했다(c1a1895).
+4. 기획 키트의 폐기된 문서 이름을 문서·보고서에서 모두 뺐다(이 보고서 머리 한 곳).
+5. PM 추가 배정: 루트 README v0 개정 초안을 `docs/reports/E6-docs_README_draft.md`로 커밋(f65281d, 267a50c). 숫자는 저장소 보고서·결정 기록 값만 쓰고 파일별 출처 표를 붙였다. 목표 미달(Macro-F1 0.4864 < 0.70)을 먼저 적고, PM 정정대로 "Macro에서만 기준선 초과·Micro 구간 겹침·단일 실행"을 밝혔다.
 
-Python 3.12와 [uv](https://docs.astral.sh/uv/). 자세한 것은 [docs/RUNNING.md](docs/RUNNING.md).
+### 재측정 (실제 OpenAI 호출 없음)
 
-```bash
-uv venv --python 3.12 .venv
-uv pip install --python .venv -r pyproject.toml --extra dev
-git config core.hooksPath .githooks       # 비밀값 검사 훅(클론마다 한 번)
-cp .env.example .env                      # 값을 채운다. .env는 커밋되지 않는다. 키는 환경변수 OPENAI_API_KEY로
-python scripts/verify.py                  # 보안 + 계약 + 테스트
-python -m uvicorn neumann.api.main:app --host 127.0.0.1 --port 8000   # http://127.0.0.1:8000/
+서버: 병합한 worktree(main `304e91e` 상태)에서 `NEUMANN_LLM_PROVIDER=mock`, `NEUMANN_EMBED_MODEL` 없이(어휘 검색), `NEUMANN_DATA_DIR` = 공유 데이터 폴더, 포트 8125. 끝나고 `8125 free` 확인. `304e91e..588da63` 사이 `src/neumann/api`·`pipeline.py`·`llm.py`·`analyze`·`index` 변경은 주석 2줄(`fitness.py`·`pii.py`)뿐이라 응답은 그대로다.
+
+```
+$ GET /health
+{"status": "ok", "version": "0.0.1", "pipeline": {"state": "connected", "reason": "", "mode": "pipeline", "label": ""}}
+INPUT queries ok · EVIDENCE index.search·index.store·analyze.extract ok · RISK cards ok · REVIEW review·gate ok · ACTION checklist·validate ok · TRACE api.export ok · llm ok
+routers {'neumann.api.export': 'ok', 'neumann.api.upload': 'missing', 'neumann.api.precomputed': 'ok', 'neumann.api.templates': 'ok', 'neumann.api.meta': 'ok'}
+$ GET /openapi.json paths
+['POST /premortem/package', 'GET /premortem/precomputed', 'GET /premortem/precomputed/{plan_id}', 'GET /templates', 'GET /templates/{item_id}', 'GET /api', 'GET /taxonomy', 'GET /config/weights', 'GET /health', 'POST /premortem', 'POST /premortem/view']
+$ POST /premortem (tests/fixtures/plans/plan.md, mock)
+HTTP 200 1.763648s
+{"status": "degraded", "pipeline_version": "neumann-e3-l0", "plan_id": "3d35460def76…"}
+manifest llm_provider mock · llm_model mock-deterministic-v1 · backend neumann.index.search:search · prompt_versions query_axes.v1, extract_issues.v1, synthesize_cards.v3 · total_s 1.741
+stages plan_normalize ok · query_axes ok(mock) · search degraded(백엔드 lexical_only, 임베딩 없이 어휘 검색) · extract_issues ok(폐기율 0.0%) · synthesize_cards ok(mock) · verify_evidence ok(근거 22/22 원문 일치)
+notices ["[search] degraded: …", "mock provider(테스트용) 결과 — 실제 astra 분석이 아니다"]
+similar_works 10 evidence 22 cards 5 generators ['mock']
+$ POST /premortem/view (plan.md, mock)
+{"source": "pipeline", "label": "일부 단계 강등", "degraded": true, "generators": {"mock": 5}, "contract_ok": true, "dropped": {}, "pipeline": "connected", "result_status": "degraded", "stages_not_ok": [search degraded]}
+$ POST /premortem (negative_recipe.md, mock)
+degraded cards 0 no_card_reason "입력이 연구계획서가 아니다(mock 판단: mock: 연구 어휘 개수로 판정); 유사 연구 검색 상위 점수 0.031"
+$ GET /premortem/precomputed
+HTTP 200 · label "사전 계산본" · source "fixture" · items 3 · 항목 label "사전 계산본(2026-09-30 18:55 KST)"
+$ GET /premortem/precomputed/plan_elife_neuro
+HTTP 200 · x-neumann-precomputed: 1 · notices[0] "사전 계산본(2026-09-30 18:55 KST) — 실시간 분석이 아니라 미리 계산해 둔 결과다 · 분석 파이프라인 미연결로 fixture 결과로 대체된 사전 계산본"
+$ GET /premortem/precomputed/nope
+{"detail":{"code":"not_found","message":"해당 계획서의 사전 계산본이 없다"}} HTTP 404
+$ GET /config/weights
+{"formula": "product", "formula_ko": "위험점수 = 유사도 × 빈도 × 심각도 × 신뢰도 (곱, 가중치 없음)", "weighted": false, "weights": null, "display": "곱 · 가중치 없음", … "pipeline": {"module": "neumann.analyze.cards", "state": "ok", "formula": "product_v1: …", "matches": true}}
+$ POST /premortem/package (plan_text만, mock)
+HTTP 200 application/zip · 9파일 · status degraded · cards_by_generator {'astra': 0, 'rule': 0, 'mock': 5} · pipeline_version neumann-e3-l0
+$ POST /premortem/package (/premortem 응답 그대로, mock)
+HTTP 200 application/zip
 ```
 
-## 문서
+공유 데이터 폴더의 사전 계산본 3건은 파이프라인 병합 전에 만든 fixture 대체본이라 응답에 그렇게 표시됐다(데이터 상태이지 코드 결함이 아니다). API.md에 그대로 적었다.
 
-| 문서 | 내용 |
-|---|---|
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 6단계, 모듈 지도, astra 주력·비상 규칙 경로, 근거 정직성 장치, 데이터 출처와 라이선스 |
-| [docs/RUNNING.md](docs/RUNNING.md) | 설치, 환경변수, 공개자료 경로, 코퍼스·색인, 서버, 테스트, 평가, verify |
-| [docs/API.md](docs/API.md) | 엔드포인트와 예시 |
-| `docs/decisions.md` | 결정 기록 |
-| `docs/HANDOFF.md` | 작업 인계 문서 |
-| `docs/tasks/`, `docs/reports/` | 과제 지시문과 과제별 보고서(측정값·검증) |
+명령(RUNNING):
 
-## 보안
+```
+$ NEUMANN_LLM_PROVIDER=mock python scripts/precompute_demo.py --source pipeline --out <SP>/pre
+분석: neumann.pipeline:run_premortem (연결됨)
+  plan: pipeline · status degraded · 카드 5(mock 5) · 1.28s
+  plan_elife_neuro: pipeline · status degraded · 카드 4(mock 4) · 0.13s
+  plan_medimaging: pipeline · status degraded · 카드 4(mock 4) · 0.12s
+재생 확인: 3/3
+$ python scripts/build_static_site.py --precomputed <SP>/pre --out <SP>/site
+검사: 파일 35개(6.1MB) · 텍스트 21개 · 리소스 참조 22개 · 데모 3건 · 템플릿·예시 8건
+검사 통과: 필수 파일·데모 JSON, 비밀값 0, 환경변수 이름 0, 로컬 경로 0, 외부·루트 절대 참조 0
+$ python -m neumann.pipeline tests/fixtures/plans/plan.md --provider mock
+… "total_s": 1.371
+$ python -m eval.backtest_sample --out <SP>/bt
+… 30 reject researcharcade_hf:otXB6odSG8 physics_pde_climate   (30편 출력)
+$ python -m eval.report_card --help · scripts/record_demo.py --help · scripts/build_static_site.py --help · python -m neumann.pipeline --help
+usage 출력 확인
+$ python -m pytest -q -rs     (588da63 병합 상태, NEUMANN_RAW_DIR·NEUMANN_DATA_DIR 지정, mock)
+908 passed, 22 skipped in 67.48s
+  건너뜀: 라이브 E2E 5(NEUMANN_LIVE_TESTS), 실제 API 테스트(checklist 2·fitness 4·live_astra 4·review 1·baseline_llm 1·disapere_extract 1), UI 1(NEUMANN_UI_TESTS), 실색인 회귀 1(NEUMANN_REAL_DATA_TESTS) 등
+```
 
-공개 저장소다. 비밀값은 환경변수(또는 커밋되지 않는 `.env`)에만 두고 코드는 환경변수로만 읽는다.
+검색 점검(세 문서): "파이프라인이 없", "OpenAI를 부르지 않", "샘플만", 옛 기준 커밋(`5e14b1c`·`ed1d1a0`·`82146f9`)을 `grep`으로 찾아 0건(아래 "최종 verify" 앞 출력).
 
-- `.gitignore`가 `.env`, 데이터, 모델 가중치, 색인, 캐시, 로그를 막는다.
-- `scripts/verify.py`가 키 형태 문자열, `.env`·환경변수에 든 실제 키 값, 금지 파일, 5MB 넘는 파일을 찾는다. 찾은 값은 출력하지 않는다.
-- git 훅: `pre-commit`(스테이징 내용), `commit-msg`(메시지), `pre-push`(추적 파일 전체와 커밋 메시지).
-- GitHub 시크릿 스캐닝과 푸시 보호가 켜져 있다.
+### 실행하지 않은 것 (이번에도)
 
-## 구조
+- 실제 OpenAI 호출(서버 openai provider, `NEUMANN_LIVE_TESTS=1`, 라이브 E2E, `eval.baseline_llm`·`disapere_extract`·`backtest_run_neumann`), bge-m3 로드(실데이터 색인 빌드·`build_index_l3.py`·`build_index_check.py`), 녹화(`record_demo.py`), 다운로드(`git clone`, `collect_l3_shards.py`, `playwright install`).
 
-| 경로 | 내용 |
-|---|---|
-| `AGENTS.md` | 에이전트 규칙 원본(Claude·Codex 공통). `CLAUDE.md`가 가져온다 |
-| `contracts/` | 데이터 계약 JSON Schema(API 응답, 화면 데이터) |
-| `src/neumann/` | 제품 코드: `models.py`(계약), `config.py`, `sources/`(수집), `index/`(색인), `analyze/`(분석), `api/`(서버·내보내기), `webui/`(화면) |
-| `eval/` | 평가: 근거 연결 검사, DISAPERE 골드, Macro-F1, 기준선 |
-| `scripts/` | 검증 러너, 코퍼스 수집·색인 빌드 스크립트 |
-| `tests/` | 테스트와 공용 가짜 데이터(`tests/fixtures/`) |
+### 남은 것 (PM)
 
-## 데이터 출처와 라이선스
-
-데이터 원본과 가공본은 저장소에 넣지 않는다.
-
-| 자료 | 라이선스 |
-|---|---|
-| OpenReview 공개 심사 기록(공개 미러 ResearchArcade 경유) | 선언 없음. 출처를 표기하고 원본은 재배포하지 않는다 |
-| DISAPERE(사람이 붙인 심사평 라벨) | CC BY-NC 4.0 |
-| Crossref–Retraction Watch(정정·철회) | 라이선스 파일 없음(CC0 아님). 출처 표기 |
-| 임베딩 모델 BAAI/bge-m3 | MIT |
-| 화면 폰트(Pretendard, Jost, IBM Plex Mono, Instrument Serif, Mr Dafoe) | SIL OFL 1.1 |
-````
+- 이 문서를 병합한 뒤에도 main이 움직이면 기준 커밋을 확인한다. 특히 E3-L1w(적합성·예상 심사평·체크리스트를 파이프라인에 연결)가 들어오면 "있음(모듈만)" 표기(ARCHITECTURE §1·§2·§4·§5, API `/health` 설명)를 "있음"으로 바꾼다. E4-L1a(업로드)가 들어오면 API 목록·예정 절을 고친다.
+- 첫 제출 "다음 과제에 넘길 것" 1(샘플 → package 422)·5(가중치)·7(EVIDENCE 모듈 이름)은 main에서 해결됐다. 6(`plan_text` 패키지 경로 제거, 결정 19:20)은 588da63에서도 아직 200이다. 2(`/docs` CDN)·4(`NEUMANN_API_HOST/PORT` 미사용)는 그대로다.
 
 ## 최종 verify
 
