@@ -83,14 +83,15 @@ def astra_allowed() -> bool:
     return os.environ.get(ASTRA_FLAG, "").strip().lower() in _TRUE
 
 
-def guard_model(model: str) -> str:
+def guard_model(model: str, *, log: bool = True) -> str:
     """모델명에 astra가 들어 있으면 `NEUMANN_ALLOW_ASTRA=1`이 없는 한 `SAFE_MODEL`(sol)로 바꾼다.
 
     바뀐 모델은 결과 manifest·카드 model에 그대로 기록되므로(실제로 쓴 값) 표기가 거짓이 되지 않는다."""
     if model and "astra" in model.lower() and not astra_allowed():
         import logging
 
-        logging.getLogger("neumann.config").warning("astra 모델 요청을 %s로 바꾼다(NEUMANN_ALLOW_ASTRA 없음)", SAFE_MODEL)
+        if log:
+            logging.getLogger("neumann.config").warning("astra 모델 요청을 %s로 바꾼다(NEUMANN_ALLOW_ASTRA 없음)", SAFE_MODEL)
         return SAFE_MODEL
     return model
 

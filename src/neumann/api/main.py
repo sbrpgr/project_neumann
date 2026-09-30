@@ -251,7 +251,7 @@ def _llm_state() -> dict[str, Any]:
             "key_present": key_present,
             # openai_no_key: 호출마다 config_error → 비상 규칙 경로로 강등된다
             "effective": ("openai" if key_present else "openai_no_key") if live else "mock",
-            "model": guard_model(s.llm_model) if live else "",
+            "model": guard_model(s.llm_model, log=False) if live else "",
             "astra_allowed": astra_allowed(),
         }
     except Exception as exc:  # noqa: BLE001

@@ -152,6 +152,8 @@ class OpenAIBaseline:
             client = self._get_client()
         except LiveCallLocked as exc:
             return {"ok": False, "error": f"locked: {exc}", "locked": True, "latency_s": 0.0}
+        except Exception as exc:  # noqa: BLE001 — 키 없음 등. 예외 대신 실패로 돌려준다(키·헤더는 담지 않는다)
+            return {"ok": False, "error": type(exc).__name__, "latency_s": 0.0}
         try:
             resp = client.responses.create(
                 model=self.model,

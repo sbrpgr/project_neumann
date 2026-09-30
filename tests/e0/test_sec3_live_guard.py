@@ -83,9 +83,9 @@ def test_explicit_provider_argument_is_also_guarded(monkeypatch):
 
 def test_flag_opens_openai(monkeypatch):
     monkeypatch.setenv("NEUMANN_LIVE_LLM_OK", "1")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)  # 키가 없으니 실제 클라이언트를 만들지 않는다
     llm = make_llm(SimpleNamespace(llm_provider="openai", llm_model="gpt-6.1-sol", openai_api_key=None, llm_timeout_s=5.0))
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    assert llm.name == "openai" and llm.model == "gpt-6.1-sol"
+    assert llm.name == "openai" and llm.model == "gpt-6.1-sol" and llm._client is None
 
 
 def test_direct_provider_construction_does_not_build_client_without_flag(monkeypatch):
