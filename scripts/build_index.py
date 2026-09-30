@@ -37,7 +37,8 @@ from neumann.index.store import IndexStore  # noqa: E402
 from neumann.models import ReviewEvent, Work  # noqa: E402
 
 
-CORPUS_FILES = ("works.jsonl", "reviews.jsonl", "corpus_manifest.json")
+# 색인이 실제로 읽는 입력(해시 대상). corpus_manifest.json은 생성 시각이 바뀌므로 넣지 않는다
+CORPUS_FILES = ("works.jsonl", "reviews.jsonl")
 
 
 def sha256_file(path: Path) -> str:
@@ -84,18 +85,26 @@ def load_source(source: str, processed_dir: Path) -> tuple[list[Work], list[Revi
         fx = load_fixtures()
         files = [FIXTURES_DIR / "works.jsonl", FIXTURES_DIR / "reviews.jsonl"]
         return list(fx.works), list(fx.reviews), {"source": "fixtures", "dir": "tests/fixtures", **input_digest(files, FIXTURES_DIR)}
-    if source == "jsonl":
-        # 폴더의 works.jsonl·reviews.jsonl을 계약 모델로 바로 읽는다(load_corpus 없이 점검·개발할 때)
-        wpath, rpath = processed_dir / "works.jsonl", processed_dir / "reviews.jsonl"
-        works = [Work.model_validate_json(x) for x in wpath.read_text(encoding="utf-8").splitlines() if x.strip()]
-        reviews = [ReviewEvent.model_validate_json(x) for x in rpath.read_text(encoding="utf-8").splitlines() if x.strip()]
-        return works, reviews, {"source": "jsonl", "dir": str(processed_dir), **input_digest([wpath, rpath], processed_dir)}
-    from neumann.sources.corpus import load_corpus
-
-    works, reviews = _parts(load_corpus(processed_dir))
     # 색인이 실제로 읽는 입력만 해시한다(같은 폴더의 다른 소스 파일, 예 retraction.jsonl은 제외)
-    files = [processed_dir / n for n in CORPUS_FILES if (processed_dir / n).is_file()]
-    return works, reviews, {"source": "processed", "dir": str(processed_dir), **input_digest(files, processed_dir)}
+    files = [processed_dir / n for n in CORPUS_FILES]
+    note = None
+    if source == "processed":
+        try:
+            from neumann.sources.corpus import load_corpus
+        except ImportError as exc:  # E1 코드가 아직 병합되지 않은 브랜치
+            note = f"load_corpus를 불러오지 못해 jsonl 직접 읽기로 대신함: {exc}"
+            print(f"[build_index] 주의: {note}")
+        else:
+            works, reviews = _parts(load_corpus(processed_dir))
+            return works, reviews, {"source": "processed", "dir": str(processed_dir), **input_digest(files, processed_dir)}
+    # 폴더의 works.jsonl·reviews.jsonl을 계약 모델로 바로 읽는다(검증 포함)
+    wpath, rpath = files
+    works = [Work.model_validate_json(x) for x in wpath.read_text(encoding="utf-8").splitlines() if x.strip()]
+    reviews = [ReviewEvent.model_validate_json(x) for x in rpath.read_text(encoding="utf-8").splitlines() if x.strip()]
+    info = {"source": "jsonl", "dir": str(processed_dir), **input_digest(files, processed_dir)}
+    if note:
+        info["fallback"] = note
+    return works, reviews, info
 
 
 def gpu_info(device: str | None) -> dict[str, Any]:

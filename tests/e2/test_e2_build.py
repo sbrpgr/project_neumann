@@ -49,6 +49,22 @@ def test_build_script_jsonl_no_embed(tmp_path, corpus):
     assert st.n_excerpts() == m["counts"]["excerpts"]
 
 
+def test_build_script_default_processed_source(tmp_path, corpus):
+    """기본 입력(load_corpus). E1 코드가 없으면 jsonl 직접 읽기로 대신하고 manifest에 그 사실을 남긴다."""
+    src, out = tmp_path / "processed", tmp_path / "index"
+    _write_corpus(corpus, src)
+    (src / "author_responses.jsonl").write_text("", encoding="utf-8")
+    (src / "decisions.jsonl").write_text("", encoding="utf-8")
+    build = _load_script("build_index")
+    assert build.main(["--processed", str(src), "--out", str(out), "--no-embed"]) == 0
+    m = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+    if importlib.util.find_spec("neumann.sources.corpus") is None:
+        assert m["input"]["source"] == "jsonl" and "load_corpus" in m["input"]["fallback"]
+    else:
+        assert m["input"]["source"] == "processed" and "fallback" not in m["input"]
+    assert m["counts"]["works"] == 4 and m["offset_check"]["failed"] == 0
+
+
 def test_corpus_adapter_accepts_e1_shape(corpus):
     from dataclasses import dataclass
 
