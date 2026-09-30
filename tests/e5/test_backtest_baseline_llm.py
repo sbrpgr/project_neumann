@@ -87,7 +87,10 @@ class _FakeResponses:
                                output_text=json.dumps(_risks("설명이다."), ensure_ascii=False))
 
 
-def test_openai_request_shape_plan_only():
+def test_openai_request_shape_plan_only(monkeypatch):
+    # 합성 SDK만 쓴다. Astra 요청 모양 검사는 명시적으로 두 권한을 승인한다.
+    monkeypatch.setenv("NEUMANN_LIVE_LLM_OK", "1")
+    monkeypatch.setenv("NEUMANN_ALLOW_ASTRA", "1")
     fake = _FakeResponses()
     prov = bl.OpenAIBaseline(model="gpt-6-astra", client=SimpleNamespace(responses=fake))
     instructions, _ = bl.load_prompt()
