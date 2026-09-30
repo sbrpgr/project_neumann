@@ -1,8 +1,8 @@
 # SEC-5 여러 사용자 동시 사용 안전성 보고서
 
 - 빌더: Claude Opus 5.5 (`builder: claude-opus-5.5`)
-- 브랜치: `task/SEC-5` (main `17f9df5`에서 시작)
-- 커밋: `f37a335` (A 검색 상태 스레드별), `29e166c` (B 동시 호출 상한), 이 보고서 커밋
+- 브랜치: `task/SEC-5` (main `17f9df5`에서 시작, main `5ed9b45` 병합)
+- 커밋: `f37a335` (A 검색 상태 스레드별), `29e166c` (B 동시 호출 상한), `a288b3b` (보고서), `6ff0255` (main 병합), 후속 커밋(아래 "후속" 절: 실패한 검색이 앞 상태를 남기지 않게 + 파이프라인 확인)
 - 실제 OpenAI 호출: **없음.** 모든 명령에 `NEUMANN_LLM_PROVIDER=mock`, `NEUMANN_LIVE_LLM_OK`는 켜지 않았다(conftest가 `0`으로 고정). 가짜 클라이언트만 썼다.
 
 ## 배경
@@ -169,6 +169,55 @@ verify 통과
 4. **관측 값을 화면에 싣지 않았다.** `inflight_limiter().snapshot()`(상한·진행 중·최고·대기·대기 초과)을 `/health`에 싣는 것은 E4(api) 소유라 하지 않았다. 부하 시험 때 유용하다.
 5. **실제 OpenAI로 잰 효과는 없다.** 규칙상 실제 호출을 하지 않았다. 대표 승인 확인 테스트에서 동시 4~6 요청을 돌려 `wait_timeouts`, 429 횟수, 추출 비상 경로 비율을 재 보는 것이 다음 단계다.
 6. `eval/`의 기준선 LLM(`OpenAIBaseline`)은 자체 클라이언트라 이 상한을 거치지 않는다(평가 전용, 제품 서버 경로 아님, E5 소유).
+
+## 후속 (검증자 정적 검토 반영)
+
+### (1) 실패한 검색이 앞 요청의 상태를 남기지 않게
+
+- 문제: 스레드 풀 스레드를 다시 쓸 때, 요청 2의 `search()`가 상태를 적기 전에 예외로 끝나면 그 스레드 몫에 요청 1의 상태가 남아 `status()`가 그것을 읽을 수 있었다.
+- 고침(`search.py`): `search()`의 **첫 문장**에서 이 스레드 몫을 미완료 표지 `{"backend": "unknown", "incomplete": True, "reason": "…상태를 남기기 전에 끝났다(예외)"}`로 바꾼다. 정상 종료 때는 예전처럼 실제 상태로 덮는다. 강등 여부(`degraded`)는 모르므로 싣지 않는다(거짓 `False`를 주지 않는다). 공용 값(`_STATUS`)은 마지막으로 **끝난** 호출 그대로라 검색한 적 없는 스레드의 동작은 바뀌지 않는다. 파이프라인은 `_SEARCH_STATUS_KEYS`만 옮기므로 표지에서는 `backend: "unknown"`만 실린다.
+- 회귀 시험 `test_failed_search_in_reused_thread_does_not_leave_stale_status`: `ThreadPoolExecutor(max_workers=1)`로 **같은 작업 스레드**에서 차례로 ① 검색 성공 ② 입력 검사 예외(`fusion="bogus"`, ValueError) ③ 검색 성공 ④ 검색 중간 예외(BM25 점수 계산에서 RuntimeError). ②·④ 뒤의 `last_search_status()`는 ①·③의 상태와 다르고 `incomplete=True`, `backend="unknown"`, `per_query`·`relevance`·`degraded` 없음. ③은 다시 정상. 네 호출이 같은 스레드였음도 단언한다.
+- 변이 확인(시작 때 지우는 줄을 빼면):
+
+```
+== mutation: no clear at start
+>           assert stale != st1 and stale != st3  # 앞 요청 상태가 남지 않는다
+E           AssertionError: assert ({'n_queries': 2, 'n_works': 4, 'alpha': 0.6, 'fusion': 'rrf', ...} != {'n_queries': 2, ...})
+FAILED tests/e2/test_sec5_search_status.py::test_failed_search_in_reused_thread_does_not_leave_stale_status
+1 failed, 4 passed in 0.18s
+```
+
+### (2) 파이프라인이 `search()`와 `status()`를 같은 스레드에서 부르는가
+
+`pipeline.py`는 고치지 않았다. 읽고 확인한 것:
+
+- **main `5ed9b45`**: `run_premortem`의 4단계 `with run.stage("search", "EVIDENCE")` 블록 안에서 349행 `backend.search(...)`, 355행 `backend.status()`를 **차례로, 같은 스레드에서** 부른다. 그 사이에 다른 검색은 없다. `IndexBackend.search`/`.status`(`analyze/backend.py`)는 `neumann.index.search.search`/`last_search_status`를 그대로 부른다.
+- **호출 경로**: API `main.py` 163행은 `run_in_threadpool(fn, …)`으로 `run_premortem` **전체**를 작업 스레드 하나에서 돌린다. `export.py` 900행은 부른 스레드에서 곧바로 돌린다. 둘 다 한 요청의 검색·상태 읽기가 한 스레드다.
+- **E3-L1y `06d902a`**(`task/E3-L1y`): 검색 단계는 바뀌지 않았다(그 판의 391행 `backend.search`, 397행 `backend.status()`, 같은 블록). 새 병렬화는 카드 뒤 v1 단계(`expected_review` ∥ `checklist → semantic_validate`)를 `_attach_v1_parallel`의 `ThreadPoolExecutor(thread_name_prefix="neumann-v1")`에서 돌리는 것뿐이고, 이 단계들은 검색을 부르지 않는다(`src/neumann/analyze/`에서 검색을 부르는 곳은 `backend.py`뿐). 같은 브랜치의 `extract.py`·`queries.py` 변경은 캐시 임시 파일 이름 고유화뿐이다. **E3-L1y는 전제를 깨지 않는다.** 그래서 `search()`가 상태를 함께 돌려주게 바꾸지 않았다.
+- **pipeline.py를 고치는 사람이 지켜야 할 것**:
+  1. `backend.status()`는 `backend.search()`를 부른 **같은 스레드에서, 바로 뒤에** 부른다. 사이에 그 스레드에서 다른 `search()`를 부르지 않는다.
+  2. 검색을 작업 스레드로 옮기면(예: 검색을 다른 단계와 동시에 돌리기) 상태 읽기도 **그 작업 함수 안으로** 옮겨 결과와 함께 돌려준다. 예: `def _search_job(): hits = backend.search(qs, k=k, exclude_work_ids=ex); return hits, backend.status()` → 제출한 스레드는 `hits, raw_status = fut.result()`. 제출한 스레드에서 `backend.status()`를 부르면 안 된다(그 스레드는 검색한 적이 없거나 옛 상태를 가진다).
+  3. `contextvars.copy_context()`로 작업을 넘겨도 도움이 안 된다. 상태는 문맥이 아니라 스레드(`threading.local`)에 붙는다.
+  4. 한 스레드 안에서 코루틴이 `search`와 `status` 사이에 `await`를 끼우는 구조로 바꾸면 스레드별 저장이 요청별이 아니게 된다(그때는 `search()`가 상태를 함께 돌려주는 API가 필요하다).
+
+### (3) main 병합과 재시험
+
+- `git merge --no-commit --no-ff 5ed9b45` → 충돌 없음(main 쪽 변경: SEC-4 이메일 선형화, E4-L2e 부하 시험 도구·보고서, `models.py`; SEC-5 파일과 겹침 없음) → verify 통과 뒤 `6ff0255`로 커밋.
+- 병합 직후 verify: `1203 passed, 46 skipped` / `verify 통과`.
+- 후속 (1)을 넣은 뒤(후속 커밋 직전):
+
+```
+> python -m pytest tests/e2/test_sec5_search_status.py tests/e3/test_sec5_inflight.py -q
+15 passed in 1.91s
+> python -m pytest tests/e2 tests/e3/test_llm.py tests/e0/test_sec3_live_guard.py tests/e4/test_loadtest_multiuser.py -q
+139 passed, 2 skipped in 6.95s
+> python scripts/verify.py
+1204 passed, 46 skipped in 71.46s (0:01:11)
+보안: 파일 406개
+계약: 2개
+테스트: 통과
+verify 통과
+```
 
 ## 다음 과제에 넘길 것
 

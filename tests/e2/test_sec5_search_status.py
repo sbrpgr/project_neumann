@@ -137,6 +137,59 @@ def test_thread_status_survives_later_search_elsewhere(mem_store):
     assert search_mod._STATUS["per_query"][0]["query"] == Q_UNRELATED[0]
 
 
+class _BrokenBM25:
+    """검색 한가운데(BM25 점수 계산)에서 예외를 내는 대리자."""
+
+    def __init__(self, inner: Any) -> None:
+        self._inner = inner
+
+    def scores(self, query: str):
+        raise RuntimeError("검색 중간 실패(시험)")
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+
+def test_failed_search_in_reused_thread_does_not_leave_stale_status(mem_store, corpus, fake_embedder):
+    """스레드 풀 스레드 하나를 다시 쓴다: 요청 1 검색 성공 → 요청 2 검색이 상태를 남기기 전에 예외 →
+    요청 2의 last_search_status()는 요청 1의 상태가 아니라 미완료 표지다(입력 검사 예외·검색 중간 예외 둘 다)."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    works, reviews = corpus
+    broken = IndexStore.from_corpus(works, reviews, embedder=fake_embedder)
+    broken.bm25 = _BrokenBM25(broken.bm25)
+
+    def ok_request():
+        hits = search_mod.search(Q_RELATED, k=2)
+        return threading.get_ident(), hits, search_mod.last_search_status()
+
+    def failing_request(kind: str):
+        try:
+            if kind == "argument":
+                search_mod.search(Q_UNRELATED, k=2, fusion="bogus")  # 입력 검사에서 ValueError
+            else:
+                search_mod.search(Q_UNRELATED, k=2, store=broken)  # 점수 계산 중 RuntimeError
+        except (ValueError, RuntimeError) as exc:
+            return threading.get_ident(), type(exc).__name__, search_mod.last_search_status()
+        raise AssertionError("예외가 나야 한다")
+
+    with ThreadPoolExecutor(max_workers=1) as pool:  # 같은 작업 스레드를 차례로 다시 쓴다
+        t1, hits1, st1 = pool.submit(ok_request).result(timeout=20)
+        t2, err2, st2 = pool.submit(failing_request, "argument").result(timeout=20)
+        t3, hits3, st3 = pool.submit(ok_request).result(timeout=20)
+        t4, err4, st4 = pool.submit(failing_request, "mid_search").result(timeout=20)
+    assert t1 == t2 == t3 == t4  # 정말 같은 스레드
+    assert hits1 and [p["query"] for p in st1["per_query"]] == Q_RELATED and "incomplete" not in st1
+    assert err2 == "ValueError" and err4 == "RuntimeError"
+    for stale in (st2, st4):
+        assert stale != st1 and stale != st3  # 앞 요청 상태가 남지 않는다
+        assert stale["incomplete"] is True and stale["backend"] == "unknown"
+        assert "per_query" not in stale and "relevance" not in stale and "degraded" not in stale
+    assert hits3 == hits1 and st3.get("incomplete") is None  # 다시 성공하면 정상 상태
+    # 공용 값은 마지막으로 끝난(성공한) 호출 그대로: 검색한 적 없는 스레드에는 이전 동작 유지
+    assert [p["query"] for p in search_mod._STATUS["per_query"]] == Q_RELATED
+
+
 def test_backend_status_per_request_thread(mem_store):
     """파이프라인 경로(IndexBackend.search → .status())가 동시 요청 사이에 섞이지 않는다."""
     from neumann.analyze.backend import IndexBackend

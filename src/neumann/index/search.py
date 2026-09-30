@@ -95,6 +95,13 @@ _QUERY_EMBEDDER: Embedder | None = None
 _STATUS: dict[str, Any] = {}
 _STATUS_LOCK = threading.Lock()
 _THREAD_STATUS = threading.local()
+# search()가 시작할 때 이 스레드 몫에 먼저 적는 표지. 호출이 상태를 남기기 전에 예외로 끝나면 이것이 남는다
+# (스레드 풀 스레드를 다시 쓸 때 앞 요청의 상태가 다음 요청의 상태로 읽히지 않게). 강등 여부는 모르므로 싣지 않는다.
+_INCOMPLETE_STATUS: dict[str, Any] = {
+    "backend": "unknown",
+    "incomplete": True,
+    "reason": "이 스레드의 마지막 search()가 상태를 남기기 전에 끝났다(예외)",
+}
 
 
 def set_query_embedder(embedder: Embedder | None) -> None:
@@ -125,7 +132,11 @@ def last_search_status() -> dict[str, Any]:
     """마지막 search() 호출의 백엔드·강등·하한·관련성 판정·질의별 요약·소요 시간. 파이프라인이 StageStatus에 옮겨 적는다.
 
     이 스레드가 search()를 부른 적이 있으면 **이 스레드의** 마지막 호출 상태다(동시 요청끼리 섞이지 않는다, SEC-5).
-    없으면 프로세스 공용 값(어느 스레드든 마지막 호출)으로 돌아간다(이전 동작, mcp_server는 잠금으로 직렬화).
+    그 호출이 예외로 끝났으면 앞 호출 상태가 아니라 미완료 표지(`incomplete=True`, `backend="unknown"`)다.
+    이 스레드가 검색한 적이 없으면 프로세스 공용 값(어느 스레드든 마지막으로 끝난 호출)으로 돌아간다
+    (이전 동작, mcp_server는 잠금으로 직렬화).
+
+    전제: 호출부는 search()를 부른 **같은 스레드에서, 그 다음에 곧바로** 이 함수를 부른다(파이프라인 search 단계).
     """
     mine = getattr(_THREAD_STATUS, "status", None)
     if mine is not None:
@@ -191,6 +202,8 @@ def search(
     adaptive_alpha: bool | None = None,
 ) -> list[SearchHit]:
     """질의 목록 → 상위 k편(결합 순서, 같으면 점수·work_id 순). 결과는 결정적이다. 추가 인자는 모듈 설명."""
+    # 맨 먼저 이 스레드의 앞 상태를 지운다(SEC-5): 이 호출이 예외로 끝나면 앞 호출 상태 대신 미완료 표지가 남는다
+    _THREAD_STATUS.status = dict(_INCOMPLETE_STATUS)
     t0 = time.perf_counter()
     ist = get_index_settings()
     alpha = ist.search_alpha if alpha is None else float(alpha)
