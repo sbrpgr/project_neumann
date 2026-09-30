@@ -352,9 +352,13 @@ def _record_url(rec: Any) -> str:
 def _sentence_excerpts(text: str, *, source_kind: str, source_id: str, source_url: str, code: RiskCode,
                        topic: set[str], limit: int) -> list[tuple[float, Excerpt]]:
     out: list[tuple[float, Excerpt]] = []
+    from neumann.analyze.revise import contains_identity
+
     for s, e in _split(text):
         piece = text[s:e]
         if not (MIN_SENTENCE_CHARS <= len(piece) <= MAX_SENTENCE_CHARS) or not piece.strip():
+            continue
+        if contains_identity(piece):
             continue
         try:
             ex = Excerpt.from_source(text, s, e, source_kind=source_kind, source_id=source_id, source_url=source_url)  # type: ignore[arg-type]
@@ -403,6 +407,11 @@ def collect_card_records(
             except Exception as exc:  # noqa: BLE001 — 한 논문의 기록 오류로 전체를 멈추지 않는다
                 log.warning("기록 조회 실패 work_id=%s kind=%s", wid[:24], type(exc).__name__)
                 continue
+            # 저장소가 다른 논문 기록을 돌려줘도 요청한 논문의 기록으로 재표기하지 않는다.
+            dec = dec if dec is None or dec.work_id == wid else None
+            responses = [a for a in responses if a.work_id == wid]
+            metas = [r for r in metas if r.work_id == wid]
+            work = work if work is None or work.work_id == wid else None
             sim = next((w for w in result.similar_works if w.work_id == wid), None)
             outcome = dec.outcome.value if dec is not None else None
             wr = WorkRecords(

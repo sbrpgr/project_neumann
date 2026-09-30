@@ -162,6 +162,68 @@ class RevisionIndex(EvidenceIndex):
 
 
 PLACEHOLDER_RE = re.compile(r"\[확인 필요: [^\]\n]{1,120}\]")
+REVIEWER_HANDLE_RE = re.compile(r"\b(?:Reviewer|reviewer)\s+(?!this\b|that\b|said\b|also\b|will\b|have\b)[A-Za-z0-9]{4}(?![A-Za-z0-9])|\brvw_[0-9a-f]{16}(?![A-Za-z0-9])|reviewer_pseudonym")
+AUTHOR_SIGNATURE_RE = re.compile(r"(?im)^\s*(?:best regards|kind regards|sincerely|the authors of)\b")
+CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+UNSAFE_MARKUP_RE = re.compile(r"<\s*/?\s*[A-Za-z][^>]*>|\]\(\s*(?:javascript|data):", re.I)
+_ENTITY_RE = re.compile(r"[가-힣A-Za-z0-9·_-]{2,}(?:대학교|대학|병원|연구소|연구원|센터|재단)|\b(?:[A-Z][A-Za-z&.-]*\s+){0,4}(?:University|Hospital|Institute|Clinic|Laboratory|Center)\b|\b[A-Z][A-Za-z0-9._-]{2,}(?=\s*(?:데이터셋|dataset|코퍼스))")
+_ASSERTED_RESULT_RE = re.compile(r"이미[^.?!\n]{0,35}(?:달성|확보|확인|입증|수집|검증)(?:했|하였|한|된|됐다|했다)|already\s+(?:[A-Za-z]+\s+){0,4}(?:confirmed|achieved|secured|collected|demonstrated)", re.I)
+
+
+def unsupported_facts(text: str, source: str) -> list[str]:
+    """정규식으로 확인할 수 있는 새 기관·데이터셋·이미 달성한 결과 주장만 검사한다."""
+    return [m[0] for pattern in (_ENTITY_RE, _ASSERTED_RESULT_RE) for m in pattern.finditer(text or "")
+            if m[0].casefold() not in (source or "").casefold()]
+
+
+def contains_identity(text: str) -> bool:
+    return bool(REVIEWER_HANDLE_RE.search(text or "") or AUTHOR_SIGNATURE_RE.search(text or ""))
+
+
+_KO_DIGITS = dict(zip("영공일이삼사오육칠팔구", (0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9), strict=True))
+_KO_UNITS = {"십": 10, "백": 100, "천": 1000, "만": 10_000, "억": 100_000_000, "조": 1_000_000_000_000}
+_NATIVE_NUMBERS = {"한": 1, "두": 2, "세": 3, "네": 4, "다섯": 5, "여섯": 6, "일곱": 7, "여덟": 8, "아홉": 9, "열": 10,
+                   "스물": 20, "서른": 30, "마흔": 40, "쉰": 50, "예순": 60, "일흔": 70, "여든": 80, "아흔": 90}
+_KO_NUMBER_RE = re.compile(r"(?<![가-힣])([영공일이삼사오육칠팔구십백천만억조]+|다섯|여섯|일곱|여덟|아홉|스물|서른|마흔|예순|일흔|여든|아흔|한|두|세|네|열|쉰)\s*(?=(?:원|건|개|명|회|년|개월|퍼센트|배|편|장))")
+_EN_NUMBERS = {"zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
+               "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15,
+               "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19, "twenty": 20, "thirty": 30,
+               "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90}
+_EN_SCALES = {"hundred": 100, "thousand": 1000, "million": 1_000_000, "billion": 1_000_000_000}
+_EN_NUMBER_RE = re.compile(r"\b(?:" + "|".join((*_EN_NUMBERS, *_EN_SCALES)) + r")(?:[ -]+(?:and[ -]+)?(?:" + "|".join((*_EN_NUMBERS, *_EN_SCALES)) + r"))*\b", re.I)
+
+
+def written_numbers(text: str) -> list[str]:
+    """한글 단위 수사·영어 수사의 값. 의미 전체 검증이 아니라 수치 우회 방어다."""
+    out: list[str] = []
+    for match in _KO_NUMBER_RE.finditer(text or ""):
+        token = match[1]
+        if token in _NATIVE_NUMBERS:
+            out.append(str(_NATIVE_NUMBERS[token]))
+            continue
+        total = section = digit = 0
+        for char in token:
+            if char in _KO_DIGITS:
+                digit = _KO_DIGITS[char]
+            elif _KO_UNITS[char] < 10_000:
+                section += (digit or 1) * _KO_UNITS[char]
+                digit = 0
+            else:
+                total += (section + digit or 1) * _KO_UNITS[char]
+                section = digit = 0
+        out.append(str(total + section + digit))
+    for match in _EN_NUMBER_RE.finditer(text or ""):
+        total = section = 0
+        for word in re.split(r"[ -]+", match[0].lower()):
+            if word in _EN_NUMBERS:
+                section += _EN_NUMBERS[word]
+            elif word == "hundred":
+                section = (section or 1) * 100
+            elif word in _EN_SCALES:
+                total += (section or 1) * _EN_SCALES[word]
+                section = 0
+        out.append(str(total + section))
+    return out
 
 
 def placeholders(text: str) -> list[str]:
@@ -170,11 +232,13 @@ def placeholders(text: str) -> list[str]:
 
 
 def fabricated_numbers(text: str, draft: Draft, index: EvidenceIndex) -> list[str]:
-    """자리표시 밖의 수치 중 계획서·인용 근거·카드 문구·인용 줄 번호에 없는 것(지어내기 금지 게이트)."""
-    outside = PLACEHOLDER_RE.sub(" ", text or "")
+    """자리표시 안·밖의 수치와 수사 중 계획서·인용 근거에 없는 것."""
     facts, counts = index.allowed_numbers(draft)
     allowed = facts | counts
-    return [n for n in gate_mod.extract_numbers(outside) if n not in allowed]
+    sources = [*index.plan_lines.values(), *(index.excerpts[x].text for x in draft.excerpt_ids if x in index.excerpts)]
+    for source in sources:
+        allowed.update(written_numbers(source))
+    return [n for n in [*gate_mod.extract_numbers(text or ""), *written_numbers(text or "")] if n not in allowed]
 
 
 def _pool_problem(excerpt_ids: list[str], pool: set[str]) -> tuple[str | None, str]:
@@ -238,7 +302,7 @@ def build_card_prompt(card: RiskCard, result: PremortemResult, records: CardReco
         p_of(w.work_id)
     evidence_payload: list[dict[str, Any]] = []
     for x in dict.fromkeys(card.evidence):
-        if x not in ev or len(evidence_payload) >= MAX_CARD_EVIDENCE:
+        if x not in ev or contains_identity(ev[x].text) or len(evidence_payload) >= MAX_CARD_EVIDENCE:
             continue
         ea = f"E{len(evidence_payload) + 1}"
         alias[ea] = x
@@ -247,6 +311,8 @@ def build_card_prompt(card: RiskCard, result: PremortemResult, records: CardReco
     counts = {"M": 0, "A": 0, "D": 0}
     records_payload: list[dict[str, Any]] = []
     for rec in records.excerpts:
+        if contains_identity(rec.excerpt.text):
+            continue
         p = prefix.get(rec.record_kind, "M")
         counts[p] += 1
         ra = f"{p}{counts[p]}"
@@ -367,6 +433,9 @@ class _Gated:
 def _safe(text: Any) -> str:
     s = text if isinstance(text, str) else repr(text)
     s = redact_pii(s)
+    s = REVIEWER_HANDLE_RE.sub("[REVIEWER]", s)
+    if AUTHOR_SIGNATURE_RE.search(s):
+        s = "[IDENTITY REMOVED]"
     return s if len(s) <= 300 else s[:299] + "…"
 
 
@@ -374,11 +443,15 @@ def _check(text: Any, ids: list[str], lines: list[int], section: str, index: Rev
            ) -> tuple[str | None, str, list[dict[str, Any]]]:
     if not isinstance(text, str):
         return gate_mod.MALFORMED, "text가 문자열이 아니다", []
+    if contains_identity(text):
+        return PII, "리뷰어 핸들·서명", []
     clean_lines = [n for n in lines if isinstance(n, int) and not isinstance(n, bool)]
     d = Draft(section, text.strip(), tuple(ids), (), tuple(clean_lines))
     reason, detail, quotes = check_sentence(d, index)
     if reason is not None:
         return reason, detail, []
+    if fabricated_numbers(text, d, index):
+        return gate_mod.FABRICATED_NUMBER, "계획서·근거에 없는 수치·수사", []
     reason, detail = _pool_problem(list(ids), pool)
     if reason is not None:
         return reason, detail, []
@@ -455,8 +528,11 @@ def gate_card(
         if len(proposed) > MAX_PROPOSED_CHARS:
             drop("edit", TOO_LONG, proposed, f"{len(proposed)}자 > {MAX_PROPOSED_CHARS}")
             continue
-        if contains_pii(proposed):
+        if contains_pii(proposed) or contains_identity(proposed):
             drop("edit", PII, proposed, "이메일/ORCID")
+            continue
+        if CONTROL_RE.search(proposed) or UNSAFE_MARKUP_RE.search(proposed):
+            drop("edit", gate_mod.MALFORMED, proposed, "제어문자·실행 가능한 마크업")
             continue
         ids = list(item.get("rationale_excerpt_ids", []))
         reason, detail, quotes = _check(item.get("rationale"), ids, [no], "edit_rationale", index, pool)
@@ -467,6 +543,9 @@ def gate_card(
         unknown = fabricated_numbers(proposed, Draft("edit", proposed, tuple(ids), (), (no,)), index)
         if unknown:
             drop("edit", gate_mod.FABRICATED_NUMBER, proposed, f"계획서·근거에 없는 수치 {unknown[:5]} — 자리표시([확인 필요: …])를 써야 한다")
+            continue
+        if unsupported_facts(proposed, plan.text):
+            drop("edit", "unsupported_fact", proposed, "계획서에 없는 기관·데이터셋·이미 달성한 결과 주장")
             continue
         kind = item.get("kind") if item.get("kind") in ("replace", "insert_after") else "replace"
         g.edits.append({
@@ -486,11 +565,15 @@ def gate_card(
         if len(text) > MAX_QUESTION_CHARS:
             drop("question", TOO_LONG, text, f"{len(text)}자 > {MAX_QUESTION_CHARS}")
             continue
-        if contains_pii(text):
+        if contains_pii(text) or contains_identity(text):
             drop("question", PII, text, "이메일/ORCID")
             continue
         raw_lines = item.get("plan_lines") if isinstance(item.get("plan_lines"), list) else []
         q_lines = [n for n in raw_lines if isinstance(n, int) and not isinstance(n, bool) and n in lines]
+        unknown = fabricated_numbers(text, Draft("question", text, (), (), tuple(q_lines)), index)
+        if unknown:
+            drop("question", gate_mod.FABRICATED_NUMBER, text, "계획서에 없는 수치·수사가 질문에 있다")
+            continue
         g.questions.append({"text": text, "plan_lines": q_lines})
     return g
 
@@ -661,7 +744,7 @@ def _plan_for(result: PremortemResult, plan_text: str | None, notices: list[str]
 def select_cards(result: PremortemResult, card_ids: list[str] | None) -> tuple[list[RiskCard], list[dict[str, str]]]:
     """요청한 카드(없으면 전부, 점수 높은 순). 결과에 없는 id·R0·근거 없는 카드는 건너뛰고 사유를 남긴다."""
     by_id = {c.card_id: c for c in result.risk_cards}
-    ev = {e.excerpt_id for e in result.evidence}
+    ev = {e.excerpt_id for e in result.evidence if not contains_identity(e.text)}
     skipped: list[dict[str, str]] = []
     wanted = list(dict.fromkeys(card_ids)) if card_ids else [c.card_id for c in sorted(result.risk_cards, key=lambda c: -c.score.total)]
     cards: list[RiskCard] = []

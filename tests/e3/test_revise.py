@@ -378,3 +378,110 @@ def test_cancelled_revision_does_not_start_provider(result, store, monkeypatch):
     with pytest.raises(revise.RevisionCancelled):
         revise.revise_result(result, store=store, cancel_event=cancelled)
     assert calls == []
+
+
+@pytest.mark.parametrize("text", ["연구비 오천만 원을 확보했다.", "표본 일곱 명을 추가한다.",
+                                 "We collected ninety two samples.", "표본은 [확인 필요: 이미 확보한 3000건]이다."])
+def test_written_and_placeholder_numbers_do_not_bypass_proposal_gate(result, store, text):
+    card = next(c for c in result.risk_cards if c.card_id == LEAK)
+    index = revise.RevisionIndex(result, {}, {LEAK: set(card.evidence)})
+    prompt = revise.build_card_prompt(card, result, CardRecords(card_id=LEAK), result.plan)
+    raw = base_response(None, prompt.input_text)
+    raw["edits"][0]["proposed_text"] = text
+    parsed = revise.parse_card_output(raw, prompt)
+    gated = revise.gate_card(parsed, card, index, CardRecords(card_id=LEAK), result.plan, generator="mock")
+    assert gated.edits == [] and g.FABRICATED_NUMBER in [d.reason for d in gated.dropped]
+
+
+@pytest.mark.parametrize("text", ["표본 3000건에 정확도 92%를 확보했는가?", "연구비 오천만 원이 확보됐는가?",
+                                 "Have we collected ninety two samples?"])
+def test_questions_cannot_introduce_unknown_numbers(result, text):
+    card = next(c for c in result.risk_cards if c.card_id == LEAK)
+    index = revise.RevisionIndex(result, {}, {LEAK: set(card.evidence)})
+    gated = revise.gate_card({"questions": [{"text": text, "plan_lines": [16]}]}, card, index,
+                            CardRecords(card_id=LEAK), result.plan, generator="mock")
+    assert gated.questions == [] and [d.reason for d in gated.dropped] == [g.FABRICATED_NUMBER]
+
+
+def test_written_number_parser_preserves_values_and_known_plan_numbers(result):
+    assert revise.written_numbers("오천만 원, 일곱 명, ninety two samples, two thousand samples") == ["50000000", "7", "92", "2000"]
+    index = revise.RevisionIndex(result, {}, {})
+    assert revise.fabricated_numbers("eighty percent of the data", g.Draft("edit", "", (), (), (16,)), index) == []
+
+
+@pytest.mark.parametrize("section", ["interpretation", "precedents", "edits", "questions"])
+def test_generated_reviewer_handles_are_rejected_and_redacted(result, store, section):
+    card = next(c for c in result.risk_cards if c.card_id == LEAK)
+    records = collect_card_records(card, result, store)
+    index = revise.RevisionIndex(result, records.by_id(), {LEAK: set(card.evidence) | set(records.by_id())})
+    prompt = revise.build_card_prompt(card, result, records, result.plan)
+    raw = base_response(None, prompt.input_text)
+    bad = "Reviewer XYZq의 지적을 반영한다."
+    if section == "edits":
+        raw[section][0]["proposed_text"] = bad
+    elif section == "precedents":
+        author = next(r["id"] for r in prompt.payload["records"] if r["kind"] == "author_response" and r["outcome"] == "accepted")
+        raw[section] = [{"text": bad, "excerpt_ids": [author]}]
+    else:
+        raw[section][0]["text"] = bad
+    gated = revise.gate_card(revise.parse_card_output(raw, prompt), card, index, records, result.plan, generator="mock")
+    value = gated.edits if section == "edits" else getattr(gated, section)
+    assert value == [] and g.PII in [d.reason for d in gated.dropped]
+    assert "XYZq" not in json.dumps(revise._audit(gated.dropped, gated.generated, gated.passed))
+
+
+def test_record_selection_excludes_handles_and_author_signatures_without_rewriting_source(result):
+    from tests.e3.revise_fixtures import fake_response
+
+    store = make_store()
+    source = ("Reviewer uusj and Reviewer Pevo raised their scores after the additional leakage experiments. "
+              "The scaffold split removes near duplicates before each training and validation experiment.\n"
+              "Best regards, The Authors of our anonymous submission.")
+    store._responses[ACCEPTED_WORK] = [fake_response(text=source)]
+    card = next(c for c in result.risk_cards if c.card_id == LEAK)
+    records = collect_card_records(card, result, store)
+    responses = [r.excerpt for r in records.excerpts if r.record_kind == "author_response"]
+    assert responses and all(not revise.contains_identity(ex.text) for ex in responses)
+    assert all(ex.verify_against(source) for ex in responses)
+
+
+def test_foreign_paper_response_is_not_relabelled_as_accepted_response(result):
+    from tests.e3.revise_fixtures import fake_response
+
+    store = make_store(with_accepted_response=False)
+    foreign = fake_response(work_id="fixture:not-in-result", text="Foreign paper sentinel: leakage and scaffold split experiments were rerun for our own paper.")
+    store.get_responses = lambda wid: [foreign]
+    card = next(c for c in result.risk_cards if c.card_id == LEAK)
+    records = collect_card_records(card, result, store)
+    assert all(r.record_kind != "author_response" for r in records.excerpts)
+    assert all(w.n_responses == 0 for w in records.works)
+
+
+@pytest.mark.parametrize("text, reason", [
+    ("서울대학교병원 영상의학과와 공동 수행한다.", "unsupported_fact"),
+    ("서울대병원과 공동 수행한다.", "unsupported_fact"),
+    ("ImageNet 데이터셋으로 학습한다.", "unsupported_fact"),
+    ("예비 실험에서 이미 확인했다.", "unsupported_fact"),
+    ("<img src=x onerror=alert()>", g.MALFORMED),
+    ("[x](javascript:alert())", g.MALFORMED),
+    ("연락 forged@example.org로 협의한다.", g.PII),
+])
+def test_unsupported_facts_markup_and_pii_are_rejected(result, text, reason):
+    card = next(c for c in result.risk_cards if c.card_id == LEAK)
+    records = CardRecords(card_id=LEAK)
+    index = revise.RevisionIndex(result, {}, {LEAK: set(card.evidence)})
+    prompt = revise.build_card_prompt(card, result, records, result.plan)
+    raw = base_response(None, prompt.input_text)
+    raw["edits"][0]["proposed_text"] = text
+    gated = revise.gate_card(revise.parse_card_output(raw, prompt), card, index, records, result.plan, generator="mock")
+    assert gated.edits == [] and [d.reason for d in gated.dropped] == [reason]
+
+
+def test_interpretation_cannot_use_author_response_without_review(result, store):
+    card = next(c for c in result.risk_cards if c.card_id == LEAK)
+    records = collect_card_records(card, result, store)
+    author = next(r for r in records.excerpts if r.record_kind == "author_response")
+    index = revise.RevisionIndex(result, records.by_id(), {LEAK: set(card.evidence) | set(records.by_id())})
+    gated = revise.gate_card({"interpretation": [{"text": "심사는 이 지적을 핵심 이유로 봤다.", "excerpt_ids": [author.excerpt.excerpt_id]}]},
+                            card, index, records, result.plan, generator="mock")
+    assert gated.interpretation == [] and [d.reason for d in gated.dropped] == [revise.INTERPRETATION_NEEDS_REVIEW]
