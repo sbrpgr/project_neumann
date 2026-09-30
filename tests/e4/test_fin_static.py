@@ -78,7 +78,7 @@ def test_fin_mock_block_is_fresh_and_contract_shaped():
     stages = [s["id"] for s in data["stages"]]
     assert stages == ["logic", "physics", "structure", "evidence", "correct", "recheck"]
     tools = {e["tool"] for e in data["trace"]}
-    assert {"calc", "z3", "pint", "networkx", "records", "sandbox"} <= tools, "계산기·합계·단위·구조·인용·철회·제한 실행이 기록에 있어야 한다"
+    assert {"z3", "pint", "networkx", "records"} <= tools and "sandbox" not in tools, "Z3·Pint·NetworkX·인용 조회 기록, 코드 실행 없음"
     assert all(e.get("label") for e in data["trace"]), "항목 이름(label)"
     assert all(e["stage"] in stages for e in data["trace"]) and [e["t"] for e in data["trace"]] == sorted(e["t"] for e in data["trace"])
 

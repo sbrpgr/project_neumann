@@ -24,7 +24,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT / "src"), str(ROOT)]
 
-PREFIX = "FIN-UI"
+PREFIX = "UI-FINAL"
 DEFAULT_PORT = 8174
 FORBIDDEN_PORTS = {8010, 8020, 8099, 8171, 8172}
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "[::1]", "::1"}
@@ -100,7 +100,7 @@ def shoot(base: str, out: Path, prefix: str = PREFIX) -> dict:
             scroll: window.scrollY, cur: document.querySelector('#finStepper .fs.cur').innerText})""")
         snap("1440_3_adopt", full=True)
         pg.click(".fa-chip >> nth=0")
-        r["chip"] = pg.evaluate("() => { const c = document.querySelector('.fa-chip'); const x = document.getElementById(c.getAttribute('aria-controls')); return {expanded: c.getAttribute('aria-expanded'), visible: !x.hidden, quote: x.innerText.slice(0, 60)}; }")
+        r["chip"] = pg.evaluate("() => { const c = document.querySelector('.fa-chip'); const x = document.getElementById(c.getAttribute('aria-controls')); return {expanded: c.getAttribute('aria-expanded'), visible: !x.hidden, quote: x.querySelector('.q').innerText}; }")
         pg.click("[data-fatoggle='2']")
         r["toggle_off"] = pg.evaluate("() => ({btn: document.getElementById('faNext').innerText, off: document.querySelectorAll('.fa-card.off').length})")
         pg.click("[data-fatoggle='2']")
@@ -133,12 +133,17 @@ def shoot(base: str, out: Path, prefix: str = PREFIX) -> dict:
         pg.click(".fd-mark >> nth=0")
         pg.wait_for_selector("#fdPop:not([hidden])")
         marks_before = r["draft"]["marks"]
+        revert_key = pg.locator("[data-fdrevert]").get_attribute("data-fdrevert")
+        rank, edit_id = revert_key[2:].split(":", 1)
+        decision_before = pg.evaluate("([rank, id]) => window.NeumannRevise.item(Number(rank)).dec[id]", [rank, edit_id])
         pg.click("[data-fdrevert]")
         pg.wait_for_timeout(200)
-        r["reverted"] = {"marks": pg.locator(".fd-mark").count(), "before": marks_before}
+        r["reverted"] = {"marks": pg.locator(".fd-mark").count(), "before": marks_before,
+                         "decision": pg.evaluate("([rank, id]) => window.NeumannRevise.item(Number(rank)).dec[id].d", [rank, edit_id])}
         pg.click("#fdUndo")
         pg.wait_for_timeout(200)
         r["revert_undone"] = pg.locator(".fd-mark").count()
+        r["revert_decision_restored"] = pg.evaluate("([rank, id]) => window.NeumannRevise.item(Number(rank)).dec[id]", [rank, edit_id]) == decision_before
         # 5) 최종 점검
         pg.click("#fdNext")
         pg.wait_for_function("document.body.dataset.view === 'check'")
@@ -182,7 +187,7 @@ def shoot(base: str, out: Path, prefix: str = PREFIX) -> dict:
         # 390: 입력·채택·수정 계획서·점검·완성 넘침 0(?at= 바로가기)
         narrow = {}
         pg.set_viewport_size({"width": 390, "height": 844})
-        for at in ("input", "adopt", "draft", "done"):
+        for at in ("input", "job", "adopt", "draft", "check", "done"):
             pg.goto(base + "/?mock=final&at=" + at, wait_until="networkidle")
             if at == "done":
                 pg.wait_for_function("document.body.dataset.view === 'done'", timeout=30_000)
@@ -190,8 +195,7 @@ def shoot(base: str, out: Path, prefix: str = PREFIX) -> dict:
                 pg.wait_for_function("document.body.dataset.view === '%s' && document.body.dataset.ready === '1'" % at, timeout=20_000)
             pg.wait_for_timeout(300)
             narrow[at + "_390"] = no_hscroll(pg)
-            if at == "draft":
-                snap("390_4_draft")
+            snap("390_" + str(("input", "job", "adopt", "draft", "check", "done").index(at) + 1) + "_" + at)
         pg.set_viewport_size({"width": 375, "height": 812})
         pg.goto(base + "/?mock=final", wait_until="networkidle")
         pg.wait_for_function(INPUT_READY)
@@ -226,7 +230,7 @@ def check(r: dict) -> list[str]:
     if r["api_requests"] or r["external_requests"]:
         bad.append(f"목업 서버 API·외부 요청: {r['api_requests'][:3]} {r['external_requests'][:3]}")
     i = r["input"]
-    if i["view"] != "input" or i["stepper"] != 6 or "입력" not in i["cur"] or i["old_nav_visible"] or i["mockbar"] or i["samples"] != 3 or i["btn"] != "분석 시작" or not i["cnt"].endswith("자") or "mock" not in i["chip"] or "외부로 전송하지 않" not in i["note"]:
+    if i["view"] != "input" or i["stepper"] != 6 or "입력" not in i["cur"] or i["old_nav_visible"] or i["mockbar"] or i["samples"] != 3 or i["btn"] != "분석 시작" or not i["cnt"].endswith("자") or i["chip"] != "시험 모드" or "외부로 전송하지 않" not in i["note"]:
         bad.append(f"입력 화면 이상: {i}")
     if i["dev_words"] or i["quote_count"] != 1:
         bad.append(f"개발자 문구·중복 인용: {i['dev_words']} quote={i['quote_count']}")
@@ -248,7 +252,7 @@ def check(r: dict) -> list[str]:
         bad.append(f"팝오버 이상: {r['pop']} closed={r['pop_closed']}")
     if not r["edit"]["editing"] or r["edit"]["ta_h"] < 20 or not r["after_edit"]["has"] or r["after_edit"]["chg"] != d["chg"] + 1 or "(1)" not in r["after_edit"]["undo"] or not r["undone"]:
         bad.append(f"제자리 편집·되돌리기 이상: {r['edit']} {r['after_edit']} undone={r['undone']}")
-    if r["reverted"]["marks"] != r["reverted"]["before"] - 1 or r["revert_undone"] != r["reverted"]["before"]:
+    if r["reverted"]["decision"] != "reject" or not r["revert_decision_restored"] or r["revert_undone"] != r["reverted"]["before"]:
         bad.append(f"팝오버 되돌리기 이상: {r['reverted']} {r['revert_undone']}")
     m = r["check_mid"]
     if m["rows"] < 10 or m["done"] < 4 or m["btn_disabled"] is not True or m["scroll"] != 0:
@@ -256,7 +260,7 @@ def check(r: dict) -> list[str]:
     c = r["check"]
     if c["pass"] + c["fail"] + c["skip"] != c["rows"] or c["fixes"] != c["applied"] + c["rejected"] or c["applied"] < 5 or c["rejected"] < 1 or c["undo_links"] != c["applied"] or c["primary"] != 1 or "Z3" not in c["badges"] or "Pint" not in c["badges"] or "NetworkX" not in c["badges"] or c["status"] != "partial" or "완료" not in c["state"]:
         bad.append(f"최종 점검 결과 이상: {c}")
-    if not {"calc", "z3", "pint", "networkx", "records", "sandbox"} <= set(c["tools"]):
+    if not {"z3", "pint", "networkx", "records"} <= set(c["tools"]) or "sandbox" in c["tools"]:
         bad.append(f"도구 종류 부족: {c['tools']}")
     if r["fix_undo"]["rev"] != 1 or r["fix_undo"]["applied"] != c["applied"] - 1 or "다시 적용" not in r["fix_undo"]["link"] or r["fix_redo"] != c["applied"]:
         bad.append(f"자동 수정 되돌리기 이상: {r['fix_undo']} {r['fix_redo']}")
@@ -289,6 +293,7 @@ def _run(port: int, out: Path) -> dict:
     if port in FORBIDDEN_PORTS:
         raise SystemExit(f"포트 {port}는 쓰지 않는다")
     os.environ.pop("OPENAI_API_KEY", None)
+    os.environ.pop("NEUMANN_PSEUDONYM_SALT", None)
     os.environ.pop("NEUMANN_LIVE_LLM_OK", None)
     os.environ["NEUMANN_LLM_PROVIDER"] = "mock"
     proc = start_server(port)

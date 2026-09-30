@@ -30,7 +30,7 @@ END = "</script>"
 BLOCK_RE = re.compile(re.escape(BEGIN) + r".*?" + re.escape(END), re.S)
 
 STAGES = [
-    {"id": "logic", "name": "논리 점검", "desc": "합계·곱·비율 같은 수치 제약을 계산기·Z3·제한 실행으로 확인"},
+    {"id": "logic", "name": "논리 점검", "desc": "합계·곱·비율 같은 수치 제약을 Z3로 확인"},
     {"id": "physics", "name": "물리 점검", "desc": "단위·차원·물리 범위를 Pint로 확인"},
     {"id": "structure", "name": "구조 점검", "desc": "절 번호 연속성과 선행관계 그래프(순환)를 NetworkX로 확인"},
     {"id": "evidence", "name": "근거 점검", "desc": "참고문헌·근거의 철회·거절 기록 조회(로컬 기록) · 채택 수정안의 근거 연결"},
@@ -39,9 +39,8 @@ STAGES = [
 ]
 
 TOOLS = {
-    "calc": "계산기", "z3": "합계·제약 (Z3)", "pint": "단위·차원 (Pint)", "networkx": "구조·선행관계 (NetworkX)",
-    "outline": "구조 (절 번호)", "records": "인용·철회 조회 (로컬 기록)", "sandbox": "제한 실행 (계산만 · 네트워크·파일 없음)",
-    "grounding": "근거 대조", "llm": "교정 제안 (mock LLM · 1묶음)",
+    "z3": "합계·제약 (Z3)", "pint": "단위·차원 (Pint)", "networkx": "구조·선행관계 (NetworkX)",
+    "records": "인용·철회 조회 (로컬 기록)", "llm": "자동 수정 (시험 모드)",
 }
 
 
@@ -67,14 +66,12 @@ def build_fin_mock() -> dict:
     L = line_map()
     trace = [
         # ⑤-1 논리
-        ev(0.3, "logic", "sandbox", "split-sizes", "execution", [15, 16], "n = 12000; ratios = (0.8, 0.1, 0.1); [round(n * r) for r in ratios]",
-           "[9600, 1200, 1200] · 합 12000", "passed", "분할 비율 합 1.0 · 건수 합 12,000 일치", 41),
         ev(0.7, "logic", "z3", "split-ratio-sum", "constraint", [16], "80 + 10 + 10 == 100", "sat", "passed", "분할 비율 합계 일치", 12),
         ev(1.2, "logic", "z3", "budget-sum", "constraint", [37], "5000 + 4000 + 2000 == 12000  (만원)", "unsat · 좌변 11000", "failed",
            "예산 항목 합 1억 1,000만원 ≠ 기재 총액 1억 2,000만원", 15),
-        ev(1.7, "logic", "calc", "sample-volume", "constraint", [38], "250 mL × 40회", "10,000 mL = 10 L  (기재 8 L)", "failed",
+        ev(1.7, "logic", "z3", "sample-volume", "constraint", [38], "250 mL × 40회", "10,000 mL = 10 L  (기재 8 L)", "failed",
            "시료 합계가 회당 부피 × 횟수와 다름", 3),
-        ev(2.1, "logic", "calc", "schedule-months", "constraint", [30, 31, 32, 33], "6 + 6 + 6 == 18", "18 = 18", "passed", "단계 기간 합이 총 기간과 일치", 2),
+        ev(2.1, "logic", "z3", "schedule-months", "constraint", [30, 31, 32, 33], "6 + 6 + 6 == 18", "18 = 18", "passed", "단계 기간 합이 총 기간과 일치", 2),
         # ⑤-2 물리
         ev(2.7, "physics", "pint", "room-temp", "units", [39], "25 K → °C", "-248.15 °C · 상온 범위(293–298 K) 밖", "failed",
            "‘상온(25 K)’ — 25 °C(298 K)의 단위 오기로 보임", 18),
@@ -86,7 +83,7 @@ def build_fin_mock() -> dict:
         ev(4.2, "structure", "networkx", "stage-order", "dependency", [31, 32],
            "nodes: 1단계·2단계·3단계 · edges: 3단계→2단계(측정값 확보 후 시작), 2단계→3단계(학습 모델 후보 대상)",
            "cycle: 2단계 → 3단계 → 2단계 (is_directed_acyclic_graph = False)", "failed", "2단계와 3단계가 서로를 선행 조건으로 요구", 7),
-        ev(4.6, "structure", "outline", "section-numbering", "structure", [3, 8, 13, 19, 25, 28, 35, 42], "## 1 … ## 8", "1→8 연속 · 중복 없음 · 빈 절 없음", "passed",
+        ev(4.6, "structure", "networkx", "section-numbering", "structure", [3, 8, 13, 19, 25, 28, 35, 42], "## 1 … ## 8", "1→8 연속 · 중복 없음 · 빈 절 없음", "passed",
            "절 번호 연속", 1),
         # ⑤-4 근거
         ev(5.2, "evidence", "records", "ref-3-retraction", "citation", [46], "fixture:gnn-003 (참고문헌 [3])",
@@ -94,7 +91,7 @@ def build_fin_mock() -> dict:
         ev(5.5, "evidence", "records", "ref-1-status", "citation", [44], "fixture:gnn-001 (참고문헌 [1])", "결정: 거절 · 철회 아님", "failed",
            "거절된 논문을 주요 근거로 인용 — 근거로 삼을 때 주의(교정 제안 없음, 연구자 판단)", 20),
         ev(5.8, "evidence", "records", "ref-2-status", "citation", [45], "fixture:gnn-002 (참고문헌 [2])", "Poster 채택 · 철회 없음", "passed", "인용 가능", 19),
-        ev(6.2, "evidence", "grounding", "adopted-edits-grounding", "evidence", [16, 17, 22], "③에서 채택·수정한 문안 3건의 근거 번호",
+        ev(6.2, "evidence", "records", "adopted-edits-grounding", "evidence", [16, 17, 22], "채택·수정한 문안 3건의 근거 번호",
            "근거 연결 3/3 · 자리표시 [확인 필요: 개수] 1곳 미입력", "unchecked", "채택 문안의 근거는 연결됨 · 자리표시는 연구자 확인 필요", 6),
         # ⑤-5 교정
         ev(6.9, "correct", "llm", "correction-batch", "correction", [31, 32, 37, 38, 39, 40, 46], "issues 7 · tool_checks 14 · edits ≤ 8 · 앵커 = 원문 줄 그대로",
@@ -115,7 +112,7 @@ def build_fin_mock() -> dict:
         {"issue_id": "stage-order", "kind": "structural", "plan_lines": [31, 32], "message": "2단계가 3단계 결과를, 3단계가 2단계 결과를 요구해 선행관계가 순환한다.", "check_ids": ["stage-order"], "status": "resolved"},
         {"issue_id": "ref-3-retraction", "kind": "evidence", "plan_lines": [46], "message": "참고문헌 [3]은 철회 기록이 있는 문헌이다.", "check_ids": ["ref-3-retraction"], "status": "unchecked"},
         {"issue_id": "ref-1-status", "kind": "evidence", "plan_lines": [44], "message": "참고문헌 [1]은 거절된 논문이다. 근거로 삼을지는 연구자 판단이며 교정을 제안하지 않았다.", "check_ids": ["ref-1-status"], "status": "unresolved"},
-        {"issue_id": "seed-placeholder", "kind": "logical", "plan_lines": [22], "message": "③에서 채택한 반복 실험 문안의 시드 개수가 [확인 필요]로 남아 있다.", "check_ids": ["adopted-edits-grounding"], "status": "unchecked"},
+        {"issue_id": "seed-placeholder", "kind": "logical", "plan_lines": [22], "message": "채택한 반복 실험 문안의 시드 개수가 [확인 필요]로 남아 있다.", "check_ids": ["adopted-edits-grounding"], "status": "unchecked"},
     ]
 
     def corr(no: int, after: str, checks: list[str], issue: str, applied: bool = True, reason: str = "applied") -> dict:

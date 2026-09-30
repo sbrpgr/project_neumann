@@ -287,12 +287,12 @@
     var c = VIZ.c, ctx = c.getContext('2d'); if (!ctx) return;
     var Wd = VIZ.W, Hd = VIZ.H, dpr = VIZ.dpr, m = VIZ.mode;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, Wd, Hd);
-    var ink = css('--ink', '#14161a'), red = css('--red', '#b5171f'), line = css('--line2', '#c6c9c3'), redT = css('--red-t', '#fbe9e9');
+    var ink = css('--ink', ''), red = css('--red', ''), line = css('--line2', ''), redT = css('--red-t', '');
     if (m === 2 && !reduced()) { var sx = ((VIZ.t * .28) % 1.2) * Wd; ctx.strokeStyle = red; ctx.globalAlpha = .35; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(sx, 8); ctx.lineTo(sx, Hd - 26); ctx.stroke(); ctx.globalAlpha = 1; }
-    if (m >= 4) VIZ.groups.forEach(function (g) { var gw = (VIZ.groups.length > 1 ? Math.min(150, Wd / VIZ.groups.length * .72) : Math.min(260, Wd * .5)), gh = Hd * .52; ctx.save(); ctx.globalAlpha = m >= 6 ? .95 : .55; ctx.strokeStyle = m >= 6 ? ink : line; ctx.fillStyle = m >= 6 ? '#fff' : 'transparent'; ctx.lineWidth = m >= 6 ? 1.2 : 1; ctx.setLineDash(m >= 6 ? [] : [3, 3]); ctx.beginPath(); ctx.rect(g.x * Wd - gw / 2, g.y * Hd - gh / 2, gw, gh); if (m >= 6) ctx.fill(); ctx.stroke(); if (m >= 6) { ctx.setLineDash([]); ctx.strokeStyle = red; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(g.x * Wd - gw / 2, g.y * Hd - gh / 2); ctx.lineTo(g.x * Wd + gw / 2, g.y * Hd - gh / 2); ctx.stroke(); } ctx.restore(); });
+    if (m >= 4) VIZ.groups.forEach(function (g) { var gw = (VIZ.groups.length > 1 ? Math.min(150, Wd / VIZ.groups.length * .72) : Math.min(260, Wd * .5)), gh = Hd * .52; ctx.save(); ctx.globalAlpha = m >= 6 ? .95 : .55; ctx.strokeStyle = m >= 6 ? ink : line; ctx.fillStyle = m >= 6 ? css('--surface', '') : 'transparent'; ctx.lineWidth = m >= 6 ? 1.2 : 1; ctx.setLineDash(m >= 6 ? [] : [3, 3]); ctx.beginPath(); ctx.rect(g.x * Wd - gw / 2, g.y * Hd - gh / 2, gw, gh); if (m >= 6) ctx.fill(); ctx.stroke(); if (m >= 6) { ctx.setLineDash([]); ctx.strokeStyle = red; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(g.x * Wd - gw / 2, g.y * Hd - gh / 2); ctx.lineTo(g.x * Wd + gw / 2, g.y * Hd - gh / 2); ctx.stroke(); } ctx.restore(); });
     VIZ.parts.forEach(function (p) {
       ctx.save(); ctx.translate(p.x * Wd, p.y * Hd); ctx.rotate(p.rot); ctx.globalAlpha = Math.max(0, Math.min(1, p.a));
-      ctx.fillStyle = p.tint > .5 ? redT : '#fff'; ctx.strokeStyle = p.tint > .5 ? red : ink; ctx.lineWidth = 1;
+      ctx.fillStyle = p.tint > .5 ? redT : css('--surface', ''); ctx.strokeStyle = p.tint > .5 ? red : ink; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.rect(-p.w / 2, -p.h / 2, p.w, p.h); ctx.fill(); ctx.stroke();
       ctx.globalAlpha *= .8; ctx.strokeStyle = p.tint > .5 ? red : line; ctx.beginPath(); ctx.moveTo(-p.w / 2 + 2, 0); ctx.lineTo(p.w / 2 - 2, 0); ctx.stroke();
       ctx.restore();
