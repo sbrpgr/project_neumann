@@ -293,3 +293,77 @@ def test_cli_writes_file_and_errors(tmp_path, fake_inputs, capsys):
     bad = _write(tmp_path, "bad.json", {"x": 1})
     assert rc.main(["--inputs", str(bad), "--out", str(tmp_path / "o.md")]) == 2
     assert not (tmp_path / "o.md").exists()
+
+
+# ── 재작업(검증 PASS-조건부): mock·비상 규칙 링크가 약속 칸을 채우지 않게 ─────────────
+
+
+def test_linkage_with_any_mock_card_never_fills_promise(tmp_path):
+    text = _build([_write(tmp_path, "l.json", _linkage_json(10, 10, gens={"astra": 5, "mock": 5}))])
+    p2 = _cells(_row(text, "| P2 |"))
+    assert p2[3] == "측정 전" and p2[6] == "**측정 전**"
+    row = _cells(_row(text, "| 근거 연결률 (링크 단위) | mock 섞임(성능 아님) |"))
+    assert row[2] == "1.0 (10/10)" and "mock 카드 5/10장" in row[6]
+    assert "mock generator 입력이 있다" in text
+
+
+def test_mock_report_not_summed_into_neumann(tmp_path):
+    paths = [
+        _write(tmp_path, "real.json", _linkage_json(37, 40)),
+        _write(tmp_path, "fake.json", _linkage_json(10, 10, gens={"mock": 10})),
+    ]
+    text = _build(paths)
+    p2 = _cells(_row(text, "| P2 |"))
+    assert p2[3] == f"{37 / 40} (37/40)" and p2[6] == "**미달**" and p2[7] == "real.json"
+    mock = _cells(_row(text, "| 근거 연결률 (링크 단위) | mock(테스트용, 성능 아님) |"))
+    assert mock[2] == "1.0 (10/10)" and mock[7] == "fake.json"
+
+
+def test_rule_only_linkage_goes_to_emergency_row(tmp_path):
+    text = _build([_write(tmp_path, "l.json", _linkage_json(10, 10, gens={"rule": 10}))])
+    assert _cells(_row(text, "| P2 |"))[6] == "**측정 전**"
+    row = _cells(_row(text, "| 근거 연결률 (링크 단위) | Neumann 비상 규칙 |"))
+    assert row[2] == "1.0 (10/10)" and "비상 규칙 카드 10/10장 포함" in row[5]
+    assert _cells(_row(text, "| 근거 연결률 (링크 단위) | Neumann (astra) |"))[2] == "측정 전"
+
+
+def test_astra_plus_rule_linkage_marks_rule_cards_in_promise_row(tmp_path):
+    text = _build([_write(tmp_path, "l.json", _linkage_json(10, 10, gens={"astra": 7, "rule": 3}))])
+    p2 = _cells(_row(text, "| P2 |"))
+    assert p2[3] == "1.0 (10/10)"
+    assert p2[6] == "**달성(폐기율 병기)** · 비상 규칙 카드 3/10장 포함"
+    row = _cells(_row(text, "| 근거 연결률 (링크 단위) | Neumann (astra) |"))
+    assert "astra 카드만의 값이 아니다" in row[6]
+
+
+def test_generic_metric_without_system_rejected(tmp_path):
+    p = _write(tmp_path, "m.json", _generic_json([{"id": "bt_hit_at_3", "value": 0.9, "n": 30}]))
+    with pytest.raises(rc.InputError, match="system이 없다"):
+        _build([p])
+
+
+@pytest.mark.parametrize(
+    "patch, msg",
+    [
+        ({"linkage_rate": 1.0}, "linkage_rate"),
+        ({"card_pass_rate": 1.0}, "card_pass_rate"),
+        ({"links_ok": 41}, "ok가 total보다 크다"),
+    ],
+)
+def test_linkage_rate_must_match_counts(tmp_path, patch, msg):
+    obj = _linkage_json(37, 40)
+    obj.update(patch)
+    with pytest.raises(rc.InputError, match=msg):
+        _build([_write(tmp_path, "l.json", obj)])
+
+
+def test_freq_baseline_note_uses_only_this_measurement(tmp_path):
+    obj = _macro_json("baseline", 0.3308, (0.298, 0.3623), "pred_baseline_freq.jsonl")
+    obj["micro_f1"] = 0.5379
+    obj["per_class"] = {
+        c: {"recall": r} for c, r in {"R1": 1.0, "R2": 1.0, "R5": 0.0, "R6": 1.0, "R7": 0.0}.items()
+    }
+    text = _build([_write(tmp_path, "freq.json", obj)])
+    row = _cells(_row(text, "| 지적 추출 Macro-F1 (리뷰 단위) | 빈도 기준선(안 읽음) |"))
+    assert "늘 내는 코드(R1·R2·R6)는 재현율 1.0, 안 내는 코드(R5·R7)는 재현율 0이라 Micro-F1(0.5379)이 Macro-F1(0.3308)보다 높다" in row[6]
+    assert "흔한 R2를 늘 맞힘" not in text

@@ -9,13 +9,16 @@
 - 신청서 약속 표는 목표 미달 → 측정 전 → 달성 순으로 적는다. 미달·측정 전 목록을 표 위에 한 번 더 적는다.
 - 입력에 없는 지표는 "측정 전"으로 적는다. 추정하거나 채워 넣지 않는다.
 - 값은 입력 JSON의 숫자를 그대로 옮긴다(다시 반올림하지 않는다). 여러 파일을 합칠 때만 계산하고 그렇다고 적는다.
-- mock generator의 결과는 성능이 아니다. 약속 칸을 채우지 않고 "mock" 행으로만 둔다.
+- mock generator의 결과는 성능이 아니다. mock이 한 장이라도 섞이면 약속 칸을 채우지 않고 "mock" 행으로만 둔다.
+- 비상 규칙(rule) 결과는 따로 표시한다. Macro-F1은 "Neumann 비상 규칙" 행, 근거 연결은 전부 규칙이면 그 행,
+  astra와 섞였으면 Neumann 행에 두고 약속 표 판정 칸에 "비상 규칙 카드 k/N장 포함"을 병기한다.
 
 받는 입력(파일마다 자동 판별):
 1. `python -m eval.macro_f1` 결과 JSON (`metric`이 "review-level multilabel Tier-1 Macro-F1"로 시작)
    - 시스템은 `predictions.generator_counts`로 정한다: astra→Neumann, rule→Neumann 비상 규칙,
      baseline→빈도 기준선(예측 파일 이름에 freq가 있을 때) 또는 기준선, mock→mock, 여럿→혼합.
-2. `python -m eval.linkage` 보고서 JSON (`report_schema == "neumann.linkage/1"`). 여러 개면 링크 수를 더한다.
+2. `python -m eval.linkage` 보고서 JSON (`report_schema == "neumann.linkage/1"`). `card_generators`로 시스템을 나누고,
+   같은 시스템 보고서가 여러 개면 링크 수를 더한다. 비율이 개수(ok/total)와 다르면 오류로 멈춘다.
 3. 일반 지표 JSON (`schema == "neumann.metrics/1"`) — 백테스트(E5-L2a) 등 나머지 지표용:
 
        {"schema": "neumann.metrics/1",
@@ -25,7 +28,8 @@
            "ci95": [0.23, 0.57], "conditions": "…", "limits": "…"}
         ]}
 
-   `value`는 숫자 또는 null(null이면 측정 전). `ci95`는 [low, high] 또는 {"low", "high"} 또는 생략.
+   `system`은 필수다(기본값 없음). `value`는 숫자 또는 null(null이면 측정 전).
+   `ci95`는 [low, high] 또는 {"low", "high"} 또는 생략.
    `id`와 `system`은 아래 METRIC_LABELS·SYSTEM_LABELS를 쓴다. 모르는 id도 받아서 "기타"로 싣는다.
 """
 
@@ -56,6 +60,8 @@ SYSTEM_LABELS: dict[str, str] = {
     "freq_baseline": "빈도 기준선(안 읽음)",
     "baseline": "기준선(종류 미상)",
     "mixed": "혼합 generator",
+    "mixed_mock": "mock 섞임(성능 아님)",
+    "unknown_generator": "generator 미상",
     "mock": "mock(테스트용, 성능 아님)",
     "human": "사람(대표 블라인드)",
     "all": "전체",
@@ -160,6 +166,7 @@ class Metric:
     limits: str = ""
     source: str = ""  # 입력 파일 이름
     computed: bool = False  # 여러 입력을 합쳐 이 생성기가 계산한 값
+    promise_note: str = ""  # 약속 표 판정 칸에 같이 적을 말(예: 비상 규칙 카드 수)
 
     @property
     def label(self) -> str:
@@ -249,7 +256,7 @@ def _read_macro_f1(obj: dict, name: str, col: Collected) -> None:
     )
     lim = f"골드 support 0 클래스 {excluded or '없음'} 제외[주3], R7 근사[주1], 골드 대체[주2]"
     if system == "freq_baseline":
-        lim += ". 안 읽는 기준선이라 Micro-F1이 높게 나온다(흔한 R2를 늘 맞힘, 04_평가_명세 §6)"
+        lim += ". " + _freq_note(obj)
     if system == "mock":
         lim = "mock 예측이다. 성능 수치가 아니다. " + lim
     for mid in ("macro_f1", "micro_f1"):
@@ -269,6 +276,21 @@ def _read_macro_f1(obj: dict, name: str, col: Collected) -> None:
         )
 
 
+def _freq_note(obj: dict) -> str:
+    """빈도 기준선 한계 문구. 이 입력의 클래스별 재현율과 Macro·Micro 값만 쓴다(다른 시스템과 비교하지 않는다)."""
+    per = obj.get("per_class") or {}
+    scored = [c for c in obj.get("scored_classes") or [] if isinstance(per.get(c), dict)]
+    full = [c for c in scored if per[c].get("recall") == 1.0]
+    zero = [c for c in scored if per[c].get("recall") == 0.0]
+    base = "안 읽는 기준선이다(04_평가_명세 §6: 기준선 없는 단독 숫자 보고 금지)"
+    if not (full or zero):
+        return base
+    return (
+        f"{base}. 늘 내는 코드({'·'.join(full) or '없음'})는 재현율 1.0, 안 내는 코드({'·'.join(zero) or '없음'})는 "
+        f"재현율 0이라 Micro-F1({fmt_value(obj.get('micro_f1'))})이 Macro-F1({fmt_value(obj.get('macro_f1'))})보다 높다"
+    )
+
+
 def _read_generic(obj: dict, name: str, col: Collected) -> None:
     rows = obj.get("metrics")
     if not isinstance(rows, list):
@@ -278,9 +300,11 @@ def _read_generic(obj: dict, name: str, col: Collected) -> None:
         where = f"{name}.metrics[{i}]"
         if not isinstance(m, dict):
             raise InputError(f"{where}: 객체가 아니다")
-        mid, system = m.get("id"), m.get("system", "neumann")
+        mid, system = m.get("id"), m.get("system")
         if not isinstance(mid, str) or not mid:
             raise InputError(f"{where}: id가 없다")
+        if system is None:
+            raise InputError(f"{where}: system이 없다(neumann·llm_baseline·freq_baseline·all 등을 적는다. 기본값 없음)")
         if not isinstance(system, str) or not system:
             raise InputError(f"{where}: system이 문자열이 아니다")
         if "value" not in m:
@@ -305,26 +329,74 @@ def _read_generic(obj: dict, name: str, col: Collected) -> None:
         )
 
 
-def _read_linkage(reports: list[tuple[dict, str]], col: Collected) -> None:
-    """근거 연결 보고서들을 합친다. 한 개면 값을 그대로, 여러 개면 합계로 다시 계산한다."""
-    if not reports:
+def _linkage_system(obj: dict) -> str:
+    """보고서 하나의 시스템. mock이 한 장이라도 있으면 약속 칸을 채우지 않는 시스템으로 보낸다."""
+    gens = {str(g): int(c) for g, c in (obj.get("card_generators") or {}).items() if c}
+    if gens.get("mock"):
+        return "mock" if set(gens) == {"mock"} else "mixed_mock"
+    if not gens:
+        return "neumann" if obj.get("cards_total") == 0 else "unknown_generator"
+    if set(gens) == {"rule"}:
+        return "neumann_rule"
+    if set(gens) <= {"astra", "rule"}:
+        return "neumann"  # astra + 비상 규칙 혼합: Neumann 칸에 두되 규칙 카드 수를 약속 행에 병기
+    return "mixed"
+
+
+def _check_rate(rate: Any, ok: int, total: int, where: str) -> None:
+    """보고서에 적힌 비율이 개수와 맞는지. 맞지 않으면 어느 쪽을 믿을지 정할 수 없어 멈춘다."""
+    if rate is None:
+        if total:
+            raise InputError(f"{where}: 개수 {ok}/{total}가 있는데 비율이 null이다")
         return
+    rate = _num(rate, where)
+    if not total or not math.isclose(rate, ok / total, rel_tol=0, abs_tol=1e-9):
+        raise InputError(f"{where}: 비율 {rate}가 개수 {ok}/{total}와 맞지 않는다")
+
+
+def _read_linkage(reports: list[tuple[dict, str]], col: Collected) -> None:
+    """근거 연결 보고서를 시스템(card_generators)별로 나눠 합친다.
+
+    - 전부 astra(또는 astra + 비상 규칙) → Neumann. 규칙 카드가 있으면 약속 행에 수를 병기한다.
+    - 전부 비상 규칙 → "Neumann 비상 규칙" 행. 약속 칸을 채우지 않는다.
+    - mock이 한 장이라도 있으면 → mock / mock 섞임 행. 약속 칸을 채우지 않는다.
+    한 시스템에 보고서가 한 개면 값을 그대로, 여러 개면 합계로 다시 계산하고 '계산'으로 표시한다.
+    """
+    groups: dict[str, list[tuple[dict, str]]] = {}
+    for obj, name in reports:
+        for k in ("links_ok", "links_total", "cards_ok", "cards_total"):
+            if obj.get(k) is None:
+                raise InputError(f"{name}: {k}가 없다")
+            _int_or_none(obj.get(k), f"{name}.{k}")
+        if obj["links_ok"] > obj["links_total"] or obj["cards_ok"] > obj["cards_total"]:
+            raise InputError(f"{name}: ok가 total보다 크다")
+        _check_rate(obj.get("linkage_rate"), obj["links_ok"], obj["links_total"], f"{name}.linkage_rate")
+        _check_rate(obj.get("card_pass_rate"), obj["cards_ok"], obj["cards_total"], f"{name}.card_pass_rate")
+        d = obj.get("drop") or {}
+        if d.get("available"):
+            dt = _int_or_none(d.get("findings_total"), f"{name}.drop.findings_total")
+            dd = _int_or_none(d.get("findings_dropped"), f"{name}.drop.findings_dropped")
+            if dt is None or dd is None or dd > dt:
+                raise InputError(f"{name}: drop 개수가 없거나 dropped > total")
+            _check_rate(d.get("rate"), dd, dt, f"{name}.drop.rate")
+        groups.setdefault(_linkage_system(obj), []).append((obj, name))
+    for system, reps in groups.items():
+        _linkage_group(system, reps, col)
+
+
+def _linkage_group(system: str, reports: list[tuple[dict, str]], col: Collected) -> None:
     gens: dict[str, int] = {}
     links_ok = links_total = cards_ok = cards_total = 0
     drop_total = drop_dropped = 0
     drop_missing = 0
     verdicts: dict[str, int] = {}
-    for obj, name in reports:
-        for k in ("links_ok", "links_total", "cards_ok", "cards_total"):
-            _int_or_none(obj.get(k), f"{name}.{k}")
-            if obj.get(k) is None:
-                raise InputError(f"{name}: {k}가 없다")
+    for obj, _name in reports:
         links_ok += obj["links_ok"]
         links_total += obj["links_total"]
         cards_ok += obj["cards_ok"]
         cards_total += obj["cards_total"]
         for g, c in (obj.get("card_generators") or {}).items():
-            gens[g] = gens.get(g, 0) + int(c)
+            gens[str(g)] = gens.get(str(g), 0) + int(c)
         v = str(obj.get("verdict"))
         verdicts[v] = verdicts.get(v, 0) + 1
         d = obj.get("drop") or {}
@@ -335,19 +407,24 @@ def _read_linkage(reports: list[tuple[dict, str]], col: Collected) -> None:
             drop_missing += 1
     names = ", ".join(n for _, n in reports)
     real = {g: c for g, c in gens.items() if c}
-    system = "mock" if real and set(real) == {"mock"} else "neumann"
+    n_gen = sum(real.values())
     single = len(reports) == 1
     one = reports[0][0]
     cond = f"결과 {len(reports)}건 전수(표본 아님), 원문 글자 단위 대조, 카드 generator {real or '없음'}, 판정 {verdicts}"
-    if real.get("rule"):
-        cond += f", 비상 규칙 카드 {real['rule']}장 포함"
     lim = "전수 계산이라 구간 없음. 폐기율과 같이 읽는다(폐기율 없는 100%는 의미가 약하다, 04_평가_명세 §2.2)"
-    if system == "mock":
-        lim = "mock 카드다. 성능 수치가 아니다. " + lim
+    note = ""
+    if real.get("rule"):
+        note = f"비상 규칙 카드 {real['rule']}/{n_gen}장 포함"
+        cond += f", {note}"
+        lim = "비상 규칙(비LLM) 카드가 들어 있다. astra 카드만의 값이 아니다. " + lim
+    if system in ("mock", "mixed_mock"):
+        lim = f"mock 카드 {real.get('mock', 0)}/{n_gen}장이 들어 있다. 성능 수치가 아니고 약속 판정에 쓰지 않는다. " + lim
+    elif system in ("mixed", "unknown_generator"):
+        lim = "카드 generator가 astra·규칙이 아니거나 비어 있다. 약속 판정에 쓰지 않는다. " + lim
     rate = one.get("linkage_rate") if single else (links_ok / links_total if links_total else None)
     col.metrics.append(
         Metric("linkage_rate", system, _num(rate, "linkage_rate"), links_total, None, None,
-               f"{links_ok}/{links_total}", cond, lim, names, computed=not single)
+               f"{links_ok}/{links_total}", cond, lim, names, computed=not single, promise_note=note)
     )
     cpr = one.get("card_pass_rate") if single else (cards_ok / cards_total if cards_total else None)
     col.metrics.append(
@@ -513,8 +590,9 @@ def render(col: Collected, *, now: str, commit: str, command: str) -> str:
         val = fmt_value(m.value if m else None)
         if m and m.detail and m.value is not None:
             val += f" ({m.detail})"
+        verdict = f"**{v}**" + (f" · {m.promise_note}" if m and m.promise_note and m.value is not None else "")
         add(
-            f"| {p.key} | {p.label} | {p.target_text} | {val} | {fmt_ci(m)} | {fmt_n(m)} | **{v}** "
+            f"| {p.key} | {p.label} | {p.target_text} | {val} | {fmt_ci(m)} | {fmt_n(m)} | {verdict} "
             f"| {_cell(m.source) if m else '—'} |"
         )
     add("")
@@ -590,7 +668,7 @@ def render(col: Collected, *, now: str, commit: str, command: str) -> str:
         "백테스트 판정 조건(블라인드 여부·판정자 수와 구성·사람 재검토 여부)은 각 지표의 '조건' 칸을 본다. "
         "입력에 없으면 측정 전이다.",
     ]
-    if any(m.system == "mock" for m in col.metrics):
+    if any(m.system in ("mock", "mixed_mock") for m in col.metrics):
         lims.insert(0, "mock generator 입력이 있다. 그 행은 테스트용이고 성능이 아니다. 약속 판정에 쓰지 않았다.")
     for note in col.notes:
         lims.append(note)
