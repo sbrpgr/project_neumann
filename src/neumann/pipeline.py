@@ -1,7 +1,7 @@
 """분석 파이프라인: 계획서 → 적합성 → 유사 연구 → astra 지적 추출 → astra 카드 합성 → 원문 대조
 → 예상 심사평 → 예방 체크리스트 → 2차 의미검증.
 
-    run_premortem(plan_text, *, session_id=None) -> PremortemResult
+    run_premortem(plan_text, *, session_id=None, on_stage=None) -> PremortemResult
 
 단계(StageStatus.stage / phase):
   plan_normalize (INPUT) → fitness (INPUT, astra, E3-L1c) → query_axes (INPUT, astra ①) → search (EVIDENCE)
@@ -19,6 +19,10 @@
 - 같은 계획서(plan_id)는 astra 검색어를 캐시(`data/cache/queries/`)해 같은 유사 연구가 나온다. 적중 여부는
   `plan_checks.queries.cache`와 `manifest.query_cache`에 싣는다.
 - `manifest.timings_s`(단계별 소요), `total_s`(전체), `stage_limits_s`(LLM 단계 호출 상한).
+- 카드 뒤 v1 단계는 의존 그래프(`V1_DEPENDS`)대로 스레드에서 동시에 돈다(E3-L1y): 예상 심사평 ∥ (체크리스트 → 2차 검증).
+  결과·단계 기록 순서는 순차 실행과 같다(`V1_STAGES` 순서로 합친다). `manifest.v1_parallel`·`v1_wall_s`.
+- 진행 보고(E3-L1y): `on_stage(stage, state, elapsed_s)` — 단계 시작에 state="running"(elapsed 0.0), 끝에
+  최종 상태(ok|degraded|error|skipped)와 그 단계 소요. 콜백은 run_premortem을 부른 스레드에서만 불린다.
 
 명령줄: python -m neumann.pipeline PLAN.md [--provider openai|mock|off] [--backend index|fixture --corpus X.json]
 """
@@ -26,6 +30,7 @@
 from __future__ import annotations
 
 import argparse
+import contextvars
 import json
 import logging
 import re
@@ -33,6 +38,8 @@ import sys
 import time
 import traceback
 import uuid
+from collections.abc import Callable
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -66,6 +73,19 @@ V1_STAGES: tuple[tuple[str, str], ...] = (
     ("checklist", "ACTION"),
     ("semantic_validate", "ACTION"),
 )
+# v1 단계의 입력 의존(코드로 확인, E3-L1y). 값 = 결과를 입력으로 쓰는 앞 단계(최대 1개, V1_STAGES에서 앞선 것).
+# - expected_review: 카드·근거·계획서·유사 연구 수만 읽는다(review.usable_cards·build_review_prompt·gate_sentences).
+# - checklist: 카드·근거·계획서만 읽는다(checklist.build_checklist).
+# - semantic_validate: result.checklist(행동)를 판정한다(validate.validate_cards) → 체크리스트 뒤.
+V1_DEPENDS: dict[str, tuple[str, ...]] = {
+    "expected_review": (),
+    "checklist": (),
+    "semantic_validate": ("checklist",),
+}
+V1_PARALLEL = True  # False면 E3-L1w처럼 V1_STAGES 순서로 차례로 돈다(비교 시험·비상용)
+
+# 진행 보고 콜백: (단계 이름, 상태, 그 단계 소요 초). 상태는 "running"(시작) 또는 StageStatus.state.
+StageCallback = Callable[[str, str, float], Any]
 
 log = logging.getLogger(__name__)
 
@@ -120,15 +140,30 @@ def _log_exception(where: str, exc: BaseException) -> None:
     log.error("%s 실패: %s @ %s", where, type(exc).__name__, trail)
 
 
+def _emit(on_stage: StageCallback | None, name: str, state: str, elapsed_s: float) -> None:
+    """진행 보고. 콜백이 실패해도 분석은 계속한다(종류만 로그)."""
+    if on_stage is None:
+        return
+    try:
+        on_stage(name, state, float(elapsed_s))
+    except Exception as exc:  # noqa: BLE001 — 진행 표시 오류로 분석을 멈추지 않는다
+        log.warning("on_stage 콜백 실패(무시): %s", type(exc).__name__)
+
+
 @dataclass
 class _Run:
     stages: list[StageStatus] = field(default_factory=list)
     notices: list[str] = field(default_factory=list)
     timings: dict[str, float] = field(default_factory=dict)
+    on_stage: StageCallback | None = None
+
+    def emit(self, name: str, state: str, elapsed_s: float = 0.0) -> None:
+        _emit(self.on_stage, name, state, elapsed_s)
 
     @contextmanager
     def stage(self, name: str, phase: str):
         rec: dict[str, Any] = {"state": "ok", "detail": None, "impl": None, "counts": {}}
+        self.emit(name, "running")
         t0 = time.perf_counter()
         try:
             yield rec
@@ -147,6 +182,7 @@ class _Run:
             )
             if rec["state"] in ("degraded", "error"):
                 self.notice(f"[{name}] {rec['state']}: {detail}")
+            self.emit(name, rec["state"], round(dt, 3))
 
     def fill(self, rec: dict[str, Any], stage: StageStatus) -> None:
         """모듈이 만든 단계 기록(StageStatus)을 이 단계의 기록으로 옮긴다(소요 시간은 여기서 잰다)."""
@@ -155,6 +191,7 @@ class _Run:
     def skip(self, name: str, phase: str, why: str) -> None:
         self.stages.append(StageStatus(stage=name, state="skipped", detail=safe_text(why), phase=phase))
         self.timings[name] = 0.0
+        self.emit(name, "skipped", 0.0)
 
     def notice(self, text: str) -> None:
         self.notices.append(safe_text(text) or "")
@@ -210,6 +247,7 @@ def run_premortem(
     exclude_work_ids: set[str] | None = None,
     min_similarity: float = 0.0,
     cache_dir: Path | None | str = "default",
+    on_stage: StageCallback | None = None,
 ) -> PremortemResult:
     """계획서 한 건을 분석한다. 예외로 죽지 않고 강등을 기록한다.
 
@@ -217,9 +255,13 @@ def run_premortem(
     backend: 근거 저장소. 없으면 E2 실색인(`IndexBackend`). fixture는 명시할 때만.
     exclude_work_ids: 백테스트 누출 제거용(검색에서 뺀다).
     cache_dir: 캐시 뿌리(기본 `data/cache`, None이면 캐시 끔). 추출은 `extract/`, 검색어는 `queries/`.
+    on_stage: 진행 보고 콜백 `on_stage(stage, state, elapsed_s)`. 단계를 시작할 때 ("이름", "running", 0.0),
+      끝날 때 ("이름", 최종 상태, 그 단계 소요 초). 건너뛴 단계는 끝 보고("skipped")만. 결과의 stages마다 끝 보고가
+      정확히 한 번 온다. 동시에 도는 v1 단계도 이 함수를 부른 스레드에서 차례로 부른다(콜백에 잠금 불필요).
+      콜백 예외는 무시한다(분석은 계속). None이면 보고하지 않는다(기존 호출과 같다).
     """
     t_start = time.perf_counter()
-    run = _Run()
+    run = _Run(on_stage=on_stage)
     session_id = session_id or uuid.uuid4().hex
     settings_note = None
     if settings is None:
@@ -547,19 +589,24 @@ def run_premortem(
     except Exception as exc:  # noqa: BLE001 — 조립 실패도 결과로 돌려준다
         _log_exception("결과 조립", exc)
         stages = [*run.stages, StageStatus(stage="assemble", state="error", detail=f"내부 오류({type(exc).__name__})")]
+        run.emit("assemble", "error", 0.0)
         return PremortemResult(
             session_id=session_id, plan_id=plan.plan_id, status="error", stages=stages,
             notices=[*run.notices, "결과 조립 실패"], manifest=manifest,
             risk_synthesis={"no_card_reason": "결과 조립 실패"},
         )
 
-    # 8~10. 예상 심사평 → 체크리스트 → 2차 검증(카드가 없으면 각 모듈이 호출 없이 skipped로 남긴다) ────────
-    result = _attach_v1(result, plan, llm, settings, stage_limits)
+    # 8~10. 예상 심사평 ∥ (체크리스트 → 2차 검증)(카드가 없으면 각 모듈이 호출 없이 skipped로 남긴다) ────────
+    parallel = bool(V1_PARALLEL)
+    t_v1 = time.perf_counter()
+    result = _attach_v1(result, plan, llm, settings, stage_limits, parallel=parallel, on_stage=on_stage)
     manifest = {
         **result.manifest,
         "timings_s": {s.stage: s.elapsed_s for s in result.stages},
         "total_s": round(time.perf_counter() - t_start, 3),
         "stage_limits_s": stage_limits,
+        "v1_parallel": parallel,  # True면 v1 단계 timings_s의 합이 v1_wall_s보다 클 수 있다(동시 실행)
+        "v1_wall_s": round(time.perf_counter() - t_v1, 3),
     }
     return result.model_copy(update={"manifest": manifest})
 
@@ -574,44 +621,170 @@ def _v1_stage(result: PremortemResult, task: str, plan: PlanDocument, call: Any,
     raise ValueError(f"모르는 v1 단계: {task}")
 
 
-def _attach_v1(
-    result: PremortemResult, plan: PlanDocument, llm: LLMProvider, settings: Any, stage_limits: dict[str, float]
-) -> PremortemResult:
-    """예상 심사평(E3-L1a) → 체크리스트 → 2차 검증(E3-L1b)을 차례로 붙인다.
+_Prepared = tuple[Any, dict[str, Any], str | None]  # (llm_call, 호출 옵션, 못 만든 사유) — _llm_call_for의 반환
+_STATUS_RANK = {"ok": 0, "degraded": 1, "error": 2}
+_MERGE_SKIP = frozenset({"stages", "notices", "status"})
 
-    단계마다 따로 막는다: 한 단계가 예외로 죽으면 그 단계만 error로 남기고 앞 결과를 그대로 넘긴다.
+
+def _v1_graph_errors(
+    stages: tuple[tuple[str, str], ...] = V1_STAGES, depends: dict[str, tuple[str, ...]] | None = None
+) -> list[str]:
+    """의존 그래프 검사: 단계마다 의존은 최대 1개이고 V1_STAGES에서 앞선 단계여야 한다(사슬·나무 모양)."""
+    depends = V1_DEPENDS if depends is None else depends
+    names = [n for n, _ in stages]
+    errs: list[str] = []
+    for i, name in enumerate(names):
+        deps = depends.get(name)
+        if deps is None:
+            errs.append(f"{name}: V1_DEPENDS에 없음")
+        elif len(deps) > 1:
+            errs.append(f"{name}: 의존이 둘 이상 {deps}")
+        elif deps and deps[0] not in names[:i]:
+            errs.append(f"{name}: 의존 {deps[0]}이 앞 단계가 아님")
+    return errs
+
+
+def _v1_task(result: PremortemResult, task: str, phase: str, plan: PlanDocument, prepared: _Prepared) -> PremortemResult:
+    """v1 단계 하나를 붙인 새 결과(E3-L1w 순차 루프의 한 바퀴와 같은 처리).
+
+    단계마다 따로 막는다: 모듈이 예외로 죽으면 그 단계만 error로 남기고 입력 결과를 그대로 넘긴다.
     모듈이 LLM 실패로 규칙 경로·미검증으로 물러나면 그 단계만 degraded(모듈의 단계 기록)다.
     화면 단계 묶음(phase)은 파이프라인 기준(REVIEW·ACTION)으로 맞추고, 강등이면 notices에 한 줄 남긴다.
     """
-    for task, phase in V1_STAGES:
-        t0 = time.perf_counter()
+    call, opts, why = prepared
+    t0 = time.perf_counter()
+    before = len(result.notices)
+    try:
+        new = _v1_stage(result, task, plan, call, opts["effort"])
+    except Exception as exc:  # noqa: BLE001 — 이 단계만 error로 남기고 계속한다
+        _log_exception(f"단계 {task}", exc)
+        stage = StageStatus(
+            stage=task, state="error", detail=f"내부 오류({type(exc).__name__}) — 이 단계를 건너뜀", phase=phase,
+            elapsed_s=round(time.perf_counter() - t0, 3),
+        )
+        notices = [*result.notices, safe_text(f"[{task}] error: {stage.detail}") or ""]
+        return checklist_mod.with_stage(result, stage, notices=notices)
+    # 모듈이 'llm_failed'처럼 분류만 남기면 어댑터가 받은 실패 사유(시간 초과 등, 비밀값 없음)를 덧붙인다.
+    # llm_call은 단계마다 따로 만든다(_llm_call_for) → 동시에 돌아도 다른 단계의 last_error·model이 섞이지 않는다.
+    last_error = getattr(call, "last_error", None)
+    stages: list[StageStatus] = []
+    for s in new.stages:
+        if s.stage == task:
+            extra = last_error if s.state == "degraded" and last_error and last_error not in (s.detail or "") else None
+            detail = safe_text("; ".join(x for x in (s.detail, extra and f"마지막 호출: {extra}", why) if x)) or None
+            s = s.model_copy(update={"phase": phase, "detail": detail})
+            if s.state in ("degraded", "error") and len(new.notices) == before:
+                new = new.model_copy(update={"notices": [*new.notices, safe_text(f"[{task}] {s.state}: {detail}") or ""]})
+        stages.append(s)
+    return new.model_copy(update={"stages": stages})
+
+
+def _emit_done(on_stage: StageCallback | None, result: PremortemResult, task: str) -> None:
+    st = next((s for s in result.stages if s.stage == task), None)
+    _emit(on_stage, task, st.state if st is not None else "error", st.elapsed_s if st is not None else 0.0)
+
+
+def _attach_v1(
+    result: PremortemResult,
+    plan: PlanDocument,
+    llm: LLMProvider,
+    settings: Any,
+    stage_limits: dict[str, float],
+    *,
+    parallel: bool = True,
+    on_stage: StageCallback | None = None,
+) -> PremortemResult:
+    """예상 심사평(E3-L1a)·체크리스트·2차 검증(E3-L1b)을 붙인다.
+
+    parallel=True: 의존 그래프(V1_DEPENDS)대로 동시에 돌리고 V1_STAGES 순서로 합친다(순차 실행과 같은 결과).
+    parallel=False: V1_STAGES 순서로 차례로(E3-L1w 동작).
+    llm_call·호출 옵션·상한 기록은 모두 이 스레드에서 미리 만든다(공유 dict에 작업 스레드가 쓰지 않는다).
+    """
+    prepared: dict[str, _Prepared] = {}
+    for task, _phase in V1_STAGES:
         call, opts, why = _llm_call_for(llm, task, settings)
         stage_limits[task] = opts["timeout_s"]
-        before = len(result.notices)
-        try:
-            new = _v1_stage(result, task, plan, call, opts["effort"])
-        except Exception as exc:  # noqa: BLE001 — 이 단계만 error로 남기고 계속한다
-            _log_exception(f"단계 {task}", exc)
-            stage = StageStatus(
-                stage=task, state="error", detail=f"내부 오류({type(exc).__name__}) — 이 단계를 건너뜀", phase=phase,
-                elapsed_s=round(time.perf_counter() - t0, 3),
-            )
-            notices = [*result.notices, safe_text(f"[{task}] error: {stage.detail}") or ""]
-            result = checklist_mod.with_stage(result, stage, notices=notices)
-            continue
-        # 모듈이 'llm_failed'처럼 분류만 남기면 어댑터가 받은 실패 사유(시간 초과 등, 비밀값 없음)를 덧붙인다
-        last_error = getattr(call, "last_error", None)
-        stages: list[StageStatus] = []
-        for s in new.stages:
-            if s.stage == task:
-                extra = last_error if s.state == "degraded" and last_error and last_error not in (s.detail or "") else None
-                detail = safe_text("; ".join(x for x in (s.detail, extra and f"마지막 호출: {extra}", why) if x)) or None
-                s = s.model_copy(update={"phase": phase, "detail": detail})
-                if s.state in ("degraded", "error") and len(new.notices) == before:
-                    new = new.model_copy(update={"notices": [*new.notices, safe_text(f"[{task}] {s.state}: {detail}") or ""]})
-            stages.append(s)
-        result = new.model_copy(update={"stages": stages})
-    return result
+        prepared[task] = (call, opts, why)
+    errs = _v1_graph_errors()
+    if not parallel or errs:
+        if parallel:
+            log.error("v1 의존 그래프 오류 → 순차 실행: %s", "; ".join(errs))
+        for task, phase in V1_STAGES:
+            _emit(on_stage, task, "running", 0.0)
+            result = _v1_task(result, task, phase, plan, prepared[task])
+            _emit_done(on_stage, result, task)
+        return result
+    return _attach_v1_parallel(result, plan, prepared, on_stage)
+
+
+def _attach_v1_parallel(
+    base: PremortemResult, plan: PlanDocument, prepared: dict[str, _Prepared], on_stage: StageCallback | None
+) -> PremortemResult:
+    """의존이 풀린 단계부터 작업 스레드에 넣는다. 진행 보고·합치기는 이 스레드에서만 한다."""
+    order = {name: i for i, (name, _) in enumerate(V1_STAGES)}
+    waiting = dict(V1_STAGES)  # 아직 시작 안 한 단계 → phase (V1_STAGES 순서)
+    inputs: dict[str, PremortemResult] = {}
+    outputs: dict[str, PremortemResult] = {}
+    running: dict[Future[PremortemResult], str] = {}
+    with ThreadPoolExecutor(max_workers=len(V1_STAGES), thread_name_prefix="neumann-v1") as pool:
+
+        def launch_ready() -> None:
+            for task in [t for t in waiting if all(d in outputs for d in V1_DEPENDS[t])]:
+                phase = waiting.pop(task)
+                deps = V1_DEPENDS[task]
+                src = outputs[deps[0]] if deps else base
+                inputs[task] = src
+                _emit(on_stage, task, "running", 0.0)
+                ctx = contextvars.copy_context()  # 요청 문맥(serving 등)을 작업 스레드에도 넘긴다
+                running[pool.submit(ctx.run, _v1_task, src, task, phase, plan, prepared[task])] = task
+
+        launch_ready()
+        while running:
+            done, _ = wait(list(running), return_when=FIRST_COMPLETED)
+            for fut in sorted(done, key=lambda f: order[running[f]]):
+                task = running.pop(fut)
+                outputs[task] = fut.result()
+                _emit_done(on_stage, outputs[task], task)
+            launch_ready()
+    return _merge_v1(base, inputs, outputs)
+
+
+def _merge_v1(
+    base: PremortemResult, inputs: dict[str, PremortemResult], outputs: dict[str, PremortemResult]
+) -> PremortemResult:
+    """단계별 결과를 V1_STAGES 순서로 합친다 — 순차 실행(앞 결과를 다음 단계 입력으로)과 같은 결과가 되게.
+
+    단계마다 자기 입력 대비 바뀐 필드만 옮긴다(딕셔너리 필드는 바뀐 키만). 단계 기록은 그 단계 것만, notices는
+    그 단계가 뒤에 덧붙인 것만. status는 가장 나쁜 값(ok < degraded < error: 모듈은 강등만 한다).
+    """
+    names = {n for n, _ in V1_STAGES}
+    stages = [s for s in base.stages if s.stage not in names]
+    notices = list(base.notices)
+    status = base.status
+    update: dict[str, Any] = {}
+    for task, _phase in V1_STAGES:
+        src, out = inputs[task], outputs[task]
+        stages.extend(s for s in out.stages if s.stage == task)
+        n = len(src.notices)
+        if out.notices[:n] == src.notices:
+            notices.extend(out.notices[n:])
+        else:  # 모듈이 앞 notices를 바꾼 경우(지금은 없다): 새로 생긴 문구만
+            notices.extend(x for x in out.notices if x not in src.notices)
+        if _STATUS_RANK.get(out.status, 2) > _STATUS_RANK.get(status, 2):
+            status = out.status
+        for name in type(out).model_fields:
+            if name in _MERGE_SKIP:
+                continue
+            old, cur = getattr(src, name), getattr(out, name)
+            if cur == old:
+                continue
+            if isinstance(old, dict) and isinstance(cur, dict):
+                merged = dict(update.get(name, getattr(base, name)))
+                merged.update({k: v for k, v in cur.items() if k not in old or old[k] != v})
+                update[name] = merged
+            else:
+                update[name] = cur
+    return base.model_copy(update={**update, "stages": stages, "notices": notices, "status": status})
 
 
 def _verify(
@@ -723,7 +896,10 @@ __all__ = [
     "FITNESS_MISSING",
     "MOCK_NOTICE",
     "PIPELINE_VERSION",
+    "V1_DEPENDS",
+    "V1_PARALLEL",
     "V1_STAGES",
+    "StageCallback",
     "mask_extra_pii",
     "run_premortem",
     "safe_text",
