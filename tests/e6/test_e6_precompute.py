@@ -19,11 +19,16 @@ import pytest
 from neumann.config import get_settings
 from neumann.models import PlanDocument, PremortemResult
 from tests.e6.e6_support import ROOT, SCRIPT, block_external_network, fake_pipeline_result, load_script
-from tests.fixtures.loader import DEMO_PLANS, plan_text
+from tests.fixtures.loader import PLANS_DIR, plan_text
 
 pd = load_script()
 MISSING = (lambda: (None, "neumann.pipeline 모듈 없음"))  # noqa: E731
 ISO_Z = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+DEMOS = ["plan", "protein_ligand_affinity", "neural_operator_weather", "negative_recipe"]
+
+
+def demo_text(demo: str) -> str:
+    return next(s.path for s in pd.demo_specs() if s.demo == demo).read_text(encoding="utf-8")
 
 
 def _quiet(_msg: str) -> None:
@@ -46,10 +51,19 @@ def _read(out: Path, entry: dict) -> tuple[bytes, dict]:
     return data, json.loads(data.decode("utf-8"))
 
 
-def test_demo_plans_are_the_fixture_demo_plans():
-    assert pd.DEMO_PLANS == DEMO_PLANS
-    assert [s.demo for s in pd.demo_specs()] == ["plan", "plan_elife_neuro", "plan_medimaging"]
+def test_demo_plans_are_ai4s_examples_plus_out_of_scope():
+    """E6-L3d(대표 지시): AI4S 3건(화면 예시 목록과 같은 파일·순서) + 범위 밖 1건. 옛 fMRI·의료영상은 없다."""
+    catalog = json.loads((ROOT / "src" / "neumann" / "api" / "templates" / "catalog.json").read_text(encoding="utf-8"))
+    assert list(pd.DEMO_PLANS) == [e["path"] for e in catalog["examples"]] + ["tests/fixtures/plans/negative_recipe.md"]
+    assert [s.demo for s in pd.demo_specs()] == DEMOS
+    assert [s.role for s in pd.demo_specs()] == ["demo", "demo", "demo", "out_of_scope"]
     assert all(s.path.is_file() and s.public_fixture for s in pd.demo_specs())
+    for old in pd.RETIRED_DEMO_PLANS + ("fmri", "medimaging", "elife"):
+        assert not any(old in p.lower() for p in pd.DEMO_PLANS), old
+    texts = " ".join(s.path.read_text(encoding="utf-8") for s in pd.demo_specs())
+    assert "fMRI" not in texts and "흉부 X선" not in texts
+    # 옛 예시 파일은 fixture 폴더에 남아 있어도(다른 에픽이 쓴다) 공개 예시로 치되 데모에는 없다
+    assert pd.PlanSpec("x", PLANS_DIR / "plan_medimaging.md").public_fixture
 
 
 def test_fixture_mode_writes_results_and_manifest_offline(tmp_path):
@@ -65,7 +79,7 @@ def test_fixture_mode_writes_results_and_manifest_offline(tmp_path):
     assert on_disk == manifest
 
     entries = {e["demo"]: e for e in manifest["entries"]}
-    assert list(entries) == ["plan", "plan_elife_neuro", "plan_medimaging"]
+    assert list(entries) == DEMOS
     for demo, entry in entries.items():
         data, raw = _read(out, entry)
         # 매니페스트 sha256·바이트가 실제 파일과 같다
@@ -73,7 +87,7 @@ def test_fixture_mode_writes_results_and_manifest_offline(tmp_path):
         assert entry["bytes"] == len(data)
         assert entry["file"] == f"{entry['plan_id']}.json"
         # plan_id는 계획서 본문의 sha256(PlanDocument 규칙)
-        assert entry["plan_id"] == PlanDocument.from_text(plan_text(f"{demo}.md"), "x").plan_id
+        assert entry["plan_id"] == PlanDocument.from_text(demo_text(demo), "x").plan_id
         assert ISO_Z.match(entry["generated_at"]) and entry["elapsed_s"] >= 0
         assert set(entry["cards_by_generator"]) == {"astra", "rule", "mock"}
         assert sum(entry["cards_by_generator"].values()) == entry["cards_total"]
@@ -91,7 +105,7 @@ def test_fixture_mode_writes_results_and_manifest_offline(tmp_path):
     assert entries["plan"]["cards_by_generator"] == {"astra": 0, "rule": 0, "mock": 2}
     assert manifest["llm"] is None and all(e["models"] == [] for e in entries.values())  # 대체본에 모델을 지어 붙이지 않는다
     # fixture가 없는 계획서는 카드를 지어내지 않고 사유를 남긴다
-    for demo in ("plan_elife_neuro", "plan_medimaging"):
+    for demo in DEMOS[1:]:
         _, raw = _read(out, entries[demo])
         assert entries[demo]["cards_total"] == 0 and raw["risk_cards"] == []
         assert "fixture 결과가 없어" in raw["risk_synthesis"]["no_card_reason"]
@@ -122,14 +136,15 @@ def test_pipeline_mode_calls_run_premortem_and_counts_by_generator(tmp_path):
     with block_external_network() as attempts:
         manifest, failures = pd.build(pd.demo_specs(), tmp_path, source="auto", pipeline_loader=_fake_loader(calls), log=_quiet)
     assert attempts == [] and failures == []
-    assert [sid for sid, _ in calls] == ["precomputed-plan", "precomputed-plan_elife_neuro", "precomputed-plan_medimaging"]
-    assert [text for _, text in calls] == [plan_text(n) for n in DEMO_PLANS]  # 원문 그대로 넘긴다
+    assert [sid for sid, _ in calls] == [f"precomputed-{d}" for d in DEMOS]
+    assert [text for _, text in calls] == [demo_text(d) for d in DEMOS]  # 원문 그대로 넘긴다
     assert manifest["source"] == "pipeline" and manifest["pipeline"]["available"] is True
     entries = {e["demo"]: e for e in manifest["entries"]}
     assert entries["plan"]["impl"] == "neumann.pipeline:run_premortem"
     assert entries["plan"]["cards_by_generator"] == {"astra": 1, "rule": 1, "mock": 0}
     assert entries["plan"]["models"] == ["gpt-6-astra"]  # astra 카드의 model
-    assert entries["plan_medimaging"]["cards_total"] == 0 and entries["plan_medimaging"]["models"] == []
+    assert entries["neural_operator_weather"]["cards_total"] == 0 and entries["neural_operator_weather"]["models"] == []
+    assert [e["role"] for e in manifest["entries"]] == ["demo", "demo", "demo", "out_of_scope"]
     s = get_settings()
     # 이름만(비밀값 없음). SEC-3: 요청값과 허용 여부, 실제로 쓴 값은 항목별 llm_actual
     assert manifest["llm"] == {"provider_requested": s.llm_provider, "model_requested": s.llm_model, "live_llm_ok": False}
@@ -139,30 +154,33 @@ def test_pipeline_mode_calls_run_premortem_and_counts_by_generator(tmp_path):
     assert raw["session_id"] == "precomputed-plan"
     # 카드 0장·건너뛴 단계는 status가 ok여도 경고로 드러낸다
     assert entries["plan"]["warnings"] == []
-    assert entries["plan_medimaging"]["warnings"] == ["카드 0장: 가짜 파이프라인: 카드 없음", "건너뛴 단계: search"]
+    assert entries["neural_operator_weather"]["warnings"] == ["카드 0장: 가짜 파이프라인: 카드 없음", "건너뛴 단계: search"]
 
 
 def test_empty_pipeline_result_fails_unless_allowed(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(pd, "load_pipeline", _fake_loader([]))
     assert pd.main(["--source", "pipeline", "--out", str(tmp_path / "a")]) == 1
     out = capsys.readouterr().out
-    assert "카드 0장: plan_elife_neuro, plan_medimaging" in out and "경고 plan_medimaging" in out
+    # 범위 밖 입력(negative_recipe)의 카드 0장은 정상이라 실패 사유에 넣지 않는다(경고로는 남긴다)
+    assert "카드 0장: protein_ligand_affinity, neural_operator_weather —" in out and "경고 neural_operator_weather" in out
+    assert "경고 negative_recipe" in out
     assert pd.main(["--source", "pipeline", "--out", str(tmp_path / "b"), "--allow-empty"]) == 0
 
 
 def test_pipeline_failure_is_recorded_without_exception_text(tmp_path, monkeypatch, capsys):
     calls: list[tuple[str, str]] = []
     manifest, failures = pd.build(
-        pd.demo_specs(), tmp_path, source="pipeline", pipeline_loader=_fake_loader(calls, fail_on="plan_elife_neuro"), log=_quiet
+        pd.demo_specs(), tmp_path, source="pipeline", pipeline_loader=_fake_loader(calls, fail_on="protein_ligand_affinity"),
+        log=_quiet,
     )
-    assert [e["demo"] for e in manifest["entries"]] == ["plan", "plan_medimaging"]  # 나머지는 계속 만든다
-    assert failures == [{"demo": "plan_elife_neuro", "error": "분석 실패(RuntimeError)"}]
+    assert [e["demo"] for e in manifest["entries"]] == ["plan", "neural_operator_weather", "negative_recipe"]  # 나머지는 계속
+    assert failures == [{"demo": "protein_ligand_affinity", "error": "분석 실패(RuntimeError)"}]
     assert manifest["failures"] == failures
     assert b"LEAKMARKER" not in (tmp_path / "manifest.json").read_bytes()  # 예외 메시지(비밀값 우려)를 남기지 않는다
 
-    monkeypatch.setattr(pd, "load_pipeline", _fake_loader([], fail_on="plan_elife_neuro"))
+    monkeypatch.setattr(pd, "load_pipeline", _fake_loader([], fail_on="protein_ligand_affinity"))
     assert pd.main(["--source", "pipeline", "--out", str(tmp_path / "m")]) == 1  # 실패를 숨기지 않는다
-    assert "실패 plan_elife_neuro" in capsys.readouterr().out
+    assert "실패 protein_ligand_affinity" in capsys.readouterr().out
 
 
 def test_non_demo_plan_is_stored_without_plan_body(tmp_path):
@@ -184,7 +202,7 @@ def test_main_replays_what_it_wrote(tmp_path, capsys):
     out = capsys.readouterr().out
     assert code == 0, out
     assert attempts == []
-    assert "재생 확인: 3/3" in out
+    assert "재생 확인: 4/4" in out
 
 
 def test_script_runs_as_command_without_pythonpath(tmp_path):
@@ -197,8 +215,8 @@ def test_script_runs_as_command_without_pythonpath(tmp_path):
     assert proc.returncode == 0, out
     # 기본 출력 폴더는 <NEUMANN_DATA_DIR>/precomputed
     manifest = json.loads((tmp_path / "data" / "precomputed" / "manifest.json").read_text(encoding="utf-8"))
-    assert len(manifest["entries"]) == 3
-    assert "재생 확인: 3/3" in out
+    assert len(manifest["entries"]) == 4
+    assert "재생 확인: 4/4" in out
 
 
 def test_network_guard_actually_blocks():

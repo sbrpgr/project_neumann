@@ -1,10 +1,13 @@
 """시연 영상 녹화 (E6-L3b). 발표자료에 넣을 시연 영상을 Playwright로 녹화한다.
 
     python scripts/record_demo.py --base-url http://127.0.0.1:8010 \
-        --plan tests/fixtures/plans/plan.md --out data/video/
+        --demo example-battery --out data/video/          # 또는 example-binding · example-operator
+    python scripts/record_demo.py --plan <계획서 경로> ...   # 예시 밖 계획서(붙여넣기)
 
 순서: 입력 → 계획서 붙여넣기 → 분석 대기 → 리포트 → 위험카드 → 근거 열람 → (있으면) 내보내기.
 사람 속도로 움직이고(가짜 커서·부드러운 스크롤), 단계마다 화면 아래에 짧은 주석(자막)을 띄운다.
+(E6-L3d) 예시 선택은 AI4S 3건(`DEMO_EXAMPLES`, 화면 예시 목록 catalog.json examples와 같은 id)이다. `--demo <예시 id>`가
+그 계획서 파일과 예시 버튼을 함께 고른다(기본 example-battery). 옛 fMRI·의료영상 예시는 뺐다(대표 지시).
 (E6-L3c) 입력 화면에 범위 안내·"예시 불러오기"가 있고 `GET /templates`의 예시 중 파일 이름이 `--plan`과 같은 것이 있으면
 붙여넣기 대신 그 예시 버튼을 누른다(`--example none`이면 늘 붙여넣기). 불러온 본문이 계획서 파일과 같은지 JSON에 남긴다.
 분석 버튼 클릭·리포트 표시 시각(`observed.analysis_t_click`/`analysis_t_report`, 타임라인 기준)도 남겨 편집본이 대기 구간만 가속하게 한다.
@@ -43,7 +46,15 @@ from typing import Any, Callable, Iterator
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_BASE_URL = "http://127.0.0.1:8010"
-DEFAULT_PLAN = "tests/fixtures/plans/plan.md"
+# 시연 예시(E6-L3d): 예시 id → 저장소 루트 기준 계획서. catalog.json examples와 같은 id·순서
+DEMO_EXAMPLES: dict[str, str] = {
+    "example-battery": "tests/fixtures/plans/plan.md",
+    "example-binding": "src/neumann/api/templates/examples/protein_ligand_affinity.md",
+    "example-operator": "src/neumann/api/templates/examples/neural_operator_weather.md",
+}
+DEMO_ALIASES = {"battery": "example-battery", "binding": "example-binding", "operator": "example-operator"}
+DEFAULT_DEMO = "example-battery"
+DEFAULT_PLAN = DEMO_EXAMPLES[DEFAULT_DEMO]
 DEFAULT_OUT = "data/video/"
 VIEWPORT = (1440, 900)
 
@@ -201,6 +212,21 @@ def resolve_out_dir(arg: str | os.PathLike[str], env: dict[str, str] | None = No
     if p.parts and p.parts[0] == "data" and data_dir:
         return Path(data_dir).joinpath(*p.parts[1:])
     return (cwd or Path.cwd()) / p
+
+
+def select_demo(demo: str | None, plan: str | None, example: str) -> tuple[str, str]:
+    """(계획서 경로, --example 값). `--demo`가 있으면 그 예시의 계획서와 예시 id를 함께 고른다.
+    `--plan`만 있으면 그 파일(예시 버튼은 파일 이름으로 찾음). 둘 다 없으면 기본 예시."""
+    if demo is not None:
+        key = DEMO_ALIASES.get(demo, demo)
+        if key not in DEMO_EXAMPLES:
+            raise ValueError(f"예시 id '{demo}'는 없다. 가능한 값: {', '.join(DEMO_EXAMPLES)}")
+        if plan is not None and Path(plan).name != Path(DEMO_EXAMPLES[key]).name:
+            raise ValueError(f"--demo {key}와 --plan {Path(plan).name}이 다르다(둘 중 하나만 준다)")
+        return DEMO_EXAMPLES[key], (key if example == "auto" else example)
+    if plan is not None:
+        return plan, example
+    return DEMO_EXAMPLES[DEFAULT_DEMO], (DEFAULT_DEMO if example == "auto" else example)
 
 
 def resolve_plan(arg: str) -> Path:
@@ -786,7 +812,8 @@ def main(argv: list[str] | None = None) -> int:
             pass
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--base-url", default=DEFAULT_BASE_URL)
-    ap.add_argument("--plan", default=DEFAULT_PLAN)
+    ap.add_argument("--demo", default=None, help=f"시연 예시 id({' | '.join(DEMO_EXAMPLES)}, 기본 {DEFAULT_DEMO})")
+    ap.add_argument("--plan", default=None, help="예시 밖 계획서 경로(--demo 대신)")
     ap.add_argument("--out", default=DEFAULT_OUT, help="data/…는 NEUMANN_DATA_DIR 아래로 푼다")
     ap.add_argument("--pace", type=float, default=1.0, help="멈춤 배율(1=사람 속도, 작을수록 빠름)")
     ap.add_argument("--no-captions", action="store_true", help="화면 주석(자막) 끄기")
@@ -797,7 +824,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--task", default="E6-L3b", help="JSON의 task 표기")
     args = ap.parse_args(argv)
 
-    plan = resolve_plan(args.plan)
+    try:
+        plan_arg, args.example = select_demo(args.demo, args.plan, args.example)
+    except ValueError as exc:
+        print(f"[record_demo] {exc}", file=sys.stderr)
+        return 2
+    plan = resolve_plan(plan_arg)
     if not plan.is_file():
         print(f"[record_demo] 계획서 없음: {plan}", file=sys.stderr)
         return 2
