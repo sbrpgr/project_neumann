@@ -636,220 +636,275 @@
   @media print { .rvph { border: none !important; background: none !important; color: inherit !important; font-weight: inherit !important; padding: 0 !important; } .rvph.filled { text-decoration: none !important; } .rvconf, #rvConfBanner, #rvFillCnt { display: none !important; } }
 </style>
 <style id="finStyle">
-  /* ===== FIN-UI v2 최종 형태 흐름(단계 전환형): 스테퍼 하나 · 입력 → 분석 → 채택 → 수정 계획서 → 최종 점검 → 완성 =====
-     중성 배경, 강조색 하나(--red), 상태색은 오류(빨강)·경고(앰버)만. 글꼴 크기 4단계(13 · 15 · 19 · 28). 테두리·박스 중첩 최소, 여백으로 구분. 화면당 주 버튼 1개 */
-  /* --- 상단: 스테퍼 하나(목업에서는 로마 숫자 내비·부제·사용자·상태 알약을 숨기고 시험(mock) 칩만) --- */
-  .fstep { display: flex; align-items: center; gap: 0; margin-left: 28px; }
-  .fstep .fs { display: inline-flex; align-items: center; gap: 8px; height: 60px; padding: 0 14px; border: none; background: transparent; font-family: var(--head); font-size: 13px; font-weight: 600; letter-spacing: .02em; color: var(--faint); cursor: default; }
-  .fstep .fs .n { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--line2); font-family: var(--mono); font-size: 11px; font-weight: 600; }
-  .fstep .fs.done { color: var(--text2); cursor: pointer; }
-  .fstep .fs.done .n { background: var(--ink); border-color: var(--ink); color: #fff; }
-  .fstep .fs.done:hover { color: var(--ink); }
-  .fstep .fs.cur { color: var(--ink); }
-  .fstep .fs.cur .n { border-color: var(--red); background: var(--red); color: #fff; }
-  .fstep .fs:focus-visible { outline: 2px solid var(--ink); outline-offset: -6px; border-radius: 4px; }
-  .finchip { display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; background: var(--amber-t); color: var(--amber); font-family: var(--head); font-size: 12px; font-weight: 700; letter-spacing: .02em; white-space: nowrap; }
-  body.rvmock .steps, body.rvmock .wordmark .ws, body.rvmock .top .r .u, body.rvmock #hdrState { display: none !important; }
+  /* ===== FIN-UI 디자인 시스템(대표 지시) + v2 단계 전환형 흐름 =====
+     토큰(:root 변수만): 바탕 --bg · 면 --surface · 글자 --ink/--ink-2/--ink-3 · 선 --line · 강조 --accent 하나(hover --accent-hover, 옅게 --accent-weak)
+     상태 --ok/--warn/--err(아이콘+문구와 함께만) · 변경 표시 --mark. 글꼴 Pretendard 하나. 글자 크기 4단계(28/20/16/14). 간격 4·8·12·16·24·32·48.
+     모서리 8(칩 999). 그림자 없음(팝오버만). 테두리 1px var(--line). 화면당 주 버튼 1개(본문 하단 오른쪽). 이모지·로마 숫자·인용 장식·빨간 강조 없음.
+     기존 화면(E4)의 토큰 이름은 새 토큰에 다시 매핑한다(--red→--accent, --green→--ok, --amber→--warn, 세리프·필기체·모노→Pretendard) */
+  :root {
+    --bg: #F7F7F5; --surface: #FFFFFF; --card: var(--surface);
+    --ink: #18181B; --ink-2: #52525B; --ink-3: #8B8B94; --line: #E4E4E7; --line2: var(--line); --soft: var(--bg);
+    --text: var(--ink); --text2: var(--ink-2); --muted: var(--ink-2); --faint: var(--ink-3);
+    --accent: #2F54EB; --accent-hover: #2445C8; --accent-weak: #EEF2FF;
+    --ok: #15803D; --warn: #B45309; --err: #B91C1C; --mark: #FFF3BF;
+    --red: var(--accent); --red-t: var(--accent-weak); --red-l: var(--accent-weak); --red-d: var(--accent-hover);
+    --green: var(--ok); --green-t: var(--accent-weak); --amber: var(--warn); --amber-t: var(--mark); --dark: var(--ink);
+    --sans: Pretendard, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    --serif: var(--sans); --script: var(--sans); --head: var(--sans); --mono: var(--sans);
+    --shadow-float: 0 8px 24px rgba(0,0,0,.08);
+  }
+  body { font-size: 16px; line-height: 1.65; color: var(--ink); }
+  body::before { display: none; }
+  h1, h2, h3 { font-family: var(--sans); letter-spacing: -0.01em; }
+  h1 { font-size: 28px; line-height: 1.3; font-weight: 700; }
+  h2 { font-size: 20px; line-height: 1.4; font-weight: 600; }
+  h3 { font-size: 16px; line-height: 1.65; font-weight: 600; }
+  .sm { font-size: 14px; line-height: 1.5; }
+  .mono, .num, .fstep .n, .fd-mark, .fc-fix .ln { font-family: var(--sans); font-variant-numeric: tabular-nums; }
+  .eyebrow, .eyebrow.en { font-family: var(--sans); font-size: 14px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--ink-2); }
+  em { font-style: normal; color: inherit; }
+  /* 버튼: 주 버튼(accent · 44 · 16/600) · 보조(흰 · 1px line · ink) · 텍스트 링크(accent). 모양은 한 가지 */
+  .btn { height: 44px; padding: 0 20px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-family: var(--sans); font-size: 16px; font-weight: 600; letter-spacing: 0; transition: background .15s ease-out, border-color .15s ease-out; box-shadow: none; }
+  .btn:hover { border-color: var(--ink-3); }
+  .btn.dark { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+  .btn.dark:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+  .btn.sm { height: 36px; padding: 0 14px; font-size: 14px; font-weight: 500; }
+  .btn.lg { height: 44px; padding: 0 24px; font-size: 16px; }
+  .btn:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .link { background: none; border: none; padding: 0; font: inherit; font-size: 14px; color: var(--accent); cursor: pointer; text-decoration: none; }
+  .link:hover { color: var(--accent-hover); text-decoration: underline; text-underline-offset: 3px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--accent); }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+  textarea.ta, .rvphin, .fd-ta { border-radius: 8px; }
+  textarea.ta:focus-visible, .fd-ta:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--accent); }
+  .toast { border-radius: 8px; box-shadow: var(--shadow-float); }
+  .tag.s5, .tag.s4 { background: transparent; color: var(--ink-2); border: none; padding: 0; }
+  /* 상단(56): 워드마크 "Neumann" Pretendard 700 -0.02em · 스테퍼 · 시험 모드 칩 */
+  .top { height: 56px; border-bottom: 1px solid var(--line); padding: 0 32px; gap: 24px; }
+  .wordmark .w { font-family: var(--sans); font-size: 20px; font-weight: 700; letter-spacing: -0.02em; line-height: 1; }
+  .wordmark .ws { display: none; }
+  body.rvmock .steps, body.rvmock .top .r .u, body.rvmock #hdrState, body.rvmock .top .r .av { display: none !important; }
   body.rvmock .top .r > * + * { border-left: none; padding-left: 0; }
   body.rvmock .top { top: 0; }
-  /* --- 입력(목업 정리): 인용은 푸터에 한 번만, 개발자 문구 없음, 한글 문구 --- */
+  .fstep { display: flex; align-items: center; gap: 0; margin-left: 8px; }
+  .fstep .fs { position: relative; display: inline-flex; align-items: center; gap: 8px; height: 56px; padding: 0 12px; border: none; background: transparent; font-family: var(--sans); font-size: 14px; font-weight: 500; color: var(--ink-3); cursor: default; }
+  .fstep .fs + .fs::before { content: ""; width: 16px; height: 1px; background: var(--line); margin-right: 8px; }
+  .fstep .fs .n { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--ink-3); font-size: 14px; font-weight: 500; color: var(--ink-3); }
+  .fstep .fs .n svg { width: 14px; height: 14px; }
+  .fstep .fs.done { color: var(--ink-2); cursor: pointer; }
+  .fstep .fs.done .n { border-color: var(--accent); background: var(--accent-weak); color: var(--accent); }
+  .fstep .fs.done:hover { color: var(--ink); }
+  .fstep .fs.cur { color: var(--ink); font-weight: 600; }
+  .fstep .fs.cur .n { border-color: var(--accent); background: var(--accent); color: var(--surface); }
+  .fstep .fs:focus-visible { outline: 2px solid var(--accent); outline-offset: -6px; border-radius: 8px; }
+  .finchip { display: inline-flex; align-items: center; height: 28px; padding: 2px 10px; border-radius: 999px; background: var(--bg); border: 1px solid var(--line); color: var(--ink-2); font-size: 14px; font-weight: 500; white-space: nowrap; }
+  /* 입력(목업 정리): 인용은 푸터 한 번만(작게) · 개발자 문구 없음 · 한글 문구 */
   body.rvmock .hero .title, body.rvmock .hero .by, body.rvmock .hero .rule { display: none; }
-  body.rvmock .hero { margin: 26px 0 22px 0; }
-  body.rvmock .hero h1 { font-size: 28px; }
+  body.rvmock .hero { margin: 32px 0 24px 0; }
+  body.rvmock .hero h1 { font-size: 28px; line-height: 1.3; }
+  body.rvmock .hero h1 em { color: var(--accent); }
   body.rvmock #sendNote { display: none; }
-  .finsamples { margin-bottom: 18px; }
+  body.rvmock .foot .sc { font-family: var(--sans); font-size: 14px; color: var(--ink-3); font-weight: 400; }
+  body.rvmock .foot .by { font-size: 14px; letter-spacing: 0; text-transform: none; }
+  body.rvmock .scope { font-size: 14px; }
+  .finsamples { margin-bottom: 24px; }
   .finsamples .eyebrow { margin-bottom: 8px; }
-  .finsamples .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
-  .finsamples .smp { display: block; text-align: left; padding: 12px 14px; border: 1px solid var(--line2); border-radius: 4px; background: var(--card); font: inherit; line-height: 1.5; }
-  .finsamples .smp:hover, .finsamples .smp:focus-visible { border-color: var(--ink); outline: none; }
-  .finsamples .smp.on { border-color: var(--red); box-shadow: inset 0 0 0 1px var(--red); }
-  .finsamples .smp b { display: block; font-family: var(--sans); font-size: 15px; font-weight: 700; }
-  .finsamples .smp .d { display: block; font-size: 13px; color: var(--muted); margin-top: 3px; }
-  .finguide { font-size: 13px; color: var(--amber); margin-top: 6px; }
+  .finsamples .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  .finsamples .smp { display: block; text-align: left; padding: 16px 20px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font: inherit; line-height: 1.5; color: var(--ink); }
+  .finsamples .smp:hover { border-color: var(--ink-3); }
+  .finsamples .smp:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .finsamples .smp.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .finsamples .smp b { display: block; font-size: 16px; font-weight: 600; }
+  .finsamples .smp .d { display: inline-flex; align-items: center; height: 24px; padding: 2px 10px; border-radius: 999px; background: var(--bg); font-size: 14px; color: var(--ink-2); margin-top: 8px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .finguide { font-size: 14px; color: var(--warn); margin-top: 8px; display: flex; align-items: center; gap: 6px; }
   .finguide:empty { display: none; }
-  .finnote { font-size: 13px; color: var(--muted); margin-top: 10px; }
-  /* --- 공통: 단계 화면 본문(한 컬럼, 본문 폭 720px), 하단 주 버튼 바 --- */
-  .fv { max-width: 760px; margin: 0 auto; padding-bottom: 96px; }
-  .fv .fhead { margin: 8px 0 22px 0; }
-  .fv .fhead h1 { font-size: 28px; outline: none; }
-  .fv .fhead h1:focus-visible { text-decoration: underline; text-decoration-color: var(--red); text-underline-offset: 6px; }
-  .fv .fhead .sub { font-size: 15px; color: var(--muted); margin-top: 8px; }
-  .fbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 25; display: flex; align-items: center; justify-content: center; gap: 12px 18px; padding: 12px 16px; background: rgba(246,247,245,.94); border-top: 1px solid var(--line); backdrop-filter: blur(6px); }
-  .fbar .btn.lg { min-width: 280px; }
-  .fbar .st { font-size: 13px; color: var(--muted); }
-  .fbar .st.inerr { color: var(--red-d); }
-  .fwait { padding: 24px 0; }
-  .fwait .tl { margin-top: 8px; }
-  /* --- 채택 --- */
-  .fa-card { padding: 20px 0 22px 0; border-top: 1px solid var(--line); }
-  .fa-card:first-of-type { border-top: none; padding-top: 6px; }
-  .fa-card.off { opacity: .55; }
-  .fa-head { display: flex; align-items: flex-start; gap: 14px; }
-  .fa-head h2 { font-size: 19px; font-family: var(--sans); font-weight: 700; flex: 1 1 auto; min-width: 0; }
-  .fa-head h2 small { display: block; font-size: 13px; color: var(--muted); font-weight: 500; margin-top: 3px; }
-  .fa-tgl { display: inline-flex; align-items: center; gap: 8px; font-family: var(--head); font-size: 13px; font-weight: 600; color: var(--ink); cursor: pointer; white-space: nowrap; padding-top: 3px; }
-  .fa-tgl input { appearance: none; -webkit-appearance: none; width: 38px; height: 22px; border-radius: 999px; background: var(--line2); position: relative; margin: 0; cursor: pointer; transition: background .15s; }
-  .fa-tgl input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: left .15s; }
-  .fa-tgl input:checked { background: var(--ink); }
+  .finnote { font-size: 14px; color: var(--ink-2); margin-top: 12px; }
+  body.rvmock .seg button { font-family: var(--sans); font-size: 14px; letter-spacing: 0; text-transform: none; }
+  /* 공통: 흐름 화면 폭 960 · 문서 폭 720 · 하단 주 버튼 바(본문 하단 오른쪽, 모바일 전체 폭) */
+  .fv { max-width: 960px; margin: 0 auto; padding-bottom: 96px; }
+  .fv .fhead { margin: 8px 0 24px 0; }
+  .fv .fhead h1 { font-size: 28px; line-height: 1.3; font-weight: 700; outline: none; }
+  .fv .fhead h1:focus-visible { text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: 6px; }
+  .fv .fhead .sub { font-size: 16px; color: var(--ink-2); margin-top: 8px; max-width: 720px; }
+  .fbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 25; background: var(--surface); border-top: 1px solid var(--line); }
+  .fbar .in { max-width: 960px; margin: 0 auto; display: flex; align-items: center; justify-content: flex-end; gap: 16px; padding: 12px 24px; }
+  .fbar .st { font-size: 14px; color: var(--ink-2); display: inline-flex; align-items: center; gap: 6px; }
+  .fbar .st.inerr { color: var(--err); }
+  .fwait { padding: 8px 0; }
+  .fwait .tn .nm { font-family: var(--sans); font-size: 14px; letter-spacing: 0; }
+  .fic { width: 16px; height: 16px; flex: none; }
+  .fic.lg { width: 20px; height: 20px; }
+  /* 채택: 카드(surface · 1px line · 패딩 20) · 토글 · 근거 칩(bg · 999 · 한 줄) · 제안 미리보기 */
+  .fa-list { display: grid; gap: 12px; }
+  .fa-card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 20px; transition: opacity .15s ease-out; }
+  .fa-card.off { opacity: .5; }
+  .fa-head { display: flex; align-items: flex-start; gap: 16px; }
+  .fa-head h2 { font-size: 16px; line-height: 1.5; font-weight: 600; flex: 1 1 auto; min-width: 0; }
+  .fa-head h2 small { display: block; font-size: 14px; line-height: 1.5; color: var(--ink-2); font-weight: 400; margin-top: 4px; }
+  .fa-tgl { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; color: var(--ink); cursor: pointer; white-space: nowrap; padding-top: 2px; }
+  .fa-tgl input { appearance: none; -webkit-appearance: none; width: 40px; height: 24px; border-radius: 999px; background: var(--ink-3); position: relative; margin: 0; cursor: pointer; transition: background .15s ease-out; }
+  .fa-tgl input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--surface); transition: left .15s ease-out; }
+  .fa-tgl input:checked { background: var(--accent); }
   .fa-tgl input:checked::after { left: 19px; }
-  .fa-tgl input:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
-  .fa-sum { font-size: 15px; margin: 10px 0 0 0; color: var(--text); }
-  .fa-ev { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 12px; font-size: 13px; color: var(--muted); }
-  .fa-chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid var(--line2); border-radius: 999px; background: var(--card); font: inherit; font-size: 13px; color: var(--text2); cursor: pointer; max-width: 100%; }
-  .fa-chip b { font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 34ch; }
-  .fa-chip .d { color: var(--muted); } .fa-chip .d.rej { color: var(--red); }
-  .fa-chip[aria-expanded="true"] { border-color: var(--ink); }
-  .fa-chip:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
-  .fa-evx { margin: 10px 0 0 0; padding: 12px 14px; background: var(--soft); border-radius: 4px; font-size: 13px; color: var(--text2); line-height: 1.7; }
+  .fa-tgl input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .fa-sum { font-size: 16px; line-height: 1.65; margin: 12px 0 0 0; color: var(--ink); }
+  .fa-ev { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; font-size: 14px; color: var(--ink-2); }
+  .fa-chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 2px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); font: inherit; font-size: 14px; color: var(--ink-2); cursor: pointer; max-width: 100%; white-space: nowrap; }
+  .fa-chip b { font-weight: 500; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 32ch; }
+  .fa-chip .d { display: inline-flex; align-items: center; gap: 4px; color: var(--ink-2); }
+  .fa-chip .d.rej { color: var(--err); }
+  .fa-chip[aria-expanded="true"] { border-color: var(--accent); background: var(--accent-weak); }
+  .fa-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .fa-evx { margin: 12px 0 0 0; padding: 12px 16px; border: 1px solid var(--line); border-radius: 8px; font-size: 14px; line-height: 1.5; color: var(--ink-2); }
   .fa-evx .q { color: var(--ink); }
-  .fa-evx .m { color: var(--muted); font-size: 13px; }
-  .fa-evx a { color: var(--ink); }
-  .fa-prev { margin-top: 12px; font-size: 15px; line-height: 1.7; color: var(--text2); }
-  .fa-prev b { font-family: var(--head); font-size: 13px; font-weight: 600; color: var(--muted); margin-right: 8px; letter-spacing: .02em; }
-  .fa-prev .more { color: var(--muted); font-size: 13px; }
-  .fa-more { margin-top: 26px; border-top: 1px solid var(--line); padding-top: 12px; font-size: 13px; color: var(--text2); }
-  .fa-more summary { cursor: pointer; font-family: var(--head); font-weight: 600; color: var(--muted); letter-spacing: .02em; padding: 6px 0; }
-  .fa-more h3 { font-size: 15px; font-family: var(--sans); margin: 14px 0 6px 0; }
-  .fa-more ul { margin: 0; padding-left: 18px; line-height: 1.7; }
-  /* --- 수정 계획서(문서 한 장) --- */
-  .fd-status { display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; font-size: 13px; color: var(--muted); margin: 0 0 14px 0; }
-  .fd-status .ed { color: var(--amber); font-weight: 600; }
+  .fa-evx .m { color: var(--ink-3); }
+  .fa-evx > div + div { margin-top: 8px; }
+  .fa-prev { margin-top: 12px; font-size: 16px; line-height: 1.65; color: var(--ink-2); }
+  .fa-prev b { font-size: 14px; font-weight: 500; color: var(--ink-3); margin-right: 8px; }
+  .fa-prev .more { color: var(--ink-3); font-size: 14px; }
+  .fa-more { margin-top: 24px; border-top: 1px solid var(--line); padding-top: 12px; font-size: 14px; line-height: 1.5; color: var(--ink-2); }
+  .fa-more summary { cursor: pointer; font-weight: 500; color: var(--ink-2); padding: 8px 0; }
+  .fa-more h3 { font-size: 16px; margin: 16px 0 8px 0; color: var(--ink); }
+  .fa-more ul { margin: 0; padding-left: 20px; }
+  /* 수정 계획서: 흰 종이 한 장(720 · 패딩 48 · 본문 16/1.8 · 제목 20/600) · 변경 문장 --mark + 여백 번호(14 · ink-3) · 편집 중 좌측 2px accent 선 */
+  .fd-status { display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; font-size: 14px; color: var(--ink-2); margin: 0 0 16px 0; }
+  .fd-status .ed { color: var(--accent); font-weight: 500; display: inline-flex; align-items: center; gap: 6px; }
   .fd-status .btn { margin-left: auto; }
-  .fd-doc { position: relative; background: #fff; border: 1px solid var(--line); border-radius: 4px; padding: 52px 56px 64px 72px; font-size: 15px; line-height: 1.95; color: var(--text); }
-  .fd-doc .t { font-family: var(--head); font-size: 28px; font-weight: 700; line-height: 1.25; margin: 0 0 8px 0; letter-spacing: -0.01em; }
-  .fd-doc .meta { font-size: 13px; color: var(--muted); padding-bottom: 14px; margin-bottom: 26px; border-bottom: 1px solid var(--line); }
-  .fd-doc h2 { font-family: var(--head); font-size: 19px; font-weight: 700; margin: 30px 0 8px 0; }
-  .fd-doc h3 { font-family: var(--head); font-size: 15px; font-weight: 700; margin: 20px 0 6px 0; }
+  .fd-doc { position: relative; max-width: 720px; margin: 0 auto; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 48px 48px 48px 64px; font-size: 16px; line-height: 1.8; color: var(--ink); }
+  .fd-doc .t { font-size: 28px; line-height: 1.3; font-weight: 700; margin: 0 0 8px 0; }
+  .fd-doc .meta { font-size: 14px; line-height: 1.5; color: var(--ink-3); padding-bottom: 16px; margin-bottom: 24px; border-bottom: 1px solid var(--line); }
+  .fd-doc h2 { font-size: 20px; line-height: 1.4; font-weight: 600; margin: 32px 0 8px 0; }
+  .fd-doc h3 { font-size: 16px; line-height: 1.65; font-weight: 600; margin: 24px 0 8px 0; }
   .fd-p { position: relative; margin: 0 0 8px 0; }
-  .fd-p p { margin: 0; padding: 2px 8px; border-radius: 3px; cursor: text; outline: none; }
-  .fd-p p:hover { box-shadow: inset 0 0 0 1px var(--line2); }
-  .fd-p p:focus-visible { box-shadow: inset 0 0 0 2px var(--ink); }
-  .fd-p.chg p { background: var(--amber-t); }
-  .fd-p.fix p { background: var(--soft); }
-  .fd-p.ro p { cursor: default; } .fd-p.ro p:hover { box-shadow: none; }
-  .fd-mark { position: absolute; left: -40px; top: 6px; width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--line2); background: var(--card); font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--text2); display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; }
-  .fd-mark:hover, .fd-mark[aria-expanded="true"] { border-color: var(--ink); color: var(--ink); }
-  .fd-mark:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
-  .fd-doc mark.ph { background: transparent; color: var(--amber); font-weight: 600; }
-  .fd-ta { display: block; width: 100%; box-sizing: border-box; margin: 0; padding: 2px 8px; border: none; border-radius: 3px; box-shadow: inset 0 0 0 2px var(--ink); background: #fff; font: inherit; line-height: inherit; color: inherit; resize: none; overflow: hidden; outline: none; }
-  .fd-pop { position: absolute; z-index: 6; left: 0; right: 0; margin: 4px 0 0 0; padding: 14px 16px; background: var(--card); border: 1px solid var(--ink); border-radius: 4px; box-shadow: 0 8px 28px rgba(20,22,26,.16); font-size: 13px; line-height: 1.7; color: var(--text2); }
-  .fd-pop .k { font-family: var(--head); font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: .02em; margin-top: 10px; }
+  .fd-p p { margin: 0; padding: 2px 8px; border-radius: 4px; cursor: text; outline: none; transition: background .15s ease-out; }
+  .fd-p p:hover { background: var(--bg); }
+  .fd-p p:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+  .fd-p.chg p, .fd-p.chg p:hover { background: var(--mark); }
+  .fd-p.fix p, .fd-p.fix p:hover { background: var(--mark); }
+  .fd-p.ro p { cursor: default; } .fd-p.ro p:hover { background: transparent; } .fd-p.ro.fix p:hover { background: var(--mark); }
+  .fd-mark { position: absolute; left: -40px; top: 4px; width: 28px; height: 28px; border: none; background: transparent; font-size: 14px; font-weight: 500; color: var(--ink-3); display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; border-radius: 8px; }
+  .fd-mark:hover, .fd-mark[aria-expanded="true"] { color: var(--accent); background: var(--accent-weak); }
+  .fd-mark:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+  .fd-doc mark.ph { background: transparent; color: var(--warn); font-weight: 500; }
+  .fd-ta { display: block; width: 100%; box-sizing: border-box; margin: 0; padding: 2px 8px 2px 12px; border: none; border-left: 2px solid var(--accent); border-radius: 0; background: var(--surface); font: inherit; line-height: inherit; color: inherit; resize: none; overflow: hidden; outline: none; box-shadow: none; }
+  .fd-ta:focus-visible { box-shadow: none; }
+  .fd-pop { position: absolute; z-index: 6; left: 24px; right: 24px; margin: 4px 0 0 0; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow-float); font-size: 14px; line-height: 1.5; color: var(--ink-2); animation: fdin .15s ease-out; }
+  .fd-pop .k { font-size: 14px; font-weight: 500; color: var(--ink-3); margin-top: 12px; }
   .fd-pop .k:first-child { margin-top: 0; }
   .fd-pop .o { color: var(--ink); }
-  .fd-pop .ev { padding-left: 10px; border-left: 2px solid var(--line2); margin-top: 6px; }
-  .fd-pop .ev .m { color: var(--muted); }
-  .fd-pop .acts { display: flex; gap: 8px; margin-top: 12px; }
-  /* --- 최종 점검 --- */
-  .fc-badges { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--text2); margin: 0 0 18px 0; }
-  .fc-badges span { white-space: nowrap; }
-  .fc-badges b { font-family: var(--head); font-weight: 600; color: var(--ink); }
-  .fc-badges .bad { color: var(--red); font-weight: 600; }
-  .fc-g { margin: 0 0 18px 0; }
-  .fc-g h2 { font-size: 15px; font-family: var(--head); font-weight: 600; color: var(--muted); letter-spacing: .02em; margin: 0 0 4px 0; }
-  .fc-g ul { list-style: none; margin: 0; padding: 0; }
-  .fc-row { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 0 10px; align-items: baseline; padding: 8px 0; border-top: 1px solid var(--line); font-size: 15px; cursor: pointer; }
+  .fd-pop .ev { padding-left: 12px; border-left: 1px solid var(--line); margin-top: 8px; }
+  .fd-pop .ev .m { color: var(--ink-3); }
+  .fd-pop .acts { display: flex; gap: 8px; margin-top: 16px; }
+  @keyframes fdin { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+  /* 최종 점검: 항목 목록(아이콘 + 문구) · 도구 요약 · 자동 수정(되돌리기 링크) */
+  .fc-badges { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 14px; color: var(--ink-2); margin: 0 0 24px 0; }
+  .fc-badges span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .fc-badges b { font-weight: 600; color: var(--ink); }
+  .fc-badges .bad { color: var(--err); display: inline-flex; align-items: center; gap: 4px; }
+  .fc-g { margin: 0 0 24px 0; }
+  .fc-g h2 { font-size: 14px; line-height: 1.5; font-weight: 500; color: var(--ink-3); margin: 0 0 4px 0; }
+  .fc-g ul { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+  .fc-row { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 0 12px; align-items: center; padding: 12px 20px; border-top: 1px solid var(--line); font-size: 16px; cursor: pointer; transition: opacity .15s ease-out; }
   .fc-row:first-child { border-top: none; }
-  .fc-row .ic { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--line2); font-size: 12px; color: transparent; align-self: center; }
-  .fc-row.run .ic { border-color: var(--red); border-top-color: transparent; animation: fcspin .8s linear infinite; }
-  .fc-row.pass .ic { border-color: var(--ink); background: var(--ink); color: #fff; animation: fcpop .25s ease-out; }
-  .fc-row.fail .ic { border-color: var(--red); background: var(--red); color: #fff; animation: fcpop .25s ease-out; }
-  .fc-row.skip .ic { border-color: var(--amber); color: var(--amber); }
-  .fc-row.pending { color: var(--faint); }
+  .fc-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 8px; }
+  .fc-row .ic { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--ink-3); color: transparent; }
+  .fc-row .ic svg { width: 14px; height: 14px; }
+  .fc-row.run .ic { border-color: var(--accent); border-top-color: transparent; animation: fcspin .8s linear infinite; }
+  .fc-row.pass .ic { border-color: var(--ok); background: var(--ok); color: var(--surface); animation: fcin .2s ease-out; }
+  .fc-row.fail .ic { border-color: var(--err); background: var(--err); color: var(--surface); animation: fcin .2s ease-out; }
+  .fc-row.skip .ic { border-color: var(--warn); color: var(--warn); }
+  .fc-row.pending { color: var(--ink-3); }
   .fc-row .nm { min-width: 0; }
-  .fc-row .nm small { color: var(--muted); font-size: 13px; margin-left: 8px; }
-  .fc-row .rs { font-size: 13px; color: var(--muted); white-space: nowrap; }
-  .fc-row.fail .rs { color: var(--red); font-weight: 600; }
-  .fc-row .dt { grid-column: 2 / -1; font-family: var(--mono); font-size: 12.5px; color: var(--text2); line-height: 1.7; margin-top: 2px; overflow-wrap: anywhere; }
-  .fc-row .dt b { font-family: var(--sans); color: var(--muted); font-weight: 600; margin-right: 6px; }
-  .fc-fixes { margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--line); }
-  .fc-fixes h2 { font-size: 15px; font-family: var(--head); font-weight: 600; color: var(--muted); letter-spacing: .02em; margin: 0 0 8px 0; }
-  .fc-fix { padding: 8px 0; font-size: 15px; line-height: 1.7; border-top: 1px solid var(--line); }
-  .fc-fix:first-of-type { border-top: none; }
-  .fc-fix .ln { font-family: var(--mono); font-size: 12.5px; color: var(--muted); margin-right: 8px; }
-  .fc-fix s { color: var(--faint); text-decoration-color: var(--red-l); }
-  .fc-fix .arrow { color: var(--muted); margin: 0 6px; }
-  .fc-fix .why { display: block; font-size: 13px; color: var(--muted); }
-  .fc-fix .link { background: none; border: none; padding: 0; margin-left: 10px; font: inherit; font-size: 13px; color: var(--text2); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
-  .fc-fix .link:hover { color: var(--ink); }
-  .fc-fix.rev { opacity: .6; } .fc-fix.rev s { text-decoration: none; color: var(--ink); } .fc-fix.rev b { text-decoration: line-through; color: var(--faint); font-weight: 400; }
-  .fc-fix.skip { color: var(--muted); }
+  .fc-row .nm small { color: var(--ink-3); font-size: 14px; margin-left: 8px; }
+  .fc-row .rs { font-size: 14px; color: var(--ink-2); white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
+  .fc-row.fail .rs { color: var(--err); }
+  .fc-row.skip .rs { color: var(--warn); }
+  .fc-row .dt { grid-column: 2 / -1; font-size: 14px; color: var(--ink-2); line-height: 1.5; margin-top: 4px; overflow-wrap: anywhere; }
+  .fc-row .dt b { color: var(--ink-3); font-weight: 500; margin-right: 6px; }
+  .fc-fixes { margin-top: 24px; }
+  .fc-fixes h2 { font-size: 14px; line-height: 1.5; font-weight: 500; color: var(--ink-3); margin: 0 0 4px 0; }
+  .fc-fixes .list { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+  .fc-fix { padding: 12px 20px; font-size: 16px; line-height: 1.65; border-top: 1px solid var(--line); }
+  .fc-fix:first-child { border-top: none; }
+  .fc-fix .ln { font-size: 14px; color: var(--ink-3); margin-right: 8px; }
+  .fc-fix s { color: var(--ink-3); text-decoration-color: var(--ink-3); }
+  .fc-fix .arrow { color: var(--ink-3); margin: 0 6px; }
+  .fc-fix .why { display: block; font-size: 14px; color: var(--ink-2); }
+  .fc-fix .link { margin-left: 12px; }
+  .fc-fix.rev s { text-decoration: none; color: var(--ink); } .fc-fix.rev b { text-decoration: line-through; color: var(--ink-3); font-weight: 400; }
+  .fc-fix.skip { color: var(--ink-2); }
   @keyframes fcspin { to { transform: rotate(360deg); } }
-  @keyframes fcpop { from { transform: scale(.6); } to { transform: scale(1); } }
-  /* --- 완성 --- */
-  .fz-stat { font-size: 15px; color: var(--text2); margin-top: 8px; }
-  .fz-acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
-  .fz-note { font-size: 13px; color: var(--muted); margin-top: 8px; }
-  /* --- 반응형 --- */
-  @media (max-width: 900px) {
-    .fstep { order: 3; width: 100%; margin-left: 0; justify-content: space-between; }
-    .fstep .fs { height: 40px; padding: 0 6px; gap: 6px; }
-    .fd-doc { padding: 36px 24px 48px 48px; }
-    .fd-mark { left: -34px; }
-  }
-  @media (max-width: 600px) {
-    .fstep .fs .l { display: none; } .fstep .fs.cur .l { display: inline; }
-    .fstep .fs { padding: 0 4px; }
-    .fv { padding-bottom: 88px; }
-    .fv .fhead h1 { font-size: 22px; }
-    .fbar { padding: 10px 12px; } .fbar .btn.lg { min-width: 0; width: 100%; } .fbar .st { display: none; }
-    .fa-head { flex-direction: column-reverse; gap: 8px; }
-    .fd-doc { padding: 26px 14px 40px 36px; font-size: 15px; }
-    .fd-doc .t { font-size: 22px; }
-    .fd-mark { left: -30px; width: 22px; height: 22px; }
-    .fd-status .btn { margin-left: 0; }
-    .fc-row { grid-template-columns: 26px minmax(0, 1fr); } .fc-row .rs { grid-column: 2; white-space: normal; }
-    .fz-acts .btn { flex: 1 1 45%; }
-  }
-  @media print {
-    .fstep, .fbar, .finchip, .fd-mark, .fd-pop, .fd-status, .fz-acts, .rvmockbar { display: none !important; }
-    .fd-doc { border: none; padding: 0; }
-    .fd-p.chg p, .fd-p.fix p { background: none; }
-  }
-  /* 상단바·단계 표시 반응형: E4-L3m(d08640a) 전역 규칙과 같은 값(E4-L4r은 revise 화면에만 복제했고 이 브랜치·main에는 E4-L3m이 없다).
-     입력·리포트·최종 초안 화면에서 768폭 단계 버튼(I~VI)이 한 줄로 넘치던 것. 통합 시 E4-L3m 규칙과 겹치면 하나만 남기면 된다 */
+  @keyframes fcin { from { opacity: 0; } to { opacity: 1; } }
+  /* 완성 */
+  .fz-stat { font-size: 16px; color: var(--ink-2); margin-top: 8px; }
+  .fz-acts { display: flex; gap: 8px; flex-wrap: wrap; margin: 16px 0 24px 0; }
+  .fz-note { font-size: 14px; color: var(--ink-3); margin-top: 8px; }
+  /* 반응형 */
   @media (max-width: 1180px) {
     .wrap { z-index: auto; }
-    .panel { height: auto; visibility: hidden; transition: transform .25s, visibility 0s linear .25s; }
-    body.popen .panel { visibility: visible; transition: transform .25s; }
-    .ptabs { align-items: center; }
-    .ptabs button { height: 44px; }
-    .trace { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .trace .mono { word-break: break-all; }
+    .panel { height: auto; visibility: hidden; transition: transform .2s ease-out, visibility 0s linear .2s; }
+    body.popen .panel { visibility: visible; transition: transform .2s ease-out; }
+    .ptabs { align-items: center; } .ptabs button { height: 44px; }
+    .trace { grid-template-columns: repeat(2, minmax(0, 1fr)); } .trace .mono { word-break: break-all; }
   }
   @media (max-width: 900px) {
-    .top { height: auto; min-height: 60px; flex-wrap: wrap; gap: 4px 18px; padding: 8px 16px; }
+    .top { height: auto; min-height: 56px; flex-wrap: wrap; gap: 4px 16px; padding: 8px 16px; }
     .steps { order: 3; width: 100%; margin-left: 0; flex-wrap: wrap; gap: 2px 20px; }
-    .wrap { padding: 20px 16px 72px 16px; }
+    .fstep { order: 3; width: 100%; margin-left: 0; justify-content: space-between; }
+    .fstep .fs { height: 40px; padding: 0 4px; gap: 6px; }
+    .fstep .fs + .fs::before { width: 8px; margin-right: 4px; }
+    .wrap { padding: 24px 16px 72px 16px; }
     .doc section { scroll-margin-top: 110px; }
-    .hero .title { font-size: 40px; }
-    .hero h1 { font-size: 24px; }
     .idx { flex-wrap: wrap; row-gap: 4px; }
-    .foot { padding: 24px 16px 36px 16px; }
+    .foot { padding: 24px 16px 32px 16px; }
+    .fd-doc { padding: 32px 24px 32px 48px; }
+    .fd-mark { left: -36px; }
+    .fbar .in { padding: 12px 16px; }
   }
   @media (max-width: 600px) {
     .top { position: relative; gap: 2px 12px; }
-    .wordmark .w { font-size: 30px; }
-    .wordmark .ws { display: none; }
-    .top .r { margin-left: auto; gap: 10px; }
-    .top .r > * + * { padding-left: 10px; }
+    .top .r { margin-left: auto; gap: 8px; }
+    .top .r > * + * { padding-left: 8px; }
     .steps { gap: 2px 14px; }
-    .stp { font-size: 12.5px; letter-spacing: .03em; padding: 12px 0; }
+    .stp { font-size: 14px; letter-spacing: 0; padding: 12px 0; }
     .doc section { scroll-margin-top: 12px; }
     .wrap { padding: 16px 16px 72px 16px; }
-    .hero { margin: 16px 0 20px 0; }
-    .hero .title { font-size: 30px; }
-    .hero h1 { font-size: 19px; margin-top: 16px; }
-    #inCard { padding: 16px 14px 18px 14px !important; }
+    .hero { margin: 16px 0 16px 0; }
+    body.rvmock .hero h1 { font-size: 20px; line-height: 1.4; margin-top: 8px; }
+    #inCard { padding: 16px !important; }
     .tprow { flex-direction: column; align-items: stretch; gap: 2px; }
     .tprow .optl { width: auto; }
-    .exs { flex-direction: column; align-items: flex-start; gap: 6px; }
+    .exs { flex-direction: column; align-items: flex-start; gap: 8px; }
     textarea.ta { min-height: 240px; padding: 12px; font-size: 16px; }
-    .drop { padding: 16px 14px; }
-    body[data-view="job"] .hero h1 { font-size: 24px !important; flex-wrap: wrap; row-gap: 4px; }
-    body[data-view="job"] .tn { grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; }
+    .drop { padding: 16px; }
+    body[data-view="job"] .hero h1 { font-size: 20px !important; flex-wrap: wrap; row-gap: 4px; }
+    body[data-view="job"] .tn { grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; }
     body[data-view="job"] .tn .msg { grid-column: 1 / -1; grid-row: 2; }
-    .log { padding: 12px; font-size: 12px; }
+    .log { padding: 12px; font-size: 14px; }
     .finsamples .grid { grid-template-columns: 1fr; }
+    .fstep .fs .l { display: none; } .fstep .fs.cur .l { display: inline; }
+    .fstep .fs { padding: 0 2px; }
+    .fv { padding-bottom: 88px; }
+    .fv .fhead h1 { font-size: 20px; line-height: 1.4; }
+    .fbar .in { padding: 8px 16px; } .fbar .btn.lg { width: 100%; } .fbar .st { display: none; }
+    .fa-card { padding: 16px; }
+    .fa-head { flex-direction: column-reverse; gap: 8px; }
+    .fd-doc { padding: 24px 16px 32px 40px; }
+    .fd-doc .t { font-size: 20px; line-height: 1.4; }
+    .fd-mark { left: -34px; }
+    .fd-pop { left: 8px; right: 8px; }
+    .fd-status .btn { margin-left: 0; }
+    .fc-row { grid-template-columns: 20px minmax(0, 1fr); padding: 12px 16px; } .fc-row .rs { grid-column: 2; white-space: normal; }
+    .fc-fix { padding: 12px 16px; }
+    .fz-acts .btn { flex: 1 1 45%; }
+  }
+  @media (prefers-reduced-motion: reduce) { .fc-row.run .ic { animation: none; } .fd-pop, .fc-row.pass .ic, .fc-row.fail .ic { animation: none; } }
+  @media print {
+    .fstep, .fbar, .finchip, .fd-mark, .fd-pop, .fd-status, .fz-acts, .top .r { display: none !important; }
+    .fd-doc { border: none; padding: 0; max-width: none; }
+    .fd-p.chg p, .fd-p.fix p { background: none; }
   }
 </style>
 <link rel="stylesheet" href="wait.css"><!-- WAIT-UX 대기 화면 모듈(없어도 기존 타임라인이 나온다) · 출처 task/WAIT-UX 06916ab -->
@@ -2246,14 +2301,14 @@
    수정 계획서: 문서 한 장(720px). 바뀐 문장은 옅은 하이라이트 + 여백 번호(팝오버: 원문·근거·되돌리기). 문단 클릭 → 그 자리 편집(textarea 자동 높이) · 편집 중 표시 · 되돌리기. 충돌은 자동 해소. 주 버튼 "확정하고 최종 점검".
    최종 점검: 논리·물리·구조·근거 항목이 하나씩 켜지고(도구 배지 Z3 ✓ n …), 발견한 오류는 자동으로 고쳐 보고만(항목마다 되돌리기). 주 버튼 "완성된 초안 보기".
    완성: 최종 초안 문서 뷰 + 한 줄 통계 + 내려받기(.md/.docx) + 처음부터 다시.
-   서버: POST premortem/revise/finalize(contracts/finalization.schema.json, Codex codex/final-ui-20261001 2ac62f8과 같은 경로·본문 키). 목업(?mock=final): <script id="finMockFinal"> trace 재생, 교정은 원문 줄 문자열 앵커.
+   서버: POST premortem/finalize(PM 확정 경로 · contracts/finalization.schema.json · 본문 키는 Codex codex/final-ui-20261001 2ac62f8과 같게). 목업(?mock=final): <script id="finMockFinal"> trace 재생, 교정은 원문 줄 문자열 앵커.
    결정·직접 편집은 수정 권고 블록(NeumannRevise)의 같은 상태에 쓴다(localStorage 보존 공유). 서버·fixture 문자열은 전부 textContent. 외부 요청 0. */
 (function () {
   'use strict';
   var U = window.NeumannUI, R = window.NeumannRevise; if (!U || !R) return;
   var $ = function (id) { return document.getElementById(id); };
   var S = U.S, D = function () { return U.D(); }, MOCK = !!R.mock;
-  var FIN = { api: 'premortem/revise/finalize', mockSpeed: 1 };
+  var FIN = { api: 'premortem/finalize', mockSpeed: 1 };  /* PM 판정 경로 /premortem/finalize (Codex final-ui는 premortem/revise/finalize였음) */
   var STEPS = [['input', '입력'], ['job', '분석'], ['adopt', '채택'], ['draft', '수정 계획서'], ['check', '최종 점검'], ['done', '완성']];
   var TOOL_KO = { z3: 'Z3', pint: 'Pint', networkx: 'NetworkX', calc: '계산기', sandbox: '제한 실행', records: '인용 조회', outline: '절 번호', grounding: '근거 대조', llm: '자동 수정', none: '도구 없음', unknown: '도구' };
   var STAGE_KO = { logic: '논리', physics: '물리', structure: '구조', evidence: '근거', correct: '자동 수정', recheck: '재검사', tools: '도구 검사', assess: '의미 검토', assemble: '조립' };
@@ -2277,12 +2332,14 @@
   function pad2(n) { return ('0' + n).slice(-2); }
   function headingOf(t) { var m = /^\s{0,3}(#{1,6})\s+(.*)$/.exec(t); return m ? { level: m[1].length, text: m[2] } : null; }
   function phCount(text) { var n = 0; PH.lastIndex = 0; while (PH.exec(text)) n++; return n; }
+  var ICONS = { check: 'M4 8.5l2.5 2.5L12 5', x: 'M4 4l8 8M12 4l-8 8', minus: 'M4 8h8', warn: 'M8 3v6M8 11.5v.5' };
+  function icon(name, cls) { var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('viewBox', '0 0 16 16'); svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('class', 'fic' + (cls ? ' ' + cls : '')); var path = document.createElementNS('http://www.w3.org/2000/svg', 'path'); path.setAttribute('d', ICONS[name] || ICONS.check); path.setAttribute('fill', 'none'); path.setAttribute('stroke', 'currentColor'); path.setAttribute('stroke-width', '1.5'); path.setAttribute('stroke-linecap', 'round'); path.setAttribute('stroke-linejoin', 'round'); svg.appendChild(path); return svg; }
   function textEl(tag, cls, text) { var e = el(tag, cls), last = 0, m; PH.lastIndex = 0; while ((m = PH.exec(text))) { if (m.index > last) add(e, text.slice(last, m.index)); add(e, el('mark', 'ph', m[0])); last = m.index + m[0].length; } if (last < text.length) add(e, text.slice(last)); return e; }
   function extLink(u, text) { u = U.safeUrl(u); if (!u) return el('span', 'm', '원문 링크 없음'); var a = el('a', null, text || '원문'); a.href = u; a.target = '_blank'; a.rel = 'noopener noreferrer'; return a; }
   function view(id, ready) { document.body.dataset.view = id; document.body.dataset.ready = ready ? '1' : '0'; }
   function shell(id) { var app = $('app'); clear(app); var sec = el('section', 'fv'); sec.id = id; add(app, sec); return sec; }
   function head(sec, eyebrow, title, sub, titleId) { var h = el('div', 'fhead'); add(h, el('div', 'eyebrow', eyebrow)); var h1 = el('h1', null, title); h1.id = titleId; h1.tabIndex = -1; add(h, h1); if (sub) add(h, el('p', 'sub', sub)); add(sec, h); return h1; }
-  function bar(sec, button, status) { var b = el('div', 'fbar'); add(b, button); var st = el('span', 'st', status || ''); st.id = sec.id + 'State'; add(b, st); add(sec, b); return st; }
+  function bar(sec, button, status) { var b = el('div', 'fbar'), inn = el('div', 'in'); var st = el('span', 'st', status || ''); st.id = sec.id + 'State'; add(inn, st, button); add(b, inn); add(sec, b); return st; }
 
   /* ---------- 스테퍼(상단, 하나) ---------- */
   function idx(id) { for (var i = 0; i < STEPS.length; i++) if (STEPS[i][0] === id) return i; return 0; }
@@ -2290,9 +2347,9 @@
     if (!MOCK) return;
     var top = document.querySelector('.top'); if (!top) return;
     var nav = $('finStepper'); if (!nav) { nav = el('nav', 'fstep'); nav.id = 'finStepper'; nav.setAttribute('aria-label', '진행 단계'); var steps = $('steps'); top.insertBefore(nav, steps || null); }
-    var r = top.querySelector('.r'); if (r && !$('finMockChip')) { var chip = el('span', 'finchip', '시험(mock) · 가짜 데이터'); chip.id = 'finMockChip'; chip.title = '디자인 점검용 목업 · 서버 호출 없음'; r.insertBefore(chip, r.firstChild); }
+    var r = top.querySelector('.r'); if (r && !$('finMockChip')) { var chip = el('span', 'finchip', '시험 모드'); chip.id = 'finMockChip'; chip.title = '시험 모드(mock) · 가짜 데이터 · 서버 호출 없음'; r.insertBefore(chip, r.firstChild); }
     clear(nav); var cur = idx(V.step);
-    STEPS.forEach(function (s, i) { var ok = i < cur || i <= V.max, b = btn('fs' + (i === cur ? ' cur' : (ok ? ' done' : '')), ''); b.dataset.finstep = s[0]; b.disabled = !ok || i === cur; if (i === cur) b.setAttribute('aria-current', 'step'); b.title = s[1] + (ok && i !== cur ? ' 단계로 돌아가기' : ''); add(b, el('span', 'n', String(i + 1)), el('span', 'l', s[1])); add(nav, b); });
+    STEPS.forEach(function (s, i) { var ok = i < cur || i <= V.max, b = btn('fs' + (i === cur ? ' cur' : (ok ? ' done' : '')), ''); b.dataset.finstep = s[0]; b.disabled = !ok || i === cur; if (i === cur) b.setAttribute('aria-current', 'step'); b.title = s[1] + (ok && i !== cur ? ' 단계로 돌아가기' : ''); var nn = el('span', 'n'); if (ok && i !== cur) add(nn, icon('check')); else nn.textContent = String(i + 1); add(b, nn, el('span', 'l', s[1])); add(nav, b); });
   }
   function goStep(id) {
     var i = idx(id); closePop(); if (V.editing) cancelEdit();
@@ -2327,7 +2384,7 @@
     }
     var drop = $('drop'); if (drop) { var hint = drop.querySelector('.sm'); if (hint) hint.textContent = 'PDF · DOCX · HWPX · TXT · MD · 최대 10 MB'; }
     var fi = $('fileIn'); if (fi && fi.accept.indexOf('.hwpx') < 0) fi.accept = fi.accept + ',.hwpx';
-    var run = b && b.parentNode; if (run && !$('finNote')) { var nt = el('div', 'finnote', '시험(mock) · 입력한 계획서는 외부로 전송하지 않습니다 · 최종 판단은 연구자에게'); nt.id = 'finNote'; run.parentNode.insertBefore(nt, run.nextSibling); var lab = run.querySelector('.sm.muted'); if (lab) lab.textContent = ''; }
+    var run = b && b.parentNode; if (run && !$('finNote')) { var nt = el('div', 'finnote', '시험 모드입니다. 입력한 계획서는 외부로 전송하지 않습니다. 최종 판단은 연구자가 합니다.'); nt.id = 'finNote'; run.parentNode.insertBefore(nt, run.nextSibling); var lab = run.querySelector('.sm.muted'); if (lab) lab.textContent = ''; }
   }
   function paintCount() {
     var ta = $('ta'), cnt = $('cnt'); var n = ta ? ta.value.length : (S.text || '').length;
@@ -2335,7 +2392,7 @@
     var g = $('finGuide'); if (!g && cnt) { g = el('div', 'finguide'); g.id = 'finGuide'; g.setAttribute('role', 'status'); g.setAttribute('aria-live', 'polite'); cnt.parentNode.parentNode.insertBefore(g, cnt.parentNode.nextSibling); }
     if (!g) return;
     var fit = $('fitBox'), outOfScope = !!(fit && !fit.hidden && !fit.classList.contains('ok') && fit.textContent.trim());  /* QA-2 Q2-4: 범위 밖 판정이 있으면 '짧음'보다 그 사유가 먼저 */
-    g.textContent = n > 0 && n < 300 && !outOfScope ? '300자 이상 입력해 주세요 (현재 ' + n + '자)' : '';
+    clear(g); if (n > 0 && n < 300 && !outOfScope) add(g, icon('warn'), '300자 이상 입력해 주세요 (현재 ' + n + '자)');
   }
   document.addEventListener('input', function (ev) { if (MOCK && ev.target && ev.target.id === 'ta') paintCount(); });
   /* WAIT-UX 연결 자리(.claude/worktrees/s3-WAIT-UX의 분리 모듈 wait.js·wait.css): window.NeumannWait.update({mock,state,stage,label,index,total,elapsed}). 없으면 기존 타임라인. 모듈 오류는 흐름을 막지 않는다 */
@@ -2365,8 +2422,8 @@
     var d = D(); if (!d) { U.go(0); return; }
     view('adopt', false); ensureDecisions();
     var sec = shell('fin-adopt'), cards = R.cards(), nEv = Object.keys(d.ev || {}).length;
-    head(sec, '거절 위험과 권고', '이 계획서가 거절될 수 있는 이유 ' + cards.length + '건', '유사 연구 ' + (d.kpi && d.kpi.n_works || d.works.length) + '편의 심사 기록에서 근거 ' + nEv + '건을 찾았습니다. 채택한 위험은 다음 단계에서 수정 계획서로 반영됩니다. 뺄 것만 끄세요.', 'faTitle');
-    var list = el('div'); list.id = 'faList';
+    head(sec, '거절 위험과 권고', '이 계획서가 거절될 수 있는 이유 ' + cards.length + '건', '유사 연구 ' + (d.kpi && d.kpi.n_works || d.works.length) + '편의 심사 기록에서 근거 ' + nEv + '건을 찾았습니다. 채택한 위험은 다음 단계에서 수정 계획서에 반영됩니다. 제외할 항목만 끄면 됩니다.', 'faTitle');
+    var list = el('div', 'fa-list'); list.id = 'faList';
     cards.forEach(function (cd) { add(list, cardEl(cd)); });
     add(sec, list);
     var more = el('details', 'fa-more'); var sm = el('summary', null, '참고 · 예상 심사평 · 착수 전 체크리스트 · 유사 연구'); add(more, sm);
@@ -2384,7 +2441,7 @@
     var tg = el('label', 'fa-tgl'); var cb = el('input'); cb.type = 'checkbox'; cb.checked = on; cb.dataset.fatoggle = String(cd.rank); cb.disabled = !it.rev; cb.setAttribute('aria-label', f.n + ' 채택'); add(tg, cb, el('span', null, on ? '채택' : '제외')); add(hd, h2, tg); add(art, hd);
     add(art, el('p', 'fa-sum', summaryOf(cd)));
     var evs = el('div', 'fa-ev'); add(evs, '근거 ');
-    papersOf(cd).forEach(function (p, i) { var c = btn('fa-chip', ''); c.dataset.faev = cd.rank + ':' + i; c.setAttribute('aria-expanded', 'false'); c.setAttribute('aria-controls', 'faevx-' + cd.rank + '-' + i); add(c, el('b', null, p.s || p.p), el('span', 'd' + (p.d === '거절' ? ' rej' : ''), (p.d || '미정') + ' · 발췌 ' + p.ex.length)); add(evs, c); });
+    papersOf(cd).forEach(function (p, i) { var c = btn('fa-chip', ''); c.dataset.faev = cd.rank + ':' + i; c.setAttribute('aria-expanded', 'false'); c.setAttribute('aria-controls', 'faevx-' + cd.rank + '-' + i); var dd = el('span', 'd' + (p.d === '거절' ? ' rej' : '')); if (p.d === '거절') add(dd, icon('x')); add(dd, (p.d || '미정') + ' · 발췌 ' + p.ex.length); add(c, el('b', null, p.s || p.p), dd); add(evs, c); });
     add(art, evs);
     papersOf(cd).forEach(function (p, i) { var x = el('div', 'fa-evx'); x.id = 'faevx-' + cd.rank + '-' + i; x.hidden = true; add(x, el('div', 'm', p.p + ' · ' + (p.d || '미정'))); p.ex.forEach(function (e) { var q = el('div'); add(q, el('span', 'q', '“' + e.q + '”'), ' ', el('span', 'm', e.v || ''), ' ', extLink(e.u, '원문')); add(x, q); }); add(art, x); });
     var pv = el('div', 'fa-prev');
@@ -2405,7 +2462,7 @@
     if (MOCK && !V.draftReady) { renderDraftWait(); return; }
     view('draft', false); autoResolve(); closePop(); V.editing = null;
     var sec = shell('fin-draft'), ps = paras(), title = null; ps.forEach(function (p) { if (!title && p.h === 'title') title = p; });
-    head(sec, '수정 계획서', '채택한 권고를 반영한 계획서', '바뀐 문장은 옅게 표시되고 여백의 번호를 누르면 원문·근거·되돌리기가 보입니다. 문단을 누르면 그 자리에서 고칠 수 있습니다.', 'fdTitle');
+    head(sec, '수정 계획서', '채택한 권고를 반영한 계획서', '바뀐 문장은 옅게 표시됩니다. 여백의 번호를 누르면 원문과 근거를 보고 되돌릴 수 있고, 문단을 누르면 그 자리에서 고칠 수 있습니다.', 'fdTitle');
     var st = el('div', 'fd-status'); st.id = 'fdStatus'; add(sec, st);
     var doc = el('article', 'fd-doc'); doc.id = 'fdDoc'; doc.setAttribute('aria-label', '수정 계획서 본문');
     add(doc, el('div', 't', title ? (headingOf(title.t) || { text: title.t }).text : (d.plan.title || '연구계획서')), el('div', 'meta', (d.plan.file || '직접 입력') + ' · 수정 계획서 · ' + kst()));
@@ -2426,7 +2483,7 @@
   }
   function renderDraftWait() {
     view('draft', false); var sec = shell('fin-draft');
-    head(sec, '수정 계획서', '수정 계획서를 만드는 중', '채택한 위험마다 거절 사유를 해석하고, 같은 지적을 받고도 채택된 연구의 대응을 찾아 수정안을 씁니다.', 'fdTitle');
+    head(sec, '수정 계획서', '수정 계획서를 만드는 중', '채택한 위험마다 거절 사유를 해석하고, 같은 지적을 받고도 채택된 연구의 대응을 찾아 수정안을 만듭니다.', 'fdTitle');
     var w = el('div', 'fwait'); var tl = el('div', 'tl'); tl.id = 'fdWait'; var stages = [['거절 사유 해석', '심사평·결정문의 지적을 계획서 줄에 연결'], ['채택 연구의 대응', '같은 지적을 받고도 채택된 연구의 저자 답변'], ['수정안 작성 · 근거 대조', '근거 없는 문장은 제외']];
     stages.forEach(function (s) { var tn = el('div', 'tn'); add(tn, el('div', 'nm', s[0]), el('div', 'msg', s[1]), el('div', 'tm', '')); add(tl, tn); }); add(w, tl); add(sec, w); view('draft', true);
     var t0 = Date.now();
@@ -2437,7 +2494,7 @@
     var st = $('fdStatus'); if (!st) return; clear(st);
     var ps = paras(), changed = 0, me = 0; ps.forEach(function (p) { if (p.kind !== 'same' || p.me) changed++; if (p.me || (p.src && p.src.dec === 'edit')) me++; });
     add(st, el('span', null, '채택 ' + adoptedCount() + '건 · 바뀐 문장 ' + changed + ' · 직접 수정 ' + me));
-    if (V.editing) add(st, el('span', 'ed', '편집 중 · ' + V.editing.p.n + '행 · Ctrl+Enter 저장 · Esc 취소'));
+    if (V.editing) { var ed = el('span', 'ed'); add(ed, icon('minus'), '편집 중 · ' + V.editing.p.n + '행 · Ctrl+Enter로 저장, Esc로 취소합니다'); add(st, ed); }
     var u = btn('btn sm', '되돌리기' + (V.undo.length ? ' (' + V.undo.length + ')' : ''), 'fdUndo'); u.disabled = !V.undo.length; u.title = 'Ctrl+Z'; add(st, u);
   }
   function repaintDoc(focusKey) { var y = window.scrollY; renderDraft(); window.scrollTo(0, y); if (focusKey) { var e = document.querySelector('#fdDoc [data-fdedit="' + focusKey + '"]'); if (e) e.focus({ preventScroll: true }); } }
@@ -2499,7 +2556,7 @@
     else paintCheck();
   }
   function startCheck() {
-    var C = V.C; stopTimers(C); V.C = C = freshCheck(); C.d = D(); C.input = paras(); C.status = 'running'; C.t0 = Date.now(); C.submission = 'fin-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+    var C = V.C, auto = !!C.autoDone; stopTimers(C); V.C = C = freshCheck(); C.autoDone = auto; C.d = D(); C.input = paras(); C.status = 'running'; C.t0 = Date.now(); C.submission = 'fin-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
     if (MOCK) { var md = mockData(); if (!md) { C.status = 'error'; C.err = '목업 최종 점검 데이터(finMockFinal) 없음'; paintCheck(); return; } C.md = md; var seen = {}; L(md.trace).forEach(function (e) { if (e.stage === 'correct' || e.stage === 'recheck' || seen[e.check_id]) return; seen[e.check_id] = 1; C.rows.push(rowOf(e)); }); }
     paintCheck(); startTick(C);
     if (MOCK) runMock(C); else runServer(C);
@@ -2527,7 +2584,7 @@
   function paintCheck() {
     var C = V.C, d = D(); view('check', false); closePop();
     var sec = shell('fin-check');
-    head(sec, '최종 점검', C.status === 'done' ? '점검을 마쳤습니다' : (C.status === 'error' ? '점검하지 못했습니다' : '논리 · 물리 · 구조 · 근거를 점검하는 중'), C.status === 'done' ? '발견한 오류는 자동으로 고쳤고, 값을 모르는 곳은 [확인 필요]로 남겼습니다. 되돌리고 싶은 수정은 항목 옆에서 되돌릴 수 있습니다.' : (C.status === 'error' ? C.err : '수치 합계·단위·선행관계·인용 기록을 도구로 확인하고, 발견한 오류는 자동으로 고쳐 보고합니다.'), 'fcTitle');
+    head(sec, '최종 점검', C.status === 'done' ? '점검을 마쳤습니다' : (C.status === 'error' ? '점검하지 못했습니다' : '논리 · 물리 · 구조 · 근거를 점검하는 중'), C.status === 'done' ? '발견한 오류는 자동으로 고쳤습니다. 값을 알 수 없는 곳은 [확인 필요]로 남겼고, 각 수정은 옆의 되돌리기로 취소할 수 있습니다.' : (C.status === 'error' ? C.err : '수치 합계·단위·선행관계·인용 기록을 도구로 확인합니다. 발견한 오류는 자동으로 고치고 결과만 보고합니다.'), 'fcTitle');
     var bd = el('div', 'fc-badges'); bd.id = 'fcBadges'; add(sec, bd);
     var groups = {}; C.rows.forEach(function (r) { (groups[r.stage] = groups[r.stage] || []).push(r); });
     STAGE_ORDER.concat(Object.keys(groups).filter(function (k) { return STAGE_ORDER.indexOf(k) < 0; })).forEach(function (k) { if (!groups[k]) return; var g = el('div', 'fc-g'); add(g, el('h2', null, STAGE_KO[k] || k)); var ul = el('ul'); groups[k].forEach(function (r) { add(ul, rowEl(r)); }); add(g, ul); add(sec, g); });
@@ -2546,7 +2603,7 @@
     li = li || $('fcr-' + r.id); if (!li) return;
     var s = r.status === 'passed' ? 'pass' : (r.status === 'failed' ? 'fail' : (r.status === 'unchecked' ? 'skip' : (r.status === 'running' ? 'run' : 'pending')));
     var fixed = r.phase === 'after' && (r.after === 'passed');
-    li.className = 'fc-row ' + (fixed ? 'pass' : s); var ic = li.querySelector('.ic'); ic.textContent = fixed || s === 'pass' ? '✓' : (s === 'fail' ? '✕' : (s === 'skip' ? '–' : ''));
+    li.className = 'fc-row ' + (fixed ? 'pass' : s); var ic = li.querySelector('.ic'); clear(ic); if (fixed || s === 'pass') add(ic, icon('check')); else if (s === 'fail') add(ic, icon('x')); else if (s === 'skip') add(ic, icon('minus'));
     var nm = li.querySelector('.nm'); clear(nm); add(nm, r.label, el('small', null, TOOL_KO[r.tool] || r.tool + (r.lines.length ? ' · ' + r.lines.map(function (n) { return n + '행'; }).join(', ') : '')));
     var rs = li.querySelector('.rs'); rs.textContent = r.phase === 'after' ? (r.after === 'passed' ? '수정 뒤 통과' : (r.after === 'unchecked' ? '불일치 → 수정 · 값 확정 뒤 재검사' : '불일치')) : (s === 'pass' ? '통과' : (s === 'fail' ? '불일치' : (s === 'skip' ? '미검사' : (s === 'run' ? '검사 중' : ''))));
     var dt = li.querySelector('.dt'); clear(dt); if (r.input) { var a = el('div'); add(a, el('b', null, '입력'), r.input); add(dt, a); } if (r.result) { var b = el('div'); add(b, el('b', null, '결과'), r.result); add(dt, b); } if (r.msg) add(dt, el('div', null, r.msg));
@@ -2555,19 +2612,19 @@
     var bd = $('fcBadges'); if (!bd) return; clear(bd);
     var per = {}, order = []; C.log.forEach(function (r) { if (r.stage === 'correct') return; if (!per[r.tool]) { per[r.tool] = { p: 0, f: 0 }; order.push(r.tool); } if (r.status === 'passed') per[r.tool].p++; if (r.status === 'failed') per[r.tool].f++; });
     if (!order.length) { add(bd, el('span', null, C.status === 'running' ? '도구를 부르는 중' : '')); return; }
-    order.forEach(function (t) { var s = el('span'); add(s, el('b', null, TOOL_KO[t] || t), ' ✓ ' + per[t].p + '건'); if (per[t].f) add(s, ' ', el('span', 'bad', '✕ ' + per[t].f + '건')); add(bd, s); });
+    order.forEach(function (t) { var s = el('span'); add(s, el('b', null, TOOL_KO[t] || t), icon('check'), '통과 ' + per[t].p); if (per[t].f) { var bad = el('span', 'bad'); add(bad, icon('x'), '불일치 ' + per[t].f); add(s, bad); } add(bd, s); });
   }
   function paintFixes(C) {
     var fx = $('fcFixes'); if (!fx) return; clear(fx); fx.hidden = false;
     var applied = C.fixes.filter(function (x) { return x.applied; }).length;
-    add(fx, el('h2', null, '자동 수정 ' + applied + '건' + (C.fixes.length - applied ? ' · 넣지 않은 제안 ' + (C.fixes.length - applied) + '건' : '')));
+    add(fx, el('h2', null, '자동 수정 ' + applied + '건' + (C.fixes.length - applied ? ' · 넣지 않은 제안 ' + (C.fixes.length - applied) + '건' : ''))); var lst = el('div', 'list'); add(fx, lst);
     C.fixes.forEach(function (x) {
       var row = el('div', 'fc-fix' + (x.reverted ? ' rev' : (x.applied ? '' : ' skip'))); row.id = 'fcfix-' + x.i;
       add(row, el('span', 'ln', (x.n || x.line) + '행'));
       if (x.applied || x.reverted) { add(row, el('s', null, x.before), el('span', 'arrow', '→'), textEl('b', null, x.after)); var u = btn('link', x.reverted ? '다시 적용' : '되돌리기'); u.dataset.fcundo = String(x.i); add(row, u); }
       else add(row, el('span', null, x.before), el('span', 'why', REASON_KO[x.reason] || x.reason));
-      var why = []; if (C.res) C.res.issues.forEach(function (i) { if (x.issues.indexOf(i.id) >= 0) why.push(i.msg); }); if (why.length && x.applied) add(row, el('span', 'why', why.join(' / ')));
-      add(fx, row);
+      var why = []; if (C.res) C.res.issues.forEach(function (i) { if (x.issues.indexOf(i.id) >= 0) why.push(i.msg); }); if (x.applied || x.reverted) add(row, el('span', 'why', (why.length ? why.join(' / ') + ' · ' : '') + '출처 ' + R.genText(x.by) + (x.checks.length ? ' · 근거 도구 ' + x.checks.map(function (k) { return TOOL_KO[k.tool] || k.tool; }).join(', ') : '')));
+      add(lst, row);
     });
   }
   function toggleFix(i) { var C = V.C; if (!C.res) return; var x = null; C.res.corrections.forEach(function (c) { if (String(c.i) === String(i)) x = c; }); if (!x) return; if (x.reverted) { x.reverted = false; x.applied = true; x.reason = 'applied'; } else if (x.applied) { x.reverted = true; x.applied = false; x.reason = 'reverted'; } else return; C.res = rebuild(C.res, C.input); C.fixes = C.res.corrections; paintFixes(C); var b = document.querySelector('[data-fcundo="' + i + '"]'); if (b) b.focus(); }
@@ -2594,7 +2651,7 @@
   }
 
   /* ---------- 응답 정규화(finalization@v1 + 화면용 trace) → 최종 초안 모델. 교정은 원문 줄 문자열 앵커로 적용 ---------- */
-  function normCheck(c, phase) { var det = (c && typeof c.details === 'object' && c.details) || {}; return { id: T(c.check_id) || 'check', kind: T(c.kind) || 'unknown', tool: T(c.tool) || 'unknown', status: T(c.status) || 'unchecked', lines: L(c.plan_lines).map(Number).filter(function (n) { return isFinite(n); }), msg: T(c.message), input: str(det.input != null ? det.input : (Object.keys(det).length ? det : '')), result: str(det.result != null ? det.result : ''), phase: phase }; }
+  function normCheck(c, phase) { var det = (c && typeof c.details === 'object' && c.details) || {}; return { by: T(c.generator || c.origin || c.source) || T(c.tool) || 'unknown', id: T(c.check_id) || 'check', kind: T(c.kind) || 'unknown', tool: T(c.tool) || 'unknown', status: T(c.status) || 'unchecked', lines: L(c.plan_lines).map(Number).filter(function (n) { return isFinite(n); }), msg: T(c.message), input: str(det.input != null ? det.input : (Object.keys(det).length ? det : '')), result: str(det.result != null ? det.result : ''), phase: phase }; }
   function applyFixes(input, corrections) {
     var ps = input.map(function (p) { return { n: p.n, t: p.t, kind: p.kind, h: p.h, me: p.me, orig: p.orig, src: p.src, fix: null }; });
     corrections.forEach(function (cc) { cc.n = 0; if (!cc.applied) return; var idx = -1; ps.forEach(function (p, j) { if (idx < 0 && !p.fix && p.t.trim() === cc.before.trim()) idx = j; }); if (idx < 0) { cc.applied = false; cc.reason = 'anchor_mismatch'; return; } ps[idx].orig2 = ps[idx].t; ps[idx].t = cc.after; ps[idx].fix = cc; cc.n = ps[idx].n; });
@@ -2612,7 +2669,7 @@
     var fz = (raw.finalization && typeof raw.finalization === 'object') ? raw.finalization : raw, byId = {}, checks = [];
     L(fz.tool_checks_before).forEach(function (c) { if (c && typeof c === 'object') { var x = normCheck(c, 'before'); byId[x.id] = x; checks.push(x); } });
     L(fz.tool_checks_after).forEach(function (c) { if (c && typeof c === 'object') { var x = normCheck(c, 'after'); byId[x.id] = x; checks.push(x); } });
-    var corrections = L(fz.corrections).map(function (c, i) { c = c && typeof c === 'object' ? c : {}; var applied = !!c.applied; return { i: i + 1, line: N(c.line), before: T(c.before), after: applied ? T(c.after) : (T(c.proposed) || T(c.after)), applied: applied, reason: T(c.reason) || (applied ? 'applied' : 'no_change'), issues: L(c.issue_ids).map(T), checks: L(c.check_ids).map(T).map(function (id) { return byId[id]; }).filter(Boolean), n: 0, reverted: false }; });
+    var corrections = L(fz.corrections).map(function (c, i) { c = c && typeof c === 'object' ? c : {}; var applied = !!c.applied; return { i: i + 1, by: T(c.generator || c.origin || c.source || c.by) || T(fz.generator) || 'unknown', line: N(c.line), before: T(c.before), after: applied ? T(c.after) : (T(c.proposed) || T(c.after)), applied: applied, reason: T(c.reason) || (applied ? 'applied' : 'no_change'), issues: L(c.issue_ids).map(T), checks: L(c.check_ids).map(T).map(function (id) { return byId[id]; }).filter(Boolean), n: 0, reverted: false }; });
     var res = { status: T(fz.status) || (raw.finalization ? 'partial' : 'incomplete'), gen: T(fz.generator), model: T(fz.model), notices: L(fz.notices).map(T).filter(Boolean), checks: checks, corrections: corrections, origin: T(raw.origin), sig: raw.finalization_sig || null, log: log, input_text: input.map(function (p) { return p.t; }).join('\n') + '\n' };
     res.issues = L(fz.issues).map(function (x) { x = x && typeof x === 'object' ? x : {}; var id = T(x.issue_id) || T(x.id), s = T(x.status) || 'unchecked', cs = L(x.check_ids).map(T).map(function (k) { return byId[k]; }).filter(Boolean), fixed = corrections.filter(function (c) { return c.applied && c.issues.indexOf(id) >= 0; }); var ui = s === 'resolved' ? 'resolved' : (s === 'unresolved' ? 'unresolved' : (fixed.some(function (c) { return phCount(c.after) > 0; }) || cs.some(function (c) { return c.status === 'unchecked' && c.phase === 'after'; }) ? 'confirm' : 'unchecked')); return { id: id, kind: T(x.kind) || 'logical', lines: L(x.plan_lines).map(Number).filter(function (n) { return isFinite(n); }), msg: T(x.message), status: ui, checks: cs }; });
     return rebuild(res, input);
@@ -2624,7 +2681,7 @@
     view('done', false); closePop(); var res = C.res, c = res.counts, sec = shell('fin-done'), ps = paras(), changed = 0; ps.forEach(function (p) { if (p.kind !== 'same' || p.me) changed++; });
     head(sec, '완성', '최종 연구계획서 초안', null, 'fzTitle');
     add(sec, el('p', 'fz-stat', '채택 ' + adoptedCount() + '건 · 바뀐 문장 ' + changed + ' · 자동 수정 ' + c.applied + '건 · 확인 필요 ' + c.fills + '곳 · 도구 검사 ' + c.checks + '건(불일치 ' + c.failed + ' → 수정 ' + c.applied + ')'));
-    add(sec, el('p', 'fz-note', kst() + ' · ' + R.genText(res.gen, res.model) + ' · ' + (res.sig ? '서버 서명 확인됨' : (MOCK ? '시험(mock) 결과 · 서명 없음' : '서명 확인 안 됨')) + ' · 제한된 검사 · [확인 필요]는 연구자가 채워야 합니다'));
+    add(sec, el('p', 'fz-note', kst() + ' · ' + R.genText(res.gen, res.model) + ' · ' + (res.sig ? '서버 서명 확인됨' : (MOCK ? '시험 모드 결과 · 서명 없음' : '서명 확인 안 됨')) + ' · 제한된 검사 · [확인 필요]는 연구자가 채웁니다'));
     var acts = el('div', 'fz-acts'); add(acts, btn('btn dark', '내려받기 (.md)', 'fzMd'), btn('btn', '.docx', 'fzDocx'), btn('btn', '인쇄', 'fzPrint'), btn('btn', '처음부터 다시', 'fzRestart')); add(sec, acts);
     var doc = el('article', 'fd-doc'); doc.id = 'fzDoc'; doc.setAttribute('aria-label', '최종 초안 본문'); var title = null; res.paras.forEach(function (p) { if (!title && p.h === 'title') title = p; });
     add(doc, el('div', 't', title ? (headingOf(title.t) || { text: title.t }).text : (d.plan.title || '연구계획서')), el('div', 'meta', (d.plan.file || '직접 입력') + ' · 최종 초안 · ' + kst()));
@@ -2635,7 +2692,7 @@
   function mdName() { var d = D(), base = String((d && d.plan && d.plan.file) || 'plan').replace(/\.[^.]+$/, '').replace(/[^0-9A-Za-z가-힣_.-]+/g, '_') || 'plan'; return base + '_final.md'; }
   function finalMd() {
     var C = V.C, res = C.res, c = res.counts, d = D();
-    var out = ['<!-- Neumann 최종 초안 · 원본 ' + (d.plan.file || '직접 입력') + ' · ' + kst() + ' · 상태 ' + res.status + ' · 자동 수정 ' + c.applied + '건 · 확인 필요 ' + c.fills + '곳 · 도구 검사 ' + c.checks + '건(불일치 ' + c.failed + ') · 생성: ' + R.genText(res.gen, res.model) + ' · ' + (res.sig ? '서버 서명 확인됨' : (MOCK ? '시험(mock) · 서명 없음' : '서명 확인 안 됨')) + ' · 제한된 검사 · 최종 판단은 연구자에게 -->', ''];
+    var out = ['<!-- Neumann 최종 초안 · 원본 ' + (d.plan.file || '직접 입력') + ' · ' + kst() + ' · 상태 ' + res.status + ' · 자동 수정 ' + c.applied + '건 · 확인 필요 ' + c.fills + '곳 · 도구 검사 ' + c.checks + '건(불일치 ' + c.failed + ') · 생성: ' + R.genText(res.gen, res.model) + ' · ' + (res.sig ? '서버 서명 확인됨' : (MOCK ? '시험 모드 · 서명 없음' : '서명 확인 안 됨')) + ' · 제한된 검사 · 최종 판단은 연구자에게 -->', ''];
     res.notices.forEach(function (n) { out.push('> ' + n); }); out.push('');
     res.paras.forEach(function (p) { if (/^\s{0,3}#{1,6}\s/.test(p.t) && out.length) out.push(''); out.push(p.t); });
     out.push('', '---', '', '## 최종 점검 요약 (Neumann · 수정 문안은 근거가 아님)', '', '| 항목 | 도구 | 줄 | 결과 |', '|---|---|---|---|');
@@ -2648,7 +2705,7 @@
   }
   function saveBlob(blob, name) { var u = URL.createObjectURL(blob), a = document.createElement('a'); a.href = u; a.download = name; a.style.display = 'none'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(u); }, 5000); }
   function downloadMd() { if (!V.C.res) return; var name = mdName(); saveBlob(new Blob([finalMd()], { type: 'text/markdown;charset=utf-8' }), name); U.toast('내려받음 · ' + name); }
-  function downloadDocx() { U.toast(MOCK ? '시험(mock)에서는 .md와 인쇄만 됩니다 · .docx는 서버가 만듭니다' : '최종 초안 .docx는 서버 연결 뒤 — .md 또는 인쇄'); }
+  function downloadDocx() { U.toast(MOCK ? '시험 모드에서는 .md와 인쇄만 됩니다. .docx는 서버가 만듭니다.' : '.docx는 서버 연결 뒤에 받을 수 있습니다. 지금은 .md 또는 인쇄를 이용해 주세요.'); }
   function restart() { try { R.forget(); } catch (e) { /* 없음 */ } forget(); var u = location.pathname + '?mock=final'; if (MOCK) location.href = u; else { U.go(0); } }
 
   /* ---------- 비목업(기존 화면)용 단계 버튼 VI · 목업 단계 바로가기(?at=) ---------- */

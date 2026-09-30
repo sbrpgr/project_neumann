@@ -33,10 +33,10 @@ def test_fin_block_and_hooks_present():
     assert "'수정 확정·검증 →', 'rvFinalize'" in h and "'rvFinalize2'" in h
     assert "if (window.NeumannFinal) window.NeumannFinal.invalidate();" in h
     assert "confirmed: confirmed" in h and "assembleBody: assembleBody" in h
-    for marker in ("'premortem/revise/finalize'", "submission_id", "confirmed_text", "confirmed_base_id", "finMockFinal", "finStepper", "finMockChip",
+    for marker in ("'premortem/finalize'", "submission_id", "confirmed_text", "confirmed_base_id", "finMockFinal", "finStepper", "finMockChip",
                    "['input', '입력'], ['job', '분석'], ['adopt', '채택'], ['draft', '수정 계획서'], ['check', '최종 점검'], ['done', '완성']",
                    "채택 ' + n + '건으로 수정 계획서 받기", "'확정하고 최종 점검'", "'완성된 초안 보기'", "autoResolve", "fd-mark", "fd-ta", "data-fcundo", "anchor_mismatch", "unsupported_content",
-                   "waitHook", "window.NeumannWait", "finSamples", "300자 이상 입력해 주세요", "HWPX", "'분석 시작'", "시험(mock)", "KST", "stpFinal", "window.scrollTo(0, 0); paintStepper();"):
+                   "waitHook", "window.NeumannWait", "finSamples", "300자 이상 입력해 주세요", "HWPX", "'분석 시작'", "'시험 모드'", "KST", "stpFinal", "window.scrollTo(0, 0); paintStepper();", "c.generator || c.origin || c.source"):
         assert marker in h, marker
     assert 'src="wait.js"' in h and 'href="wait.css"' in h and "window.NeumannWait.mount(S.job)" in h and "window.NeumannWait.update(b)" in h, "WAIT-UX 모듈 연결(06916ab) 4줄"
     assert (ROOT / "src" / "neumann" / "webui" / "wait.js").is_file() and (ROOT / "src" / "neumann" / "webui" / "wait.css").is_file()
@@ -45,7 +45,9 @@ def test_fin_block_and_hooks_present():
 
 def test_fin_script_uses_textcontent_only_and_no_external():
     block = fin_block(html())
-    assert not re.search(r"https?://", block), "외부 URL 없음"
+    urls = re.findall(r"https?://[^'\"\s]*", block)
+    assert all(u == "http://www.w3.org/2000/svg" for u in urls), f"외부 URL 없음(SVG 네임스페이스만 허용): {urls}"
+    assert not re.search(r"['\"]premortem/revise/finalize['\"]", block), "PM 판정 경로는 premortem/finalize"
     assigns = re.findall(r"\.innerHTML\s*=\s*([^;]+);", block)
     assert assigns == ["U.CHECK"], f"서버·fixture 문자열은 textContent로만(innerHTML 대입은 상수 SVG 한 곳): {assigns}"
     assert "eval(" not in block and "new Function" not in block and "document.write" not in block
