@@ -2,6 +2,25 @@
 
 PM이 병합할 때마다 갱신한다. Claude 한도가 다 되면 이 문서를 Codex에 주고 PM 역할을 넘긴다.
 
+## ★ 07:00 완성 기준과 시간표 (대표 확정 03:3x, WBS: out/dashboard/plan_wbs.json) — 가장 최신
+
+1. main에 1·2·3단계 전체 흐름(입력 → 분석 → 재탄생 → 수정 확정·검증 → 최종 초안) 병합, 전체 verify + FIN-E2E 통과
+2. 실제 모델(gpt-6.1-sol)로 시연 샘플 2~3편 전체 흐름 성공
+3. 시연: 최종 형태 목업(8172) + 실제 서비스(8020) + 정적 판 폴백 + 녹화 러너
+4. 발표자료 최종 형태 → 07:00 동결 → 07:30 녹화 → 09:00 제출
+5. 공개 터널은 선택(PUB-A·B·C, SEC-8 필수 항목 통과 시)
+
+| 시각 | 할 일 |
+|---|---|
+| 03:00~04:15 | B1(서명 결합)·B2B3(dropped_reasons 500, baseline) |
+| 04:00~04:30 | VER-CORE·VER-FIN 판정 → **core-final(f54ef1d) + finalization(b629789) main 병합**(PM 예행: 2344 passed, 0 failed) |
+| ~05:15 | FIN-ENGINE·FIN-TOOLS·FIN-UI·WAIT-UX 완성 |
+| 04:30~06:00 | B1·B2B3 → INTEG-2 → FIN-* → WAIT-UX·E4-L1g 병합, 전체 verify |
+| 06:00 | 8020 재기동(main 최신, `OPENBLAS_NUM_THREADS=1 NEUMANN_LIVE_LLM_OK=1 NEUMANN_LLM_PROVIDER=openai NEUMANN_LLM_MODEL=gpt-6.1-sol`) |
+| 06:00~06:30 | 라이브 시연 샘플 2~3편 전체 흐름 |
+| 06:30~06:50 | 샘플 선별·사전 계산본·정적 판 |
+| 06:45~07:00 | 동결(REL-FIN 시트) |
+
 ## ★ Codex PM 작업 중 (2026-09-30 23:5x KST, 대표 즉시 착수 지시)
 
 - 개발 주력 `gpt-6.1-sol/high`, 독립 검증 `gpt-6-sol/high`; PM은 배정·검증 큐·통합·보고를 맡는다. 제품은 `gpt-6.1-sol`, 개발·검증은 mock.
