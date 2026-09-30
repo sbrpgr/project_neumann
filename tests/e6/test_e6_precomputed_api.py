@@ -31,7 +31,7 @@ BASE = "/premortem/precomputed"
 def store(tmp_path) -> tuple[Path, dict]:
     out = tmp_path / "precomputed"
     manifest, failures = pd.build(pd.demo_specs(), out, source="fixture", log=lambda _m: None)
-    assert failures == [] and len(manifest["entries"]) == 3
+    assert failures == [] and len(manifest["entries"]) == 4
     return out, manifest
 
 
@@ -66,7 +66,8 @@ def test_list_returns_items_with_label_and_integrity(client, store):
     body = res.json()
     assert body["available"] is True and body["label"] == "사전 계산본"
     assert body["source"] == "fixture" and body["generated_at"] == store[1]["generated_at"]
-    assert [it["demo"] for it in body["items"]] == ["plan", "plan_elife_neuro", "plan_medimaging"]
+    assert [it["demo"] for it in body["items"]] == ["plan", "protein_ligand_affinity", "neural_operator_weather",
+                                                    "negative_recipe"]
     for it in body["items"]:
         entry = _entry(store[1], it["demo"])
         assert LABEL_RE.match(it["label"]), it["label"]
@@ -106,8 +107,8 @@ def test_get_by_plan_id_is_marked_precomputed_and_keeps_contract(client, store):
 
 
 def test_get_by_demo_name(client, store):
-    entry = _entry(store[1], "plan_elife_neuro")
-    res = client.get(f"{BASE}/plan_elife_neuro")
+    entry = _entry(store[1], "protein_ligand_affinity")
+    res = client.get(f"{BASE}/protein_ligand_affinity")
     assert res.status_code == 200
     assert res.json()["plan_id"] == entry["plan_id"]
     assert res.json()["risk_cards"] == []
@@ -137,13 +138,13 @@ def test_tampered_file_returns_404_and_list_flags_it(client, store):
     assert "변조" in res.json()["detail"]["message"]
     items = {it["demo"]: it for it in client.get(BASE).json()["items"]}
     assert items["plan"]["integrity"] == "mismatch" and items["plan"]["available"] is False
-    assert items["plan_medimaging"]["integrity"] == "ok"  # 다른 항목은 그대로 쓸 수 있다
-    assert client.get(f"{BASE}/plan_medimaging").status_code == 200
+    assert items["neural_operator_weather"]["integrity"] == "ok"  # 다른 항목은 그대로 쓸 수 있다
+    assert client.get(f"{BASE}/neural_operator_weather").status_code == 200
 
 
 def test_single_byte_change_is_detected(client, store):
     directory, manifest = store
-    entry = _entry(manifest, "plan_medimaging")
+    entry = _entry(manifest, "neural_operator_weather")
     path = directory / entry["file"]
     data = path.read_bytes()
     path.write_bytes(data[:-1] + b" ")  # 끝 줄바꿈 한 바이트만 바꾼다
@@ -162,7 +163,7 @@ def test_manifest_sha_edit_returns_404(client, store):
 def test_swapped_file_with_matching_sha_is_caught_by_plan_id(client, store):
     """파일을 다른 계획서 결과로 바꾸고 sha까지 맞춰도, 결과 안의 plan_id가 달라 404."""
     directory, manifest = store
-    target, other = _entry(manifest, "plan"), _entry(manifest, "plan_medimaging")
+    target, other = _entry(manifest, "plan"), _entry(manifest, "neural_operator_weather")
     data = (directory / other["file"]).read_bytes()
     (directory / target["file"]).write_bytes(data)
     target["sha256"] = pc.sha256_bytes(data)
@@ -201,12 +202,12 @@ def test_missing_manifest_and_missing_file(tmp_path, store):
     assert res.status_code == 404 and res.json()["detail"]["code"] == "no_manifest"
 
     directory, manifest = store
-    entry = _entry(manifest, "plan_elife_neuro")
+    entry = _entry(manifest, "protein_ligand_affinity")
     (directory / entry["file"]).unlink()
     c2 = _client(directory)
     assert c2.get(f"{BASE}/{entry['plan_id']}").json()["detail"]["code"] == "missing_file"
     items = {it["demo"]: it for it in c2.get(BASE).json()["items"]}
-    assert items["plan_elife_neuro"]["integrity"] == "missing"
+    assert items["protein_ligand_affinity"]["integrity"] == "missing"
 
 
 def test_broken_manifest_is_reported_not_raised(tmp_path):
@@ -221,13 +222,14 @@ def test_broken_manifest_is_reported_not_raised(tmp_path):
 
 def test_lookup_by_text_for_main_fallback(store):
     directory, manifest = store
-    hit = pc.lookup_by_text(plan_text("plan_medimaging.md"), directory)
-    assert hit is not None and hit.result.plan_id == _entry(manifest, "plan_medimaging")["plan_id"]
+    op_text = (ROOT / "src" / "neumann" / "api" / "templates" / "examples" / "neural_operator_weather.md").read_text(encoding="utf-8")
+    hit = pc.lookup_by_text(op_text, directory)
+    assert hit is not None and hit.result.plan_id == _entry(manifest, "neural_operator_weather")["plan_id"]
     assert LABEL_RE.match(hit.label)
     marked = pc.mark_result(hit)
     assert marked["notices"][0].startswith(hit.label)
     PremortemResult.model_validate(marked)
-    assert pc.lookup_by_text(plan_text("negative_recipe.md"), directory) is None
+    assert pc.lookup_by_text(plan_text("plan_medimaging.md"), directory) is None  # 대표 지시로 뺀 옛 예시는 사전 계산본 없음
     assert pc.lookup_by_text(plan_text("plan.md"), directory / "nope") is None
 
 
@@ -275,7 +277,7 @@ def test_requests_make_no_external_network_calls(client, store):
     with block_external_network() as attempts:
         assert client.get(BASE).status_code == 200
         assert client.get(f"{BASE}/{entry['plan_id']}").status_code == 200
-        assert client.get(f"{BASE}/plan_medimaging").status_code == 200
+        assert client.get(f"{BASE}/neural_operator_weather").status_code == 200
         assert client.get(f"{BASE}/unknown").status_code == 404
     assert attempts == []
 
