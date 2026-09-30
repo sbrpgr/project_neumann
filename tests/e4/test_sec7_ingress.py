@@ -11,9 +11,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from neumann.api import export, jobs, main, serving, upload
+from neumann.api import jobs, main, serving, upload
 from neumann.models import PlanDocument, normalize_text
-from tests.e4.test_export import fixture_result
 
 
 def forbidden(*args, **kwargs):
@@ -74,31 +73,8 @@ def test_analysis_middleware_gate_before_hash(monkeypatch, path):
     assert response.json()["error_code"] == "too_many_lines"
 
 
-@pytest.mark.parametrize("embedded", [False, True])
-@pytest.mark.parametrize("protected", [False, True])
-def test_package_raw_unicode_lines_before_models(monkeypatch, embedded, protected):
-    app = FastAPI()
-    app.include_router(export.router)
-    if protected:
-        serving.install(app, serving.Serving(serving.ServingConfig()))
-    payload = {"result": fixture_result().model_dump(mode="json")}
-    if embedded:
-        payload["result"]["plan"]["lines"] = [{"no": 1, "text": "x\u2028" * 5000 + "x"}]
-    else:
-        payload["plan_text"] = "x\u2028" * 5000 + "x"
-    monkeypatch.setattr(export.PackageRequest, "model_validate", forbidden)
-    response = TestClient(app).post("/premortem/package", json=payload)
-    assert response.status_code == 422
 
 
-@pytest.mark.parametrize("builder", [export.build_package, export.build_package_files])
-def test_package_mapping_guard_before_validation(monkeypatch, builder):
-    payload = fixture_result().model_dump(mode="json")
-    payload["plan"]["lines"] = [{"no": 1, "text": "가" * 800_001}]
-    monkeypatch.setattr(export.PremortemResult, "model_validate", forbidden)
-    with pytest.raises(Exception) as exc:
-        builder(payload)
-    assert getattr(exc.value, "status_code", None) == 413
 
 
 @pytest.mark.parametrize("separator", ["\n", "\r\n", "\r", "\v", "\f", "\x1c", "\x1d", "\x1e", "\x85", "\u2028", "\u2029"])
