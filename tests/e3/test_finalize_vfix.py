@@ -64,7 +64,8 @@ def test_f4_structural_fix_is_rechecked_against_the_corrected_text():
     assert before["tool"] == "networkx" and before["status"] == "failed"
     assert after["status"] == "passed" and after["details"]["rebound_to_corrected_lines"] == [2]
     assert out["issues"][0]["status"] == "resolved" and out["status"] == "completed"
-    assert out["counters"] == {"assessment_calls": 1, "correction_calls": 1, "correction_batches": 1, "recheck_runs": 1}
+    assert {k: out["counters"][k] for k in ("assessment_calls", "correction_calls", "correction_batches", "recheck_runs")} == {
+        "assessment_calls": 1, "correction_calls": 1, "correction_batches": 1, "recheck_runs": 1}
 
 
 def test_f4_vanished_number_after_correction_is_unchecked_not_passed():

@@ -19,15 +19,19 @@ def demo_on(monkeypatch):
 def test_demo_script_is_off_by_default(monkeypatch):
     monkeypatch.delenv("NEUMANN_DEMO_SCRIPT", raising=False)
     out = finalize_plan(DEMO_PLAN, provider="mock")
-    assert out["corrections"] == [] and out["tool_checks_before"] == [] and out["issues"][0]["issue_id"] == "mock-semantic"
+    assert out["corrections"] == [] and out["issues"][0]["issue_id"] == "mock-semantic"
+    assert out["code_selected_checks"] > 0
+    assert all(r["details"]["code_selected"] for r in out["tool_checks_before"])
 
 
 def test_demo_plan_is_found_fixed_in_place_and_tool_grounded(demo_on):
     out = finalize_plan(DEMO_PLAN, provider="mock")
     assert out["generator"] == "mock" and any("mock" in n for n in out["notices"])
-    assert out["counters"] == {"assessment_calls": 1, "correction_calls": 1, "correction_batches": 1, "recheck_runs": 1}
+    assert {k: out["counters"][k] for k in ("assessment_calls", "correction_calls", "correction_batches", "recheck_runs")} == {
+        "assessment_calls": 1, "correction_calls": 1, "correction_batches": 1, "recheck_runs": 1}
     tools = {r["check_id"]: r for r in out["tool_checks_before"]}
-    assert {(r["tool"], r["status"]) for r in tools.values()} == {("z3", "failed"), ("pint", "failed"), ("networkx", "failed")}
+    assert {(r["tool"], r["status"]) for r in tools.values() if not r["check_id"].startswith("code:")} == {
+        ("z3", "failed"), ("pint", "failed"), ("networkx", "failed")}
     issues = {i["issue_id"]: i for i in out["issues"]}
     assert issues["demo-budget"]["kind"] == "physical" and issues["demo-units"]["kind"] == "physical"
     assert issues["demo-order"]["kind"] == "structural" and issues["demo-contra"]["kind"] == "logical"
@@ -43,7 +47,8 @@ def test_demo_plan_is_found_fixed_in_place_and_tool_grounded(demo_on):
     assert "4200" not in PLACEHOLDER_RE.sub("", budget_line)
     assert issues["demo-contra"]["status"] == "unchecked" and issues["demo-contra"]["unchecked_reason"] == "no_tool_check"
     assert all(issues[k]["status"] == "unresolved" for k in ("demo-budget", "demo-units", "demo-order"))
-    assert {r["check_id"] for r in out["tool_checks_after"]} == {"demo-budget", "demo-units", "demo-order"}
+    assert {r["check_id"] for r in out["tool_checks_after"] if not r["check_id"].startswith("code:")} == {
+        "demo-budget", "demo-units", "demo-order"}
     assert out["status"] == "partial" and out["output_plan_id"] != out["input_plan_id"]
     unchanged = [a for a, b in zip(out["input_text"].split("\n"), final, strict=True) if a == b]
     assert len(unchanged) == len(final) - 4
@@ -68,4 +73,4 @@ def test_demo_plan_with_a_flaw_removed_only_reports_the_remaining_ones(demo_on):
     out = finalize_plan(fixed, provider="mock")
     ids = {i["issue_id"] for i in out["issues"]}
     assert "demo-order" not in ids and {"demo-budget", "demo-units", "demo-contra"} <= ids
-    assert {r["tool"] for r in out["tool_checks_before"]} == {"z3", "pint"}
+    assert {r["tool"] for r in out["tool_checks_before"] if not r["check_id"].startswith("code:")} == {"z3", "pint"}

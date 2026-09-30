@@ -19,9 +19,11 @@
         "output_plan_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
         "input_text": {"type": "string"},
         "final_text": {"type": "string"},
-        "issues": {"type": "array", "maxItems": 64, "items": {"type": "object"}},
-        "tool_checks_before": {"type": "array", "maxItems": 16, "items": {"$ref": "#/$defs/toolResult"}},
-        "tool_checks_after": {"type": "array", "maxItems": 16, "items": {"$ref": "#/$defs/toolResult"}},
+        "issues": {"type": "array", "maxItems": 128, "items": {"type": "object"}},
+        "tool_checks_before": {"type": "array", "maxItems": 48, "items": {"$ref": "#/$defs/toolResult"}},
+        "tool_checks_after": {"type": "array", "maxItems": 80, "items": {"$ref": "#/$defs/toolResult"}},
+        "code_selected_checks": {"type": "integer", "minimum": 0, "maximum": 32},
+        "code_checks_label": {"type": "string"},
         "corrections": {"type": "array", "maxItems": 8, "items": {"type": "object"}},
         "counters": {
           "type": "object",
@@ -30,7 +32,9 @@
             "assessment_calls": {"type": "integer", "minimum": 0, "maximum": 1},
             "correction_calls": {"type": "integer", "minimum": 0, "maximum": 1},
             "correction_batches": {"type": "integer", "minimum": 0, "maximum": 1},
-            "recheck_runs": {"type": "integer", "minimum": 0, "maximum": 1}
+            "recheck_runs": {"type": "integer", "minimum": 0, "maximum": 1},
+            "tool_runs": {"$ref": "#/$defs/toolCounts"},
+            "tool_attempts": {"$ref": "#/$defs/toolCounts"}
           },
           "additionalProperties": false
         },
@@ -41,12 +45,23 @@
     }
   },
   "$defs": {
+    "toolCounts": {
+      "type": "object",
+      "required": ["z3", "pint", "networkx", "citation"],
+      "properties": {
+        "z3": {"type": "integer", "minimum": 0},
+        "pint": {"type": "integer", "minimum": 0},
+        "networkx": {"type": "integer", "minimum": 0},
+        "citation": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
     "toolResult": {
       "type": "object",
       "required": ["check_id", "kind", "tool", "status", "plan_lines", "message", "details"],
       "properties": {
         "check_id": {"type": "string"},
-        "kind": {"enum": ["constraint", "units", "dependency", "unknown"]},
+        "kind": {"enum": ["constraint", "units", "dependency", "citation", "unknown"]},
         "tool": {"type": "string"},
         "status": {"enum": ["passed", "failed", "unchecked"]},
         "plan_lines": {"type": "array", "items": {"type": "integer", "minimum": 1}},
