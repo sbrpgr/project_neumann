@@ -51,9 +51,12 @@ SELECTION_RULE = "dev Macro-F1(점 추정) 최대. 차이 1e-9 이하 동률이�
 
 # ── 고정 집계 규칙 (dev 튜닝 결과로 채운 뒤 커밋하고, 그 뒤 골드를 1회 채점한다) ────────────
 # None이면 predict가 거부한다(튜닝 전 골드 채점 방지).
+# 2026-09-30 dev 358건 튜닝(tune_*_dev.json, 선택 규칙 SELECTION_RULE 그대로):
+#   astra: dev Macro 0.5553 · Micro 0.6122 (추출기 지문 7f1d7b247748d15d, E3 extract_issues.v1)
+#   rule : dev Macro 0.2755 · Micro 0.3026 (neumann.index.taxonomy:tag_excerpts, min_score 2)
 FROZEN: dict[str, dict[str, Any] | None] = {
-    "astra": None,
-    "rule": None,
+    "astra": {"polarities": ["negative"], "min_confidence": 0.0, "min_count": 1},
+    "rule": {"polarities": ["negative", "neutral"], "min_confidence": 0.0, "min_count": 1},
 }
 
 
