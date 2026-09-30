@@ -27,6 +27,9 @@ def _constraint(limit: int):
 @pytest.fixture()
 def shared_registry():
     """엔진 공용 레지스트리에 실제로 붙이고, 끝나면 엔진 기본(어댑터)으로 되돌린다."""
+    # 앞선 테스트(확정 경로)가 FIN-TOOLS를 이미 붙였을 수 있다: 시작 전에도 엔진 기본으로 되돌린다(순서 독립).
+    for name in (*engine.TOOL_NAMES, "citation_lookup"):
+        engine.registry.unregister(name)
     yield engine.registry
     for name in engine.TOOL_NAMES:
         engine.registry.unregister(name)
