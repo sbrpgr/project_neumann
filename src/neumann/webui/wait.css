@@ -1,0 +1,120 @@
+/* WAIT-UX 인터랙티브 대기 화면(wait.js) — index.html의 디자인 토큰(:root)만 쓴다. 외부 요청 없음.
+   레이아웃: 지금 단계(왜) → 조각 시각화(장식) → 실측 카운터 → 미리보기(찾은 유사 연구·카드 후보) → 단계 목록(펼치기) */
+.wx { margin-top: 2px; }
+.wx-now { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 16px; align-items: baseline; padding: 12px 0 12px 0; border-top: 1px solid var(--line); }
+.wx-now .k { font-family: var(--mono); font-size: 14px; letter-spacing: .12em; text-transform: uppercase; color: var(--red); font-weight: 600; }
+.wx-now h2 { font-size: 20px; font-weight: 600; letter-spacing: -.01em; margin-top: 2px; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; }
+.wx-now h2 .st { font-family: var(--serif); font-style: normal; font-weight: 400; font-size: 16px; color: var(--muted); }
+.wx-eta { font-family: var(--mono); font-size: 14px; color: var(--muted); text-align: right; white-space: nowrap; }
+.wx-eta b { color: var(--ink); font-weight: 600; }
+.wx-eta .sub { display: block; font-size: 14px; color: var(--ink-2); }
+.wx-why { grid-column: 1 / -1; color: var(--text2); font-size: 16px; margin-top: 4px; }
+.wx-why b { color: var(--ink); font-weight: 600; }
+
+.wx-viz { position: relative; margin: 8px 0 12px 0; border: 1px solid var(--line2); border-radius: 4px; background: var(--card); overflow: hidden; }
+.wx-viz canvas { display: block; width: 100%; height: 190px; }
+.wx-cap { position: absolute; left: 12px; bottom: 8px; right: 12px; font-family: var(--mono); font-size: 14px; color: var(--muted); letter-spacing: .03em; pointer-events: none; display: flex; justify-content: space-between; gap: 12px; }
+.wx-cap .r { color: var(--ink-2); }
+.wx-badge { position: absolute; right: 10px; top: 8px; font-family: var(--head); font-size: 14px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--amber); background: var(--amber-t); padding: 2px 8px; border-radius: 2px; }
+
+.wx-counts { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border-top: 1px solid var(--line2); border-bottom: 1px solid var(--line2); margin-bottom: 16px; }
+.wx-ct { padding: 8px 12px 8px 0; border-right: 1px solid var(--line); min-width: 0; }
+.wx-ct + .wx-ct { padding-left: 12px; }
+.wx-ct:last-child { border-right: none; }
+.wx-ct .l { font-family: var(--head); font-size: 14px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wx-ct .v { font-family: var(--serif); font-size: 28px; line-height: 1.1; color: var(--ink); font-variant-numeric: tabular-nums; margin-top: 2px; white-space: nowrap; }
+.wx-ct .v small { font-family: var(--mono); font-size: 14px; color: var(--muted); margin-left: 4px; }
+.wx-ct.run .v { color: var(--red); }
+.wx-ct.todo .v { color: var(--ink-2); }
+.wx-ct .s { font-size: 14px; color: var(--ink-2); margin-top: 2px; }
+.wx-ct.run .s { color: var(--red); }
+
+.wx-feed { margin-bottom: 16px; }
+.wx-feed h3 { font-family: var(--sans); font-size: 14px; font-weight: 600; letter-spacing: .02em; color: var(--muted); display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.wx-feed h3 .n { font-family: var(--serif); font-style: normal; font-weight: 400; color: var(--red); font-size: 16px; }
+.wx-feed h3 .note { font-weight: 400; color: var(--ink-2); }
+.wx-list { list-style: none; margin: 8px 0 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.wx-list li > button { width: 100%; display: flex; gap: 8px; align-items: baseline; padding: 8px 8px; border: 1px solid var(--line2); border-radius: 3px; background: var(--card); text-align: left; font: inherit; color: inherit; cursor: pointer; transition: border-color .12s; }
+.wx-list li > button:hover { border-color: var(--ink); }
+.wx-list li > button:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+.wx-list li > button[aria-expanded="true"] { border-color: var(--ink); }
+.wx-list .n { font-family: var(--serif); font-style: normal; color: var(--red); font-size: 16px; flex: 0 0 auto; min-width: 18px; }
+.wx-list .t { flex: 1 1 auto; min-width: 0; font-size: 14px; color: var(--ink); }
+.wx-list .m { font-family: var(--mono); font-size: 14px; color: var(--muted); white-space: nowrap; flex: 0 0 auto; }
+.wx-list .d { padding: 4px 8px 8px 32px; font-size: 14px; color: var(--text2); display: flex; gap: 4px 16px; flex-wrap: wrap; }
+.wx-list .d .mono { font-size: 14px; }
+.wx-list .d .lab { color: var(--muted); margin-right: 4px; }
+.wx-list.new > li:last-child > button { animation: wxin .35s ease-out; }
+
+.wx-steps { list-style: none; margin: 0; padding: 0; position: relative; }
+.wx-steps::before { content: ""; position: absolute; left: 9px; top: 10px; bottom: 10px; width: 1px; background: var(--line2); }
+.wx-step { position: relative; padding-left: 24px; }
+.wx-step::before { content: ""; position: absolute; left: 4px; top: 16px; width: 11px; height: 11px; border-radius: 50%; background: var(--bg); border: 1.5px solid var(--line2); }
+.wx-step.run::before { border-color: var(--red); background: var(--red); box-shadow: 0 0 0 4px var(--red-t); animation: wxpl 1s infinite; }
+.wx-step.done::before { background: var(--ink); border-color: var(--ink); }
+.wx-step.fail::before { background: var(--red-t); border-color: var(--red); }
+.wx-step > button { width: 100%; display: grid; grid-template-columns: 110px minmax(0, 1fr) auto; gap: 12px; align-items: baseline; padding: 8px 0; border: none; border-bottom: 1px solid var(--line); background: transparent; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.wx-step > button:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+.wx-step .nm { font-family: var(--mono); font-size: 14px; font-weight: 600; letter-spacing: .06em; color: var(--ink-2); }
+.wx-step.run .nm, .wx-step.done .nm { color: var(--ink); }
+.wx-step .ttl { font-size: 16px; color: var(--muted); min-width: 0; }
+.wx-step.run .ttl { color: var(--ink); font-weight: 600; }
+.wx-step.done .ttl { color: var(--text2); }
+.wx-step .ttl .st { font-weight: 400; color: var(--muted); font-size: 14px; margin-left: 8px; }
+.wx-step.fail .ttl .st { color: var(--red); }
+.wx-step .tm { font-family: var(--mono); font-size: 14px; color: var(--ink-2); white-space: nowrap; }
+.wx-step .tm .car { display: inline-block; margin-left: 8px; transition: transform .15s; }
+.wx-step > button[aria-expanded="true"] .car { transform: rotate(90deg); }
+.wx-body { padding: 8px 0 12px 0; font-size: 14px; color: var(--text2); border-bottom: 1px solid var(--line); }
+.wx-body p { margin: 0 0 4px 0; }
+.wx-body .kv { font-family: var(--mono); font-size: 14px; color: var(--muted); display: flex; gap: 4px 12px; flex-wrap: wrap; }
+.wx-body .kv b { color: var(--ink); font-weight: 600; }
+
+.wx-foot { margin-top: 12px; font-size: 14px; color: var(--muted); display: flex; gap: 4px 16px; flex-wrap: wrap; }
+.wx-foot .mock { color: var(--amber); font-weight: 600; }
+
+@keyframes wxpl { 0% { box-shadow: 0 0 0 0 var(--red-t); } 70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+@keyframes wxin { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .wx-step.run::before { animation: none; }
+  .wx-step .tm .car, .wx-list li > button { transition: none; }
+  .wx-list.new > li:last-child > button { animation: none; }
+}
+@media (max-width: 900px) {
+  .wx-counts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .wx-ct:nth-child(3) { border-right: none; }
+  .wx-ct:nth-child(n+4) { border-top: 1px solid var(--line); }
+  .wx-ct:nth-child(4) { padding-left: 0; }
+}
+@media (max-width: 600px) {
+  .wx-now { grid-template-columns: 1fr; }
+  .wx-now h2 { font-size: 20px; }
+  .wx-eta { text-align: left; white-space: normal; }
+  .wx-viz canvas { height: 150px; }
+  .wx-cap { flex-direction: column; gap: 0; }
+  .wx-counts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .wx-ct { border-right: none !important; padding-left: 0 !important; padding-right: 8px; }
+  .wx-ct:nth-child(-n+2) { border-top: none; }
+  .wx-ct:nth-child(n+3) { border-top: 1px solid var(--line); }
+  .wx-ct .v { font-size: 20px; }
+  .wx-step > button { grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; padding: 12px 0; }
+  .wx-step .ttl { grid-column: 1 / -1; grid-row: 2; }
+  .wx-list li > button { flex-wrap: wrap; min-height: 44px; }
+  .wx-list .t { flex-basis: calc(100% - 30px); }
+  .wx-list .m { margin-left: 24px; }
+  .wx-list .d { padding-left: 8px; }
+}
+
+#waitux .s, #waitux .nm, #waitux .car, #waitux .r, #waitux .v {color:var(--ink-2)}
+#waitux {margin-top:4px}
+#waitux .wx-viz {margin:12px 0 16px;border-radius:8px}
+#waitux .wx-now {padding-top:16px;gap:4px}
+#waitux .wx-step {padding-left:32px}
+#waitux .wx-step button {gap:12px;padding:12px 0}
+#waitux .wx-ct {padding:12px;border-radius:8px}
+#waitux .wx-ct .s, #waitux .wx-ct .v {margin-top:4px}
+#waitux .wx-foot {margin-top:16px}
+#waitux .wx-body {padding-bottom:16px}
+
+#waitux .wx-step button {grid-template-columns:minmax(0,1fr) auto}
+#waitux .wx-ct .s, #waitux .wx-ct .v {color:var(--ink-2)}

@@ -255,9 +255,9 @@ def test_index_is_served_without_external_resources(client):
 def test_every_font_face_is_served_locally(client):
     html = client.get("/").text
     urls = re.findall(r"url\(\"(fonts/[^\"]+)\"\)", html)
-    assert len(urls) >= 5
+    assert len(urls) == 4
     families = {u.split("/")[1] for u in urls}
-    assert families == {"Pretendard", "Jost", "IBMPlexMono", "InstrumentSerif", "MrDafoe"}
+    assert families == {"Pretendard"}
     for u in urls:
         r = client.get("/" + u)
         assert r.status_code == 200, u

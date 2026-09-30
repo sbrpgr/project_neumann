@@ -274,6 +274,18 @@ def index() -> FileResponse:
     return FileResponse(WEBUI_DIR / "index.html", media_type="text/html", headers={"Cache-Control": "no-store"})
 
 
+# WAIT-UX: 인터랙티브 대기 화면 모듈(webui/wait.js·wait.css). index.html이 상대 경로로 읽는다. 외부 CDN 없음. (출처: task/WAIT-UX 06916ab)
+@app.get("/wait.js", include_in_schema=False)
+def wait_js() -> FileResponse:
+    return FileResponse(WEBUI_DIR / "wait.js", media_type="text/javascript; charset=utf-8",
+                        headers={"Cache-Control": "no-store"})
+
+
+@app.get("/wait.css", include_in_schema=False)
+def wait_css() -> FileResponse:
+    return FileResponse(WEBUI_DIR / "wait.css", media_type="text/css; charset=utf-8", headers={"Cache-Control": "no-store"})
+
+
 @app.get("/health")
 def health(request: Request) -> dict[str, Any]:
     srv = getattr(request.app.state, "serving", None)
