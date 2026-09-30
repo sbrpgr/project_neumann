@@ -433,6 +433,204 @@
   /* 입력칸 끝에서 치거나 붙여넣을 때 캐럿이 sticky 고지 밑으로 가지 않게: 접힘 37px → 56px, 펼침 82px → 100px */
   html { scroll-padding-bottom: 56px; }
   html:has(#sendNote[open]) { scroll-padding-bottom: 100px; }
+  /* ===== E4-L4r 수정 권고(V): 리포트 카드 진입 버튼 · 카드 고르기·순차 진행 · (a)~(e) 카드별 권고 · 줄 단위 전후 비교 · 결정 · 수정본 뷰어 모달 =====
+     한글에 자간·uppercase·모노 없음. 강조는 빨강 하나, 채택은 파랑(--green), 직접 수정은 앰버. 왼쪽 색 바·알약 배지 없음(05_디자인_규칙 §5) */
+  .rvrow { display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+  .rvhub { padding: 18px 22px 18px 22px; }
+  .rvpick { display: grid; grid-template-columns: 20px 40px minmax(0, 1fr) auto; gap: 0 12px; align-items: center; padding: 9px 0; border-top: 1px solid var(--line); font-size: 14px; cursor: pointer; }
+  .rvpick:first-of-type { border-top: none; }
+  .rvpick input { accent-color: var(--red); width: 16px; height: 16px; margin: 0; }
+  .rvpick .rk { font-family: var(--serif); font-style: italic; font-size: 22px; color: var(--red); line-height: 1; }
+  .rvpick b { font-weight: 600; }
+  .rvpick .st { font-family: var(--head); font-size: 12.5px; font-weight: 600; letter-spacing: .02em; color: var(--muted); text-align: right; display: inline-flex; align-items: center; gap: 8px; }
+  .rvpick .st.run { color: var(--red); } .rvpick .st.done { color: var(--green); } .rvpick .st.err, .rvpick .st.cancel, .rvpick .st.skipped { color: var(--red-d); }
+  .rvpick .st .btn { height: 26px; padding: 0 8px; font-size: 12px; }
+  .rvstages { display: flex; flex-wrap: wrap; gap: 4px 18px; font-family: var(--sans); font-size: 12.5px; color: var(--faint); margin-top: 10px; }
+  .rvstages span::before { content: "\00b7"; margin-right: 6px; }
+  .rvstages .on { color: var(--red); font-weight: 600; } .rvstages .ok { color: var(--ink); }
+  .rvsec { margin-bottom: 44px; }
+  .rvcard { padding: 22px 24px; }
+  .rvh { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 14px; align-items: start; margin-bottom: 8px; }
+  .rvh .rk { font-family: var(--serif); font-style: italic; font-size: 40px; color: var(--red); line-height: 1; padding-top: 2px; }
+  .rvh h3 { font-size: 21px; margin-bottom: 4px; }
+  .rvh .sub { display: flex; gap: 4px 10px; align-items: center; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+  .rvh .sub .warn { color: var(--red-d); font-weight: 600; }
+  .rvnotes { font-size: 12.5px; color: var(--muted); margin: 6px 0 0 0; }
+  .rvnotes span { display: block; }
+  .rvg { padding: 14px 0; border-top: 1px solid var(--line); }
+  .rvg .h { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+  .rvg .h .n { font-family: var(--serif); font-style: italic; font-size: 18px; color: var(--red); }
+  .rvg .h b { font-family: var(--sans); font-size: 14.5px; font-weight: 700; }
+  .rvg .h .d { font-size: 12.5px; color: var(--muted); }
+  .rvs { font-size: 15px; line-height: 1.85; }
+  .rvs p { margin: 0 0 4px 0; }
+  .rvs .w { color: var(--muted); font-size: 13px; margin-left: 4px; }
+  .rvnone { color: var(--muted); font-size: 13.5px; }
+  .rvnone b { color: var(--red-d); font-weight: 600; margin-right: 6px; }
+  .rvaudit { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+  .rvaudit s { color: var(--faint); display: block; }
+  .rvdiff { display: grid; grid-template-columns: 36px minmax(0, 1fr) minmax(0, 1fr); border-top: 1px solid var(--ink); font-size: 13.5px; line-height: 1.65; }
+  .rvdiff > div { padding: 6px 8px; border-bottom: 1px solid var(--line); min-width: 0; }
+  .rvdiff .hd { font-family: var(--sans); font-size: 12.5px; font-weight: 600; color: var(--muted); border-bottom: 1px solid var(--line2); }
+  .rvdiff .ln { font-family: var(--mono); font-size: 11px; color: var(--faint); text-align: right; padding-right: 6px; padding-top: 9px; user-select: none; }
+  .rvdiff .ln.f { color: var(--red); font-weight: 600; }
+  .rvdiff .ctx { color: var(--muted); }
+  .rvdiff .gap { color: var(--faint); font-family: var(--mono); font-size: 11px; }
+  .rvdiff .old { background: linear-gradient(transparent 62%, var(--red-t) 62%); }
+  .rvdiff .old.ins { background: none; color: var(--muted); }
+  .rvdiff .new { background: var(--amber-t); }
+  .rvdiff del { color: var(--red-d); text-decoration: line-through; text-decoration-thickness: 1.5px; background: var(--red-t); }
+  .rvdiff ins { color: var(--green); text-decoration: none; background: var(--green-t); font-weight: 600; }
+  .rvtag { display: inline-block; font-family: var(--sans); font-size: 11.5px; font-weight: 600; color: var(--amber); border: 1px solid var(--amber); border-radius: 2px; padding: 0 5px; margin-left: 6px; vertical-align: 1px; white-space: nowrap; }
+  .rvtag.bad { color: var(--red); border-color: var(--red-l); }
+  .rvdec { grid-column: 1 / -1; padding: 8px 8px 12px 44px; }
+  .rvdec .why { font-size: 13.5px; color: var(--text2); margin-bottom: 8px; }
+  .rvdec .bt { display: flex; gap: 8px 10px; align-items: center; flex-wrap: wrap; }
+  .rvdec .bt .sm { color: var(--muted); }
+  .rdec { display: inline-flex; align-items: center; height: 28px; padding: 0 10px; border-radius: 2px; font-family: var(--sans); font-size: 12.5px; font-weight: 600; border: 1px solid var(--line2); background: transparent; color: var(--muted); }
+  .rdec:hover { background: var(--soft); }
+  .rdec:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+  .rdec[aria-pressed="true"][data-d="adopt"] { color: var(--green); border-color: var(--green); }
+  .rdec[aria-pressed="true"][data-d="edit"] { color: var(--amber); border-color: var(--amber); }
+  .rdec[aria-pressed="true"][data-d="reject"] { color: var(--ink); border-color: var(--ink); text-decoration: line-through; }
+  .rvedit { width: 100%; min-height: 72px; margin-top: 8px; border: 1px solid var(--line2); border-radius: 3px; padding: 8px 10px; font: inherit; font-size: 13.5px; line-height: 1.6; resize: vertical; background: #fff; color: var(--text); }
+  .rvedit:focus { border-color: var(--ink); outline: none; }
+  .rvq2 { list-style: none; margin: 0; padding: 0; }
+  .rvq2 li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; padding: 5px 0; font-size: 14px; }
+  .rvq2 li .n { font-family: var(--serif); font-style: italic; color: var(--red); font-size: 16px; }
+  .rvwait { display: flex; flex-direction: column; gap: 6px; }
+  .rvwait .msg { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; font-size: 15px; }
+  .rvwait .msg b { font-weight: 600; }
+  .rvwait .el { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+  .rvwait .bt { display: flex; gap: 8px; margin-top: 8px; }
+  .rvsum { display: flex; gap: 10px 22px; flex-wrap: wrap; align-items: baseline; font-size: 14px; }
+  .rvsum .v { font-family: var(--serif); font-size: 26px; line-height: 1; color: var(--ink); }
+  .rvsum .v i { color: var(--red); font-family: var(--sans); font-style: normal; font-weight: 600; font-size: 14px; margin-left: 2px; }
+  .rvsum .l { font-size: 12.5px; color: var(--muted); }
+  .rvfab, .rvclose { display: none; }
+  @media (max-width: 1180px) {
+    body[data-view="revise"] .wrap { z-index: auto; }
+    .rvfab { display: inline-flex; position: fixed; right: 16px; bottom: 16px; z-index: 25; box-shadow: 0 2px 10px rgba(20,22,26,.16); }
+    body.popen .rvfab { display: none; }
+    .ptabs .rvclose { display: inline-flex; align-items: center; margin-left: auto; color: var(--text2); }
+  }
+  @media (max-width: 900px) {
+    .rvdiff { grid-template-columns: 36px minmax(0, 1fr); }
+    .rvdiff .hd.new, .rvdiff .same { display: none; }
+    .rvdiff .old { border-bottom: none; padding-bottom: 2px; }
+    .rvdiff .new { grid-column: 2; }
+    .rvdec { padding-left: 8px; }
+    .rvh { grid-template-columns: 38px minmax(0, 1fr); gap: 10px; } .rvh .rk { font-size: 30px; } .rvh h3 { font-size: 18px; }
+    .rvcard { padding: 16px 14px; }
+    .rvpick { grid-template-columns: 20px 32px minmax(0, 1fr); gap: 4px 10px; } .rvpick .st { grid-column: 3; text-align: left; justify-content: flex-start; }
+  }
+  /* 반응형 상단바·여백(E4-L3m 방식을 이 화면에만 적용. E4-L3m 병합 뒤에는 같은 값이 겹친다) */
+  @media (max-width: 900px) {
+    body[data-view="revise"] .top { height: auto; min-height: 60px; flex-wrap: wrap; gap: 4px 18px; padding: 8px 16px; }
+    body[data-view="revise"] .steps { order: 3; width: 100%; margin-left: 0; flex-wrap: wrap; gap: 2px 20px; }
+    body[data-view="revise"] .wrap { padding: 20px 16px 72px 16px; }
+    body[data-view="revise"] .doc section { scroll-margin-top: 110px; }
+    body[data-view="revise"] .foot { padding: 24px 16px 36px 16px; }
+    #rvIdx { flex-wrap: wrap; row-gap: 4px; }
+  }
+  @media (max-width: 600px) {
+    body[data-view="revise"] .top { position: relative; gap: 2px 12px; }
+    body[data-view="revise"] .wordmark .w { font-size: 30px; }
+    body[data-view="revise"] .wordmark .ws { display: none; }
+    body[data-view="revise"] .top .r { margin-left: auto; gap: 10px; }
+    body[data-view="revise"] .top .r > * + * { padding-left: 10px; }
+    body[data-view="revise"] .steps { gap: 2px 14px; }
+    body[data-view="revise"] .stp { font-size: 12.5px; letter-spacing: .03em; }
+    body[data-view="revise"] .doc section { scroll-margin-top: 12px; }
+    body[data-view="revise"] .wrap { padding: 16px 16px 72px 16px; }
+    body[data-view="revise"] .sec { flex-wrap: wrap; gap: 2px 10px; } body[data-view="revise"] .sec h2 { font-size: 20px; }
+    body[data-view="revise"] .panel { width: 100%; max-width: none; border-left: none; }
+    body[data-view="revise"] .pbody { padding: 14px 4px 24px 4px; }
+    #rvTitle { font-size: 23px !important; }
+    #rvIdx { gap: 0; margin: 14px 0 18px 0; } #rvIdx a { padding: 6px 8px; letter-spacing: .04em; }
+    .rvsum { gap: 10px 16px; } .rvsum .v { font-size: 22px; }
+  }
+  /* ----- 수정본 뷰어 모달(대표 지시): 흰 종이 본문, 넉넉한 여백, 본문 폭 70ch, 은은한 변경 표시 + 여백 표식, 변경 보기 ↔ 깨끗한 원고, 툴팁, 인쇄용 CSS ----- */
+  .rvm { position: fixed; inset: 0; z-index: 60; display: none; align-items: center; justify-content: center; background: rgba(20,22,26,.48); padding: 24px; }
+  .rvm.on { display: flex; }
+  body.rvmopen { overflow: hidden; }
+  .rvm .sheet { position: relative; width: 880px; max-width: 100%; height: min(92vh, 1100px); display: flex; flex-direction: column; background: #fff; border: 1px solid var(--line2); border-radius: 4px; box-shadow: 0 18px 60px rgba(20,22,26,.28); overflow: hidden; }
+  .rvm .bar { display: flex; align-items: center; gap: 6px 14px; flex-wrap: wrap; padding: 12px 22px; border-bottom: 3px double var(--line2); background: var(--bg); }
+  .rvm .bar .ttl { min-width: 0; flex: 1 1 260px; }
+  .rvm .bar .ttl .ey { font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  .rvm .bar .ttl h2 { font-size: 17px; font-family: var(--sans); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; outline: none; }
+  .rvm .bar .ttl h2:focus-visible { text-decoration: underline; text-decoration-color: var(--red); text-underline-offset: 4px; }
+  .rvm .bar .cnt { font-size: 13px; color: var(--text2); white-space: nowrap; }
+  .rvm .bar .cnt b { color: var(--red); font-weight: 600; }
+  .rvm .bar .acts { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-left: auto; }
+  .rvm .bar .tgl[aria-pressed="true"] { border-color: var(--ink); background: var(--soft); }
+  .rvm .body { flex: 1; min-height: 0; overflow: auto; padding: 44px 32px 64px 32px; background: #fff; overscroll-behavior: contain; }
+  .rvpaper { position: relative; max-width: 70ch; margin: 0 auto; font-family: var(--sans); font-size: 15.5px; line-height: 1.9; color: var(--text); }
+  .rvpaper .t { font-family: var(--head); font-size: 26px; font-weight: 700; line-height: 1.25; margin: 0 0 6px 0; letter-spacing: -0.01em; }
+  .rvpaper .meta { font-size: 12.5px; color: var(--muted); padding-bottom: 14px; margin-bottom: 26px; border-bottom: 1px solid var(--line2); }
+  .rvpaper h2 { font-family: var(--head); font-size: 19px; font-weight: 700; margin: 30px 0 8px 0; padding-top: 14px; border-top: 1px solid var(--line); }
+  .rvpaper h3 { font-family: var(--head); font-size: 16px; font-weight: 600; margin: 20px 0 6px 0; }
+  .rvpaper p { position: relative; margin: 0 0 10px 0; padding: 1px 6px; border-radius: 2px; }
+  .rvpaper .empty { color: var(--muted); text-align: center; padding: 40px 0; }
+  .rvm.marks .rvpaper .chg { background: var(--amber-t); }
+  .rvm.marks .rvpaper .chg::before { content: ""; position: absolute; left: -18px; top: 8px; bottom: 8px; width: 2px; background: var(--amber); }
+  .rvm.marks .rvpaper .ins { background: var(--green-t); }
+  .rvm.marks .rvpaper .ins::before { content: "+"; position: absolute; left: -22px; top: 0; font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--green); }
+  .rvm.marks .rvpaper .del { color: var(--faint); text-decoration: line-through; text-decoration-color: var(--red-l); }
+  .rvm.marks .rvpaper .del::before { content: ""; position: absolute; left: -18px; top: 8px; bottom: 8px; width: 2px; background: var(--red-l); }
+  .rvm:not(.marks) .rvpaper .del { display: none; }
+  .rvm .rvpaper .chg, .rvm .rvpaper .ins { cursor: help; outline: none; }
+  .rvm.marks .rvpaper .chg:focus-visible, .rvm.marks .rvpaper .ins:focus-visible, .rvm.marks .rvpaper .chg.pin, .rvm.marks .rvpaper .ins.pin { box-shadow: 0 0 0 2px var(--ink); }
+  .rvtip { position: absolute; z-index: 5; pointer-events: none; max-width: 420px; padding: 12px 14px; background: var(--card); border: 1px solid var(--ink); border-radius: 3px; box-shadow: 0 6px 24px rgba(20,22,26,.18); font-size: 13px; line-height: 1.6; color: var(--text2); display: none; }
+  .rvtip.on { display: block; }
+  .rvtip .k { font-family: var(--sans); font-size: 12px; font-weight: 600; color: var(--muted); margin-top: 8px; }
+  .rvtip .k:first-child { margin-top: 0; }
+  .rvtip .o { color: var(--ink); }
+  .rvtip .cite { pointer-events: none; }
+  @media (max-width: 600px) {
+    .rvm { padding: 0; align-items: stretch; }
+    .rvm .sheet { width: 100%; height: 100%; max-height: none; border: none; border-radius: 0; }
+    .rvm .bar { padding: 10px 14px; }
+    .rvm .bar .acts { margin-left: 0; width: 100%; }
+    .rvm .body { padding: 24px 16px 48px 16px; }
+    .rvpaper .t { font-size: 22px; }
+    .rvm.marks .rvpaper .chg::before, .rvm.marks .rvpaper .del::before { left: -9px; }
+    .rvm.marks .rvpaper .ins::before { left: -12px; }
+    .rvtip { max-width: calc(100vw - 32px); }
+  }
+  /* ----- 뷰어 편집 모드 · 직접 수정 태그 · 목업 띠 ----- */
+  .rvpaper p[data-rvedit] { cursor: text; }
+  .rvpaper p[data-rvedit]:hover { box-shadow: inset 0 0 0 1px var(--line2); }
+  .rvtag.me { color: var(--green); border-color: var(--green); }
+  .rvedbox { margin: 0 0 12px 0; padding: 8px; border: 2px solid var(--ink); border-radius: 3px; background: var(--card); }
+  .rvpta { display: block; width: 100%; min-height: 64px; border: none; outline: none; resize: vertical; padding: 4px 6px; font-family: var(--sans); font-size: 15.5px; line-height: 1.9; color: var(--text); background: transparent; }
+  .rvtb { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--line); }
+  .rvmockbar { position: sticky; top: 0; z-index: 70; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 6px 16px; background: var(--amber-t); color: var(--amber); border-bottom: 1px solid var(--amber); font-size: 13px; }
+  .rvmockbar b { font-weight: 700; }
+  .rvmockbar .btn { height: 26px; padding: 0 8px; font-size: 12px; margin-left: auto; }
+  body.rvmock .top { top: 0; }
+  @media print { .rvmockbar, .rvedbox .rvtb { display: none !important; } }
+  @media print {
+    body.rvmopen > :not(#rvViewer) { display: none !important; }
+    body.rvmopen { overflow: visible; }
+    #rvViewer.rvm { display: block !important; position: static; padding: 0; background: #fff; }
+    #rvViewer .sheet { width: auto; height: auto; max-height: none; border: none; box-shadow: none; overflow: visible; display: block; }
+    #rvViewer .bar, #rvViewer .rvtip { display: none !important; }
+    #rvViewer .body { overflow: visible; padding: 0; }
+    #rvViewer .rvpaper .chg, #rvViewer .rvpaper .ins { background: none !important; box-shadow: none !important; }
+    #rvViewer .rvpaper .chg::before, #rvViewer .rvpaper .ins::before, #rvViewer .rvpaper .del::before { display: none !important; }
+    #rvViewer .rvpaper .del { display: none !important; }
+    #rvViewer .rvpaper h2 { break-after: avoid; }
+  }
+  /* [확인 필요: …] 자리표시 칩(뷰어 안): 눈에 띄게, 누르면 바로 입력. 입력된 값은 밑줄만 */
+  .rvph { display: inline-block; font: inherit; font-size: 13.5px; font-weight: 600; line-height: 1.5; padding: 0 8px; margin: 0 2px; border: 1px dashed var(--amber); border-radius: 2px; background: var(--amber-t); color: var(--amber); cursor: pointer; vertical-align: baseline; }
+  .rvph:hover, .rvph:focus-visible { border-style: solid; outline: none; box-shadow: 0 0 0 2px var(--amber-t); }
+  .rvph.filled { font-weight: 500; border: none; background: transparent; color: var(--ink); text-decoration: underline; text-decoration-color: var(--amber); text-decoration-thickness: 1.5px; text-underline-offset: 3px; padding: 0 2px; }
+  .rvm:not(.marks) .rvph.filled { text-decoration: none; }
+  #rvConfBanner { margin: 0 0 12px 0; }
+  #rvConfBanner .btn { margin-left: 8px; }
+  .rvconf .eyebrow { color: var(--red-d); }
+  @media print { .rvph { border: none !important; background: none !important; color: inherit !important; font-weight: inherit !important; padding: 0 !important; } .rvph.filled { text-decoration: none !important; } .rvconf, #rvConfBanner, #rvFillCnt { display: none !important; } }
 </style>
 </head>
 <body data-view="boot">
@@ -920,7 +1118,878 @@
   });
   $('scrim').addEventListener('click', closeAll);
   document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') closeAll(); });
+  window.NeumannUI = { S: S, D: function () { return D; }, setD: function (v) { D = v; }, esc: esc, safeUrl: safeUrl, cite: cite, lref: lref, lineOf: lineOf, fam: fam, genLabel: genLabel, GEN: GEN, EXT: EXT, CHECK: CHECK, HANGUL: HANGUL, go: go, render: render, renderSteps: renderSteps, renderPanel: renderPanel, openPanel: openPanel, closeAll: closeAll, toast: toast, planLines: planLines, upSize: upSize };  /* E4-L4r 수정 권고 블록(아래 두 번째 script)이 쓰는 내부 훅 */
   renderSteps(); render(); loadHealth(); loadTemplates();
+})();
+</script>
+<!-- E4-L4r 목업 데이터(?mock=final) — tests/e4/revise_mock_data.py가 만든다. 손으로 고치지 않는다 -->
+<script type="application/json" id="rvMockFinal">{"note":"디자인 점검용 목업 · 공용 fixture(가짜 데이터) · 서버 호출 없음","view":{"plan_id":"3d35460def76efc4a786dce769e614f0d54d110ee2837da6b8fc1dbcf88ef33c","session_id":"fixture-session","plan":{"file":"plan.md","size":"1.1 KB","meta":"정규화 17줄","title":"연구계획서 (예시) — 전해액 이온전도도 예측 대리모델","lines":[{"n":1,"t":"# 연구계획서 (예시) — 전해액 이온전도도 예측 대리모델","h":"title"},{"n":3,"t":"## 1. 연구 목표","h":"h"},{"n":5,"t":"리튬이온 배터리 전해액의 이온전도도를 예측하는 Graph Neural Network 대리모델을 개발하여,"},{"n":6,"t":"실험 합성 없이 후보 조성을 사전 선별하는 것을 목표로 한다."},{"n":8,"t":"## 2. 방법","h":"h"},{"n":10,"t":"분자 그래프 인코더와 조성 임베딩을 결합한 GNN 을 학습한다."},{"n":11,"t":"제안 모델을 기존에 발표된 baseline 2종과 비교한다."},{"n":13,"t":"## 3. 데이터","h":"h"},{"n":15,"t":"문헌에 보고된 약 12,000건의 전해액 조성-전도도 데이터를 수집해 사용한다."},{"n":16,"t":"We randomly split the dataset into 80/10/10 train/validation/test sets.","f":true},{"n":17,"t":"조성이 거의 동일한 중복 항목에 대한 별도 제거 절차는 두지 않는다.","f":true},{"n":19,"t":"## 4. 평가","h":"h"},{"n":21,"t":"holdout test set 에서 R2 와 MAE 를 보고한다."},{"n":22,"t":"We do not report error bars, and no ablation study is planned.","f":true},{"n":23,"t":"Code and data will not be released due to an industrial collaboration agreement."},{"n":25,"t":"## 5. 기대 성과","h":"h"},{"n":27,"t":"제안 모델이 기존 baseline 대비 더 높은 예측 정확도를 달성할 것으로 기대한다."}]},"pipeline":[{"k":"SEARCH","ms":0,"log":[["ok","retrieve — 정상 · fixture"]],"m":"정상 1"},{"k":"ANALYZE","ms":0,"log":[["ok","extract — 정상 · fixture:mock"],["ok","cards — 정상 · fixture:mock"],["w","expected_review — 강등 · llm_call_not_provided: LLM 호출이 주입되지 않았다 · fallback:rule"],["w","checklist — 강등 · 카드 2/2장 규칙 문구로 대신함: llm_unavailable · fallback:rule_actions"]],"m":"정상 2 · 강등 2"}],"works":[{"n":1,"t":"[FAKE] EquiMol: equivariant message passing for molecular property prediction","s":"[FAKE] EquiMol","d":"거절","r":"–","id":"fixture:gnn-001","f":[1,1],"u":"https://example.org/fake-venue/forum?id=gnn-001","venue":"FakeConf 2099","draw":"Reject","dsrc":"fixture_records","sim":0.82},{"n":2,"t":"[FAKE] Scaffold-aware contrastive pretraining for small-molecule GNNs","s":"[FAKE] Scaffold-aware contrastive pretraining f…","d":"Poster","r":"–","id":"fixture:gnn-002","f":[1,0],"u":"https://example.org/fake-venue/forum?id=gnn-002","venue":"FakeConf 2099","draw":"FakeConf 2099 poster","dsrc":"fixture_records","sim":0.74},{"n":3,"t":"[FAKE] Uncertainty-calibrated GNN ensembles for aqueous solubility prediction","s":"[FAKE] Uncertainty-calibrated GNN ensembles for…","d":"대폭 수정","r":"–","id":"fixture:gnn-003","f":[0,1],"u":"https://example.org/fake-venue/forum?id=gnn-003","venue":"FakeConf 2099","draw":"Major Revision","dsrc":"fixture_records","sim":0.61}],"fams":[{"k":"R3","n":"Random splitting can leak near-duplicates into the test set","col":"누출"},{"k":"R2","n":"Single-seed results without error bars","col":"평가"}],"corpus":[null,null],"ev":{"1":{"fam":0,"q":"The paper reports a random 80/10/10 split of the molecules.","p":"[FAKE] EquiMol: equivariant message passing for molecular property prediction","v":"FakeConf 2099 · 심사평","d":"거절","rt":"","rv":"","id":"fixture:gnn-001","ln":16,"u":"https://example.org/fake-venue/forum?id=gnn-001&noteId=rev-gnn-001-a","eid":"ex_c5986bb2facc61b2","lns":[16,17],"cards":[1],"kind":"review","map":1,"off":[0,59],"sha":"69233c395f723472"},"2":{"fam":0,"q":"Random splits are known to leak near-duplicate scaffolds between train and test, so the reported MAE is likely optimistic.","p":"[FAKE] EquiMol: equivariant message passing for molecular property prediction","v":"FakeConf 2099 · 심사평","d":"거절","rt":"","rv":"","id":"fixture:gnn-001","ln":16,"u":"https://example.org/fake-venue/forum?id=gnn-001&noteId=rev-gnn-001-a","eid":"ex_110f92f3599151f1","lns":[16,17],"cards":[1],"kind":"review","map":1,"off":[60,182],"sha":"4aea7ef6bff915ef"},"3":{"fam":0,"q":"The pretraining corpus overlaps with the downstream test molecules.","p":"[FAKE] Scaffold-aware contrastive pretraining for small-molecule GNNs","v":"FakeConf 2099 · 심사평","d":"Poster","rt":"","rv":"","id":"fixture:gnn-002","ln":16,"u":"https://example.org/fake-venue/forum?id=gnn-002&noteId=rev-gnn-002-a","eid":"ex_845f5eb5621099f5","lns":[16,17],"cards":[1],"kind":"review","map":2,"off":[0,67],"sha":"7217f5f5452140e1"},"4":{"fam":0,"q":"the random split likely overstates performance","p":"[FAKE] EquiMol: equivariant message passing for molecular property prediction","v":"FakeConf 2099 · 결정문","d":"거절","rt":"","rv":"","id":"fixture:gnn-001","ln":16,"u":"https://example.org/fake-venue/forum?id=gnn-001&noteId=dec-gnn-001","eid":"ex_ca5fa760fdb45841","lns":[16,17],"cards":[1],"kind":"decision","map":1,"off":[25,71],"sha":"b1188787a3179b63"},"5":{"fam":1,"q":"All numbers come from a single training run with one random seed.","p":"[FAKE] EquiMol: equivariant message passing for molecular property prediction","v":"FakeConf 2099 · 심사평","d":"거절","rt":"","rv":"","id":"fixture:gnn-001","ln":22,"u":"https://example.org/fake-venue/forum?id=gnn-001&noteId=rev-gnn-001-b","eid":"ex_fc88c26e0b31af5e","lns":[22],"cards":[2],"kind":"review","map":1,"off":[0,65],"sha":"0d7b547226900908"},"6":{"fam":1,"q":"Without error bars across seeds it is impossible to tell whether the 3% improvement is real.","p":"[FAKE] EquiMol: equivariant message passing for molecular property prediction","v":"FakeConf 2099 · 심사평","d":"거절","rt":"","rv":"","id":"fixture:gnn-001","ln":22,"u":"https://example.org/fake-venue/forum?id=gnn-001&noteId=rev-gnn-001-b","eid":"ex_4b76d98627bb3f0c","lns":[22],"cards":[2],"kind":"review","map":1,"off":[66,158],"sha":"9ad7066b7817f782"},"7":{"fam":1,"q":"A single seed is used for every ensemble size.","p":"[FAKE] Uncertainty-calibrated GNN ensembles for aqueous solubility prediction","v":"FakeConf 2099 · 심사평","d":"대폭 수정","rt":"","rv":"","id":"fixture:gnn-003","ln":22,"u":"https://example.org/fake-venue/forum?id=gnn-003&noteId=rev-gnn-003-b","eid":"ex_6ec54fbcbb2ccae1","lns":[22],"cards":[2],"kind":"review","map":3,"off":[267,313],"sha":"8c8cbb924781e2a7"},"8":{"fam":1,"q":"Results are reported from one run with a fixed seed.","p":"[FAKE] Cross-site domain adaptation for brain MRI lesion segmentation","v":"FakeConf 2099 · 심사평","d":"소폭 수정","rt":"","rv":"","id":"fixture:seg-002","ln":22,"u":"https://example.org/fake-venue/forum?id=seg-002&noteId=rev-seg-002-b","eid":"ex_7686b8804b5212e3","lns":[22],"cards":[2],"kind":"review","x":true,"off":[0,52],"sha":"78310efc1e22004b"}},"cards":[{"rank":1,"fam":0,"sev":5,"score":"0.78","comp":[["유사도",0.82],["빈도",0.5],["심각도",1.0],["신뢰도",0.9]],"src":"근거 4건 · 논문 2편","desc":"The plan splits the data randomly (80/10/10) and has no step to remove near-duplicate compositions.","lines":[16,17],"freq":"유사 3편 중 2편 지적 · 그중 1편 거절","ev":[1,2,3,4],"acts":[],"gen":"mock","id":"card-fx-leak"},{"rank":2,"fam":1,"sev":3,"score":"0.65","comp":[["유사도",0.7],["빈도",0.5],["심각도",0.6],["신뢰도",0.85]],"src":"근거 4건 · 논문 3편","desc":"The plan states that no error bars and no ablation will be reported.","lines":[22],"freq":"유사 3편 중 2편 지적 · 그중 1편 거절","ev":[5,6,7,8],"acts":[],"gen":"mock","id":"card-fx-seed"}],"others":[],"review":{"strength":[],"weakness":[{"t":"데이터 누출·분할 오염 위험: Random splitting can leak near-duplicates into the test set (계획서 16–17행). 유사 연구 2편의 심사에서 같은 유형의 지적이 나왔다(예: “The paper reports a random 80/10/10 split of the molecules.”).","c":[1,2,3],"ln":[16,17],"cards":[1]},{"t":"실험 설계·평가 프로토콜 위험: Single-seed results without error bars (계획서 22행). 유사 연구 3편의 심사에서 같은 유형의 지적이 나왔다(예: “All numbers come from a single training run with one random seed.”).","c":[5,6,7],"ln":[22],"cards":[2]}],"request":[{"t":"학습·검증·평가 데이터의 분할 단위와 중복·누출 제거 절차를 계획서에 명시할 것 (계획서 16–17행).","c":[1,2,3],"ln":[16,17],"cards":[1]},{"t":"비교 대상(baseline)과 반복 실험·오차 보고 방식을 착수 전에 명시할 것 (계획서 22행).","c":[5,6,7],"ln":[22],"cards":[2]}],"audit":{"gen":4,"pass":4,"drop":0,"dropped":[],"gate":"grounding@v1"},"gen":"rule","st":"degraded","why":"llm_call_not_provided: LLM 호출이 주입되지 않았다"},"checklist":[{"id":"C1","t":"데이터를 만지기 전에 그룹 단위 분할 규칙을 문서로 고정하고, 그룹이 분할 경계를 넘지 않는지 코드로 검사한다.","r":"R3","s":"보류","m":"","set":false,"ln":[16,17],"ev":[1,2,3],"card":1,"gen":"rule","why":"llm_unavailable"},{"id":"C2","t":"중복·근사중복 제거 기준을 착수 전에 정하고, 무작위 분할과 그룹 분할 성능을 함께 보고하기로 계획에 적는다.","r":"R3","s":"보류","m":"","set":false,"ln":[16,17],"ev":[1,2,3],"card":1,"gen":"rule","why":"llm_unavailable"},{"id":"C3","t":"비교 대상(최신 방법, 강한 단순 기준선, 제안법에서 핵심 요소를 뺀 버전)을 착수 전에 고정하고 계획서에 적는다.","r":"R2","s":"보류","m":"","set":false,"ln":[22],"ev":[5,6,7],"card":2,"gen":"rule","why":"llm_unavailable"},{"id":"C4","t":"반복 실행 횟수와 보고 형식(평균·표준편차 또는 신뢰구간)을 착수 전에 정해 계획서에 명시한다.","r":"R2","s":"보류","m":"","set":false,"ln":[22],"ev":[5,6,7],"card":2,"gen":"rule","why":"llm_unavailable"}],"kpi":{"n_works":3,"n_reject":1,"n_accept":1,"n_evidence":8,"n_cards_total":2,"review_count":4,"model_id":null,"model_provider":null,"elapsed_s":0},"_status":{"source":"sample","pipeline":"unavailable","label":"분석 파이프라인 미연결(샘플 데이터)","result_status":"degraded","degraded":true,"notices":["[FAKE] fixture result for UI/API development"],"input":{},"stages_not_ok":[{"name":"expected_review","phase":"ANALYZE","status":"degraded","reason":"llm_call_not_provided: LLM 호출이 주입되지 않았다"},{"name":"checklist","phase":"ANALYZE","status":"degraded","reason":"카드 2/2장 규칙 문구로 대신함: llm_unavailable"}],"generators":{"mock":2},"empty_reason":null,"dropped":{},"section_errors":{},"contract_ok":true,"contract_errors":[],"generated_at":"2026-09-30T09:00:00Z","pipeline_version":"neumann-1","records":{"source":"fixture_records","filled":{"works_decision":3,"evidence_decision":1}},"verification":null,"server_elapsed_s":0}},"plan_text":"# 연구계획서 (예시) — 전해액 이온전도도 예측 대리모델\n\n## 1. 연구 목표\n\n리튬이온 배터리 전해액의 이온전도도를 예측하는 Graph Neural Network 대리모델을 개발하여,\n실험 합성 없이 후보 조성을 사전 선별하는 것을 목표로 한다.\n\n## 2. 방법\n\n분자 그래프 인코더와 조성 임베딩을 결합한 GNN 을 학습한다.\n제안 모델을 기존에 발표된 baseline 2종과 비교한다.\n\n## 3. 데이터\n\n문헌에 보고된 약 12,000건의 전해액 조성-전도도 데이터를 수집해 사용한다.\nWe randomly split the dataset into 80/10/10 train/validation/test sets.\n조성이 거의 동일한 중복 항목에 대한 별도 제거 절차는 두지 않는다.\n\n## 4. 평가\n\nholdout test set 에서 R2 와 MAE 를 보고한다.\nWe do not report error bars, and no ablation study is planned.\nCode and data will not be released due to an industrial collaboration agreement.\n\n## 5. 기대 성과\n\n제안 모델이 기존 baseline 대비 더 높은 예측 정확도를 달성할 것으로 기대한다.\n","revisions":{"card-fx-leak":{"version":"revision@v1","plan_id":"3d35460def76efc4a786dce769e614f0d54d110ee2837da6b8fc1dbcf88ef33c","session_id":"fixture-session","generated_at":"2026-09-30T14:00:00+00:00","generator":"mock","model":"mock-deterministic-v1","effort":"medium","prompt_version":"revise_card@v1","status":"ok","reason":null,"cards_requested":["card-fx-leak"],"cards_skipped":[],"revisions":[{"card_id":"card-fx-leak","risk_code":"R3","title":"Random splitting can leak near-duplicates into the test set","generator":"mock","model":"mock-deterministic-v1","effort":"medium","status":"ok","reason":null,"interpretation":[{"text":"테스트 해석 1: 심사자는 1번 카드의 지적을 거절 사유로 들었다.","excerpt_ids":["ex_c5986bb2facc61b2"],"plan_lines":[16],"quotes":[]},{"text":"테스트 해석 2: 같은 지적이 다른 심사평에도 반복된다.","excerpt_ids":["ex_110f92f3599151f1"],"plan_lines":[16],"quotes":[]},{"text":"테스트 해석 3(근거 없음): 화면 게이트가 빼야 한다.","excerpt_ids":[],"plan_lines":[],"quotes":[]}],"precedents":{"status":"found","note":null,"items":[{"text":"테스트 대응: 같은 지적을 받은 채택 연구는 그룹 단위 분할로 다시 실험하고 답변했다.","excerpt_ids":["ex_test_resp_1","ex_c5986bb2facc61b2"],"work_id":"fixture:gnn-002","outcome":"accept_poster","outcome_label":"Poster","quotes":[]}]},"edits":[{"edit_id":"card-fx-leak/e1","plan_line":16,"kind":"replace","current_text":"We randomly split the dataset into 80/10/10 train/validation/test sets.","proposed_text":"테스트 제안 1: We randomly split the dataset into 80/10/10 train/validation/test sets. 그리고 분할을 그룹 단위로 바꾼다.","proposed_label":"제안(근거 아님)","rationale":{"text":"테스트 이유 1: 근사 중복 누출을 막는다.","excerpt_ids":["ex_c5986bb2facc61b2"],"plan_lines":[16],"quotes":[]}},{"edit_id":"card-fx-leak/e2","plan_line":17,"kind":"replace","current_text":"조성이 거의 동일한 중복 항목에 대한 별도 제거 절차는 두지 않는다.","proposed_text":"테스트 제안 2: 중복 제거 기준을 착수 전에 정하고 제거 건수를 [확인 필요: 보고 시점]에 보고한다.","proposed_label":"제안(근거 아님)","rationale":{"text":"테스트 이유 2: 절차가 없다는 것이 지적의 핵심이다.","excerpt_ids":["ex_110f92f3599151f1"],"plan_lines":[17],"quotes":[]}},{"edit_id":"card-fx-leak/e3","plan_line":17,"kind":"insert_after","current_text":"조성이 거의 동일한 중복 항목에 대한 별도 제거 절차는 두지 않는다.","proposed_text":"테스트 추가 문단: 카드 1 위험의 사전 점검 결과를 부록에 첨부한다.","proposed_label":"제안(근거 아님)","rationale":{"text":"테스트 이유 3: 확인 절차를 계획서에 적는다.","excerpt_ids":["ex_c5986bb2facc61b2"],"plan_lines":[17],"quotes":[]}}],"questions":[{"text":"테스트 질문: 16행의 기준을 실제로 바꿀 수 있는가?","plan_lines":[16]}],"audit":{"generated":8,"passed":7,"dropped":1,"no_evidence":1,"reasons":{"no_evidence":1},"dropped_detail":[{"section":"interpretation","reason":"no_evidence","text":"서버 게이트가 뺀 문장(테스트)"}],"gate":"revision-grounding@v1"},"elapsed_s":0.5,"llm_calls":1,"fallback_reason":null,"evidence_pool":["ex_c5986bb2facc61b2","ex_110f92f3599151f1","ex_845f5eb5621099f5","ex_ca5fa760fdb45841","ex_test_resp_1"]}],"records":[{"excerpt_id":"ex_test_resp_1","source_kind":"author_response","source_id":"resp-test-1","start":0,"end":71,"text":"We re-ran all experiments with a scaffold split and report the numbers.","text_sha256":"71a88300f7a9056c719d89208caf603840f327fc30aa64ed8a70b224cd0013b8","source_url":"https://example.org/fake-venue/forum?id=gnn-002&noteId=resp","source_sha256":null,"work_id":"fixture:gnn-002","record_kind":"author_response","outcome":"accept_poster"}],"works":[{"work_id":"fixture:gnn-002","title":"[FAKE] 채택 논문(테스트)","url":"https://example.org/fake-venue/forum?id=gnn-002","outcome":"accept_poster","outcome_raw":"FakeConf 2099 poster","outcome_label":"Poster","n_responses":1,"n_meta_reviews":0}],"audit":{"generated":8,"passed":7,"dropped":1,"no_evidence":1,"reasons":{"no_evidence":1},"dropped_detail":[],"gate":"revision-grounding@v1"},"cost":{"llm_calls":1,"llm_calls_failed":0,"prompt_chars":4200,"usage":{},"estimated_input_tokens":1400,"estimated_output_tokens":900,"estimated_usd":null,"note":"mock provider: 실제 호출 없음"},"coverage":{"works_considered":2,"works_with_decision":2,"works_accepted":1,"works_rejected":1,"works_with_responses":1,"works_with_meta_review":0,"record_source":"fixture"},"notices":["mock provider(테스트용) 결과 — 실제 LLM 분석이 아니다"],"elapsed_s":0.5,"revision_sig":null},"card-fx-seed":{"version":"revision@v1","plan_id":"3d35460def76efc4a786dce769e614f0d54d110ee2837da6b8fc1dbcf88ef33c","session_id":"fixture-session","generated_at":"2026-09-30T14:00:00+00:00","generator":"mock","model":"mock-deterministic-v1","effort":"medium","prompt_version":"revise_card@v1","status":"ok","reason":null,"cards_requested":["card-fx-seed"],"cards_skipped":[],"revisions":[{"card_id":"card-fx-seed","risk_code":"R2","title":"Single-seed results without error bars","generator":"mock","model":"mock-deterministic-v1","effort":"medium","status":"ok","reason":null,"interpretation":[{"text":"테스트 해석 1: 심사자는 2번 카드의 지적을 거절 사유로 들었다.","excerpt_ids":["ex_fc88c26e0b31af5e"],"plan_lines":[22],"quotes":[]},{"text":"테스트 해석 2: 같은 지적이 다른 심사평에도 반복된다.","excerpt_ids":["ex_4b76d98627bb3f0c"],"plan_lines":[22],"quotes":[]},{"text":"테스트 해석 3(근거 없음): 화면 게이트가 빼야 한다.","excerpt_ids":[],"plan_lines":[],"quotes":[]}],"precedents":{"status":"found","note":null,"items":[{"text":"테스트 대응: 같은 지적을 받은 채택 연구는 그룹 단위 분할로 다시 실험하고 답변했다.","excerpt_ids":["ex_test_resp_2","ex_fc88c26e0b31af5e"],"work_id":"fixture:gnn-003","outcome":"accept_poster","outcome_label":"Poster","quotes":[]}]},"edits":[{"edit_id":"card-fx-seed/e1","plan_line":22,"kind":"replace","current_text":"We do not report error bars, and no ablation study is planned.","proposed_text":"테스트 제안 1: We do not report error bars, and no ablation study is planned. 그리고 분할을 그룹 단위로 바꾼다.","proposed_label":"제안(근거 아님)","rationale":{"text":"테스트 이유 1: 근사 중복 누출을 막는다.","excerpt_ids":["ex_fc88c26e0b31af5e"],"plan_lines":[22],"quotes":[]}},{"edit_id":"card-fx-seed/e2","plan_line":22,"kind":"replace","current_text":"We do not report error bars, and no ablation study is planned.","proposed_text":"테스트 제안 2: 시드 [확인 필요: 개수]개로 반복해 평균과 표준편차를 보고한다.","proposed_label":"제안(근거 아님)","rationale":{"text":"테스트 이유 2: 반복 없는 단일 수치가 지적됐다.","excerpt_ids":["ex_4b76d98627bb3f0c"],"plan_lines":[22],"quotes":[]}},{"edit_id":"card-fx-seed/e3","plan_line":22,"kind":"insert_after","current_text":"We do not report error bars, and no ablation study is planned.","proposed_text":"테스트 추가 문단: 카드 2 위험의 사전 점검 결과를 부록에 첨부한다.","proposed_label":"제안(근거 아님)","rationale":{"text":"테스트 이유 3: 확인 절차를 계획서에 적는다.","excerpt_ids":["ex_fc88c26e0b31af5e"],"plan_lines":[22],"quotes":[]}},{"edit_id":"card-fx-seed/e4","plan_line":16,"kind":"replace","current_text":"We randomly split the dataset into 80/10/10 train/validation/test sets.","proposed_text":"테스트 교차 제안(카드 2): We randomly split the dataset into 80/10/10 train/validation/test sets. — 다른 관점의 수정.","proposed_label":"제안(근거 아님)","rationale":{"text":"테스트 이유 4: 다른 카드와 같은 줄(충돌 확인용).","excerpt_ids":["ex_fc88c26e0b31af5e"],"plan_lines":[16],"quotes":[]}}],"questions":[{"text":"테스트 질문: 22행의 기준을 실제로 바꿀 수 있는가?","plan_lines":[22]}],"audit":{"generated":8,"passed":7,"dropped":1,"no_evidence":1,"reasons":{"no_evidence":1},"dropped_detail":[{"section":"interpretation","reason":"no_evidence","text":"서버 게이트가 뺀 문장(테스트)"}],"gate":"revision-grounding@v1"},"elapsed_s":0.5,"llm_calls":1,"fallback_reason":null,"evidence_pool":["ex_fc88c26e0b31af5e","ex_4b76d98627bb3f0c","ex_6ec54fbcbb2ccae1","ex_7686b8804b5212e3","ex_test_resp_2"]}],"records":[{"excerpt_id":"ex_test_resp_2","source_kind":"author_response","source_id":"resp-test-2","start":0,"end":71,"text":"We re-ran all experiments with a scaffold split and report the numbers.","text_sha256":"71a88300f7a9056c719d89208caf603840f327fc30aa64ed8a70b224cd0013b8","source_url":"https://example.org/fake-venue/forum?id=gnn-002&noteId=resp","source_sha256":null,"work_id":"fixture:gnn-003","record_kind":"author_response","outcome":"accept_poster"}],"works":[{"work_id":"fixture:gnn-003","title":"[FAKE] 채택 논문(테스트)","url":"https://example.org/fake-venue/forum?id=gnn-002","outcome":"accept_poster","outcome_raw":"FakeConf 2099 poster","outcome_label":"Poster","n_responses":1,"n_meta_reviews":0}],"audit":{"generated":8,"passed":7,"dropped":1,"no_evidence":1,"reasons":{"no_evidence":1},"dropped_detail":[],"gate":"revision-grounding@v1"},"cost":{"llm_calls":1,"llm_calls_failed":0,"prompt_chars":4200,"usage":{},"estimated_input_tokens":1400,"estimated_output_tokens":900,"estimated_usd":null,"note":"mock provider: 실제 호출 없음"},"coverage":{"works_considered":2,"works_with_decision":2,"works_accepted":1,"works_rejected":1,"works_with_responses":1,"works_with_meta_review":0,"record_source":"fixture"},"notices":["mock provider(테스트용) 결과 — 실제 LLM 분석이 아니다"],"elapsed_s":0.5,"revision_sig":null}},"preset":[{"rank":1,"edit_id":"card-fx-leak/e1","d":"adopt"},{"rank":1,"edit_id":"card-fx-leak/e2","d":"edit","text":"연구자가 직접 고친 문장: 조성 그룹 단위로 분할하고 근사 중복 조성은 분할 전에 제거하며, 제거 건수를 [확인 필요: 보고 시점]에 보고한다."},{"rank":1,"edit_id":"card-fx-leak/e3","d":"reject"},{"rank":2,"edit_id":"card-fx-seed/e2","d":"adopt"},{"rank":2,"edit_id":"card-fx-seed/e4","d":"adopt"}]}</script>
+<script>
+/* ===== E4-L4r 계획서 수정 권고(V) =====
+   흐름: 리포트 위험카드 "수정안 보기" / 상단 "채택한 위험으로 수정안 받기" → V 수정 권고 화면(카드 고르기 · 순차 진행 · 취소 · 재시도)
+         → 카드별 (a) 거절 사유 해석 (b) 채택 연구의 대응 (c) 계획서 수정안(줄 단위 전후 비교, 제안(근거 아님)) (d) 확인 질문 (e) 결정(채택·직접 수정·기각)
+         → 수정본 뷰어 모달(깨끗한 원고 · 변경 표시 · 각주 판 · 미해결 충돌 선택 · [확인 필요: …] 입력 · .md/.docx/인쇄).
+   서버: POST /premortem/revise (계약 contracts/revision.schema.json, E3-L2r). 응답의 새 발췌(records)는 기존 근거 패널에 번호를 이어 등록한다.
+   서버 API가 없으면(404·405·501) 개발용 어댑터가 모의(mock) 권고를 만들고 화면에 '모의(mock) · 개발용 어댑터'로 표시한다 — 병합 뒤 REV.dev = false 한 줄.
+   서버·LLM 문자열은 전부 textContent로 넣는다(innerHTML에 서버 문자열 없음). 외부 요청 0. 결정은 체크리스트 결정 로그와 같은 모양(item_id·decision·note·decided_at). */
+(function () {
+  'use strict';
+  var U = window.NeumannUI;
+  if (!U) return;
+  var $ = function (id) { return document.getElementById(id); };
+  var S = U.S;
+  var D = function () { return U.D(); };
+  /* 계약 어댑터 — 서버 경로가 정해지면 여기만 맞춘다. dev: 서버 API가 없을 때 모의 권고(개발용). 병합 뒤 false. */
+  var REV = { api: 'premortem/revise', assemble: 'premortem/revise/assemble', pollDefault: 'premortem/revise/jobs/', dev: true, mockDelayMs: 350 };
+  var DEC_KO = { adopt: '채택', edit: '수정', reject: '기각' };  /* 서버 assemble의 결정 값(채택·수정·기각) */
+  var STAGES = [['interpret', '거절 사유 해석'], ['precedents', '채택 연구의 대응 찾기'], ['draft', '수정안 작성'], ['gate', '근거 대조·게이트']];
+  var DEC = { adopt: '채택', edit: '직접 수정', reject: '기각' };
+  var DEC_EN = { adopt: 'adopt', edit: 'edit', reject: 'reject' };
+  var OUTCOME = { accept_oral: 'Oral', accept_spotlight: 'Spotlight', accept_poster: 'Poster', accept: '채택', major_revision: '대폭 수정', minor_revision: '소폭 수정', reject_resubmit: '거절', reject: '거절', desk_reject: '거절', withdrawn: '철회', no_binary_decision: '미정', unknown: '미정' };
+  var KIND_KO = { review: '심사평', author_response: '저자 답변', decision: '결정문', post_status: '사후 기록', meta_review: 'AC 메타리뷰' };
+  var PH = /\[확인 필요:\s*([^\]]*)\]/g;
+  var RV = fresh(null, 0);
+  function fresh(d, gen) { return { d: d, items: {}, queue: [], running: null, sel: null, tick: null, gen: gen, conf: {}, fill: {}, pedit: {}, undo: [], editing: null, view: 'marks', polish: false, asm: null, asmAvail: MOCK ? false : null, asmMsg: '', asmStamp: 0, opener: null, pin: null, docxMsg: '', restored: false }; }
+  function state() { var d = D(); if (RV.d !== d) { if (RV.tick) clearInterval(RV.tick); RV = fresh(d, RV.gen + 1); if (d) restore(); } return RV; }
+  /* 목업 모드(?mock=final): 서버 호출 없이 embedded fixture(가짜 데이터)로 전체 흐름의 완성 상태를 보인다 — 디자인 점검용 */
+  var MOCK = /[?&]mock=final(?:&|$)/.test(location.search), MOCK_DATA = null;
+  var STORE_KEY = function () { var d = D(); return d && d.plan_id ? 'neumann.revise.' + d.plan_id : ''; };
+  function persist() {
+    var st = state(), key = STORE_KEY(); if (!key) return;
+    try {
+      var items = {}, dec = {}; Object.keys(st.items).forEach(function (r) { var it = st.items[r]; if (it.raw && it.rev) { items[r] = { raw: it.raw, dev: !!it.dev, devWhy: it.devWhy || '' }; } if (Object.keys(it.dec).length) dec[r] = it.dec; });
+      localStorage.setItem(key, JSON.stringify({ v: 1, at: new Date().toISOString(), items: items, dec: dec, conf: st.conf, fill: st.fill, pedit: st.pedit, view: st.view }));
+    } catch (e) { /* 저장 공간·사생활 모드: 보존 없이 계속 */ }
+  }
+  function restore() {
+    var st = RV, key = STORE_KEY(); if (!key) return;
+    var saved = null; try { saved = JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) { saved = null; }
+    if (!saved || typeof saved !== 'object' || saved.v !== 1) return;
+    try {
+      Object.keys(saved.items || {}).forEach(function (r) { var cd = cardOf(+r); if (!cd) return; var raw = saved.items[r].raw, it = item(+r); var rev = normRevision(raw, cd); if (!rev) return; it.raw = raw; it.rev = rev; it.dev = !!saved.items[r].dev; it.devWhy = String(saved.items[r].devWhy || ''); rev.dev = it.dev; it.status = rev.skipped ? 'skipped' : 'done'; if (rev.skipped) it.err = rev.skipped; });
+      Object.keys(saved.dec || {}).forEach(function (r) { var it = st.items[r]; if (it && it.rev) Object.keys(saved.dec[r]).forEach(function (eid) { if (findEdit(it, eid)) it.dec[eid] = saved.dec[r][eid]; }); });
+      st.conf = saved.conf && typeof saved.conf === 'object' ? saved.conf : {}; st.fill = saved.fill && typeof saved.fill === 'object' ? saved.fill : {}; st.pedit = saved.pedit && typeof saved.pedit === 'object' ? saved.pedit : {};
+      if (saved.view === 'clean' || saved.view === 'marks' || saved.view === 'notes') st.view = saved.view;
+      st.restored = !!Object.keys(saved.items || {}).length; st.restoredAt = String(saved.at || '');
+    } catch (e) { /* 깨진 보존값은 무시 */ }
+  }
+  function forget() { var key = STORE_KEY(); try { if (key) localStorage.removeItem(key); } catch (e) { /* 없음 */ } }
+  function cards() { var d = D(); return (d && d.cards) || []; }
+  function cardOf(rank) { return cards()[rank - 1] || null; }
+  function item(rank) { var st = state(); return st.items[rank] || (st.items[rank] = { rank: rank, status: 'idle', rev: null, dec: {}, err: '', stage: '', stageLabel: '', t0: 0, ctrl: null, dev: false, raw: null }); }
+  function lineText(n) { var l = U.lineOf(n); return l ? l.t : ''; }
+  function pad2(n) { return ('0' + n).slice(-2); }
+
+  /* ---------- DOM 도구(서버 문자열은 textContent) ---------- */
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = String(text); return e; }
+  function add(parent) { for (var i = 1; i < arguments.length; i++) { var c = arguments[i]; if (c == null || c === '' || c === false) continue; parent.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); } return parent; }
+  function clear(e) { while (e && e.firstChild) e.removeChild(e.firstChild); return e; }
+  function btn(cls, text, id) { var b = el('button', cls, text); b.type = 'button'; if (id) b.id = id; return b; }
+  function citeBtn(k) { var b = btn('cite', '#' + k); b.dataset.ev = String(k); return b; }
+  function lrefEl(n) { var s = el('span', 'lref', n + '행'); s.dataset.line = String(n); return s; }
+  function extLink(u, text) { u = U.safeUrl(u); if (!u) return el('span', 'tag x', '원문 링크 없음'); var a = el('a', 'src', text || '원문'); a.href = u; a.target = '_blank'; a.rel = 'noopener noreferrer'; return a; }
+  function T(v) { return v == null ? '' : (typeof v === 'string' ? v : (typeof v === 'number' || typeof v === 'boolean' ? String(v) : '')); }
+  function L(v) { return Array.isArray(v) ? v : (v == null || v === '' ? [] : [v]); }
+  function pick(o) { if (!o || typeof o !== 'object') return undefined; for (var i = 1; i < arguments.length; i++) { var v = o[arguments[i]]; if (v !== undefined && v !== null && v !== '') return v; } return undefined; }
+  function N(v) { var f = Number(v); return isFinite(f) ? f : 0; }
+
+  /* ---------- 생성 방식 표시(DISP-1 방식: 서버 표시 이름 > "LLM (모델명)" · 규칙 · 모의(mock)) ---------- */
+  function genText(g, model, genl) {
+    if (genl) return String(genl);
+    var d = D(), labels = (d && d._status && d._status.generator_labels) || {};
+    g = String(g || '').toLowerCase();
+    if (labels[g] && g !== 'astra') return labels[g];
+    if (g === 'astra' || g === 'llm' || g === 'openai') return model ? 'LLM (' + model + ')' : 'LLM';
+    if (g === 'rule') return '비상 규칙';
+    if (g === 'mock') return '모의(mock)';
+    if (g === 'sample') return '샘플 · 분석 결과 아님';
+    return g ? '생성 방식 ' + g : '생성 방식 미표기';
+  }
+  function genCls(g) { g = String(g || '').toLowerCase(); return g === 'astra' || g === 'llm' || g === 'openai' ? 'astra' : (g === 'rule' || g === 'mock' || g === 'sample' ? g : 'unknown'); }
+  function genEl(g, model, genl) { return el('span', 'gen ' + genCls(g), genText(g, model, genl)); }
+  function outcomeLabel(v, label) { if (label) return String(label); v = String(v || '').toLowerCase(); return OUTCOME[v] || (v ? v.slice(0, 24) : '미정'); }
+
+  /* ---------- 새 발췌(records) → 기존 근거 패널에 번호를 이어 등록(인용은 서버가 원문 오프셋으로 자른 text 그대로) ---------- */
+  function evMap() { var d = D(), m = {}; Object.keys((d && d.ev) || {}).forEach(function (k) { var e = d.ev[k]; if (e && e.eid) m[e.eid] = k; }); return m; }
+  function registerRecords(raw, cd) {
+    var d = D(); if (!d || !raw) return;
+    var m = evMap(), works = {}; L(raw.works).forEach(function (w) { if (w && w.work_id) works[w.work_id] = w; });
+    var maxK = Object.keys(d.ev).reduce(function (a, k) { return Math.max(a, +k || 0); }, 0);
+    L(raw.records).forEach(function (r) {
+      if (!r || typeof r !== 'object') return;
+      var eid = T(r.excerpt_id), text = T(r.text); if (!eid || !text) return;
+      if (m[eid]) { var ex = d.ev[m[eid]]; if (ex.cards.indexOf(cd.rank) < 0) ex.cards.push(cd.rank); return; }
+      var wid = T(r.work_id), w = null; d.works.forEach(function (x) { if (x.id === wid) w = x; });
+      var wo = works[wid] || {};
+      var k = String(++maxK), kind = T(r.record_kind) || T(r.source_kind);
+      var st = r.start, en = r.end;
+      var item = { fam: cd.fam, q: text, p: (w && w.t) || T(wo.title) || wid || '논문 미상', v: [(w && w.venue) || '', KIND_KO[kind] || KIND_KO[T(r.source_kind)] || '기록'].filter(Boolean).join(' · '),
+        d: (w && w.d) || outcomeLabel(r.outcome || wo.outcome, wo.outcome_label), rt: '', rv: '', id: wid, ln: null, u: T(r.source_url) || T(wo.url) || (w && w.u) || '', eid: eid, lns: [], cards: [cd.rank],
+        kind: T(r.source_kind) || 'review', rec: kind || 'record' };
+      if (w) item.map = w.n; else item.x = true;
+      if (typeof st === 'number' && typeof en === 'number') item.off = [st, en];
+      if (T(r.text_sha256)) item.sha = T(r.text_sha256).slice(0, 16);
+      d.ev[k] = item; m[eid] = k;
+    });
+  }
+
+  /* ---------- 응답 정규화(contracts/revision.schema.json). 근거 번호로 풀리지 않는 문장은 화면 게이트가 뺀다 ---------- */
+  function refs(raw, m) { var d = D(), out = []; L(raw).forEach(function (r) { var k = null; if (typeof r === 'number') k = String(r); else if (typeof r === 'string') { if (r === 'map') return; k = m[r] || (d.ev[r] ? r : null); } else if (r && typeof r === 'object') { var id = T(pick(r, 'excerpt_id', 'eid', 'id')); k = m[id] || (d.ev[id] ? id : null); } if (k != null && d.ev[k] && out.indexOf(k) < 0) out.push(k); }); return out; }
+  function sents(raw, m, gate, sec) { var out = []; L(raw).forEach(function (s) { var o = typeof s === 'string' ? { text: s } : (s && typeof s === 'object' ? s : {}); var t = T(pick(o, 'text', 't', 'sentence')); if (!t) return; var c = refs(pick(o, 'excerpt_ids', 'evidence', 'evidence_ids', 'c'), m); if (!c.length) { gate.dropped++; gate.items.push([sec, t]); return; } out.push({ t: t, c: c, work: T(pick(o, 'work_id', 'work')), outcome: outcomeLabel(o.outcome, o.outcome_label), lines: L(pick(o, 'plan_lines', 'lines')).map(Number).filter(function (n) { return isFinite(n); }) }); }); return out; }
+  function normRevision(raw, cd) {
+    if (!raw || typeof raw !== 'object') return null;
+    var list = L(pick(raw, 'revisions', 'cards', 'items')), r = null;
+    list.forEach(function (x) { if (!r && x && typeof x === 'object' && (T(pick(x, 'card_id')) === cd.id || N(pick(x, 'card_rank', 'rank')) === cd.rank)) r = x; });
+    var skipped = null; L(raw.cards_skipped).forEach(function (x) { if (x && T(x.card_id) === cd.id) skipped = T(x.reason) || '사유 없음'; });
+    if (!r && skipped) return { skipped: skipped, gen: T(raw.generator).toLowerCase(), model: T(raw.model), status: 'skipped', notices: L(raw.notices).map(T).filter(Boolean), interp: [], prec: { status: 'none', note: '', items: [] }, edits: [], qs: [], audit: {}, gate: { dropped: 0, items: [] } };
+    if (!r) r = list.length ? list[0] : (raw.card_id || raw.edits || raw.interpretation ? raw : null);
+    if (!r) return null;
+    registerRecords(raw, cd);
+    var m = evMap(), gate = { dropped: 0, items: [] }, d = D(), lineSet = {}; d.plan.lines.forEach(function (l) { lineSet[l.n] = l.t; });
+    var edits = [];
+    L(pick(r, 'edits', 'suggestions', 'proposals')).forEach(function (e, i) {
+      if (!e || typeof e !== 'object') return;
+      var n = N(pick(e, 'plan_line', 'line', 'n')), kind = T(pick(e, 'kind', 'op')).toLowerCase() || 'replace';
+      var after = T(pick(e, 'proposed_text', 'after', 'proposed', 'text')), before = T(pick(e, 'current_text', 'before', 'original'));
+      if (!(n in lineSet)) { gate.dropped++; gate.items.push(['edits', '없는 줄 ' + n + ': ' + after.slice(0, 80)]); return; }
+      kind = kind === 'insert_after' || kind === 'insert' || kind === 'add' ? 'insert' : (kind === 'delete' || kind === 'remove' ? 'delete' : 'replace');
+      if (kind !== 'delete' && !after.trim()) return;
+      var ra = e.rationale, ro = typeof ra === 'string' ? { text: ra, excerpt_ids: pick(e, 'evidence', 'excerpt_ids') } : (ra && typeof ra === 'object' ? ra : {});
+      var why = T(pick(ro, 'text', 't')), c = refs(pick(ro, 'excerpt_ids', 'evidence', 'evidence_ids', 'c'), m);
+      if (!c.length) c = refs(pick(e, 'excerpt_ids', 'evidence'), m);
+      if (why && !c.length) { gate.dropped++; gate.items.push(['rationale', why]); why = ''; }
+      edits.push({ id: T(pick(e, 'edit_id', 'id')) || ('e' + (i + 1)), line: n, kind: kind, before: lineSet[n], after: kind === 'delete' ? '' : after, label: T(e.proposed_label) || '제안(근거 아님)', why: why, c: c,
+        mismatch: !!(before && kind !== 'insert' && before.trim() !== lineSet[n].trim()) });
+    });
+    var qs = L(pick(r, 'questions', 'confirm_questions')).map(function (q) { var o = typeof q === 'string' ? { text: q } : (q || {}); return { t: T(pick(o, 'text', 't', 'question')), lines: L(o.plan_lines).map(Number).filter(function (n) { return isFinite(n); }) }; }).filter(function (q) { return q.t; });
+    var pr = (r.precedents && typeof r.precedents === 'object' && !Array.isArray(r.precedents)) ? r.precedents : { status: L(r.precedents).length ? 'found' : 'none', items: L(r.precedents), note: T(pick(r, 'responses_note', 'precedents_note')) };
+    var prItems = sents(pick(pr, 'items'), m, gate, 'precedents');
+    var au = (r.audit && typeof r.audit === 'object') ? r.audit : {};
+    var gen = T(pick(r, 'generator', 'gen') || pick(raw, 'generator', 'gen')).toLowerCase();
+    return {
+      interp: sents(pick(r, 'interpretation', 'reasons', 'analysis'), m, gate, 'interpretation'),
+      prec: { status: T(pr.status) === 'found' && prItems.length ? 'found' : 'none', note: T(pr.note) || (T(pr.status) === 'found' && !prItems.length ? '대응 사례 없음 — 근거가 연결된 대응 문장이 없어 화면 게이트가 뺐다' : ''), items: prItems },
+      edits: edits, qs: qs, gen: gen, model: T(pick(r, 'model') || pick(raw, 'model')), genl: T(pick(r, 'genl', 'generator_label')), effort: T(pick(r, 'effort') || pick(raw, 'effort')),
+      status: T(pick(r, 'status')) || T(raw.status) || 'ok', why: T(pick(r, 'reason', 'fallback_reason') || raw.reason),
+      audit: { gen: N(pick(au, 'generated')), pass: N(pick(au, 'passed', 'pass')), drop: N(pick(au, 'dropped', 'drop')), noev: N(pick(au, 'no_evidence')), gate: T(au.gate),
+        items: L(pick(au, 'dropped_detail', 'dropped')).map(function (x) { return typeof x === 'string' ? x : (Array.isArray(x) ? T(x[1]) : [T(pick(x || {}, 'section')), T(pick(x || {}, 'reason')), T(pick(x || {}, 'text'))].filter(Boolean).join(' · ')); }).filter(Boolean) },
+      gate: gate, notices: L(raw.notices).map(T).filter(Boolean), coverage: (raw.coverage && typeof raw.coverage === 'object') ? raw.coverage : null, cost: (raw.cost && typeof raw.cost === 'object') ? raw.cost : null,
+      elapsed: N(pick(r, 'elapsed_s') || pick(raw, 'elapsed_s')) || null, sample: !!(raw.sample || (d._status && d._status.source === 'sample')), skipped: null
+    };
+  }
+
+  /* ---------- 개발용 어댑터: 서버 API가 없을 때의 모의(mock) 권고(계약 모양 그대로, 문구는 전부 [모의]) ---------- */
+  function mockRevision(cd) {
+    var d = D(), f = U.fam(cd.fam), evs = cd.ev.map(String), eid = function (k) { return (d.ev[k] && d.ev[k].eid) || ('view#' + k); };
+    var lines = cd.lines.length ? cd.lines : (d.plan.lines[1] ? [d.plan.lines[1].n] : []);
+    var other = cards().filter(function (c) { return c.rank !== cd.rank && c.lines.length; })[0];
+    var acc = Object.keys(d.ev).filter(function (k) { var e = d.ev[k]; return e.d && e.d !== '거절' && e.d !== '미정' && e.d !== '철회'; });
+    var interp = evs.slice(0, 2).map(function (k, i) { var e = d.ev[k]; return { text: '[모의] 해석 ' + (i + 1) + ': 심사자는 “' + String(e.q).slice(0, 48) + '…”라고 지적했고, 이 ' + f.n + ' 위험은 계획서 ' + (lines[0] || '?') + '행에 그대로 남아 있다.', excerpt_ids: [eid(k)], plan_lines: lines.slice(0, 1) }; });
+    interp.push({ text: '[모의] 근거 번호 없이 쓴 문장 — 게이트가 빼야 한다.', excerpt_ids: [] });
+    var recId = 'mockrec_' + cd.rank, recWork = acc.length ? d.ev[acc[0]].id : (d.works[0] ? d.works[0].id : 'mock:work');
+    var prec = acc.length ? { status: 'found', note: null, items: [{ text: '[모의] 같은 지적을 받고도 채택된 연구는 분할 기준을 바꿔 다시 실험하고 답변에서 그 절차를 밝혔다.', excerpt_ids: [recId, eid(acc[0])], work_id: recWork, outcome: 'accept_poster', outcome_label: 'Poster' }] } : { status: 'none', note: '대응 사례 없음 — 채택된 유사 연구의 저자 답변이 코퍼스에 없다', items: [] };
+    var edits = lines.slice(0, 2).map(function (n, i) { return { edit_id: cd.id + '/e' + (i + 1), plan_line: n, kind: 'replace', current_text: lineText(n), proposed_text: '[모의 제안] ' + lineText(n).replace(/[.。]\s*$/, '') + ' — 다만 ' + f.n + ' 위험을 줄이기 위해 분할 기준과 검증 절차를 [확인 필요: 구체 기준]으로 명시한다.', proposed_label: '제안(근거 아님)', rationale: { text: '[모의] 근거의 지적(' + f.k + ')을 이 문장이 해소한다는 제안 이유.', excerpt_ids: evs.length ? [eid(evs[0])] : [] } }; });
+    if (lines.length) edits.push({ edit_id: cd.id + '/e' + (edits.length + 1), plan_line: lines[lines.length - 1], kind: 'insert_after', current_text: lineText(lines[lines.length - 1]), proposed_text: '[모의 제안] 추가 문단: ' + f.n + ' 위험에 대한 사전 점검 결과를 부록에 첨부한다.', proposed_label: '제안(근거 아님)', rationale: { text: '[모의] 확인 절차를 계획서에 적어 두는 것이 지적을 예방한다.', excerpt_ids: evs.length ? [eid(evs[0])] : [] } });
+    if (other) edits.push({ edit_id: cd.id + '/e' + (edits.length + 1), plan_line: other.lines[0], kind: 'replace', current_text: lineText(other.lines[0]), proposed_text: '[모의 제안·교차] ' + lineText(other.lines[0]).replace(/[.。]\s*$/, '') + ' — ' + f.n + ' 관점에서도 이 문장을 손본다(다른 카드와 같은 줄 → 충돌 예시).', proposed_label: '제안(근거 아님)', rationale: { text: '[모의] 다른 카드의 줄에 겹치는 제안(충돌 선택 UI 확인용).', excerpt_ids: evs.length ? [eid(evs[0])] : [] } });
+    return { version: 'revision@v1', plan_id: d.plan_id, session_id: d.session_id, generated_at: new Date().toISOString(), generator: 'mock', model: null, status: 'ok', reason: null, cards_requested: [cd.id], cards_skipped: [],
+      revisions: [{ card_id: cd.id, risk_code: f.k.slice(0, 2), title: f.n, generator: 'mock', model: null, status: 'ok', reason: null, interpretation: interp, precedents: prec, edits: edits,
+        questions: [{ text: '[모의] ' + (lines[0] || '?') + '행의 분할 기준을 실제로 바꿀 수 있는가?', plan_lines: lines.slice(0, 1) }, { text: '[모의] 추가 검증에 필요한 데이터와 시간이 확보되는가?' }],
+        audit: { generated: interp.length + prec.items.length + edits.length + 2, passed: interp.length - 1 + prec.items.length + edits.length + 2, dropped: 1, no_evidence: 1, reasons: { no_evidence: 1 }, dropped_detail: [{ section: 'interpretation', reason: 'no_evidence', text: '[모의] 근거 번호 없이 쓴 문장 — 게이트가 빼야 한다.' }], gate: 'revision-grounding@v1(모의)' }, elapsed_s: 0.01, llm_calls: 0, fallback_reason: null }],
+      records: acc.length ? [{ excerpt_id: recId, source_kind: 'author_response', source_id: 'mock-resp-' + cd.rank, start: 0, end: 52, text: '[모의] We re-ran the experiments with a group-wise split.', text_sha256: '0000000000000000000000000000000000000000000000000000000000000000', source_url: d.ev[acc[0]].u || '', work_id: recWork, record_kind: 'author_response', outcome: 'accept_poster' }] : [],
+      works: [], audit: { generated: 0, passed: 0, dropped: 1 }, cost: { llm_calls: 0, note: '개발용 어댑터: 실제 호출 없음' }, coverage: { works_considered: d.works.length, works_with_decision: d.works.filter(function (w) { return w.d && w.d !== '미정'; }).length, works_accepted: d.kpi.n_accept || 0, works_rejected: d.kpi.n_reject || 0, works_with_responses: acc.length ? 1 : 0, works_with_meta_review: 0, record_source: null },
+      notices: ['개발용 어댑터(서버 수정 권고 API 없음) — 모의(mock) 권고이며 분석 결과가 아니다'], elapsed_s: 0.01 };
+  }
+  function mockDelay(it) { return new Promise(function (res, rej) { var i = 0; (function step() { if (it.ctrl.signal.aborted) return rej({ name: 'AbortError' }); if (i >= STAGES.length) return res(); it.stage = STAGES[i][0]; it.stageLabel = STAGES[i][1] + '(모의)'; i++; paintWait(it); setTimeout(step, REV.mockDelayMs); })(); }); }
+
+  /* ---------- 요청 · 작업 폴링 · 오류 ---------- */
+  function RevError(msg, code) { this.name = 'RevError'; this.message = msg; this.code = code; }
+  function serverMsg(j, code) { j = j || {}; if (typeof j.message === 'string' && j.message) return j.message; if (typeof j.detail === 'string' && j.detail) return j.detail; if (Array.isArray(j.detail) && j.detail.length) return j.detail.map(function (x) { return x && x.msg ? String(x.msg) : String(x); }).join(' · '); if (typeof j.reason === 'string' && j.reason) return j.reason; return 'HTTP ' + code; }
+  function asJson(r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, code: r.status, body: j }; }); }
+  function rawResult() { var d = D(), r = d && d.result; return r && typeof r === 'object' && r.plan_id ? r : null; }  /* 화면 응답에 실린 원결과(E4-L2f). 없으면 서버 API를 부를 수 없다 */
+  function reqBody(cd) { return { result: rawResult(), plan_text: S.text, card_ids: [cd.id] }; }
+  function pollRevise(b, it) {
+    var url = T(b.poll_url || b.status_url) || (REV.pollDefault + encodeURIComponent(T(b.job_id)));
+    return new Promise(function (res, rej) { (function tick(delay) { setTimeout(function () {
+      if (it.ctrl.signal.aborted) return rej({ name: 'AbortError' });
+      fetch(url, { cache: 'no-store', signal: it.ctrl.signal }).then(asJson).then(function (x) {
+        var j = x.body || {};
+        if (x.ok && j.status === 'done') return res(j.result || j.revision || j);
+        if (x.ok && (j.status === 'queued' || j.status === 'running')) { it.stage = T(j.stage); it.stageLabel = T(j.stage_label); paintWait(it); return tick(Math.min(3000, Math.max(800, N(j.poll_after_s || 1.5) * 1000))); }
+        if (x.code === 429) return tick(2000);
+        rej(new RevError(serverMsg(j, x.code), x.code));
+      }, rej); }, delay); })(800); });
+  }
+  function requestRevision(cd, it) {
+    var useMock = function (why) { it.dev = true; it.devWhy = why; return mockDelay(it).then(function () { return { ok: true, code: 200, body: mockRevision(cd) }; }); };
+    var start;
+    if (MOCK) start = mockDelay(it).then(function () { var raw = MOCK_DATA && MOCK_DATA.revisions && MOCK_DATA.revisions[cd.id]; if (!raw) throw new RevError('목업 데이터에 이 카드의 권고가 없음'); return { ok: true, code: 200, body: JSON.parse(JSON.stringify(raw)) }; });
+    else if (!rawResult() || !cd.id) start = REV.dev ? useMock(!cd.id ? '카드 id 없음' : '화면 응답에 원결과(result) 없음 — E4-L2f 병합 전') : Promise.reject(new RevError('화면 응답에 원결과(result)가 없어 수정 권고를 요청할 수 없음(샘플·옛 서버)'));
+    else start = fetch(REV.api, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(reqBody(cd)), signal: it.ctrl.signal })
+      .then(function (r) { if ((r.status === 404 || r.status === 405 || r.status === 501) && REV.dev) return useMock('서버 수정 권고 API 없음(HTTP ' + r.status + ')'); return asJson(r); });
+    return start
+      .then(function (res) { if (!res.ok) throw new RevError(serverMsg(res.body, res.code), res.code); if (res.code === 202 && res.body && res.body.job_id) return pollRevise(res.body, it); return res.body; })
+      .then(function (raw) { it.raw = raw; var rev = normRevision(raw, cd); if (!rev) throw new RevError('응답을 해석하지 못함 · 이 카드의 수정 권고가 응답에 없음'); rev.dev = !!it.dev; return rev; });
+  }
+
+  /* ---------- 대기열: 카드 1장씩 순서대로(10~30초), 취소, 실패 시 재시도 ---------- */
+  function runQueue(ranks) {
+    var st = state();
+    ranks.forEach(function (r) { var it = item(r); if (it.status === 'running' || it.status === 'queued') return; it.status = 'queued'; it.err = ''; it.stage = ''; it.stageLabel = ''; if (st.queue.indexOf(r) < 0) st.queue.push(r); });
+    if (S.step === 4) renderRevise(); else paintReport();
+    pump();
+  }
+  function pump() {
+    var st = state(); if (st.running != null) return;
+    var r = st.queue.shift(); if (r == null) { stopTick(); paintAll(); return; }
+    var it = item(r), cd = cardOf(r), gen = st.gen; st.running = r; it.status = 'running'; it.t0 = Date.now(); it.stage = ''; it.stageLabel = ''; it.ctrl = new AbortController(); it.dev = false;
+    startTick(); paintAll();
+    requestRevision(cd, it).then(function (rev) { if (state().gen !== gen) return; it.rev = rev; it.status = rev.skipped ? 'skipped' : 'done'; if (rev.skipped) it.err = rev.skipped; },
+      function (err) { if (state().gen !== gen) return; it.status = err && err.name === 'AbortError' ? 'cancel' : 'error'; it.err = err && err.name === 'AbortError' ? '취소됨' : (err && err.message ? String(err.message) : '서버 연결 실패 · 요청을 보내지 못함'); })
+      .then(function () { if (state().gen !== gen) return; it.ctrl = null; st.running = null; it.elapsed = (Date.now() - it.t0) / 1000; persist(); paintAll(); pump(); });
+  }
+  function cancelAll() { var st = state(); st.queue.slice().forEach(function (r) { var it = item(r); it.status = 'cancel'; it.err = '취소됨(시작 전)'; }); st.queue = []; var it = st.running != null ? item(st.running) : null; if (it && it.ctrl) it.ctrl.abort(); else paintAll(); }
+  function startTick() { var st = state(); if (st.tick) return; st.tick = setInterval(function () { var s = state(); if (s.running == null) { stopTick(); return; } paintWait(item(s.running)); }, 250); }
+  function stopTick() { var st = state(); if (st.tick) { clearInterval(st.tick); st.tick = null; } }
+  function elapsedOf(it) { return it.status === 'running' ? (Date.now() - it.t0) / 1000 : (it.elapsed || 0); }
+  function statusText(it) {
+    var n = it.rev ? it.rev.edits.length : 0, c = decCounts(it);
+    if (it.status === 'queued') return '대기';
+    if (it.status === 'running') return '진행 중 · ' + elapsedOf(it).toFixed(0) + '초' + (it.stageLabel ? ' · ' + it.stageLabel : '');
+    if (it.status === 'done') return '완료 · 제안 ' + n + '건' + (n ? ' · 채택 ' + c.adopt + ' · 직접 수정 ' + c.edit + ' · 기각 ' + c.reject + ' · 미결 ' + (n - c.adopt - c.edit - c.reject) : '');
+    if (it.status === 'error') return '실패 · ' + it.err;
+    if (it.status === 'cancel') return it.err || '취소됨';
+    if (it.status === 'skipped') return '권고 없음 · ' + it.err;
+    return '';
+  }
+  function decCounts(it) { var c = { adopt: 0, edit: 0, reject: 0 }; if (it && it.rev) it.rev.edits.forEach(function (e) { var d = it.dec[e.id]; if (d) c[d.d]++; }); return c; }
+  function adoptedRanks() { var d = D(), out = []; (d.checklist || []).forEach(function (it) { if (it.set !== false && it.s === '채택' && it.card && out.indexOf(it.card) < 0) out.push(it.card); }); return out.length ? out.sort(function (a, b) { return a - b; }) : cards().map(function (c) { return c.rank; }); }
+  function selectedRanks() { return Array.prototype.slice.call(document.querySelectorAll('[data-rvsel]')).filter(function (cb) { return cb.checked; }).map(function (cb) { return +cb.dataset.rvsel; }); }
+
+  /* ---------- 결정(e): 채택 · 직접 수정(편집 칸) · 기각 — 결정 로그 모양은 체크리스트와 같다 ---------- */
+  function findEdit(it, eid) { var f = null; if (it.rev) it.rev.edits.forEach(function (e) { if (e.id === eid) f = e; }); return f; }
+  function decide(rank, eid, d) {
+    var it = item(rank), e = findEdit(it, eid); if (!e) return;
+    var cur = it.dec[eid];
+    if (cur && cur.d === d && d !== 'edit') delete it.dec[eid];
+    else it.dec[eid] = { d: d, text: d === 'edit' ? ((cur && cur.d === 'edit' && cur.text) || e.after) : (d === 'adopt' ? e.after : ''), at: new Date().toISOString() };
+    var b = $('rvd-' + rank + '-' + eid); if (b) fillDec(b, it, e);
+    if (d === 'edit' && b) { var ta = b.querySelector('textarea'); if (ta) ta.focus(); }
+    persist(); paintSummary(); paintHub(); state().asm = null; if (viewerOpen()) { paintViewer(); invalidateAsm(); }
+  }
+  function decisionsLog() {
+    var st = state(), out = [];
+    Object.keys(st.items).forEach(function (r) { var it = st.items[r], cd = cardOf(+r); if (!it.rev) return; it.rev.edits.forEach(function (e) { var dc = it.dec[e.id]; if (!dc) return; var row = { item_id: 'rev:' + (cd.id || r) + ':' + e.id, decision: DEC_EN[dc.d], card_id: cd.id || '', card_rank: +r, edit_id: e.id, plan_line: e.line, kind: e.kind, decided_at: dc.at }; if (dc.d !== 'reject') row.note = dc.d === 'edit' ? dc.text : e.after; out.push(row); }); });
+    Object.keys(st.conf).forEach(function (n) { out.push({ item_id: 'rev-conflict:' + n, decision: 'choose', plan_line: +n, note: st.conf[n].key, decided_at: st.conf[n].at }); });
+    Object.keys(st.fill).forEach(function (k) { out.push({ item_id: 'rev-fill:' + k, decision: 'fill', note: st.fill[k].v, decided_at: st.fill[k].at }); });
+    Object.keys(st.pedit).forEach(function (k) { out.push({ item_id: 'rev-edit:' + k, decision: 'modify', plan_line: +k, revised_text: st.pedit[k].text, note: '연구자 직접 편집(뷰어)', decided_at: st.pedit[k].at }); });
+    return out;
+  }
+
+  /* ---------- 조립(assemble): 채택·직접 수정 반영 → 문단 목록 · 변경 목록 · 미해결 충돌 · [확인 필요] 자리표시 · 각주 (서버 assemble이 있으면 REV.assemble로 다듬기 결과를 받는다) ---------- */
+  function fillKey(p, i) { return p.n + ':' + (p.src ? p.src.key : '') + ':' + i; }
+  function segments(p, st) {
+    var out = [], last = 0, i = 0, text = p.t, m; PH.lastIndex = 0;
+    while ((m = PH.exec(text))) { if (m.index > last) out.push({ t: text.slice(last, m.index) }); var key = fillKey(p, i++), f = st.fill[key]; out.push({ ph: true, label: m[1].trim(), key: key, val: f ? f.v : '' }); last = m.index + m[0].length; }
+    if (last < text.length) out.push({ t: text.slice(last) });
+    return out;
+  }
+  function finalText(p) { return (p.segs || [{ t: p.t }]).map(function (s) { return s.ph ? (s.val || '[확인 필요: ' + s.label + ']') : s.t; }).join(''); }
+  function assembleLocal() {
+    var d = D(), st = state(), byLine = {}, counts = { proposed: 0, adopted: 0, undecided: 0, rejected: 0, conflicts: 0, fills: 0, changed: 0, inserted: 0, deleted: 0, stale: 0 };
+    Object.keys(st.items).forEach(function (r) { var it = st.items[r]; if (!it.rev) return; it.rev.edits.forEach(function (e) { counts.proposed++; var dc = it.dec[e.id]; if (!dc) { counts.undecided++; return; } if (dc.d === 'reject') { counts.rejected++; return; } counts.adopted++; (byLine[e.line] = byLine[e.line] || []).push({ key: r + ':' + e.id, rank: +r, edit: e, dec: dc, text: dc.d === 'edit' ? dc.text : e.after, kind: e.kind }); }); });
+    var paras = [], conflicts = [], notes = [];
+    d.plan.lines.forEach(function (l) {
+      var cs = byLine[l.n] || [], repl = cs.filter(function (c) { return c.kind !== 'insert'; }), ins = cs.filter(function (c) { return c.kind === 'insert'; });
+      if (!repl.length) paras.push({ n: l.n, t: l.t, h: l.h, kind: 'same' });
+      else {
+        var chosen = null; if (repl.length === 1) chosen = repl[0]; else { var ck = st.conf[l.n] && st.conf[l.n].key; repl.forEach(function (c) { if (c.key === ck) chosen = c; }); }
+        var open = repl.length > 1 && !chosen; if (open) { chosen = repl[repl.length - 1]; conflicts.push({ n: l.n, options: repl }); }
+        var p = { n: l.n, h: l.h, orig: l.t, src: chosen, conflict: open, options: repl.length > 1 ? repl : null };
+        if (chosen.kind === 'delete' || !chosen.text.trim()) { p.kind = 'deleted'; p.t = l.t; counts.deleted++; } else { p.kind = 'changed'; p.t = chosen.text; counts.changed++; }
+        paras.push(p);
+      }
+      ins.forEach(function (c) { paras.push({ n: l.n, t: c.text, kind: 'inserted', src: c }); counts.inserted++; });
+    });
+    paras.forEach(function (p) { if (p.kind === 'changed' || p.kind === 'inserted') { p.segs = segments(p, st); p.segs.forEach(function (s) { if (s.ph && !s.val) counts.fills++; }); p.fn = notes.length + 1; notes.push({ n: p.fn, p: p }); } });
+    counts.conflicts = conflicts.length;
+    var complete = counts.proposed > 0 && counts.undecided === 0 && counts.conflicts === 0 && counts.fills === 0;
+    return { paras: paras, conflicts: conflicts, notes: notes, counts: counts, complete: complete, source: 'local', polish: null, label: '', md: '', notices: [] };
+  }
+  function mdName(ext) { var d = D(), base = String((d && d.plan && d.plan.file) || 'plan').replace(/\.[^.]+$/, '').replace(/[^0-9A-Za-z가-힣_.-]+/g, '_') || 'plan'; return base + '_revised.' + ext; }
+  function mdText(asm) {
+    if (asm.source === 'server' && asm.md && !asm.counts.overlay) return asm.md;
+    var d = D(), st = state(), c = asm.counts, gens = {}; Object.keys(st.items).forEach(function (r) { var it = st.items[r]; if (it.rev) gens[genText(it.rev.gen, it.rev.model, it.rev.genl) + (it.rev.dev ? ' · 개발용 어댑터' : '')] = 1; });
+    var head = ['<!-- Neumann 계획서 수정본(화면 조립) · 원본 ' + (d.plan.file || '직접 입력') + ' · ' + new Date().toISOString().slice(0, 19) + ' · 수정 ' + c.changed + '줄 · 추가 ' + c.inserted + '줄 · 삭제 ' + c.deleted + '줄 · 미해결 충돌 ' + c.conflicts + ' · 확인 필요 ' + c.fills + ' · 직접 편집 ' + (c.overlay || 0) + '문단 · 제안 문안은 근거가 아니며 최종 판단은 연구자에게 · 수정안 생성: ' + (Object.keys(gens).join(', ') || '없음') + ' -->', ''];
+    var body = [];
+    asm.paras.forEach(function (p) { if (p.kind === 'deleted') return; var t = finalText(p); if (/^\s{0,3}#{1,6}\s/.test(t) && body.length) body.push(''); body.push(t); });
+    var log = decisionsLog(), tail = ['', '---', '', '## 수정 결정 로그 (Neumann · 제안은 근거가 아님)', '', '| 항목 | 결정 | 줄 | 문안·메모 | 시각 |', '|---|---|---|---|---|'];
+    log.forEach(function (r) { tail.push('| ' + [r.item_id, r.decision, r.plan_line != null ? r.plan_line : '', String(r.note || '').replace(/\|/g, '\\|').replace(/\r?\n/g, ' '), r.decided_at].join(' | ') + ' |'); });
+    return head.concat(body, tail).join('\n') + '\n';
+  }
+  /* 서버 assemble에 보내는 결정: 채택(자리표시를 채웠으면 그 문안으로 '수정') · 수정(연구자 문안) · 기각 · 충돌에서 고르지 않은 안은 '기각'(메모에 사유) */
+  function serverDecisions() {
+    var st = state(), out = [], local = assembleLocal(), loser = {};
+    local.paras.forEach(function (p) { if (p.options && st.conf[p.n]) p.options.forEach(function (o) { if (o.key !== st.conf[p.n].key) loser[o.key] = st.conf[p.n].key; }); });
+    Object.keys(st.items).forEach(function (r) { var it = st.items[r], cd = cardOf(+r); if (!it.rev) return; it.rev.edits.forEach(function (e) {
+      var dc = it.dec[e.id]; if (!dc) return; var key = r + ':' + e.id, row = { edit_id: e.id, card_id: cd.id || null, decision: DEC_KO[dc.d], decided_at: dc.at };
+      if (loser[key]) { row.decision = '기각'; row.note = '충돌 선택에서 제외 · 연구자가 ' + loser[key].split(':').slice(1).join(':') + ' 선택'; out.push(row); return; }
+      if (dc.d === 'reject') { out.push(row); return; }
+      var base = dc.d === 'edit' ? dc.text : e.after, filled = fillText(base, { n: e.line, src: { key: key } }, st);
+      if (dc.d === 'edit' || filled !== base) { row.decision = '수정'; row.revised_text = filled; if (dc.d !== 'edit') row.note = '자리표시 입력'; }
+      out.push(row); }); });
+    return out;
+  }
+  function fillText(text, p, st) { var i = 0; PH.lastIndex = 0; return String(text).replace(PH, function (m0) { var f = st.fill[fillKey(p, i++)]; return f && f.v ? f.v : m0; }); }
+  /* 카드별 응답을 하나의 revision으로(서버 assemble 입력). 응답이 하나면 서명 그대로, 둘 이상이면 합치고 서명은 비운다 */
+  function mergedRevision() {
+    var st = state(), raws = []; Object.keys(st.items).sort(function (a, b) { return a - b; }).forEach(function (r) { var it = st.items[r]; if (it.rev && it.raw && !it.rev.dev) raws.push(it.raw); });
+    if (!raws.length) return null; if (raws.length === 1) return raws[0];
+    var m = JSON.parse(JSON.stringify(raws[0])), seenC = {}, seenR = {}, seenW = {}; m.revisions = []; m.records = []; m.works = []; m.cards_requested = []; m.cards_skipped = []; m.notices = []; m.audit = { generated: 0, passed: 0, dropped: 0, no_evidence: 0, reasons: {}, dropped_detail: [] }; m.cost = { llm_calls: 0 }; m.revision_sig = null; m.elapsed_s = 0;
+    raws.forEach(function (x) {
+      L(x.revisions).forEach(function (rv) { if (rv && !seenC[rv.card_id]) { seenC[rv.card_id] = 1; m.revisions.push(rv); } });
+      L(x.records).forEach(function (rc) { if (rc && !seenR[rc.excerpt_id]) { seenR[rc.excerpt_id] = 1; m.records.push(rc); } });
+      L(x.works).forEach(function (w) { if (w && !seenW[w.work_id]) { seenW[w.work_id] = 1; m.works.push(w); } });
+      L(x.cards_requested).forEach(function (c) { if (m.cards_requested.indexOf(c) < 0) m.cards_requested.push(c); });
+      L(x.cards_skipped).forEach(function (c) { m.cards_skipped.push(c); });
+      L(x.notices).forEach(function (n) { if (m.notices.indexOf(n) < 0) m.notices.push(n); });
+      var a = x.audit || {}; ['generated', 'passed', 'dropped', 'no_evidence'].forEach(function (k) { m.audit[k] += N(a[k]); }); L(a.dropped_detail).forEach(function (dd) { m.audit.dropped_detail.push(dd); });
+      m.cost.llm_calls += N((x.cost || {}).llm_calls); m.elapsed_s += N(x.elapsed_s);
+      if (x.status && x.status !== 'ok') m.status = x.status === 'error' && m.status === 'error' ? 'error' : 'degraded';
+    });
+    return m;
+  }
+  function assembleBody(format) { var st = state(), body = { plan_text: S.text, revision: mergedRevision(), decisions: serverDecisions(), polish: !!st.polish, format: format || 'json', title: (D().plan.title || '수정된 연구계획서').slice(0, 200) }; var r = rawResult(); if (r) body.result = r; return body; }
+  function rankOfCard(cid) { var r = 0; cards().forEach(function (c) { if (c.id === cid) r = c.rank; }); return r; }
+  function localEdit(cid, eid) { var r = rankOfCard(cid), it = r ? item(r) : null; return it && it.rev ? findEdit(it, eid) : null; }
+  /* 서버 통합본(revised_plan@v1) → 뷰어 모델. 줄·변경·충돌·자리표시·통계·다듬기를 그대로 옮긴다(자리표시 값은 이미 revised_text로 보냈다) */
+  function fromServer(out) {
+    var st = state(), m = evMap(), byEdit = {}; L(out.changes).forEach(function (c) { if (c && c.edit_id) byEdit[c.edit_id] = c; });
+    var paras = [], notes = [], conflicts = [], lastOrig = 0, sawTitle = false, srcOf = function (c, textNow) {
+      var rank = rankOfCard(c.card_id), le = localEdit(c.card_id, c.edit_id), it = rank ? item(rank) : null;
+      var e = le || { id: c.edit_id, line: N((c.old_range || [])[0]), kind: c.kind === 'insert_after' ? 'insert' : 'replace', before: T(c.old_text), after: T(c.new_text), why: T(c.rationale), c: refs(c.excerpt_ids, m), label: T(c.proposed_label) || '제안(근거 아님)' };
+      var dc = (it && it.dec[c.edit_id]) || { d: c.decision === 'modify' ? 'edit' : 'adopt', text: T(c.new_text), at: T(c.decided_at) };
+      return { key: rank + ':' + c.edit_id, rank: rank, edit: e, dec: dc, text: textNow, kind: e.kind, by: T(c.revised_by), note: T(c.note) };
+    };
+    L(out.lines).forEach(function (ln) {
+      if (!ln || typeof ln !== 'object') return; var text = T(ln.text); if (!text.trim()) return;
+      var orig = ln.orig_no == null ? null : N(ln.orig_no); if (orig != null) lastOrig = orig;
+      var h = /^\s{0,3}#\s/.test(text) && !sawTitle ? 'title' : (/^\s{0,3}#{1,6}\s/.test(text) ? 'h' : null); if (h === 'title') sawTitle = true;
+      var p = { n: orig != null ? orig : lastOrig, h: h, kind: 'same', t: text, polished: !!ln.polished };
+      if (ln.changed && ln.edit_id && byEdit[ln.edit_id]) {
+        var c = byEdit[ln.edit_id]; p.kind = orig == null || c.kind === 'insert_after' ? 'inserted' : 'changed'; p.orig = T(c.old_text) || lineText(p.n); p.src = srcOf(c, text);
+        /* 다듬지 않은 줄은 제안·연구자 문안(자리표시 포함)으로 그려 채운 값을 칩으로 보인다 */
+        if (!p.polished) { var base = p.src.dec.d === 'edit' ? p.src.dec.text : p.src.edit.after; if (fillText(base, { n: p.n, src: p.src }, st) === text) p.t = base; }
+      }
+      paras.push(p);
+    });
+    var counts = { proposed: N((out.stats || {}).edits_total), adopted: N((out.stats || {}).applied), undecided: N((out.stats || {}).undecided), rejected: N((out.stats || {}).rejected), conflicts: 0, fills: 0, changed: 0, inserted: 0, deleted: 0, stale: 0 };
+    paras.forEach(function (p) { if (p.kind === 'changed') counts.changed++; if (p.kind === 'inserted') counts.inserted++; if (p.kind === 'changed' || p.kind === 'inserted') { p.segs = segments(p, st); p.segs.forEach(function (x) { if (x.ph && !x.val) counts.fills++; }); p.fn = notes.length + 1; notes.push({ n: p.fn, p: p }); } });
+    L(out.conflicts).forEach(function (cf) {
+      if (!cf || typeof cf !== 'object') return;
+      if (cf.kind !== 'same_line') { counts.stale++; conflicts.push({ n: N(cf.plan_line), kind: T(cf.kind), detail: T(cf.detail), options: [] }); return; }
+      var p = null; paras.forEach(function (x) { if (!p && x.n === N(cf.plan_line) && x.kind === 'same') p = x; });
+      var opts = L(cf.candidates).map(function (cd) { return srcOf({ edit_id: T(cd.edit_id), card_id: T(cd.card_id), kind: 'replace', old_range: [N(cf.plan_line), N(cf.plan_line)], old_text: T(cf.current_text), new_text: T(cd.text), decision: T(cd.decision), excerpt_ids: [] }, T(cd.text)); });
+      conflicts.push({ n: N(cf.plan_line), kind: 'same_line', detail: T(cf.detail), options: opts });
+      if (p) { p.conflict = true; p.options = opts; p.orig = p.t; }
+    });
+    counts.conflicts = conflicts.length;
+    var local = assembleLocal(); local.paras.forEach(function (lp) { if (!lp.options || lp.options.length < 2 || !st.conf[lp.n]) return; paras.forEach(function (p) { if (p.n === lp.n && p.kind === 'changed' && !p.options) { p.options = lp.options; p.conflict = false; var ck = st.conf[lp.n].key; lp.options.forEach(function (o) { if (o.key === ck && p.src) { p.src.key = o.key; } }); } }); });
+    var po = (out.polish && typeof out.polish === 'object') ? out.polish : { requested: false, applied: false };
+    var md = (out.markdown && typeof out.markdown === 'object') ? out.markdown : {};
+    return { paras: paras, conflicts: conflicts, notes: notes, counts: counts, complete: counts.proposed > 0 && counts.undecided === 0 && counts.conflicts === 0 && counts.fills === 0,
+      source: 'server', polish: po, label: T(out.label), md: T(md.footnoted) ? T(md.footnoted) + '\n\n' + T(md.history) : '', rid: T(out.revised_plan_id), notices: L(out.notices).map(T).filter(Boolean), raw: out };
+  }
+  function overlay(asm) {
+    var st = state(), n = 0, me = 0;
+    asm.paras.forEach(function (p) {
+      if (p.src && p.src.dec && p.src.dec.d === 'edit') me++;
+      if (p.kind !== 'same' || p.conflict) return; var pe = st.pedit[String(p.n)]; if (!pe) return;
+      p.kind = 'changed'; p.me = true; p.orig = p.t; p.t = pe.text; p.segs = segments(p, st); p.src = null; n++; me++;
+    });
+    var notes = []; asm.paras.forEach(function (p) { if ((p.kind === 'changed' || p.kind === 'inserted') && p.src) { p.fn = notes.length + 1; notes.push({ n: p.fn, p: p }); } else p.fn = null; });
+    asm.notes = notes; asm.counts.overlay = n; asm.counts.edited = me; asm.counts.changed += n; return asm;
+  }
+  function currentAsm() { var st = state(); return overlay(st.asm && st.asm.source === 'server' ? JSON.parse(JSON.stringify(st.asm)) : assembleLocal()); }
+  function invalidateAsm() { var st = state(); st.asm = null; st.asmStamp++; if (viewerOpen()) refreshServerAsm(); }
+  /* 서버 assemble(POST /premortem/revise/assemble, format json). 없으면(404·405·501) 화면 조립. 결정이 바뀔 때마다 다시 받는다 */
+  function refreshServerAsm() {
+    var st = state(), gen = st.gen, stamp = ++st.asmStamp;
+    if (st.asmAvail === false || !mergedRevision()) { st.asmMsg = st.asmAvail === false ? '서버 조립(assemble) API 없음 → 화면 조립' : (mergedRevision() ? '' : '서버 권고 응답 없음(개발용 어댑터) → 화면 조립'); paintViewerBar(); return; }
+    st.asmMsg = '서버 통합본 조립 중' + (st.polish ? ' · 문장 다듬기' : ''); paintViewerBar();
+    fetch(REV.assemble, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(assembleBody('json')) }).then(function (r) {
+      if (r.status === 404 || r.status === 405 || r.status === 501) { st.asmAvail = false; throw new RevError('서버 조립(assemble) API 없음 → 화면 조립', r.status); }
+      return asJson(r).then(function (x) { if (!x.ok) throw new RevError(serverMsg(x.body, x.code), x.code); return x.body || {}; });
+    }).then(function (out) {
+      if (state().gen !== gen || st.asmStamp !== stamp) return;
+      st.asm = fromServer(out); st.asmAvail = true; var po = st.asm.polish;
+      st.asmMsg = '서버 통합본' + (st.asm.label ? ' · ' + st.asm.label : '') + (st.polish ? (po.applied ? ' · 다듬기 적용 ' + N(po.lines_polished) + '줄' + (po.model ? ' (' + po.model + ')' : '') : ' · 다듬기 미적용' + (po.reason ? ' — ' + (String(po.reason).indexOf('gate_rejected') === 0 ? '게이트 거부: ' : '') + po.reason : '')) : '');
+      paintViewer();
+    }).catch(function (e) { if (state().gen !== gen || st.asmStamp !== stamp) return; st.asm = null; var msg = e && e.message ? String(e.message) : '서버 연결 실패'; st.asmMsg = msg + (msg.indexOf('화면 조립') >= 0 ? '' : ' → 화면 조립'); paintViewer(); });
+  }
+  function saveBlob(blob, name) { var u = URL.createObjectURL(blob), a = document.createElement('a'); a.href = u; a.download = name; a.style.display = 'none'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(u); }, 5000); }
+  function downloadMd() { var asm = currentAsm(); if (!asm.counts.adopted) U.toast('채택한 수정안이 없어 수정본이 원본과 같음'); var name = asm.source === 'server' && asm.rid ? 'neumann_revised_plan_' + asm.rid.slice(0, 12) + '.md' : mdName('md'); saveBlob(new Blob([mdText(asm)], { type: 'text/markdown;charset=utf-8' }), name); U.toast('수정본 내려받음 · ' + name + (asm.source === 'server' ? ' · 서버 각주 판+이력' : ' · 화면 조립')); }
+  function docxMsg(m, err) { var st = state(); st.docxMsg = m; var e = $('rvDocxMsg'); if (e) { e.textContent = m; e.classList.toggle('inerr', !!err); } }
+  function fileNameOf(cd, fallback) { var m = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(cd || ''); var n = m ? decodeURIComponent(m[1]).replace(/[^0-9A-Za-z가-힣_.-]/g, '') : ''; return n || fallback; }
+  /* .docx는 서버가 만든다(assemble format=docx: 본문 + 미주 + 수정 이력 표 + 근거 부록) */
+  function downloadDocx() {
+    var st = state(), b = $('rvDocx'); if (st.docxBusy) return;
+    if (MOCK) { docxMsg('목업 모드 · .docx는 실제 서버(assemble format=docx)가 만듭니다 — 여기서는 .md로 확인', true); return; }
+    if (!mergedRevision()) { docxMsg('.docx는 서버 권고 응답이 있어야 만들 수 있음(개발용 어댑터 결과는 불가) — .md로 내려받기', true); return; }
+    st.docxBusy = true; if (b) b.disabled = true; docxMsg('.docx 만드는 중 · 서버 요청');
+    fetch(REV.assemble, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(assembleBody('docx')) }).then(function (r) {
+      if (r.status === 404 || r.status === 405 || r.status === 501) throw new RevError('서버 .docx 생성 API 없음 — .md로 내려받기', r.status);
+      if (!r.ok) return asJson(r).then(function (x) { throw new RevError(serverMsg(x.body, x.code), x.code); });
+      var name = fileNameOf(r.headers.get('Content-Disposition'), mdName('docx')), ch = r.headers.get('X-Neumann-Changes'), cf = r.headers.get('X-Neumann-Conflicts');
+      var ov = currentAsm().counts.overlay || 0;
+      return r.blob().then(function (bl) { saveBlob(bl, name); docxMsg('내려받음 · ' + name + ' · ' + U.upSize(bl.size) + (ch != null ? ' · 변경 ' + ch : '') + (cf != null && N(cf) ? ' · 미해결 충돌 ' + cf : '') + (ov ? ' · 뷰어에서 직접 편집한 ' + ov + '문단은 서버 .docx에 없음(.md에는 반영)' : ''), !!ov); });
+    }).catch(function (e) { docxMsg('.docx 실패 · ' + (e && e.message ? e.message : '서버 연결 실패'), true); })
+      .then(function () { st.docxBusy = false; var b2 = $('rvDocx'); if (b2) b2.disabled = false; });
+  }
+
+  /* ---------- 리포트 진입점: 카드마다 "수정안 보기", 상단 "채택한 위험으로 수정안 받기", 단계 표시 "V 수정 권고" ---------- */
+  function paintReport() {
+    if (S.step !== 2 || !D()) return;
+    document.querySelectorAll('#s-cards .rc[data-card]').forEach(function (rc) {
+      var r = +rc.dataset.card, row = rc.querySelector('.rvrow');
+      if (!row) { row = el('div', 'rvrow'); var b = btn('btn sm', '수정안 보기'); b.dataset.rv = String(r); add(row, b, el('span', 'sm muted rvst', '')); rc.appendChild(row); }
+      var it = item(r), s = row.querySelector('.rvst'); s.textContent = it.status === 'idle' ? '거절 사유 해석 → 채택 연구의 대응 → 계획서 수정안 · 카드 1장당 10~30초' : statusText(it);
+    });
+    var span = document.querySelector('#s-summary .idx > span');
+    if (span && !$('rvTop') && cards().length) { var tb = btn('btn sm', '채택한 위험으로 수정안 받기', 'rvTop'); tb.title = '체크리스트에서 채택한 항목의 위험카드(없으면 모든 카드) · 여러 장 순서대로'; span.insertBefore(tb, span.firstChild); }
+  }
+  function paintSteps() {
+    var steps = $('steps'); if (!steps || $('stpRevise')) return;
+    var ok = !!(D() && cards().length), cur = S.step === 4, done = !cur && S.maxStep >= 5;
+    var b = btn('stp' + (cur ? ' cur' : (done ? ' done' : '')), '', 'stpRevise'); b.dataset.rstep = '4'; b.disabled = !ok; b.title = ok ? '수정 권고 · 카드별 거절 사유 해석 · 계획서 수정안 · 수정본 뷰어' : '수정 권고 · 리포트의 위험카드에서 열림';
+    var n = el('span', 'n'); if (done) n.innerHTML = U.CHECK; else n.textContent = 'V';
+    add(b, n, '수정 권고'); steps.appendChild(b);
+  }
+  new MutationObserver(function () { if (document.body.dataset.ready === '1') { paintSteps(); paintReport(); } }).observe(document.body, { attributes: true, attributeFilter: ['data-ready'] });
+  new MutationObserver(paintSteps).observe($('steps'), { childList: true });
+
+  /* ---------- V 수정 권고 화면 ---------- */
+  function goRevise(ranks, run) {
+    if (!D() || !cards().length) { U.toast('위험카드가 없어 수정 권고를 만들 수 없음'); return; }
+    var st = state(); if (ranks && ranks.length) st.sel = ranks.slice();
+    S.step = 4; S.maxStep = Math.max(S.maxStep, 5); U.closeAll(); U.renderSteps(); window.scrollTo(0, 0);
+    renderRevise();
+    if (run && ranks && ranks.length) runQueue(ranks.filter(function (r) { return item(r).status !== 'done'; }));
+    var h = $('rvTitle'); if (h) h.focus({ preventScroll: true });
+    if (!run && ranks && ranks.length === 1) { var sec = $('rv-' + ranks[0]); if (sec) setTimeout(function () { sec.scrollIntoView({ block: 'start' }); }, 0); }
+  }
+  function renderRevise() {
+    var app = $('app'), d = D(), st = state();
+    document.body.dataset.ready = '0'; document.body.dataset.view = 'revise';
+    clear(app);
+    var rep = el('div', 'rep'), doc = el('article', 'doc'); add(rep, doc);
+    var top = el('section'); top.id = 'rv-top';
+    add(top, el('div', 'eyebrow en', 'Revision advice · V'));
+    var h1 = el('h1', null, '계획서 수정 권고'); h1.id = 'rvTitle'; h1.tabIndex = -1; h1.style.cssText = 'font-size:30px; margin:8px 0 0 0;'; add(top, h1);
+    add(top, el('p', 'sm muted', '“완전한 유기체”는 근거 기반으로 고쳐진 연구계획서 — 거절 사유 해석 → 채택 연구의 대응 → 계획서 수정안 → 연구자 결정 → 수정본'));
+    var idx = el('div', 'idx'); idx.id = 'rvIdx';
+    var a0 = el('a', 'on', '카드 고르기'); a0.href = '#rv-hub'; a0.dataset.jump = 'rv-hub'; add(idx, a0);
+    activeRanks().forEach(function (r) { var a = el('a'); a.href = '#rv-' + r; a.dataset.jump = 'rv-' + r; add(a, el('b', null, pad2(r)), U.fam(cardOf(r).fam).n); add(idx, a); });
+    var a9 = el('a', null, '수정본'); a9.href = '#rv-sum'; a9.dataset.jump = 'rv-sum'; add(idx, a9);
+    var sp = el('span'); sp.style.cssText = 'margin-left:auto; display:flex; gap:6px; flex-wrap:wrap;';
+    add(sp, btn('btn sm', '리포트로', 'rvBack'), btn('btn sm dark', '수정본 보기', 'rvOpen')); add(idx, sp); add(top, idx);
+    var nt = el('div', 'notice'); nt.id = 'rvNotice'; add(top, nt);
+    var hub = el('div', 'card rvhub'); hub.id = 'rv-hub'; add(top, hub);
+    add(doc, top);
+    activeRanks().forEach(function (r) { add(doc, buildCard(r)); });
+    var sum = el('section'); sum.id = 'rv-sum'; var sh = el('div', 'sec'); add(sh, el('span', 'num', '§'), el('h2', null, '수정본'), el('span', 'd', '채택·직접 수정한 문안을 반영한 계획서 · 뷰어에서 깨끗한 원고 · 변경 표시 · 각주 판')); add(sum, sh);
+    var sc = el('div', 'card'); sc.id = 'rvSum'; sc.style.padding = '18px 22px'; add(sum, sc); add(doc, sum);
+    var panel = el('aside', 'panel card'); panel.style.padding = '12px';
+    var tabs = el('div', 'ptabs'); var b1 = btn(S.ptab === 'ev' ? 'on' : '', '근거'); b1.dataset.ptab = 'ev'; var b2 = btn(S.ptab === 'plan' ? 'on' : '', '계획서'); b2.dataset.ptab = 'plan'; var bc = btn('rvclose', '닫기 ✕'); bc.dataset.rvclose = '1'; bc.setAttribute('aria-label', '패널 닫기'); add(tabs, b1, b2, bc);
+    var pb = el('div', 'pbody'); pb.id = 'pbody'; add(panel, tabs, pb); add(rep, panel);
+    var fab = btn('btn sm rvfab', '근거 · 계획서'); fab.dataset.rvopen = '1'; add(rep, fab);
+    add(app, rep, viewerShell());
+    paintNotice(); paintHub(); paintSummary(); U.renderPanel();
+    document.body.dataset.ready = '1';
+  }
+  function activeRanks() { var st = state(); return cards().map(function (c) { return c.rank; }).filter(function (r) { return st.items[r] && st.items[r].status !== 'idle'; }); }
+  function paintAll() { if (S.step === 4) { if (activeRanks().length !== document.querySelectorAll('.rvsec').length) { renderRevise(); return; } paintNotice(); paintHub(); activeRanks().forEach(paintCardBody); paintSummary(); if ($('rvViewer') && $('rvViewer').classList.contains('on')) paintViewer(); } else paintReport(); }
+  function paintNotice() {
+    var nt = $('rvNotice'); if (!nt) return; clear(nt);
+    var d = D(), st = state(), dev = false, devWhy = '', gens = {}, notes = {};
+    Object.keys(st.items).forEach(function (r) { var it = st.items[r]; if (!it.rev) return; if (it.rev.dev) { dev = true; devWhy = it.devWhy || devWhy; } gens[genText(it.rev.gen, it.rev.model, it.rev.genl)] = 1; it.rev.notices.forEach(function (n) { notes[n] = 1; }); });
+    var parts = [];
+    if (d._status && d._status.source === 'sample') parts.push(['샘플 데이터', '분석 결과가 아닌 공용 fixture로 만든 예시 · 수정 권고도 예시']);
+    if (dev) parts.push(['개발용 어댑터', (devWhy || '서버 수정 권고 API(POST /premortem/revise) 없음') + ' → 모의(mock) 권고 · 분석 결과 아님']);
+    var gk = Object.keys(gens); if (gk.length) parts.push(['생성 주체', gk.join(' · ') + ' · 제안 문안은 근거가 아니며 최종 판단은 연구자에게']);
+    Object.keys(notes).forEach(function (n) { parts.push(['', n]); });
+    if (!parts.length) { nt.hidden = true; return; }
+    nt.hidden = false; parts.forEach(function (p, i) { if (i === 0) { add(nt, p[0] ? el('b', null, p[0]) : '', p[1]); } else { var s = el('span', 'sm'); add(s, p[0] ? el('b', null, p[0]) : '', p[1]); add(nt, s); } });
+  }
+  function paintHub() {
+    var c = $('rv-hub'); if (!c) return; clear(c);
+    var st = state(), cs = cards(), sel = st.sel || adoptedRanks(); st.sel = sel;
+    add(c, el('div', 'eyebrow', '위험카드 고르기 · 카드 1장당 10~30초 · 고른 순서대로 진행 · 진행 중 취소 가능'));
+    cs.forEach(function (cd) {
+      var f = U.fam(cd.fam), it = item(cd.rank), row = el('label', 'rvpick'), cb = el('input'); cb.type = 'checkbox'; cb.dataset.rvsel = String(cd.rank); cb.checked = sel.indexOf(cd.rank) >= 0; cb.disabled = it.status === 'running' || it.status === 'queued';
+      var body = el('span'); add(body, el('b', null, f.n), ' ', el('span', 'sm muted', f.k + ' · 심각도 S' + cd.sev + ' · 근거 ' + cd.ev.length + '건' + (cd.lines.length ? ' · ' + cd.lines.map(function (n) { return n + '행'; }).join(', ') : '')));
+      var stt = el('span', 'st ' + it.status); stt.id = 'rvHs-' + cd.rank; stt.textContent = statusText(it);
+      if (it.status === 'error' || it.status === 'cancel') { var rb = btn('btn', '다시 시도'); rb.dataset.rvretry = String(cd.rank); add(stt, rb); }
+      if (it.status === 'done' || it.status === 'skipped') { var jb = btn('btn', '보기'); jb.dataset.jump = 'rv-' + cd.rank; add(stt, jb); }
+      add(row, cb, el('span', 'rk', pad2(cd.rank)), body, stt); add(c, row);
+    });
+    var row = el('div', 'rvrow'), run = btn('btn dark', '선택한 ' + sel.length + '장 수정안 받기', 'rvRun'); run.disabled = !sel.length || st.running != null;
+    var cancel = btn('btn', '취소', 'rvCancel'); cancel.disabled = st.running == null && !st.queue.length;
+    var live = el('span', 'sm'); live.id = 'rvLive'; live.setAttribute('role', 'status'); live.setAttribute('aria-live', 'polite'); live.textContent = liveText();
+    add(row, run, cancel, live); add(c, row);
+  }
+  function liveText() { var st = state(); if (st.running != null) return '카드 ' + pad2(st.running) + ' 진행 중 · ' + statusText(item(st.running)) + (st.queue.length ? ' · 대기 ' + st.queue.length + '장' : ''); var n = activeRanks().filter(function (r) { return item(r).status === 'done'; }).length; return n ? '완료 ' + n + '장' : ''; }
+  function paintWait(it) {
+    var e = $('rvEl-' + it.rank); if (e) e.textContent = elapsedOf(it).toFixed(1) + 's';
+    var s = $('rvStg-' + it.rank); if (s) { clear(s); STAGES.forEach(function (x) { var on = it.stage === x[0]; add(s, el('span', on ? 'on' : (stageIdx(it.stage) > stageIdx(x[0]) ? 'ok' : ''), x[1])); }); if (it.stage && stageIdx(it.stage) < 0) add(s, el('span', 'on', it.stageLabel || it.stage)); }
+    var m = $('rvMsg-' + it.rank); if (m) m.textContent = it.stage ? '단계 · ' + (it.stageLabel || it.stage) : '서버 응답 대기 · 단계 보고 없음';
+    var hs = $('rvHs-' + it.rank); if (hs) hs.textContent = statusText(it);
+    var lv = $('rvLive'); if (lv) lv.textContent = liveText();
+  }
+  function stageIdx(id) { for (var i = 0; i < STAGES.length; i++) if (STAGES[i][0] === id) return i; return -1; }
+  function buildCard(rank) {
+    var cd = cardOf(rank), f = U.fam(cd.fam), sec = el('section', 'rvsec'); sec.id = 'rv-' + rank;
+    var hd = el('div', 'sec'); add(hd, el('span', 'num', pad2(rank)), el('h2', null, f.n), el('span', 'd', f.k + ' · 심각도 S' + cd.sev + ' · ' + cd.src)); add(sec, hd);
+    var card = el('div', 'card rvcard'); card.id = 'rvc-' + rank; add(sec, card);
+    paintCardBody(rank);
+    return sec;
+  }
+  function paintCardBody(rank) {
+    var card = $('rvc-' + rank); if (!card) return; clear(card);
+    var it = item(rank), cd = cardOf(rank);
+    if (it.status === 'queued' || it.status === 'running') { add(card, waitBlock(it)); paintWait(it); return; }
+    if (it.status === 'error' || it.status === 'cancel') { add(card, errBlock(it)); return; }
+    if (!it.rev) { add(card, el('div', 'rvnone', '아직 수정안 없음')); return; }
+    if (it.rev.skipped) { var nb = el('div', 'rvnone'); add(nb, el('b', null, '권고 없음'), it.rev.skipped); add(card, revHead(it, cd), nb); return; }
+    add(card, revHead(it, cd), groupA(it), groupB(it), groupC(it, cd), groupD(it));
+  }
+  function waitBlock(it) {
+    var w = el('div', 'rvwait'); w.setAttribute('role', 'status'); w.setAttribute('aria-live', 'polite');
+    var msg = el('div', 'msg'); add(msg, el('b', null, it.status === 'queued' ? '대기 중 · 앞 카드가 끝나면 시작' : '수정안 만드는 중'), el('span', 'muted', '카드 1장당 10~30초'), el('span', 'el', ''));
+    msg.lastChild.id = 'rvEl-' + it.rank; add(w, msg);
+    var m = el('div', 'sm muted', ''); m.id = 'rvMsg-' + it.rank; add(w, m);
+    var s = el('div', 'rvstages'); s.id = 'rvStg-' + it.rank; add(w, s);
+    var bt = el('div', 'bt'); var c = btn('btn sm', '취소'); c.dataset.rvcancel = String(it.rank); add(bt, c); add(w, bt);
+    return w;
+  }
+  function errBlock(it) {
+    var e = el('div', 'errbox'); e.setAttribute('role', 'alert'); e.style.marginTop = '0';
+    add(e, el('b', null, it.status === 'cancel' ? '취소됨' : '수정안을 받지 못함'), ' ', el('span', null, it.err || ''));
+    var bt = el('div', 'rvrow'); var r = btn('btn', '다시 시도'); r.dataset.rvretry = String(it.rank); add(bt, r, el('span', 'sm muted', it.status === 'cancel' ? '다시 시도하면 처음부터 만든다' : '서버가 바쁘거나 시간이 초과되면 잠시 뒤 다시 시도 · 같은 카드는 다시 만들어도 무방'));
+    add(e, bt); return e;
+  }
+  function revHead(it, cd) {
+    var r = it.rev, h = el('div', 'rvh'); add(h, el('div', 'rk', pad2(it.rank)));
+    var b = el('div'); add(b, el('h3', null, '수정 권고'));
+    var sub = el('div', 'sub'); add(sub, genEl(r.gen, r.model, r.genl));
+    if (r.dev) add(sub, el('span', 'warn', '개발용 어댑터 · ' + (it.devWhy || '서버 API 없음') + ' · 모의 권고'));
+    if (r.sample) add(sub, el('span', 'warn', '샘플 · 분석 결과 아님'));
+    if (r.status && r.status !== 'ok') add(sub, el('span', 'warn', '상태 ' + r.status + (r.why ? ' · ' + r.why : '')));
+    if (r.effort) add(sub, el('span', null, '추론 강도 ' + r.effort));
+    if (r.elapsed != null || it.elapsed) add(sub, el('span', 'mono', (r.elapsed != null ? r.elapsed : it.elapsed).toFixed(1) + 's'));
+    var dropTotal = r.audit.drop + r.gate.dropped; add(sub, el('span', dropTotal ? 'warn' : '', '근거 없는 문장 제외 ' + dropTotal + (dropTotal ? ' (서버 게이트 ' + r.audit.drop + ' · 화면 ' + r.gate.dropped + ')' : '')));
+    if (r.audit.gate) add(sub, el('span', 'mono', r.audit.gate));
+    add(b, sub);
+    var cov = r.coverage; if (cov) add(b, el('div', 'rvnotes', '쓸 수 있던 기록 · 근거 논문 ' + N(cov.works_considered) + '편 중 결정 ' + N(cov.works_with_decision) + ' · 채택 ' + N(cov.works_accepted) + ' · 거절 ' + N(cov.works_rejected) + ' · 저자 답변 ' + N(cov.works_with_responses) + ' · 메타리뷰 ' + N(cov.works_with_meta_review) + (cov.record_source ? ' · ' + T(cov.record_source) : '')));
+    add(h, b); return h;
+  }
+  function sentEl(s, withWork) { var p = el('p'); add(p, s.t.replace(/[.。]\s*$/, '')); s.c.forEach(function (k) { add(p, citeBtn(k)); }); add(p, '.'); if (withWork) { var d = D(), w = null; d.works.forEach(function (x) { if (x.id === s.work) w = x; }); add(p, el('span', 'w', (w ? w.s : (s.work || '')) + (s.outcome ? ' · ' + s.outcome : ''))); } if (s.lines.length) s.lines.forEach(function (n) { if (U.lineOf(n)) add(p, ' ', lrefEl(n)); }); return p; }
+  function groupHead(n, title, desc) { var h = el('div', 'h'); add(h, el('span', 'n', n), el('b', null, title), el('span', 'd', desc)); return h; }
+  function auditEl(it, sec) { var r = it.rev, items = r.gate.items.filter(function (x) { return x[0] === sec; }); if (!items.length) return null; var a = el('div', 'rvaudit'); add(a, '화면 게이트 제외 ' + items.length + ' (근거 번호 없음)'); items.forEach(function (x) { add(a, el('s', null, x[1])); }); return a; }
+  function groupA(it) { var g = el('div', 'rvg'); g.id = 'rvA-' + it.rank; add(g, groupHead('(a)', '거절 사유 해석', '문장마다 근거 번호 · 누르면 오른쪽 근거 패널에 발췌·원문 링크')); var s = el('div', 'rvs'); if (it.rev.interp.length) it.rev.interp.forEach(function (x) { add(s, sentEl(x, false)); }); else add(s, el('div', 'rvnone', '근거가 연결된 해석 문장 없음')); add(g, s, auditEl(it, 'interpretation')); if (it.rev.audit.items.length) { var a = el('div', 'rvaudit'); add(a, '서버 게이트 제외 ' + it.rev.audit.drop + (it.rev.audit.noev ? ' · 근거 연결 실패 ' + it.rev.audit.noev : '')); it.rev.audit.items.forEach(function (x) { add(a, el('s', null, x)); }); add(g, a); } return g; }
+  function groupB(it) { var g = el('div', 'rvg'), r = it.rev; g.id = 'rvB-' + it.rank; add(g, groupHead('(b)', '채택 연구의 대응', '같은 지적을 받고도 채택된 연구의 저자 답변·메타리뷰 근거')); if (r.prec.status === 'found') { var s = el('div', 'rvs'); r.prec.items.forEach(function (x) { add(s, sentEl(x, true)); }); add(g, s); } else { var nb = el('div', 'rvnone'); add(nb, el('b', null, '대응 사례 없음'), r.prec.note || '채택된 유사 연구의 대응 기록을 찾지 못했다'); add(g, nb); } add(g, auditEl(it, 'precedents')); return g; }
+  function groupC(it, cd) {
+    var g = el('div', 'rvg'), r = it.rev; g.id = 'rvC-' + it.rank; add(g, groupHead('(c)', '계획서 수정안', '왼쪽 계획서 원문(해당 줄 강조) · 오른쪽 제안 문안 — 제안(근거 아님) · 줄 단위 전후 비교'));
+    if (!r.edits.length) { add(g, el('div', 'rvnone', '제안된 수정안 없음')); return g; }
+    var cnt = el('div', 'sm muted'); cnt.id = 'rvCnt-' + it.rank; cnt.style.marginBottom = '8px'; add(g, cnt); paintCnt(it);
+    add(g, diffGrid(it)); return g;
+  }
+  function paintCnt(it) { var e = $('rvCnt-' + it.rank); if (!e) return; var c = decCounts(it), n = it.rev.edits.length; e.textContent = '제안 ' + n + '건 · 채택 ' + c.adopt + ' · 직접 수정 ' + c.edit + ' · 기각 ' + c.reject + ' · 미결 ' + (n - c.adopt - c.edit - c.reject) + ' — (e) 결정은 결정 로그에 기록되고 수정본·내보내기에 반영'; }
+  function groupD(it) { var g = el('div', 'rvg'); g.id = 'rvD-' + it.rank; add(g, groupHead('(d)', '확인 질문', '연구자가 답해야 수정안이 성립하는 것')); if (!it.rev.qs.length) { add(g, el('div', 'rvnone', '확인 질문 없음')); return g; } var ul = el('ul', 'rvq2'); it.rev.qs.forEach(function (q, i) { var li = el('li'); var body = el('div'); add(body, q.t); q.lines.forEach(function (n) { if (U.lineOf(n)) add(body, ' ', lrefEl(n)); }); add(li, el('span', 'n', String.fromCharCode(97 + i)), body); add(ul, li); }); add(g, ul); return g; }
+  function tokens(s) { return String(s).split(/(\s+)/).filter(function (x) { return x !== ''; }); }
+  function wordDiff(a, b) {
+    var A = tokens(a), B = tokens(b), n = A.length, m = B.length;
+    if (n * m > 160000) return [['del', a], ['ins', b]];
+    var dp = []; for (var i = 0; i <= n; i++) { dp.push(new Array(m + 1)); for (var j = 0; j <= m; j++) dp[i][j] = 0; }
+    for (i = n - 1; i >= 0; i--) for (j = m - 1; j >= 0; j--) dp[i][j] = A[i] === B[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    var out = []; i = 0; j = 0;
+    var push = function (op, t) { if (out.length && out[out.length - 1][0] === op) out[out.length - 1][1] += t; else out.push([op, t]); };
+    while (i < n && j < m) { if (A[i] === B[j]) { push('eq', A[i]); i++; j++; } else if (dp[i + 1][j] >= dp[i][j + 1]) { push('del', A[i]); i++; } else { push('ins', B[j]); j++; } }
+    while (i < n) { push('del', A[i]); i++; } while (j < m) { push('ins', B[j]); j++; }
+    return out;
+  }
+  function diffSide(ops, side) { var s = el('span'); ops.forEach(function (o) { if (o[0] === 'eq') add(s, o[1]); else if (o[0] === side) add(s, el(side === 'del' ? 'del' : 'ins', null, o[1])); }); return s; }
+  function diffGrid(it) {
+    var r = it.rev, g = el('div', 'rvdiff'); g.setAttribute('role', 'table'); g.setAttribute('aria-label', '계획서 원문과 제안 문안의 줄 단위 비교');
+    add(g, el('div', 'hd', ''), el('div', 'hd old', '계획서 원문'), el('div', 'hd new', '제안 문안'));
+    var byLine = {}, ns = {}; r.edits.forEach(function (e) { (byLine[e.line] = byLine[e.line] || []).push(e); [e.line - 1, e.line, e.line + 1].forEach(function (n) { if (U.lineOf(n)) ns[n] = 1; }); });
+    var order = Object.keys(ns).map(Number).sort(function (a, b) { return a - b; }), prev = null;
+    order.forEach(function (n) {
+      if (prev != null && n !== prev + 1) add(g, el('div', 'ln', ''), el('div', 'ctx gap', '⋯ ' + (n - prev - 1) + '줄'), el('div', 'ctx gap same', ''));
+      prev = n; var t = lineText(n), es = byLine[n] || [], repl = es.filter(function (e) { return e.kind !== 'insert'; }), ins = es.filter(function (e) { return e.kind === 'insert'; });
+      if (!repl.length) add(g, el('div', 'ln', n), el('div', 'ctx', t), el('div', 'ctx same', t));
+      repl.forEach(function (e) {
+        var ops = e.kind === 'delete' ? [['del', e.before]] : wordDiff(e.before, e.after);
+        var old = el('div', 'old'); add(old, lrefEl(n), ' ', diffSide(ops, 'del'));
+        var nw = el('div', 'new'); if (e.kind === 'delete') add(nw, el('span', 'muted', '(이 줄 삭제 제안)')); else add(nw, diffSide(ops, 'ins')); add(nw, el('span', 'rvtag', e.label)); if (e.mismatch) add(nw, el('span', 'rvtag bad', '원문 불일치 · 서버가 본 문장이 다름'));
+        add(g, el('div', 'ln f', n), old, nw, decBlock(it, e));
+      });
+      ins.forEach(function (e) { var nw = el('div', 'new'); add(nw, el('ins', null, e.after), el('span', 'rvtag', e.label)); add(g, el('div', 'ln f', n + '+'), el('div', 'old ins', '(' + n + '행 뒤에 새 줄 추가 제안)'), nw, decBlock(it, e)); });
+    });
+    return g;
+  }
+  function decBlock(it, e) { var b = el('div', 'rvdec'); b.id = 'rvd-' + it.rank + '-' + e.id; b.setAttribute('role', 'group'); b.setAttribute('aria-label', e.line + '행 제안에 대한 결정'); fillDec(b, it, e); return b; }
+  function fillDec(b, it, e) {
+    clear(b);
+    var why = el('div', 'why'); add(why, e.why ? e.why + ' ' : '제안 이유(근거 연결) '); e.c.forEach(function (k) { add(why, citeBtn(k)); }); if (!e.c.length) add(why, el('span', 'muted sm', '(이 제안에 연결된 근거 번호 없음 — 제안 이유가 게이트에서 빠짐)')); add(b, why);
+    var dec = it.dec[e.id], bt = el('div', 'bt');
+    ['adopt', 'edit', 'reject'].forEach(function (k) { var x = btn('rdec', DEC[k]); x.dataset.rank = String(it.rank); x.dataset.edit = e.id; x.dataset.d = k; x.setAttribute('aria-pressed', dec && dec.d === k ? 'true' : 'false'); add(bt, x); });
+    add(bt, el('span', 'sm', dec ? DEC[dec.d] + ' · ' + dec.at.slice(11, 19) : '결정 전')); add(b, bt);
+    if (dec && dec.d === 'edit') { var ta = el('textarea', 'rvedit'); ta.value = dec.text; ta.dataset.rvedit = e.id; ta.dataset.rank = String(it.rank); ta.setAttribute('aria-label', e.line + '행 직접 수정 문안'); ta.spellcheck = false; add(b, ta); }
+    paintCnt(it);
+  }
+  function paintSummary() {
+    var c = $('rvSum'); if (!c) return; clear(c);
+    var asm = assembleLocal(), n = asm.counts, row = el('div', 'rvsum');
+    [[n.adopted, '채택', '제안 ' + n.proposed + '건 중'], [n.undecided, '미결', '아직 결정 전'], [n.conflicts, '충돌', '같은 줄에 두 수정안'], [n.fills, '확인 필요', '[확인 필요: …] 자리표시']].forEach(function (x) { var k = el('div'); var v = el('div', 'v', String(x[0])); add(v, el('i', null, x[1])); add(k, v, el('div', 'l', x[2])); add(row, k); });
+    add(c, row);
+    var r2 = el('div', 'rvrow'); var o = btn('btn dark', '수정본 보기(뷰어)', 'rvOpen2'); o.disabled = !n.proposed; var md = btn('btn', '원고 내려받기(.md)'); md.dataset.rvdl = 'md'; add(r2, o, md, el('span', 'sm muted', asm.complete ? '완성본 — 미결·충돌·확인 필요 0' : (n.proposed ? '뷰어에서 충돌 선택 · 확인 필요 입력 · 각주 확인' : '수정안을 받은 뒤 결정하면 여기에 반영')));
+    add(c, r2);
+  }
+
+  /* ---------- 수정본 뷰어 모달: 깨끗한 원고 · 변경 표시 · 각주 판 / 충돌 선택 / [확인 필요] 입력 / .md .docx 인쇄 ---------- */
+  function viewerShell() {
+    var m = el('div', 'rvm marks'); m.id = 'rvViewer'; m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true'); m.setAttribute('aria-labelledby', 'rvVTitle'); m.hidden = false;
+    var sheet = el('div', 'sheet'); var bar = el('div', 'bar'); bar.id = 'rvVBar'; var body = el('div', 'body'); body.id = 'rvVBody'; body.tabIndex = -1;
+    add(sheet, bar, body); add(m, sheet); return m;
+  }
+  function openViewer(opener) {
+    var st = state(), m = $('rvViewer'); if (!m) return; st.opener = opener || document.activeElement; st.pin = null;
+    m.classList.add('on'); document.body.classList.add('rvmopen');
+    paintViewer(); if (!st.asm) refreshServerAsm();
+    var t = $('rvVTitle'); if (t) t.focus();
+  }
+  function closeViewer() { var st = state(), m = $('rvViewer'); if (!m || !m.classList.contains('on')) return; m.classList.remove('on'); document.body.classList.remove('rvmopen'); hideTip(); var o = st.opener; st.opener = null; if (o && o.focus && document.contains(o)) o.focus(); }
+  function viewerOpen() { var m = $('rvViewer'); return !!(m && m.classList.contains('on')); }
+  function paintViewer() {
+    var m = $('rvViewer'); if (!m) return;
+    var a = document.activeElement, fid = a && m.contains(a) ? (a.id || (a.dataset && a.dataset.rvview ? 'view:' + a.dataset.rvview : '')) : '';
+    m.className = 'rvm on' + (state().view === 'marks' || state().view === 'notes' ? ' marks' : '') + (state().view === 'notes' ? ' notes' : ''); paintViewerBar(); paintViewerBody();
+    if (fid) { var back = fid.indexOf('view:') === 0 ? m.querySelector('[data-rvview="' + fid.slice(5) + '"]') : $(fid); if (back && back.focus) back.focus({ preventScroll: true }); }
+  }
+  function paintViewerBar() {
+    var bar = $('rvVBar'); if (!bar) return; clear(bar);
+    var d = D(), st = state(), asm = currentAsm(), n = asm.counts;
+    var ttl = el('div', 'ttl'); add(ttl, el('div', 'ey', 'Revised manuscript'));
+    var h2 = el('h2', null, d.plan.title || '연구계획서'); h2.id = 'rvVTitle'; h2.tabIndex = -1; add(ttl, h2); add(bar, ttl);
+    var cnt = el('div', 'cnt'); cnt.id = 'rvVCnt'; add(cnt, '변경 ', el('b', null, String(n.changed + n.inserted + n.deleted)), '곳 · 채택 ' + n.adopted + ' / 제안 ' + n.proposed + ' · 충돌 ' + n.conflicts + ' · 확인 필요 ' + n.fills + ' · 직접 수정 ' + (n.edited || 0));
+    if (asm.complete) add(cnt, ' ', el('span', 'tag acc', '완성본')); add(bar, cnt);
+    if (st.asmMsg || asm.source === 'local') { var am = el('div', 'sm' + (/없음|실패|거부|미적용/.test(st.asmMsg) ? ' inerr' : ' muted'), (MOCK ? '목업 · ' : '') + (st.asmMsg || '화면 조립') + (st.undo.length ? ' · 되돌리기 ' + st.undo.length + '단계(Ctrl+Z)' : '') + ' · 문단을 누르면 편집'); am.id = 'rvAsmMsg'; am.style.cssText = 'width:100%; margin-top:0;'; add(bar, am); }
+    var seg = el('div', 'seg'); seg.setAttribute('role', 'group'); seg.setAttribute('aria-label', '보기 전환');
+    [['clean', '깨끗한 원고'], ['marks', '변경 표시'], ['notes', '각주 판']].forEach(function (v) { var b = btn(st.view === v[0] ? 'on' : '', v[1]); b.dataset.rvview = v[0]; b.setAttribute('aria-pressed', st.view === v[0] ? 'true' : 'false'); add(seg, b); });
+    add(bar, seg);
+    var acts = el('div', 'acts');
+    var pol = el('label', 'opt' + (st.polish ? ' on' : '')); var pc = el('input'); pc.type = 'checkbox'; pc.checked = st.polish; pc.id = 'rvPolish'; pc.disabled = st.asmAvail === false; pc.style.cssText = 'accent-color:var(--red); margin:0;'; add(pol, pc, el('span', null, '문장 흐름 다듬기(새 내용 추가 없음)')); pol.title = '기본 끔 · 서버 조립(assemble)에 polish로 요청 · 코드 게이트(수치·자리표시·미변경 줄·길이)가 거부하면 미적용으로 표시'; add(acts, pol);
+    var md = btn('btn sm', '원고 내려받기(.md)'); md.dataset.rvdl = 'md'; var dx = btn('btn sm', '.docx', 'rvDocx'); dx.title = '서버가 만든 Word 문서'; var dm = el('span', 'sm muted', st.docxMsg || ''); dm.id = 'rvDocxMsg';
+    var pr = btn('btn sm', '인쇄/PDF 저장', 'rvPrint'); var cl = btn('btn sm', '닫기 ✕', 'rvVClose'); cl.setAttribute('aria-label', '뷰어 닫기');
+    add(acts, md, dx, dm, pr, cl); add(bar, acts);
+  }
+  function headingOf(t) { var m = /^\s{0,3}(#{1,6})\s+(.*)$/.exec(t); return m ? { level: m[1].length, text: m[2] } : null; }
+  function paintViewerBody() {
+    var body = $('rvVBody'); if (!body) return; clear(body); hideTip();
+    var d = D(), st = state(), asm = currentAsm(), n = asm.counts, paper = el('div', 'rvpaper'); paper.id = 'rvPaper';
+    var same = asm.conflicts.filter(function (c) { return !c.kind || c.kind === 'same_line'; }), stale = asm.conflicts.filter(function (c) { return c.kind && c.kind !== 'same_line'; });
+    if (same.length) { var bn = el('div', 'notice'); bn.id = 'rvConfBanner'; var bb = btn('btn sm', '선택 필요 ' + same.length + '건'); bb.dataset.rvjumpconf = '1'; add(bn, el('b', null, '미해결 충돌'), '같은 문단을 두 수정안이 고침 · 하나를 고르면 결정 로그에 기록 ', bb); add(paper, bn); }
+    if (stale.length) { var sn = el('div', 'notice'); sn.id = 'rvStaleBanner'; add(sn, el('b', null, '적용 못 한 수정안 ' + stale.length + '건'), stale.map(function (c) { return c.n + '행 · ' + c.kind + (c.detail ? ' · ' + c.detail : ''); }).join(' / ')); add(paper, sn); }
+    asm.notices.forEach(function (x) { if (/충돌|자리표시/.test(x)) return; add(paper, el('div', 'sm muted', x)); });
+    if (n.fills) { var fb = el('div', 'sm', ''); fb.id = 'rvFillCnt'; fb.style.cssText = 'color:var(--amber); font-weight:600; margin-bottom:12px;'; fb.textContent = '연구자 확인 필요 ' + n.fills + '곳 — 칩을 누르면 바로 입력'; add(paper, fb); }
+    var title = null; asm.paras.forEach(function (p) { if (!title && p.h === 'title') title = p; });
+    add(paper, el('div', 't', title ? (headingOf(finalText(title)) || { text: finalText(title) }).text : (d.plan.title || '연구계획서')));
+    add(paper, el('div', 'meta', (d.plan.file || '직접 입력') + ' · 수정본 · ' + new Date().toISOString().slice(0, 10) + ' · 변경 ' + (n.changed + n.inserted + n.deleted) + '곳' + (asm.complete ? ' · 완성본' : '') + ' · 제안 문안은 근거가 아니며 최종 판단은 연구자에게'));
+    if (!asm.paras.length) add(paper, el('div', 'empty', '계획서 줄 없음'));
+    asm.paras.forEach(function (p) { if (p === title) return; add(paper, paraEl(p, st)); if (p.conflict || (p.options && p.options.length > 1 && st.view !== 'clean')) add(paper, conflictEl(p, st)); });
+    if (st.view === 'notes' && asm.notes.length) add(paper, notesEl(asm));
+    var tip = el('div', 'rvtip'); tip.id = 'rvTip'; tip.setAttribute('role', 'tooltip'); add(paper, tip);
+    add(body, paper);
+  }
+  function paraEl(p, st) {
+    var text = p.polished ? p.t : null;
+    var h = headingOf(p.kind === 'deleted' ? p.t : (text || finalText(p))), e;
+    if (h && p.kind === 'same') { e = el(h.level <= 2 ? 'h2' : 'h3', null, h.text); return e; }
+    e = el('p', p.kind === 'changed' ? 'chg' : (p.kind === 'inserted' ? 'ins' : (p.kind === 'deleted' ? 'del' : ''))); e.dataset.n = String(p.n); e._para = p;
+    if (p.kind !== 'deleted' && !p.conflict) { e.dataset.rvedit = pkey(p); e.title = '누르면 이 문단을 편집'; }
+    if (p.kind === 'same' || p.kind === 'deleted') { e.textContent = p.t; if (p.kind === 'same' && st.view !== 'clean') e.tabIndex = 0; return e; }
+    if (h) { e.textContent = ''; add(e, el('strong', null, h.text)); }
+    else if (text) { e.textContent = text; if (st.view !== 'clean') add(e, el('span', 'rvtag', '다듬음')); }
+    else p.segs.forEach(function (s) { if (!s.ph) add(e, s.t); else add(e, chipEl(s)); });
+    if (st.view !== 'clean' && (p.me || (p.src && p.src.dec && p.src.dec.d === 'edit'))) add(e, el('span', 'rvtag me', '직접 수정'));
+    if (st.view === 'notes' && p.fn) { var sup = el('sup'); var fb = btn('cite', String(p.fn)); fb.dataset.rvfn = String(p.fn); fb.setAttribute('aria-label', '각주 ' + p.fn); add(sup, fb); add(e, sup); }
+    if (st.view !== 'clean') { e.tabIndex = 0; e.dataset.rvtip = '1'; e.setAttribute('aria-describedby', 'rvTip'); }
+    return e;
+  }
+  function chipEl(s) { var st = state(); if (s.val) { var f = el('button', 'rvph filled', s.val); f.type = 'button'; f.dataset.rvph = s.key; f.dataset.label = s.label; f.title = '확인 필요: ' + s.label + ' → 입력됨 · 누르면 고치기'; return f; } var b = el('button', 'rvph', '확인 필요: ' + s.label); b.type = 'button'; b.dataset.rvph = s.key; b.dataset.label = s.label; b.title = '누르면 바로 입력'; return b; }
+  function editChip(chip) {
+    var key = chip.dataset.rvph, label = chip.dataset.label, st = state(), cur = st.fill[key] ? st.fill[key].v : '';
+    var inp = el('input', 'rvphin'); inp.type = 'text'; inp.value = cur; inp.placeholder = label; inp.setAttribute('aria-label', '확인 필요: ' + label); inp.style.cssText = 'font:inherit; font-size:14px; padding:2px 8px; border:1px solid var(--amber); border-radius:2px; background:#fff; min-width:160px; max-width:100%;';
+    var done = function (commit) { if (inp._done || !document.contains(inp)) return; inp._done = true; var v = inp.value.trim(), was = st.fill[key] ? st.fill[key].v : ''; if (commit) { if (v) st.fill[key] = { v: v, at: new Date().toISOString() }; else delete st.fill[key]; persist(); } if (st.asm && st.asm.source === 'server' && st.asm.paras) st.asm.paras.forEach(function (p) { if (p.segs) p.segs = segments(p, st); }); paintViewer(); if (commit && v !== was) invalidateAsm(); var again = document.querySelector('[data-rvph="' + key.replace(/"/g, '') + '"]'); if (again) again.focus(); };
+    inp.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); done(true); } else if (ev.key === 'Escape') { ev.stopPropagation(); done(false); } });
+    inp.addEventListener('blur', function () { done(true); });
+    chip.replaceWith(inp); inp.focus(); inp.select();
+  }
+  function conflictEl(p, st) {
+    var box = el('div', 'rvconf'); box.dataset.n = String(p.n); box.style.cssText = 'margin:-4px 0 14px 0; padding:10px 12px; border:1px solid ' + (p.conflict ? 'var(--red-l)' : 'var(--line)') + '; border-radius:3px; font-size:13.5px;';
+    add(box, el('div', 'eyebrow', (p.conflict ? '선택 필요 · ' : '선택됨 · ') + p.n + '행에 수정안 ' + p.options.length + '개'));
+    var grid = el('div'); grid.style.cssText = 'display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px; margin-top:8px;';
+    p.options.forEach(function (o) { var c = el('div'); c.style.cssText = 'padding:8px 10px; background:var(--soft); border-radius:2px;' + (p.src && p.src.key === o.key && !p.conflict ? ' outline:2px solid var(--green);' : ''); add(c, el('div', 'sm muted', '카드 ' + pad2(o.rank) + ' · ' + DEC[o.dec.d] + (o.edit.why ? ' · ' + o.edit.why : '')), el('div', null, o.text)); var b = btn('btn sm' + (p.src && p.src.key === o.key && !p.conflict ? ' dark' : ''), p.src && p.src.key === o.key && !p.conflict ? '선택됨' : '이 안 선택'); b.dataset.rvpick = o.key; b.dataset.n = String(p.n); b.style.marginTop = '6px'; add(c, b); add(grid, c); });
+    add(box, grid); return box;
+  }
+  function notesEl(asm) {
+    var d = D(), sec = el('div'); sec.style.cssText = 'margin-top:36px; padding-top:14px; border-top:3px double var(--line2);';
+    add(sec, el('div', 'eyebrow', '각주 · 변경 문장의 근거(심사평·저자 답변 발췌 · 원문 링크)'));
+    asm.notes.forEach(function (nt) { var p = nt.p, src = p.src, e = src.edit, it = src.rank ? item(src.rank) : null, row = el('div'); row.id = 'rvFn-' + nt.n; row.tabIndex = -1; row.style.cssText = 'display:grid; grid-template-columns:28px minmax(0,1fr); gap:8px; padding:8px 0; border-bottom:1px solid var(--line); font-size:13px;';
+      var bd = el('div'); add(bd, el('div', null, (p.kind === 'inserted' ? p.n + '행 뒤 추가' : p.n + '행 수정') + (src.rank ? ' · 카드 ' + pad2(src.rank) : '') + ' · ' + DEC[src.dec.d] + (src.by === 'researcher' ? '(연구자 문안)' : '') + (it && it.rev ? ' · ' + genText(it.rev.gen, it.rev.model, it.rev.genl) : '') + (p.polished ? ' · 다듬음' : '')));
+      if (e.why) add(bd, el('div', 'muted', '이유(제안, 근거 아님): ' + e.why));
+      e.c.forEach(function (k) { var ev = d.ev[k]; if (!ev) return; var q = el('div'); q.style.cssText = 'margin-top:6px; padding-left:10px; border-left:2px solid var(--line2);'; add(q, el('span', 'cite', '#' + k), ' ', el('span', 'pq ko', ev.q)); var m = el('div', 'sm muted'); add(m, ev.p + ' · ' + (ev.v || '') + ' · ' + (ev.d || '미정') + ' · ', extLink(ev.u, '원문 ↗')); add(q, m); add(bd, q); });
+      if (!e.c.length) add(bd, el('div', 'muted', '연결된 근거 번호 없음'));
+      add(row, el('span', 'cite', String(nt.n)), bd); add(sec, row); });
+    return sec;
+  }
+  /* 툴팁: 변경 문장에 마우스를 올리거나 포커스·클릭 → 원문·근거 요약 */
+  function showTip(e) {
+    var p = e._para, tip = $('rvTip'), paper = $('rvPaper'); if (!p || !tip || !paper) return; clear(tip);
+    var src = p.src, d = D();
+    if (p.kind === 'changed') { add(tip, el('div', 'k', '원문 ' + p.n + '행'), el('div', 'o', p.orig)); }
+    if (!src) { add(tip, el('div', 'k', '연구자 직접 편집(뷰어) · 근거 없음 · 결정 로그 modify')); var r0 = e.getBoundingClientRect(), pr0 = paper.getBoundingClientRect(); tip.style.top = (r0.bottom - pr0.top + 6) + 'px'; tip.style.left = Math.max(0, r0.left - pr0.left) + 'px'; tip.classList.add('on'); return; }
+    add(tip, el('div', 'k', '근거 요약'));
+    var it0 = src.rank ? item(src.rank) : null, s = el('div'); add(s, (src.rank ? '카드 ' + pad2(src.rank) : '카드 미상') + ' · ' + DEC[src.dec.d] + (it0 && it0.rev ? ' · ' + genText(it0.rev.gen, it0.rev.model) : '') + (src.by === 'researcher' ? ' · 연구자 문안' : '') + (src.edit.why ? ' · ' + src.edit.why : ''));
+    src.edit.c.forEach(function (k) { var ev = d.ev[k]; if (ev) { add(s, ' ', el('span', 'cite', '#' + k), ' “' + String(ev.q).slice(0, 90) + (ev.q.length > 90 ? '…' : '') + '” (' + (ev.d || '미정') + ')'); } });
+    add(tip, s);
+    var r = e.getBoundingClientRect(), pr = paper.getBoundingClientRect();
+    tip.style.top = (r.bottom - pr.top + 6) + 'px'; tip.style.left = Math.max(0, r.left - pr.left) + 'px'; tip.classList.add('on');
+  }
+  function hideTip() { var st = state(), tip = $('rvTip'); if (tip && !st.pin) tip.classList.remove('on'); }
+  function trapTab(ev) {
+    var m = $('rvViewer'); if (!m || !m.classList.contains('on') || ev.key !== 'Tab') return;
+    var f = Array.prototype.slice.call(m.querySelectorAll('button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])')).filter(function (x) { return !x.disabled && x.offsetParent !== null; });
+    if (!f.length) { ev.preventDefault(); return; }
+    var first = f[0], last = f[f.length - 1], a = document.activeElement;
+    if (ev.shiftKey && (a === first || !m.contains(a))) { ev.preventDefault(); last.focus(); } else if (!ev.shiftKey && a === last) { ev.preventDefault(); first.focus(); }
+  }
+
+  /* ---------- 뷰어 편집: 문단을 누르면 편집 모드(저장 Ctrl+Enter · 취소 Esc · 원래대로), Ctrl+Z 되돌리기.
+     제안 문단의 편집은 그 수정안의 결정 '수정'(revised_text)이 되고(서버 assemble·.docx에 반영), 원문 문단의 편집은 뷰어·.md·결정 로그에만 반영된다(계약상 assemble은 수정안 결정만 받는다) ---------- */
+  function pkey(p) { return p.src && p.src.rank && p.src.edit ? 'e:' + p.src.rank + ':' + p.src.edit.id : 'n:' + p.n; }
+  function paraText(p) { return p.kind === 'same' ? p.t : (p.me ? p.t : finalText(p)); }
+  function startEdit(e) {
+    var st = state(), p = e._para; if (!p || st.editing) { if (st.editing && st.editing.key !== e.dataset.rvedit) editAction('cancel'); else return; }
+    hideTip(); st.pin = null;
+    var box = el('div', 'rvedbox'); box.dataset.n = String(p.n);
+    var ta = el('textarea', 'rvpta'); ta.value = paraText(p); ta.setAttribute('aria-label', (p.n ? p.n + '행 ' : '') + '문단 편집'); ta.spellcheck = false; ta.rows = Math.max(2, Math.min(12, Math.ceil(ta.value.length / 60) + 1));
+    var tb = el('div', 'rvtb'); var sv = btn('btn sm dark', '저장'); sv.dataset.rvact = 'save'; var cc = btn('btn sm', '취소'); cc.dataset.rvact = 'cancel'; var rv = btn('btn sm', '원래대로'); rv.dataset.rvact = 'revert'; rv.title = p.src ? '제안 문안으로 되돌림(결정 채택)' : '계획서 원문으로 되돌림';
+    add(tb, sv, cc, rv, el('span', 'sm muted', (p.src ? '이 수정안의 결정이 "수정"이 됩니다 · ' : '원문 문단 · 결정 로그에 modify로 기록 · ') + 'Ctrl+Enter 저장 · Esc 취소 · 붙여넣기는 서식 없는 글자만'));
+    add(box, ta, tb); e.replaceWith(box); st.editing = { key: e.dataset.rvedit, p: p, box: box, ta: ta };
+    ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+  }
+  function editAction(act) {
+    var st = state(), ed = st.editing; if (!ed) return;
+    var p = ed.p, text = ed.ta.value.replace(/\r\n?/g, '\n').replace(/\n+/g, ' ').trim();
+    if (act === 'cancel') { st.editing = null; paintViewer(); focusPara(p); return; }
+    if (act === 'revert') { st.editing = null; if (p.src && p.src.rank && p.src.edit) { var it = item(p.src.rank), eid = p.src.edit.id; pushUndo({ k: 'dec', rank: p.src.rank, eid: eid, prev: it.dec[eid] ? JSON.parse(JSON.stringify(it.dec[eid])) : null }); it.dec[eid] = { d: 'adopt', text: p.src.edit.after, at: new Date().toISOString() }; syncCardDec(p.src.rank, eid); } else { pushUndo({ k: 'pedit', key: String(p.n), prev: st.pedit[String(p.n)] || null }); delete st.pedit[String(p.n)]; } afterEdit(p); return; }
+    if (!text) { U.toast('빈 문단은 저장하지 않음 — 삭제는 카드의 결정으로'); return; }
+    st.editing = null;
+    if (p.src && p.src.rank && p.src.edit) {
+      var it2 = item(p.src.rank), eid2 = p.src.edit.id; if (!it2.rev) { U.toast('이 문단의 수정안 정보가 없음'); paintViewer(); return; }
+      pushUndo({ k: 'dec', rank: p.src.rank, eid: eid2, prev: it2.dec[eid2] ? JSON.parse(JSON.stringify(it2.dec[eid2])) : null });
+      it2.dec[eid2] = { d: 'edit', text: text, at: new Date().toISOString() }; syncCardDec(p.src.rank, eid2);
+    } else {
+      var k = String(p.n), origLine = lineText(p.n);
+      pushUndo({ k: 'pedit', key: k, prev: st.pedit[k] || null });
+      if (text === origLine.trim()) delete st.pedit[k]; else st.pedit[k] = { text: text, at: new Date().toISOString() };
+    }
+    afterEdit(p);
+  }
+  function pushUndo(u) { var st = state(); st.undo.push(u); if (st.undo.length > 50) st.undo.shift(); }
+  function undoLast() {
+    var st = state(), u = st.undo.pop(); if (!u) { U.toast('되돌릴 편집 없음'); return; }
+    if (u.k === 'dec') { var it = item(u.rank); if (u.prev) it.dec[u.eid] = u.prev; else delete it.dec[u.eid]; syncCardDec(u.rank, u.eid); }
+    else { if (u.prev) st.pedit[u.key] = u.prev; else delete st.pedit[u.key]; }
+    afterEdit(null); U.toast('되돌림');
+  }
+  function syncCardDec(rank, eid) { var it = item(rank), e = findEdit(it, eid), b = $('rvd-' + rank + '-' + eid); if (b && e) fillDec(b, it, e); }
+  function afterEdit(p) { var st = state(); st.asm = null; persist(); paintSummary(); paintHub(); paintViewer(); if (p) focusPara(p); invalidateAsm(); }
+  function focusPara(p) { var e = document.querySelector('#rvPaper p[data-n="' + p.n + '"]'); if (e) { e.focus({ preventScroll: false }); } }
+
+  /* ---------- 목업 모드(?mock=final): embedded fixture로 리포트 → 카드별 권고(완료) → 결정 일부 적용 → 뷰어(충돌 1·자리표시 1 남김) ---------- */
+  function bootMock() {
+    var node = $('rvMockFinal'); if (!node) return;
+    try { MOCK_DATA = JSON.parse(node.textContent); } catch (e) { MOCK_DATA = null; }
+    if (!MOCK_DATA || !MOCK_DATA.view) return;
+    var bar = el('div', 'rvmockbar'); bar.id = 'rvMockBar'; bar.setAttribute('role', 'note');
+    add(bar, el('b', null, '디자인 점검용 목업'), ' 가짜 데이터(공용 fixture) · 서버 호출 없음 · 리포트 → 수정 권고 → 수정본 뷰어(편집 가능) → 내려받기');
+    var off = btn('btn sm', '보존값 지우고 다시'); off.id = 'rvMockReset'; add(bar, off);
+    document.body.insertBefore(bar, document.body.firstChild); document.body.classList.add('rvmock');
+    U.setD(MOCK_DATA.view); S.text = String(MOCK_DATA.plan_text || ''); S.filename = (MOCK_DATA.view.plan && MOCK_DATA.view.plan.file) || ''; S.job = { state: 'done', view: MOCK_DATA.view }; S.maxStep = Math.max(S.maxStep, 3);
+    var st = state();
+    if (!st.restored) {
+      cards().forEach(function (cd) { var raw = MOCK_DATA.revisions && MOCK_DATA.revisions[cd.id]; if (!raw) return; var it = item(cd.rank); it.raw = JSON.parse(JSON.stringify(raw)); it.rev = normRevision(it.raw, cd); if (it.rev) { it.status = 'done'; it.elapsed = 12.4; } });
+      L(MOCK_DATA.preset).forEach(function (pd) { var it = st.items[pd.rank]; if (!it || !it.rev || !findEdit(it, pd.edit_id)) return; it.dec[pd.edit_id] = { d: pd.d, text: pd.d === 'edit' ? String(pd.text || '') : (pd.d === 'adopt' ? findEdit(it, pd.edit_id).after : ''), at: new Date().toISOString() }; });
+      persist();
+    }
+    U.go(2);
+  }
+  /* ---------- 이벤트 ---------- */
+  document.addEventListener('click', function (ev) {
+    var t;
+    if ((t = ev.target.closest('[data-rv]'))) { var r = +t.dataset.rv; goRevise([r], item(r).status !== 'done'); return; }
+    if (ev.target.closest('#rvTop')) { goRevise(adoptedRanks(), true); return; }
+    if ((t = ev.target.closest('[data-rstep]'))) { if (!t.disabled) goRevise(null, false); return; }
+    if (ev.target.closest('#rvRun')) { var sel = selectedRanks(); state().sel = sel; runQueue(sel); return; }
+    if (ev.target.closest('#rvCancel')) { cancelAll(); return; }
+    if ((t = ev.target.closest('[data-rvcancel]'))) { cancelAll(); return; }
+    if ((t = ev.target.closest('[data-rvretry]'))) { runQueue([+t.dataset.rvretry]); return; }
+    if ((t = ev.target.closest('.rdec'))) { decide(+t.dataset.rank, t.dataset.edit, t.dataset.d); return; }
+    if (ev.target.closest('#rvBack')) { closeViewer(); U.go(2); return; }
+    if (ev.target.closest('#rvOpen') || ev.target.closest('#rvOpen2')) { openViewer(ev.target.closest('button')); return; }
+    if (ev.target.closest('#rvVClose')) { closeViewer(); return; }
+    if ((t = ev.target.closest('#rvViewer')) && ev.target === t) { closeViewer(); return; }
+    if (ev.target.closest('#rvPrint')) { window.print(); return; }
+    if ((t = ev.target.closest('[data-rvdl]'))) { downloadMd(); return; }
+    if (ev.target.closest('#rvDocx')) { downloadDocx(); return; }
+    if ((t = ev.target.closest('[data-rvview]'))) { state().view = t.dataset.rvview; state().pin = null; persist(); paintViewer(); var vb = document.querySelector('[data-rvview="' + t.dataset.rvview + '"]'); if (vb) vb.focus(); return; }
+    if ((t = ev.target.closest('[data-rvpick]'))) { state().conf[+t.dataset.n] = { key: t.dataset.rvpick, at: new Date().toISOString() }; state().asm = null; persist(); paintViewer(); paintSummary(); invalidateAsm(); var again = document.querySelector('.rvconf[data-n="' + t.dataset.n + '"] button'); if (again) again.focus(); return; }
+    if (ev.target.closest('[data-rvjumpconf]')) { var c = document.querySelector('#rvViewer .rvconf'); if (c) { c.scrollIntoView({ block: 'center' }); var b = c.querySelector('button'); if (b) b.focus(); } return; }
+    if ((t = ev.target.closest('[data-rvph]'))) { editChip(t); return; }
+    if ((t = ev.target.closest('[data-rvfn]'))) { var fn = $('rvFn-' + t.dataset.rvfn); if (fn) { fn.scrollIntoView({ block: 'center' }); fn.focus(); } return; }
+    if ((t = ev.target.closest('[data-rvact]'))) { editAction(t.dataset.rvact); return; }
+    if ((t = ev.target.closest('[data-rvedit]')) && !ev.target.closest('.rvpta')) { if (t.tagName === 'TEXTAREA') return; startEdit(t); return; }
+    if (ev.target.closest('[data-rvopen]')) { U.renderPanel(); U.openPanel(); return; }
+    if (ev.target.closest('[data-rvclose]')) { U.closeAll(); return; }
+  });
+  document.addEventListener('change', function (ev) {
+    var t = ev.target;
+    if (t && t.dataset && t.dataset.rvsel != null) { var st = state(); st.sel = selectedRanks(); var b = $('rvRun'); if (b) { b.textContent = '선택한 ' + st.sel.length + '장 수정안 받기'; b.disabled = !st.sel.length || st.running != null; } return; }
+    if (t && t.id === 'rvPolish') { var s = state(); s.polish = t.checked; s.asm = null; invalidateAsm(); }
+  });
+  var editTimer = null;
+  document.addEventListener('input', function (ev) { var t = ev.target; if (!t || !t.dataset || t.dataset.rvedit == null) return; var it = item(+t.dataset.rank), dc = it.dec[t.dataset.rvedit]; if (!dc) return; dc.text = t.value; dc.at = new Date().toISOString(); state().asm = null; clearTimeout(editTimer); editTimer = setTimeout(function () { persist(); paintSummary(); if (viewerOpen()) { paintViewer(); invalidateAsm(); } }, 250); });
+  document.addEventListener('keydown', function (ev) {
+    if (!viewerOpen()) return;
+    var st = state(), inEd = ev.target && ev.target.classList && ev.target.classList.contains('rvpta');
+    if (ev.key === 'Escape') { ev.stopPropagation(); if (st.editing) editAction('cancel'); else closeViewer(); return; }
+    if (inEd && ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); editAction('save'); return; }
+    if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && (ev.key === 'z' || ev.key === 'Z') && !inEd && !(ev.target && /^(INPUT|TEXTAREA)$/.test(ev.target.tagName))) { ev.preventDefault(); undoLast(); return; }
+    trapTab(ev);
+  }, true);
+  document.addEventListener('paste', function (ev) { var t = ev.target; if (!t || !t.classList || !t.classList.contains('rvpta')) return; var cb = ev.clipboardData; if (!cb) return; ev.preventDefault(); var txt = String(cb.getData('text/plain') || ''), a = t.selectionStart, b = t.selectionEnd; t.value = t.value.slice(0, a) + txt + t.value.slice(b); t.selectionStart = t.selectionEnd = a + txt.length; });
+  document.addEventListener('mouseover', function (ev) { var t = ev.target.closest && ev.target.closest('[data-rvtip]'); if (t && !state().pin) showTip(t); });
+  document.addEventListener('mouseout', function (ev) { var t = ev.target.closest && ev.target.closest('[data-rvtip]'); if (t && !state().pin && !(ev.relatedTarget && t.contains(ev.relatedTarget))) hideTip(); });
+  document.addEventListener('focusin', function (ev) { var t = ev.target.closest && ev.target.closest('[data-rvtip]'); if (t && !state().pin) showTip(t); });
+  document.addEventListener('focusout', function (ev) { var t = ev.target.closest && ev.target.closest('[data-rvtip]'); if (t && !state().pin) hideTip(); });
+
+  /* E4-L2f 내보내기(POST /premortem/package) 연결용: body에 exportPayload()를 펼치면 ZIP에 revision.json·revised_plan.md가 덧붙는다(export_revision.py) */
+  function exportPayload() { var st = state(), rev = mergedRevision(); if (!rev) return {}; return { revision: rev, revision_decisions: serverDecisions(), revised_plan: st.asm && st.asm.source === 'server' ? st.asm.raw : null, revision_sig: rev.revision_sig || null }; }
+  window.NeumannRevise = { open: goRevise, decisions: decisionsLog, serverDecisions: serverDecisions, undo: undoLast, forget: forget, mock: MOCK, assemble: currentAsm, assembleLocal: assembleLocal, markdown: function () { return mdText(currentAsm()); }, exportPayload: exportPayload, openViewer: openViewer, closeViewer: closeViewer, config: REV, state: state };
+  paintSteps();
+  if (MOCK) bootMock();
 })();
 </script>
 </body>
