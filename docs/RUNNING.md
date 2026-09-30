@@ -4,6 +4,8 @@
 - 구조와 상태는 [ARCHITECTURE.md](ARCHITECTURE.md), 엔드포인트는 [API.md](API.md).
 
 > **LLM provider와 비용:** 기본 provider는 `mock`이다(결정적 가짜 응답, 비용 없음). mock 결과는 분석이 아니며 결과에 그렇게 표시된다. `NEUMANN_LLM_PROVIDER=openai`로 켜면 서버의 분석 요청(`/premortem`, `/premortem/view`, `plan_text`만 보낸 `/premortem/package`)과 파이프라인 명령이 요청마다 OpenAI API(기본 모델 `gpt-6.1-sol`)를 부르고 비용이 든다. 실서비스·대표 승인 확인에서만 켠다(`AGENTS.md`).
+>
+> **실제 호출 잠금(SEC-3):** provider가 `openai`여도 **프로세스 환경변수** `NEUMANN_LIVE_LLM_OK=1`이 없으면 mock으로 강등된다(`.env`에서는 읽지 않는다). 실서버 기동 명령에만 붙인다. 모델명에 astra가 있으면 `NEUMANN_ALLOW_ASTRA=1` 없이는 `gpt-6.1-sol`로 바뀐다(대표 지시: astra 금지). 셸에 옛 `NEUMANN_LLM_PROVIDER`·`NEUMANN_LLM_MODEL` 값이 남아 있을 수 있으니 기동 명령에 셋 다 명시하고 `/health`의 `llm` 칸(`effective`, `model`)으로 확인한다.
 
 ## 1. 설치
 
@@ -132,7 +134,7 @@ python scripts/build_index_check.py                                      # 색�
 
 ```bash
 python -m uvicorn neumann.api.main:app --host 127.0.0.1 --port 8000                             # 기본 mock(비용 없음)
-NEUMANN_LLM_PROVIDER=openai python -m uvicorn neumann.api.main:app --host 127.0.0.1 --port 8000 # 실제 분석(키 필요, 비용, 승인 뒤)
+NEUMANN_LIVE_LLM_OK=1 NEUMANN_LLM_PROVIDER=openai NEUMANN_LLM_MODEL=gpt-6.1-sol python -m uvicorn neumann.api.main:app --host 127.0.0.1 --port 8000 # 실제 분석(키 필요, 비용, 승인 뒤)
 ```
 
 - 화면: `http://127.0.0.1:8000/`. 상태: `curl http://127.0.0.1:8000/health` → `pipeline.state: "connected"`.
