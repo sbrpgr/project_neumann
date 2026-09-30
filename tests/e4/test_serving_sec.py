@@ -87,6 +87,9 @@ def side_app(tmp_path: Path, slow: Slow, **cfg: Any) -> tuple[serving.Serving, F
     return srv, app
 
 
+MP = {"content-type": "multipart/form-data; boundary=XyZ"}
+
+
 def raw_client(app: FastAPI) -> httpx.AsyncClient:
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=app, client=("127.0.0.1", 5000),
                                                           raise_app_exceptions=False),
@@ -102,11 +105,11 @@ def test_upload_path_has_concurrency_cap_queue_limit_and_503(tmp_path):
 
     async def go() -> None:
         async with raw_client(app) as c:
-            t1 = asyncio.create_task(c.post("/upload/plan", content=b"a" * 100))
+            t1 = asyncio.create_task(c.post("/upload/plan", content=b"a" * 100, headers=MP))
             await wait_until(lambda: srv.aux_gate.active == 1)
-            t2 = asyncio.create_task(c.post("/upload/plan", content=b"b" * 100))
+            t2 = asyncio.create_task(c.post("/upload/plan", content=b"b" * 100, headers=MP))
             await wait_until(lambda: srv.aux_gate.waiting == 1)
-            r3 = await c.post("/upload/plan", content=b"c" * 100)
+            r3 = await c.post("/upload/plan", content=b"c" * 100, headers=MP)
             assert r3.status_code == 503 and r3.json()["error_code"] == "busy"
             assert r3.json()["message"].startswith("지금 처리 중인 요청이 많습니다")
             assert slow.peak == 1
@@ -125,7 +128,7 @@ def test_upload_time_limit_504_keeps_slot_until_work_ends(tmp_path):
 
     async def go() -> None:
         async with raw_client(app) as c:
-            r = await c.post("/upload/plan", content=b"x" * 10, headers={"X-Neumann-Ticket": "tk_up_timeout"})
+            r = await c.post("/upload/plan", content=b"x" * 10, headers={**MP, "X-Neumann-Ticket": "tk_up_timeout"})
             assert r.status_code == 504
             body = r.json()
             assert body["error_code"] == "timeout" and body["request_id"] == "tk_up_timeout"
@@ -139,16 +142,16 @@ def test_upload_time_limit_504_keeps_slot_until_work_ends(tmp_path):
 
 def test_upload_rate_limit_is_separate_bucket(tmp_path):
     slow = Slow(hold=0.0)
-    srv, app = side_app(tmp_path, slow, aux_rate_per_min=2)
+    srv, app = side_app(tmp_path, slow, upload_rate_per_min=2, aux_rate_per_min=100)
 
     async def go() -> None:
         async with raw_client(app) as c:
-            h = {"CF-Connecting-IP": "203.0.113.50"}
+            h = {**MP, "CF-Connecting-IP": "203.0.113.50"}
             assert (await c.post("/upload/plan", content=b"1", headers=h)).status_code == 200
             assert (await c.post("/upload/plan", content=b"2", headers=h)).status_code == 200
             r = await c.post("/upload/plan", content=b"3", headers=h)
             assert r.status_code == 429 and "분당 2건" in r.json()["message"]
-            other = {"CF-Connecting-IP": "203.0.113.51"}
+            other = {**MP, "CF-Connecting-IP": "203.0.113.51"}
             assert (await c.post("/upload/plan", content=b"4", headers=other)).status_code == 200
 
     asyncio.run(go())
@@ -164,9 +167,9 @@ def test_body_byte_cap_by_content_length_and_streaming_before_parse(tmp_path):
 
     async def go() -> None:
         async with raw_client(app) as c:
-            r = await c.post("/upload/plan", content=b"z" * 2000)  # Content-Length로 거절
+            r = await c.post("/upload/plan", content=b"z" * 2000, headers=MP)  # Content-Length로 거절
             assert r.status_code == 413 and r.json()["error_code"] == "too_large"
-            r = await c.post("/upload/plan", content=chunks([b"z" * 256] * 8))  # Content-Length 없음 → 누적으로 거절
+            r = await c.post("/upload/plan", content=chunks([b"z" * 256] * 8), headers=MP)  # CL 없음 → 누적으로 거절
             assert r.status_code == 413 and "content-length" not in {k.lower() for k in r.request.headers}
             assert slow.calls == 0
             # 분석 경로: 바이트 상한(=글자 상한*6+64KB)을 스트리밍으로 넘기면 JSON을 파싱하기 전에 413
@@ -310,7 +313,7 @@ def test_global_exception_handler_returns_only_code_and_request_id(tmp_path):
             assert r.status_code == 500
             body = r.json()
             assert body["error_code"] == "internal" and body["request_id"] == "req_abc_123"
-            assert set(body) == {"status", "error_code", "message", "request_id", "ticket"}
+            assert set(body) == {"status", "error_code", "message", "detail", "request_id", "ticket"}
             for bad in ("C:\\", "Users", "manifest.json", "RuntimeError", "secret-internal-detail", FAKE_KEY[:6]):
                 assert bad not in r.text, bad
             # 422: 입력을 되돌려 보내지 않는다(FastAPI 기본은 input을 통째로 싣는다)
@@ -602,3 +605,156 @@ def test_serve_public_preflight_refuses_whitespace_key(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "      ")
     ok, why = serve_script.preflight_public(Settings(_env_file=None))
     assert not ok and "OPENAI_API_KEY" in why
+
+
+# ───────────────────────── 재작업 2: 업로드(E4-L1a 실제 라우터) ─────────────────────────
+
+UPLOAD_LIMIT = 10 * 1024 * 1024 + 64 * 1024  # upload.py: 파일 10MB + multipart 64KB
+
+
+def _multipart(data: bytes, filename: str = "plan.md", boundary: str = "XyZ") -> bytes:
+    return (f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\n"
+            f"Content-Type: text/markdown\r\n\r\n").encode() + data + f"\r\n--{boundary}--\r\n".encode()
+
+
+def upload_app(tmp_path: Path, **cfg: Any) -> tuple[serving.Serving, FastAPI]:
+    from neumann.api.upload import router as upload_router
+
+    base: dict[str, Any] = dict(cache_enabled=False, aux_concurrent=2, aux_queue_max=10)
+    base.update(cfg)
+    srv = serving.Serving(serving.ServingConfig(**base))
+    app = FastAPI()
+    app.include_router(upload_router)
+    serving.install(app, srv)
+    return srv, app
+
+
+def test_upload_body_cap_is_upload_only_10mb_by_length_chunked_and_lying_length(tmp_path):
+    """업로드에만 10MB(+multipart 64KB) 상한: Content-Length·chunked·거짓 Content-Length 모두 앱에 닿기 전 413."""
+    srv, app = upload_app(tmp_path)
+    assert srv.config.body_limit("upload") == UPLOAD_LIMIT != srv.config.body_limit("analysis")
+    small = _multipart("# 연구 목표\n본문\n".encode("utf-8"))
+
+    async def chunks(n_bytes: int):
+        step = 1024 * 1024
+        for _ in range(0, n_bytes, step):
+            yield b"z" * step
+
+    async def go() -> None:
+        async with raw_client(app) as c:
+            ok = await c.post("/upload/plan", content=small, headers=MP)
+            assert ok.status_code == 200 and ok.json()["kind"] == "md"
+            r = await c.post("/upload/plan", content=b"z" * (UPLOAD_LIMIT + 1), headers=MP)
+            assert r.status_code == 413 and r.json()["error_code"] == "too_large"
+            r = await c.post("/upload/plan", content=chunks(UPLOAD_LIMIT + 1024 * 1024), headers=MP)
+            assert r.status_code == 413 and r.json()["error_code"] == "too_large"
+            assert srv.counters["too_large_413"] == 2
+
+    asyncio.run(go())
+
+    # 거짓 Content-Length(작다고 적고 11MB를 보냄): ASGI로 직접 흘려 넣어 본다
+    sent: list[dict[str, Any]] = []
+    body_chunks = [b"z" * (1024 * 1024)] * 11
+    it = iter(body_chunks)
+
+    async def receive() -> dict[str, Any]:
+        try:
+            return {"type": "http.request", "body": next(it), "more_body": True}
+        except StopIteration:
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(msg: dict[str, Any]) -> None:
+        sent.append(msg)
+
+    scope = {"type": "http", "method": "POST", "path": "/upload/plan", "headers": [
+        (b"content-type", b"multipart/form-data; boundary=XyZ"), (b"content-length", b"100")],
+        "client": ("127.0.0.1", 1), "query_string": b"", "http_version": "1.1", "scheme": "http",
+        "server": ("t", 80), "root_path": "", "raw_path": b"/upload/plan"}
+    mw = serving.ServingMiddleware(lambda *a: None, srv)  # 앱에 닿으면 TypeError → 닿지 않아야 한다
+    asyncio.run(mw(scope, receive, send))
+    assert sent[0]["status"] == 413 and b"too_large" in sent[1]["body"]
+
+
+def test_upload_fail_closed_on_content_type_and_encoding(tmp_path):
+    """업로드도 앱과 같은 파서로 먼저 본다: multipart가 아니거나(BOM·UTF-16 JSON 포함) 경계가 없으면 본문을 읽지 않고 거절.
+    multipart 본문을 BOM·UTF-16으로 바꿔도 속도 제한·동시 상한·바이트 상한은 그대로 걸린다(본문 해석과 무관)."""
+    srv, app = upload_app(tmp_path, upload_rate_per_min=3)
+    bom_json = (chr(0xFEFF) + json.dumps({"plan_text": plan("u")})).encode("utf-8")
+    cases = [
+        ({"content-type": "application/json"}, bom_json, 415),
+        ({"content-type": "application/json; charset=utf-16"}, json.dumps({"a": 1}).encode("utf-16"), 415),
+        ({"content-type": "text/plain"}, b"hello", 415),
+        ({}, b"hello", 415),
+        ({"content-type": chr(0xFEFF) + "multipart/form-data; boundary=XyZ"}, _multipart(b"x"), 415),
+        ({"content-type": "multipart/form-data"}, _multipart(b"x"), 400),
+    ]
+
+    async def go() -> None:
+        async with raw_client(app) as c:
+            for headers, body, code in cases:
+                hdrs = {k: v.encode("utf-8") for k, v in headers.items()}  # BOM이 든 헤더도 바이트 그대로
+                r = await c.post("/upload/plan", content=body, headers=hdrs)
+                assert r.status_code == code, (headers, r.status_code)
+                assert r.json()["detail"] in (serving.MESSAGES["upload_type"], serving.MESSAGES["upload_boundary"])
+                assert BODY_MARK not in r.text
+            assert srv.aux_gate.completed == 0  # 앱까지 간 요청이 없다
+            # 인코딩을 바꾼 multipart 본문도 같은 IP 속도 제한(분당 3)에 걸린다
+            h = {**MP, "CF-Connecting-IP": "198.51.100.77"}
+            bodies = [_multipart(chr(0xFEFF).encode("utf-8") + b"# a"), _multipart("# b".encode("utf-16")),
+                      _multipart("# c".encode("utf-32")), _multipart(b"# d")]
+            codes = [(await c.post("/upload/plan", content=b, headers=h)).status_code for b in bodies]
+            assert codes[3] == 429 and 429 not in codes[:3]
+
+    asyncio.run(go())
+
+
+def test_upload_per_ip_concurrency_so_slow_files_cannot_hold_every_slot(tmp_path):
+    """느린 파일 2건이 한 IP에서 슬롯을 모두 잡는 문제: IP(/64)별 동시 업로드 1건. 다른 IP는 계속 올린다."""
+    slow = Slow()
+    srv, app = side_app(tmp_path, slow, aux_concurrent=2, aux_queue_max=4, upload_per_ip=1, upload_rate_per_min=100)
+
+    async def go() -> None:
+        async with raw_client(app) as c:
+            a = {**MP, "CF-Connecting-IP": "2001:db8:5:6::1"}
+            t1 = asyncio.create_task(c.post("/upload/plan", content=b"slow-pdf-1", headers=a))
+            await wait_until(lambda: srv.aux_gate.active == 1)
+            same = {**MP, "CF-Connecting-IP": "2001:db8:5:6::99"}  # 같은 /64
+            r = await c.post("/upload/plan", content=b"slow-pdf-2", headers=same)
+            assert r.status_code == 429 and r.json()["error_code"] == "busy_ip"
+            assert srv.aux_gate.active == 1  # 두 번째 슬롯은 비어 있다
+            t2 = asyncio.create_task(c.post("/upload/plan", content=b"other", headers={**MP, "CF-Connecting-IP": "203.0.113.8"}))
+            await wait_until(lambda: srv.aux_gate.active == 2)
+            slow.release.set()
+            assert [x.status_code for x in await asyncio.gather(t1, t2)] == [200, 200]
+            assert srv.upload_active == {}  # 끝나면 반납
+            assert (await c.post("/upload/plan", content=b"again", headers=same)).status_code == 200
+
+    asyncio.run(go())
+
+
+def test_upload_timeout_releases_per_ip_count_only_when_work_ends(tmp_path):
+    slow = Slow(hold=0.5)
+    srv, app = side_app(tmp_path, slow, aux_timeout_s=0.1, upload_per_ip=1)
+
+    async def go() -> None:
+        async with raw_client(app) as c:
+            h = {**MP, "CF-Connecting-IP": "198.51.100.40"}
+            r = await c.post("/upload/plan", content=b"x", headers=h)
+            assert r.status_code == 504
+            assert srv.upload_active == {serving.ip_key("198.51.100.40"): 1}  # 처리는 아직 돈다
+            r2 = await c.post("/upload/plan", content=b"y", headers=h)
+            assert r2.status_code == 429 and r2.json()["error_code"] == "busy_ip"
+            await wait_until(lambda: srv.upload_active == {}, timeout=3)
+
+    asyncio.run(go())
+
+
+def test_upload_defaults_public_profile(monkeypatch):
+    for k in ("NEUMANN_UPLOAD_RATE_PER_MIN", "NEUMANN_UPLOAD_PER_IP", "NEUMANN_MAX_UPLOAD_BYTES"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("NEUMANN_PUBLIC", "1")
+    c = serving.ServingConfig.from_env()
+    assert (c.upload_rate_per_min, c.upload_per_ip, c.max_upload_bytes) == (10, 1, UPLOAD_LIMIT)
+    monkeypatch.delenv("NEUMANN_PUBLIC")
+    c = serving.ServingConfig.from_env()
+    assert (c.upload_rate_per_min, c.upload_per_ip) == (0, 0)

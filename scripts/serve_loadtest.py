@@ -137,7 +137,8 @@ def main() -> int:
                NEUMANN_FAKE_RUN_S=str(a.run_s), NEUMANN_AVG_RUN_S=str(a.run_s), NEUMANN_MAX_CONCURRENT="2",
                NEUMANN_QUEUE_MAX="8", NEUMANN_RATE_PER_MIN="6", NEUMANN_RESULT_CACHE_DIR=str(tmp / "results"),
                NEUMANN_BUDGET_FILE=str(tmp / "budget.json"), NEUMANN_BLOCK_FILE=str(tmp / "block.flag"),
-               NEUMANN_DAILY_BUDGET="100", NEUMANN_FAKE_CRASH="1")
+               NEUMANN_DAILY_BUDGET="100", NEUMANN_FAKE_CRASH="1",
+               NEUMANN_LLM_PROVIDER="mock")  # 가짜 파이프라인이지만 사용자 환경의 openai 설정이 새지 않게
     env["PYTHONPATH"] = os.pathsep.join([str(ROOT / "src"), str(ROOT)])
     server_log = tmp / "server_stdout.log"
     cmd = [sys.executable, str(ROOT / "scripts" / "serve.py"), "--app", "scripts.serve_fake_app:app",

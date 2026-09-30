@@ -90,6 +90,10 @@ MESSAGES = {
     "invalid": "요청 형식이 올바르지 않습니다. 보낸 내용을 확인하고 다시 시도해 주세요.",
     "internal": "처리 중 문제가 생겼습니다. 잠시 뒤 다시 시도해 주세요. 계속되면 요청 번호 {ticket}를 알려 주세요.",
     "not_found": "없는 주소입니다.",
+    # 업로드(E4-L1a upload.py와 같은 문구: 화면이 같은 안내를 보게)
+    "upload_type": "multipart/form-data 형식으로 file 필드에 계획서 파일을 담아 보내 주세요",
+    "upload_boundary": "multipart 경계(boundary)가 없습니다",
+    "busy_ip": "이 주소에서 올린 파일을 아직 처리하고 있습니다. 끝난 뒤 다시 올려 주세요.",
 }
 
 
@@ -177,6 +181,8 @@ class ServingConfig:
     aux_queue_max: int = 10
     aux_timeout_s: float = 60.0
     aux_rate_per_min: int = 0
+    upload_rate_per_min: int = 0        # 업로드 전용 IP(/64)별 분당 상한(공개 10)
+    upload_per_ip: int = 0              # 업로드 IP(/64)별 동시 처리 상한(공개 1). 0이면 끔
     daily_budget: int = 0               # 0이면 끔
     budget_file: Path | None = None
     block_new: bool = False
@@ -234,6 +240,8 @@ class ServingConfig:
             aux_queue_max=int(_env_num("NEUMANN_AUX_QUEUE_MAX", 10, 0, 10_000)),
             aux_timeout_s=_env_num("NEUMANN_AUX_TIMEOUT_S", 60.0, 0.05, 86_400),
             aux_rate_per_min=int(_env_num("NEUMANN_AUX_RATE_PER_MIN", 30 if public else 0, 0, 100_000)),
+            upload_rate_per_min=int(_env_num("NEUMANN_UPLOAD_RATE_PER_MIN", 10 if public else 0, 0, 100_000)),
+            upload_per_ip=int(_env_num("NEUMANN_UPLOAD_PER_IP", 1 if public else 0, 0, 1000)),
             daily_budget=int(_env_num("NEUMANN_DAILY_BUDGET", 0, 0, 10_000_000)),  # 대표 결정: 기본 끔
             budget_file=Path(budget_file) if budget_file else data_dir / "cache" / "serving_budget.json",
             block_new=_env_bool("NEUMANN_BLOCK_NEW", False),
@@ -495,6 +503,8 @@ class RequestCtx:
     error_kind: str | None = None  # timeout | internal | refused | None
     internal: bool = False         # 예열 등 서버 내부 실행(입장 검사 대신 force 예약)
     refusal: tuple[int, str, str, int] | None = None  # run()이 거절했을 때 (HTTP 코드, error_code, 문구, retry 초)
+    upload_key: str | None = None  # 업로드 IP별 동시 처리 수를 센 키(반납 전까지)
+    task_started: bool = False     # 보조 관문에서 하위 앱 작업을 시작했는가
 
 
 _CTX: contextvars.ContextVar[RequestCtx | None] = contextvars.ContextVar("neumann_serving_ctx", default=None)
@@ -892,6 +902,8 @@ class Serving:
         self.aux_gate = Gate(c.aux_concurrent, c.aux_queue_max, min(c.aux_timeout_s, 10.0), "aux")
         self.limiter = RateLimiter(c.rate_per_min, c.rate_window_s)
         self.aux_limiter = RateLimiter(c.aux_rate_per_min, c.rate_window_s)
+        self.upload_limiter = RateLimiter(c.upload_rate_per_min, c.rate_window_s)
+        self.upload_active: dict[str, int] = {}  # IP(/64)별 처리 중인 업로드 수
         self.budget = DailyBudget(c.daily_budget, c.budget_file if c.daily_budget > 0 else None)
         self.cache = ResultCache(c.cache_dir, enabled=c.cache_enabled, mem_items=c.cache_mem_items,
                                  variant=c.cache_variant, statuses=c.cache_statuses, ttl_s=c.cache_ttl_s,
@@ -931,6 +943,16 @@ class Serving:
         self.budget.spend()
         ctx.budget_spent = True
         return None
+
+    def release_upload(self, ctx: RequestCtx) -> None:
+        """업로드 IP별 동시 처리 수를 돌려준다(여러 번 불러도 한 번만)."""
+        key, ctx.upload_key = ctx.upload_key, None
+        if key is not None:
+            n = self.upload_active.get(key, 0) - 1
+            if n > 0:
+                self.upload_active[key] = n
+            else:
+                self.upload_active.pop(key, None)
 
     def blocked(self) -> bool:
         """차단 스위치: 환경변수(NEUMANN_BLOCK_NEW) 또는 파일 플래그가 있으면 새 분석을 받지 않는다."""
@@ -1171,7 +1193,26 @@ def _header(scope: dict[str, Any], name: str) -> str | None:
 
 
 def _err(code: str, message: str, ticket: str, **extra: Any) -> dict[str, Any]:
-    return {"status": "error", "error_code": code, "message": message, "request_id": ticket, "ticket": ticket, **extra}
+    """오류 본문. ``detail``은 FastAPI 기본 오류 모양을 읽는 화면(업로드 등)을 위해 같은 문구를 한 번 더 싣는다."""
+    return {"status": "error", "error_code": code, "message": message, "detail": message, "request_id": ticket,
+            "ticket": ticket, **extra}
+
+
+def _upload_type_refusal(content_type: str | None) -> tuple[int, str] | None:
+    """업로드 Content-Type 검사. 앱(upload.py)과 같은 python-multipart 파서를 쓴다. 거절이면 (코드, 문구)."""
+    try:
+        from python_multipart.multipart import parse_options_header
+
+        ctype, params = parse_options_header(content_type)
+        ok_type = ctype.strip().lower() == b"multipart/form-data"
+        boundary = params.get(b"boundary")
+    except Exception:  # noqa: BLE001 - 파서가 못 읽으면 거절(fail-closed)
+        return 415, user_message("upload_type")
+    if not ok_type:
+        return 415, user_message("upload_type")
+    if not boundary:
+        return 400, user_message("upload_boundary")
+    return None
 
 
 def _is_validation_body(data: Any) -> bool:
@@ -1232,6 +1273,14 @@ class ServingMiddleware:
             return _err("too_large", user_message("too_large_bytes", limit_mb=round(limit / 1048576, 1),
                                                    chars=cfg.max_plan_chars), ticket)
 
+        # 0) 업로드: 앱(upload.py)과 같은 파서로 Content-Type을 먼저 본다. multipart가 아니거나 경계가 없으면
+        #    본문을 읽지 않고 앱과 같은 문구로 거절한다(fail-closed). 입장 검사는 본문 해석과 무관하게 모두 적용된다.
+        if kind == "upload":
+            refusal = _upload_type_refusal(_header(scope, "content-type"))
+            if refusal is not None:
+                await reply(refusal[0], _err("invalid_request", refusal[1], ticket))
+                return
+
         # 1) 바이트 상한: Content-Length 먼저, 그다음 스트리밍 누적(파싱 전)
         clen = _header(scope, "content-length")
         if clen and clen.strip().isdigit() and int(clen) > limit:
@@ -1278,13 +1327,23 @@ class ServingMiddleware:
 
         # 3) 입장 관문
         if ctx.mode == "aux":
-            ok, retry = srv.aux_limiter.hit(ip_key(ctx.ip))
+            key = ip_key(ctx.ip)
+            if kind == "upload" and cfg.upload_per_ip > 0 and srv.upload_active.get(key, 0) >= cfg.upload_per_ip:
+                srv.counters["rate_429"] += 1  # 한 IP가 느린 파일로 슬롯을 모두 잡지 못하게
+                await reply(429, _err("busy_ip", user_message("busy_ip"), ticket, retry_after_s=10), {"retry-after": "10"})
+                return
+            limiter, lim = ((srv.upload_limiter, cfg.upload_rate_per_min) if kind == "upload"
+                            else (srv.aux_limiter, cfg.aux_rate_per_min))
+            ok, retry = limiter.hit(key)
             if not ok:
-                await reply(*self._rate_reply(ctx, retry, cfg.aux_rate_per_min))
+                await reply(*self._rate_reply(ctx, retry, lim))
                 return
             try:
                 ctx.reservation = srv.aux_gate.reserve(ticket)
                 ctx.position_at_arrival = srv.aux_gate.position(ctx.reservation.id)
+                if kind == "upload" and cfg.upload_per_ip > 0:
+                    srv.upload_active[key] = srv.upload_active.get(key, 0) + 1
+                    ctx.upload_key = key
             except QueueFull as exc:
                 srv.counters["busy_503"] += 1
                 retry_s = max(int(math.ceil(min(exc.retry_after_s, 600))), 5)
@@ -1333,6 +1392,8 @@ class ServingMiddleware:
         finally:
             _CTX.reset(token)
             srv._drop_reservation(ctx)
+            if not ctx.task_started:
+                srv.release_upload(ctx)  # 하위 작업을 시작했으면 그 작업이 끝날 때 반납한다
 
         if ctx.refusal is not None:  # run()의 두 번째 입장 검사가 거절
             await reply(*self._refusal_reply(ctx, ctx.refusal))
@@ -1373,10 +1434,12 @@ class ServingMiddleware:
         t0 = time.monotonic()
         ctx.waited_s = round(t0 - t.enq_at, 3)
         task = asyncio.ensure_future(self.app(scope, replay, capture))
+        ctx.task_started = True
 
         def _done(job: asyncio.Future[Any]) -> None:
             ctx.run_s = round(time.monotonic() - t0, 3)
             gate.release(t, ctx.run_s)
+            self.serving.release_upload(ctx)
             if not job.cancelled() and job.exception() is not None:
                 log.info("하위 처리 실패 ticket=%s kind=%s", ctx.ticket, type(job.exception()).__name__)
 
