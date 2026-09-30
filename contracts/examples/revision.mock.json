@@ -1,0 +1,200 @@
+{
+  "version": "revision@v1",
+  "plan_id": "3d35460def76efc4a786dce769e614f0d54d110ee2837da6b8fc1dbcf88ef33c",
+  "session_id": "fixture-session",
+  "generated_at": "2026-09-30T14:00:00+00:00",
+  "generator": "mock",
+  "model": "mock-deterministic-v1",
+  "effort": "medium",
+  "prompt_version": "revise_card@v1",
+  "status": "ok",
+  "reason": null,
+  "cards_requested": [
+    "card-fx-leak"
+  ],
+  "cards_skipped": [],
+  "revisions": [
+    {
+      "card_id": "card-fx-leak",
+      "risk_code": "R3",
+      "title": "Random splitting can leak near-duplicates into the test set",
+      "generator": "mock",
+      "model": "mock-deterministic-v1",
+      "effort": "medium",
+      "status": "ok",
+      "reason": null,
+      "interpretation": [
+        {
+          "text": "mock 응답: 유사 연구 심사에서 무작위 분할과 중복 미제거는 시험 성능을 부풀린다는 지적이 나왔고, 거절 사유로 이어졌다.",
+          "excerpt_ids": [
+            "ex_c5986bb2facc61b2",
+            "ex_110f92f3599151f1"
+          ],
+          "plan_lines": [
+            16,
+            17
+          ],
+          "quotes": []
+        }
+      ],
+      "precedents": {
+        "status": "found",
+        "note": null,
+        "items": [
+          {
+            "text": "mock 응답: 같은 지적을 받은 채택 연구는 그룹 단위 분할로 다시 실험하고 중복을 제거해 답변했다.",
+            "excerpt_ids": [
+              "ex_8b6bd6517044f3de",
+              "ex_c1ea70258f7ae4f8"
+            ],
+            "work_id": "fixture:gnn-002",
+            "outcome": "accept_poster",
+            "outcome_label": "Poster",
+            "quotes": []
+          }
+        ]
+      },
+      "edits": [
+        {
+          "edit_id": "card-fx-leak/e1",
+          "plan_line": 16,
+          "kind": "replace",
+          "current_text": "We randomly split the dataset into 80/10/10 train/validation/test sets.",
+          "proposed_text": "mock 제안: 데이터를 조성 그룹 단위로 나누어 학습·검증·평가 집합을 만들고, 분할 전에 근사 중복 조성을 제거한다.",
+          "proposed_label": "제안(근거 아님)",
+          "rationale": {
+            "text": "mock 응답: 심사에서 지적된 근사 중복 누출을 분할 단위와 제거 절차로 막는다.",
+            "excerpt_ids": [
+              "ex_c5986bb2facc61b2"
+            ],
+            "plan_lines": [
+              16
+            ],
+            "quotes": []
+          }
+        },
+        {
+          "edit_id": "card-fx-leak/e2",
+          "plan_line": 17,
+          "kind": "replace",
+          "current_text": "조성이 거의 동일한 중복 항목에 대한 별도 제거 절차는 두지 않는다.",
+          "proposed_text": "mock 제안: 중복 항목 제거 기준을 착수 전에 정하고 제거 건수를 보고한다.",
+          "proposed_label": "제안(근거 아님)",
+          "rationale": {
+            "text": "mock 응답: 중복 제거 절차가 없다는 점이 지적의 핵심이었다.",
+            "excerpt_ids": [
+              "ex_110f92f3599151f1"
+            ],
+            "plan_lines": [
+              17
+            ],
+            "quotes": []
+          }
+        }
+      ],
+      "questions": [
+        {
+          "text": "mock 질문: 조성이 거의 같은 항목을 어떤 기준으로 같은 그룹으로 볼 것인가?",
+          "plan_lines": [
+            17
+          ]
+        }
+      ],
+      "audit": {
+        "generated": 5,
+        "passed": 5,
+        "dropped": 0,
+        "no_evidence": 0,
+        "reasons": {},
+        "dropped_detail": [],
+        "gate": "revision-grounding@v1"
+      },
+      "elapsed_s": 0.012,
+      "llm_calls": 1,
+      "fallback_reason": null,
+      "evidence_pool": [
+        "ex_c5986bb2facc61b2",
+        "ex_110f92f3599151f1",
+        "ex_845f5eb5621099f5",
+        "ex_ca5fa760fdb45841",
+        "ex_8b6bd6517044f3de",
+        "ex_c1ea70258f7ae4f8"
+      ]
+    }
+  ],
+  "records": [
+    {
+      "excerpt_id": "ex_8b6bd6517044f3de",
+      "source_kind": "author_response",
+      "source_id": "resp-fx-001",
+      "start": 0,
+      "end": 59,
+      "text": "We thank the reviewer for pointing out the leakage concern.",
+      "text_sha256": "583751c95fee2db96a2f678a403ec8fd98d4ced569601186e72aa4c315f5b0c6",
+      "source_url": "https://example.org/fake-venue/forum?id=gnn-002&noteId=resp-fx-001",
+      "source_sha256": "3bd5a6759c1909484f9cb35a5d38998383da5aaf81733679fbfcadaf992057c4",
+      "work_id": "fixture:gnn-002",
+      "record_kind": "author_response",
+      "outcome": "accept_poster"
+    },
+    {
+      "excerpt_id": "ex_c1ea70258f7ae4f8",
+      "source_kind": "decision",
+      "source_id": "dec-gnn-002",
+      "start": 0,
+      "end": 20,
+      "text": "FakeConf 2099 poster",
+      "text_sha256": "e501dc91e83115116e237783c36c196c53b6f514f9e7ecd11ec0012e4de052f6",
+      "source_url": "https://example.org/fake-venue/forum?id=gnn-002&noteId=dec-gnn-002",
+      "source_sha256": "e501dc91e83115116e237783c36c196c53b6f514f9e7ecd11ec0012e4de052f6",
+      "work_id": "fixture:gnn-002",
+      "record_kind": "decision",
+      "outcome": "accept_poster"
+    }
+  ],
+  "works": [
+    {
+      "work_id": "fixture:gnn-002",
+      "title": "[FAKE] 채택 논문(fixture)",
+      "url": "https://example.org/fake-venue/forum?id=gnn-002&noteId=dec-gnn-002",
+      "outcome": "accept_poster",
+      "outcome_raw": "FakeConf 2099 poster",
+      "outcome_label": "Poster",
+      "n_responses": 1,
+      "n_meta_reviews": 0
+    }
+  ],
+  "audit": {
+    "generated": 5,
+    "passed": 5,
+    "dropped": 0,
+    "no_evidence": 0,
+    "reasons": {},
+    "dropped_detail": [],
+    "gate": "revision-grounding@v1"
+  },
+  "cost": {
+    "llm_calls": 1,
+    "llm_calls_failed": 0,
+    "prompt_chars": 4200,
+    "usage": {},
+    "estimated_input_tokens": 1400,
+    "estimated_output_tokens": 900,
+    "estimated_usd": null,
+    "note": "mock provider: 실제 호출 없음. 토큰은 입력 글자 수/3으로 어림"
+  },
+  "coverage": {
+    "works_considered": 2,
+    "works_with_decision": 2,
+    "works_accepted": 1,
+    "works_rejected": 1,
+    "works_with_responses": 1,
+    "works_with_meta_review": 0,
+    "record_source": "fixture"
+  },
+  "notices": [
+    "mock provider(테스트용) 결과 — 실제 astra 분석이 아니다",
+    "이 예시는 공용 fixture(가짜 데이터)로 손으로 만든 첫 판이다. 구현 뒤 mock 실행 결과로 바꾼다"
+  ],
+  "elapsed_s": 0.02
+}
