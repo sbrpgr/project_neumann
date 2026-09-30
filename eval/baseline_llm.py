@@ -338,13 +338,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--conditions", default="real,shuffle")
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--out", type=Path, default=None, help="기본 data/eval/riskset_baseline_llm.jsonl(--limit면 .firstN)")
+    ap.add_argument("--cache-dir", type=Path, default=None,
+                    help="캐시 폴더(기본 data/eval/baseline_llm_cache). 예행은 임시 폴더를 준다")
     args = ap.parse_args(argv)
 
     provider = make_provider(args.provider or os.environ.get("NEUMANN_LLM_PROVIDER") or "openai")
     sample = read_json(args.sample or eval_dir() / "backtest_sample.json")
     plans = {r["work_id"]: r for r in read_jsonl(args.plans or eval_dir() / "backtest_plans.jsonl")}
     conditions = tuple(c.strip() for c in args.conditions.split(",") if c.strip())
-    cache_dir = eval_dir() / "baseline_llm_cache"
+    cache_dir = args.cache_dir or eval_dir() / "baseline_llm_cache"
     t0 = time.perf_counter()
     rows = run(sample, plans, provider, cache_dir, limit=args.limit, conditions=conditions, workers=args.workers)
     name = "riskset_baseline_llm" + (f".first{args.limit}" if args.limit else "") + (".mock" if provider.name == "mock" else "")
