@@ -1,0 +1,106 @@
+{
+  "source": "E5-L1e2e recorded live rerun; no calls in SAMPLES",
+  "summary_sha256": "0157d18f4d21ca7dbd2d2a4079b8285739de4200e8aa8f54f0a3ba0dd2ec6bd9",
+  "samples": [
+    {
+      "id": "example-battery",
+      "plan_sha256": "3d35460def76efc4a786dce769e614f0d54d110ee2837da6b8fc1dbcf88ef33c",
+      "result_sha256": "a0514a844e79987fbe9682783b57b033242fe94abdffd508f3c36c11d619797f",
+      "result_generated_at": "2026-09-30T12:58:17.924130Z",
+      "cards": 5,
+      "quotes_verified": 17,
+      "quotes_total": 17,
+      "linkage_rate": 1.0,
+      "semantic": {
+        "cards_match": 5,
+        "cards_weak": 0,
+        "cards_mismatch": 0,
+        "cards_unverified": 0,
+        "actions_match": 11,
+        "actions_weak": 0,
+        "actions_mismatch": 0,
+        "actions_unverified": 0,
+        "calls": 2,
+        "calls_failed": 0
+      },
+      "past_e2e_failures": [],
+      "past_browser": {
+        "console_errors": 0,
+        "page_errors": 0,
+        "external": 0,
+        "failed": 0
+      },
+      "checklist_items": 11,
+      "stages_ok": 10
+    },
+    {
+      "id": "example-binding",
+      "plan_sha256": "0d75d00c63abe7a120a3d1808745bac87948206361d11b417d8253a887df6451",
+      "result_sha256": "dacdcdd750fe89c80287a03bef4478ced22f504844a39bea977a8468c4aea190",
+      "result_generated_at": "2026-09-30T13:01:05.590076Z",
+      "cards": 7,
+      "quotes_verified": 27,
+      "quotes_total": 27,
+      "linkage_rate": 1.0,
+      "semantic": {
+        "cards_match": 5,
+        "cards_weak": 2,
+        "cards_mismatch": 0,
+        "cards_unverified": 0,
+        "actions_match": 18,
+        "actions_weak": 0,
+        "actions_mismatch": 0,
+        "actions_unverified": 0,
+        "calls": 3,
+        "calls_failed": 0
+      },
+      "past_e2e_failures": [
+        "체크리스트 C3: 근거 번호 없음",
+        "콘솔 오류 1건: ['Failed to load resource: the server responded with a status of 404 (Not Found)']"
+      ],
+      "past_browser": {
+        "console_errors": 1,
+        "page_errors": 0,
+        "external": 0,
+        "failed": 0
+      },
+      "checklist_items": 18,
+      "stages_ok": 10
+    },
+    {
+      "id": "example-operator",
+      "plan_sha256": "11a5f2e74984d5ccc4fdedba1347cb66436f4b0e372d912357f20c4547ec74a6",
+      "result_sha256": "20f8a9524a540731c8ff1bdd5823d8fd78c8fb12428b8451c46734f4427cd650",
+      "result_generated_at": "2026-09-30T13:03:53.222119Z",
+      "cards": 7,
+      "quotes_verified": 25,
+      "quotes_total": 25,
+      "linkage_rate": 1.0,
+      "semantic": {
+        "cards_match": 7,
+        "cards_weak": 0,
+        "cards_mismatch": 0,
+        "cards_unverified": 0,
+        "actions_match": 16,
+        "actions_weak": 0,
+        "actions_mismatch": 0,
+        "actions_unverified": 0,
+        "calls": 3,
+        "calls_failed": 0
+      },
+      "past_e2e_failures": [
+        "체크리스트 C6: 근거 번호 없음",
+        "콘솔 오류 1건: ['Failed to load resource: the server responded with a status of 404 (Not Found)']",
+        "결과 체크리스트 C7: evidence 없음"
+      ],
+      "past_browser": {
+        "console_errors": 1,
+        "page_errors": 0,
+        "external": 0,
+        "failed": 0
+      },
+      "checklist_items": 16,
+      "stages_ok": 10
+    }
+  ]
+}
