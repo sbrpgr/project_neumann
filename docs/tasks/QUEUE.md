@@ -23,7 +23,7 @@
 | E1-L1c eLife(+EPMC) 색인 | ✅ 코드만 병합(43d116f). 색인 `index_elife*`는 DO_NOT_SERVE 유지 | E1-L1b PASS 뒤 재빌드(입력 해시 rc 0). 권고: 색인 로더가 DO_NOT_SERVE를 거부(E2, 선택) |
 | E1-L1b eLife·EPMC 수집 | 🔍 재검증 3 PASS-조건부(실명 잔존 0, 부분 가림 3건 `’`·`–`) → 재작업 3 중(PM 세션) | 재검증 → **squash 병합** → 색인 재빌드(해시 rc 0) |
 | E4-L2c 서빙 안정성 | 🔍 재검증 PASS-조건부(83754ff): 인코딩 우회 fail-closed, 혼입 0. 남은 것(E4-L1f 테스트 request_id, serve.py UTF-8)은 E4-L2d에서 고침. **공개 금지** | **E4-L2d 하나로 병합**(L2d가 L2c 포함), 패치 L2c → L2d 순서. SEC-4 먼저 |
-| E4-L2d 비동기 작업 API(L2c 포함) | 🔍 재검증 PASS-조건부(58cd372): 필수 1은 SEC-4가 덮음(plan_key → models.redact_pii), 권장 2·3 빌더 수정 중 | **SEC-4 → E4-L2d** 순서로 병합, 패치 L2c → L2d. 병합 뒤 README 75행(동시 상한·대기열) 갱신, .env.example 새 키. 터널 공개 전제 |
+| E4-L2d 비동기 작업 API(L2c 포함) | ❌ 재검증 FAIL 1건(접근 로그에 퍼센트 인코딩 job_id 노출) → 재작업 4(구축 세션). 나머지 통과(main 임시 병합 1270 passed, 저장소 상한·BOM fail-closed) | 재작업 4 PASS → 병합 + 패치 L2c→L2d, .env.example 새 키, README 75행. 다음 SEC-5 |
 | SEC-4 이메일 정규식 ReDoS | 🔍 task/SEC-4 386621a(PM), Sonnet 검증 중 | `models.contains_pii`·`redact_pii` 선형화(`email_spans`), 결과 동일. 공개 전 필수 |
 | E3-L1x rule_fitness "neural" 오분류 | ✅ 병합(Sonnet PASS) | 남은 한계: `~인지 과제` 오탐, neuromorphic(후속 소과제, 선택) |
 | E4-L1f 화면 업로드 | ✅ 병합(cf43101, Sonnet PASS) | 8020 재기동 시 반영. 발표 9쪽 "PDF·DOCX 포함" |
