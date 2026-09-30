@@ -31,7 +31,10 @@ PM이 병합할 때마다 갱신한다. Claude 한도가 다 되면 이 문서�
 | QA-1 | worktree-agent-acc37aea9a4ea9854 · 62138a4 | 결함 12(높음 3: 화면 내보내기 꺼짐→E4-L2f, HWPX 415→E4-L2h, 300자 없음→E3-L1s). **녹화 전 예열 필수(첫 분석 166초)**, mock에서 "OpenAI 전송" 안내 부정확 |
 | PRIV-1 | task/PRIV-1 · 87f101c | **높음: 검색어 캐시가 계획서 요약을 만료 없이 디스크에**(끄는 설정 없음). 전화번호 가림 하이픈만. 맨 uvicorn이면 실제 IP 로그 → `serve.py --public` 필수 |
 | E2E-2 | task/E2E-2 · 75d7a00 | 12개 중 9통과·1실패(연결 끊김 뒤 합류 미확인)·2건너뜀. 설계 공백: 300자 거절도 job 생성(202) |
-| SEC-8·MCP-demo·DATA-CARD·UXC-1·A11Y-1 | (정지 중, 보고 도착 전) | `git log --all --oneline --grep '^\[<ID>\]'` |
+| SEC-8 | worktree-agent-a7bc54b0191dce7c1 · 67b8117 | **판정 조건부.** 공개 전 필수 2: SEC8-01 줄 수 폭탄으로 LLM 프롬프트 ×592 증폭(지출 한도 없음) → 줄 상한, SEC8-05 `--public` 사전 점검이 LIVE_LLM_OK를 안 봐 공개 서버가 통째로 mock이 될 수 있음. 중간 3(캐시 적중 작업으로 저장소 채우기, 내보내기 CPU 증폭, zip 선언 크기) |
+| MCP-demo | task/MCP-demo · f80d6a7 | 3개 도구 시연(mock·실색인), 테스트 8. premortem 도구는 없음(다음 단계) |
+| DATA-CARD | worktree-agent-ab5683d4620ff6a54 · 5edd89d | 데이터 카드 완성(1,128편·리뷰 5,366·문장 133,769·거절 60.28%, 리뷰 없는 논문 60편) |
+| UXC-1 · A11Y-1 | (TaskStop으로 정지됨) | **정지됨 — worktree에 미커밋 변경 있을 수 있음(git status 확인)** |
 
 ### 구축 세션 판정(인수 직전, 전체는 out/dashboard/handoff_agents.md E절)
 - **E3-L2r FAIL(68385cd): 422 요청이 관문 자리를 반납하지 않아 한 IP 6건이면 전체 /premortem 504** 등 — 재탄생 병합 전 필수, **Codex 1순위**.

@@ -59,7 +59,7 @@
 | SEC-8 | 공개 직전 보안 재감사(Fable, 읽기 전용) | docs/reports/SEC-8.md | ⏸ 인수 신호로 WIP 정지(검증 전) |
 | DOC-1 | 심사위원용 README·ARCHITECTURE·API·RUNNING | 문서 4개 | ⏸ 인수 신호로 WIP 정지(검증 전) |
 | LIC-1 | 라이선스·출처 점검, 고지 문구 | docs/LICENSES.md | ⏸ 인수 신호로 WIP 정지(검증 전) |
-| A11Y-1 | 화면 접근성 감사(보고서만) | docs/reports/A11Y-1.md | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| A11Y-1 | 화면 접근성 감사(보고서만) | docs/reports/A11Y-1.md | 정지됨(TaskStop) — worktree에 미커밋 변경 있을 수 있음(git status 확인) |
 | E2E-2 | jobs 경로 다중 사용자 E2E(mock) | tests/e2e/test_jobs_multiuser* | ⏸ 인수 신호로 WIP 정지(검증 전) |
 | MCP-demo | 외부 에이전트 MCP 연결 시연 | scripts/mcp_demo.py, docs/MCP_DEMO.md | ⏸ 인수 신호로 WIP 정지(검증 전) |
 | E5-L1c | P1 Macro-F1 sol 재측정 준비(실행 안 함) | docs/reports/E5-L1c_plan.md | ⏸ 인수 신호로 WIP 정지(검증 전) |
@@ -75,7 +75,7 @@
 | SYSTEM-CARD | 시스템 카드(모델·한계) | docs/SYSTEM_CARD.md | ⏸ 인수 신호로 WIP 정지(검증 전) |
 | PROMPT-AUDIT | 제품 프롬프트 감사(보고서만) | docs/reports/PROMPT-AUDIT.md | ⏸ 인수 신호로 WIP 정지(검증 전) |
 | FUZZ-1 | 공개 API 퍼징 테스트 | tests/e4/test_fuzz_api.py | ⏸ 인수 신호로 WIP 정지(검증 전) |
-| UXC-1 | 화면 문구 정직성·용어(보고서만) | docs/reports/UXC-1.md | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| UXC-1 | 화면 문구 정직성·용어(보고서만) | docs/reports/UXC-1.md | 정지됨(TaskStop) — worktree에 미커밋 변경 있을 수 있음(git status 확인) |
 
 모든 과제는 빌드 뒤 다른 모델(Sonnet) 검증이 병합 조건. 보고서만 쓰는 과제는 내용 검토 뒤 docs 병합.
 
