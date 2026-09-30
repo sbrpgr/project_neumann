@@ -48,7 +48,7 @@
           "name": {"$ref": "#/definitions/label"},
           "domain": {"$ref": "#/definitions/label"},
           "template_id": {"$ref": "#/definitions/id"},
-          "path": {"type": "string", "pattern": "^tests/fixtures/plans/[A-Za-z0-9_-]+[.]md$"}
+          "path": {"type": "string", "pattern": "^(src/neumann/api/templates/examples|tests/fixtures/plans)/[A-Za-z0-9_-]+[.]md$"}
         }
       }
     }
