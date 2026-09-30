@@ -1,0 +1,16 @@
+diff --git a/src/neumann/api/main.py b/src/neumann/api/main.py
+index 96e9206..5c217e6 100644
+--- a/src/neumann/api/main.py
++++ b/src/neumann/api/main.py
+@@ -274,3 +274,11 @@ async def premortem_view(req: PremortemRequest) -> JSONResponse:
+             view = build_ui_view(result, filename=req.filename, pipeline_state=state, input_info=info)
+     view["_status"]["server_elapsed_s"] = round(time.perf_counter() - t0, 3)
+     return JSONResponse(view, status_code=code)
++
++
++# ───────────────────────── 작업 방식(E4-L2d) ─────────────────────────
++# POST /premortem/jobs → 곧바로 job_id, GET /premortem/jobs/{id} → 상태·진행 단계·결과(메모리, TTL 뒤 폐기).
++# 터널(Cloudflare)의 응답 시간 상한(약 100초)을 넘지 않게 긴 분석을 작업으로 돌린다. 관문은 serving과 같다.
++from neumann.api import jobs  # noqa: E402
++
++jobs.install(app, load_pipeline=lambda: _load_pipeline(), sample_result=lambda reason: _sample_result(reason))
