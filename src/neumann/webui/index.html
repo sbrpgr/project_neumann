@@ -356,6 +356,35 @@
   .stp .soon { font-size: 11px; color: var(--faint); margin-left: 2px; letter-spacing: 0; }
   .btn[disabled] { opacity: .45; cursor: default; }
   input.hidden-file { display: none; }
+  /* ===== E4-L1b 입력: 범위 안내 · 템플릿 · 예시 · 적합성 판정 자리 (한글에 자간·uppercase·모노 없음) ===== */
+  .scope { display: flex; align-items: baseline; justify-content: center; gap: 4px 14px; flex-wrap: wrap; padding: 0 0 10px 0; border-bottom: 1px solid var(--line2); font-size: 13px; color: var(--muted); }
+  .scope b { font-family: var(--sans); font-weight: 700; color: var(--red); font-size: 14px; }
+  .scope .dms { display: inline-flex; flex-wrap: wrap; gap: 0 8px; }
+  .scope .dm + .dm::before { content: "\00b7"; margin-right: 8px; color: var(--faint); }
+  .tprow { align-items: baseline; flex-wrap: nowrap; }
+  .tprow .optl { width: 92px; }
+  .tpls { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0 14px; flex: 1; min-width: 0; }
+  .tp { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px; align-items: baseline; text-align: left; padding: 7px 2px 8px 2px; border: none; border-top: 1px solid var(--line2); border-bottom: 2px solid transparent; background: transparent; font-family: var(--sans); font-size: 13.5px; font-weight: 600; line-height: 1.35; color: var(--text2); }
+  .tp .n { font-family: var(--serif); font-style: italic; font-weight: 400; font-size: 15px; color: var(--faint); }
+  .tp:hover { color: var(--ink); border-top-color: var(--ink); }
+  .tp.on { color: var(--ink); border-bottom-color: var(--red); }
+  .tp.on .n { color: var(--red); }
+  .exs { display: flex; flex-wrap: wrap; gap: 4px 18px; flex: 1; min-width: 0; }
+  .exl { border: none; background: transparent; padding: 0; font-size: 13.5px; color: var(--text2); text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 3px; }
+  .exl:hover { color: var(--ink); text-decoration-color: var(--ink); }
+  .exl.on { color: var(--ink); font-weight: 600; text-decoration-color: var(--red); }
+  .exl .d { color: var(--muted); font-weight: 400; margin-left: 4px; }
+  .tplmeta { display: flex; align-items: baseline; gap: 4px 12px; flex-wrap: wrap; min-height: 22px; margin: 8px 0 12px 0; font-size: 12.5px; color: var(--muted); }
+  .tplmeta b { color: var(--ink); font-weight: 600; }
+  .tplmeta .err { color: var(--red); }
+  .tplmeta .undo { margin-left: auto; border: none; background: transparent; padding: 0; font-size: 12.5px; color: var(--red); text-decoration: underline; text-underline-offset: 3px; }
+  .fit { margin-top: 14px; padding: 10px 0 12px 0; border-top: 3px double var(--red-l); border-bottom: 1px solid var(--red-l); color: var(--red-d); font-size: 14px; }
+  .fit[hidden] { display: none; }
+  .fit b { font-weight: 700; color: var(--red); margin-right: 8px; }
+  .fit .sm { display: block; color: var(--text2); margin-top: 2px; }
+  .fit .by { display: block; color: var(--muted); font-size: 12.5px; margin-top: 4px; }
+  .fit.ok { border-top-color: var(--green-t); border-bottom-color: var(--green-t); color: var(--green); }
+  .fit.ok b { color: var(--green); }
 </style>
 </head>
 <body data-view="boot">
@@ -416,11 +445,81 @@
     } else {
       area = '<textarea class="ta" id="ta" spellcheck="false" placeholder="연구계획서 본문">' + esc(S.text) + '</textarea><div class="sm muted" style="display:flex; justify-content:space-between; margin-top:6px;"><span class="mono" id="cnt">' + S.text.length + ' chars</span></div>';
     }
-    return '<div class="col"><div class="hero"><div class="title">Probabilistic Logics and the Synthesis of Reliable Organisms from Unreliable Components</div><div class="by">John von Neumann · <b>1956</b> · Automata Studies</div><div class="rule"></div><h1>신뢰할 수 없는 부품으로 신뢰할 수 있는 유기체를.<br>실패의 과정을 곱씹어, <em>성공적인 연구</em>를 설계합니다.</h1></div>' +
-      '<div class="card" style="padding:20px 22px 22px 22px;"><div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; gap:12px; flex-wrap:wrap;"><div class="seg"><button class="' + (f ? 'on' : '') + '" data-mode="file" type="button">파일 업로드</button><button class="' + (f ? '' : 'on') + '" data-mode="text" type="button">직접 입력</button></div></div>' + area +
+    if (!S.text) { T.tpl = null; T.ex = null; T.loaded = null; }
+    return '<div class="col"><div class="scope" id="scope">' + scopeInner() + '</div><div class="hero"><div class="title">Probabilistic Logics and the Synthesis of Reliable Organisms from Unreliable Components</div><div class="by">John von Neumann · <b>1956</b> · Automata Studies</div><div class="rule"></div><h1>신뢰할 수 없는 부품으로 신뢰할 수 있는 유기체를.<br>실패의 과정을 곱씹어, <em>성공적인 연구</em>를 설계합니다.</h1></div>' +
+      '<div class="card" id="inCard" style="padding:20px 22px 22px 22px;"><div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; gap:12px; flex-wrap:wrap;"><div class="seg"><button class="' + (f ? 'on' : '') + '" data-mode="file" type="button">파일 업로드</button><button class="' + (f ? '' : 'on') + '" data-mode="text" type="button">직접 입력</button></div></div>' +
+      '<div id="tplArea">' + tplInner() + '</div>' + area +
       (S.inErr ? '<div class="inerr" id="inErr">' + esc(S.inErr) + '</div>' : '') +
+      '<div class="fit' + (FIT && FIT.fit === true ? ' ok' : '') + '" id="fitBox" role="status"' + (FIT ? '' : ' hidden') + '>' + fitInner() + '</div>' +
       '<div style="display:flex; align-items:center; justify-content:space-between; margin-top:18px; gap:14px; flex-wrap:wrap;"><span class="sm muted">최종 판단은 연구자에게</span><button class="btn dark lg" id="btnStart" type="button"' + (S.text.trim() ? '' : ' disabled') + '>Pre-mortem 실행 →</button></div></div></div>';
   }
+
+  /* ---------- 1 입력 · 템플릿 선택기 · 예시 · 범위 안내 (GET /templates, E4-L1b) ---------- */
+  var SCOPE = { label: 'AI 활용 과학 연구 계획서 전용', domains: ['소재·화학·분자', '단백질·생물·신약', '물리·PDE·기후', '신경과학', '의료영상'] };
+  var T = { cat: null, err: '', tpl: null, ex: null, loaded: null, undo: null };
+  var FIT = null;  /* 적합성 판정(E3-L1c assess_fitness) 결과. 연결은 PM: window.NeumannInput.showFitness(result) */
+  var ROMAN = ['i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix', 'x'];
+  function scopeInner() {
+    var sc = (T.cat && T.cat.scope) || SCOPE;
+    return '<b>' + esc(SCOPE.label) + '</b><span class="dms">' + (sc.domains || []).map(function (d) { return '<span class="dm">' + esc(d) + '</span>'; }).join('') + '</span>';
+  }
+  function tplInner() {
+    var c = T.cat, tpls = c ? c.templates : [], exs = c ? c.examples : [];
+    var cur = null; tpls.forEach(function (t) { if (t.id === T.tpl) cur = t; });
+    var meta;
+    if (T.err) meta = '<span class="err" id="tplErr">' + esc(T.err) + '</span>';
+    else if (!c) meta = '<span>템플릿 목록 불러오는 중</span>';
+    else if (T.loaded && T.loaded.kind === 'example') meta = '<span>예시 <b>' + esc(T.loaded.name) + '</b></span><span class="mono">' + esc(T.loaded.filename) + '</span>' + (cur ? '<span>템플릿 ' + esc(cur.name) + '</span>' : '');
+    else if (cur) meta = '<span>템플릿 <b>' + esc(cur.name) + '</b></span><span>' + esc(cur.summary) + '</span><span>' + esc((cur.sections || []).join(' · ')) + '</span>';
+    else meta = '<span>템플릿 ' + tpls.length + '종 · 예시 ' + exs.length + '건</span>';
+    if (T.undo != null) meta += '<button class="undo" type="button" data-undo="1">이전 입력 되돌리기</button>';
+    if (!c) return '<div class="tplmeta" id="tplMeta">' + meta + '</div>';
+    return '<div class="optrow tprow"><span class="optl">템플릿</span><div class="tpls" id="tplList">' + tpls.map(function (t, i) { var on = t.id === T.tpl; return '<button class="tp' + (on ? ' on' : '') + '" type="button" data-tpl="' + esc(t.id) + '" aria-pressed="' + on + '" title="' + esc(t.summary) + '"><span class="n">' + (ROMAN[i] || i + 1) + '</span><span>' + esc(t.name) + '</span></button>'; }).join('') + '</div></div>' +
+      '<div class="optrow tprow" style="margin-top:10px;"><span class="optl">예시 불러오기</span><div class="exs" id="exList">' + exs.map(function (e) { var on = e.id === T.ex; return '<button class="exl' + (on ? ' on' : '') + '" type="button" data-ex="' + esc(e.id) + '" aria-pressed="' + on + '" title="' + esc(e.title || e.name) + '">' + esc(e.name) + '<span class="d">' + esc(e.domain) + '</span></button>'; }).join('') + '</div></div>' +
+      '<div class="tplmeta" id="tplMeta">' + meta + '</div>';
+  }
+  function paintTpl() { var a = $('tplArea'); if (a) a.innerHTML = tplInner(); var s = $('scope'); if (s) s.innerHTML = scopeInner(); }
+  function loadTemplates() {
+    fetch('templates', { cache: 'no-store' })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok || !j.templates) throw new Error('GET /templates ' + r.status + (j.reason ? ' · ' + j.reason : '')); return j; }); })
+      .then(function (j) { T.cat = j; T.err = ''; paintTpl(); })
+      .catch(function (e) { T.cat = null; T.err = '템플릿 목록을 불러오지 못함 · ' + (e && e.message ? e.message : 'GET /templates 응답 없음'); paintTpl(); });
+  }
+  function pickTemplate(id, kind) {
+    var ta = $('ta'); if (ta) S.text = ta.value;
+    fetch('templates/' + encodeURIComponent(id), { cache: 'no-store' })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok || typeof j.text !== 'string') throw new Error('GET /templates/' + id + ' ' + r.status); return j; }); })
+      .then(function (j) {
+        if (S.text.trim() && S.text !== (T.loaded && T.loaded.text)) T.undo = { text: S.text, filename: S.filename, fileMeta: S.fileMeta };
+        S.text = j.text; S.mode = 'text'; S.inErr = '';
+        S.filename = j.kind === 'example' ? (j.filename || '') : ''; S.fileMeta = j.kind === 'example' ? '예시 계획서' : '';
+        T.loaded = { kind: j.kind, id: j.id, name: j.name, filename: j.filename || '', text: j.text };
+        T.tpl = j.kind === 'example' ? j.template_id : j.id; T.ex = j.kind === 'example' ? j.id : null; T.err = '';
+        FIT = null; render();
+        var t2 = $('ta'); if (t2) { t2.focus(); t2.setSelectionRange(0, 0); t2.scrollTop = 0; }
+      })
+      .catch(function (e) { T.err = '불러오기 실패 · ' + (e && e.message ? e.message : kind); paintTpl(); });
+  }
+  function undoTemplate() { if (T.undo == null) return; S.text = T.undo.text; S.filename = T.undo.filename; S.fileMeta = T.undo.fileMeta; T.undo = null; T.tpl = null; T.ex = null; T.loaded = null; render(); }
+
+  /* 적합성 판정 자리. assess_fitness 결과 dict를 느슨하게 읽는다(필드 이름이 확정되면 PM이 맞춘다). */
+  var FITGEN = { astra: 'astra 판정', rule: '규칙 비상 판정', mock: 'mock provider', fallback: '규칙 비상 판정' };
+  function normFit(f) {
+    if (!f || typeof f !== 'object') return null;
+    var v = [f.fit, f.is_fit, f.suitable, f.is_research_plan, f.is_plan].filter(function (x) { return typeof x === 'boolean'; })[0];
+    if (v === undefined && typeof f.verdict === 'string') v = /^(fit|ok|pass|accept|적합)/i.test(f.verdict) ? true : (/^(unfit|reject|fail|부적합)/i.test(f.verdict) ? false : undefined);
+    var rs = Array.isArray(f.reasons) ? f.reasons : (f.reason ? [f.reason] : (f.why ? [f.why] : []));
+    var g = String(f.generator || f.method || f.judged_by || f.impl || '');
+    return { fit: v === undefined ? null : v, reasons: rs.map(String), field: f.field || f.domain || '', language: f.language || f.lang || '', gen: g, status: f.status || '' };
+  }
+  function fitInner() {
+    if (!FIT) return '';
+    var head = FIT.fit === false ? '적합성 판정 · 부적합 — 분석하지 않음' : (FIT.fit === true ? '적합성 판정 · 적합' : '적합성 판정 · 결과 해석 불가');
+    var by = [FIT.field ? '분야 ' + FIT.field : '', FIT.language ? '언어 ' + FIT.language : '', FIT.gen ? (FITGEN[FIT.gen] || ('판정 ' + FIT.gen)) : '판정 방식 미표기', FIT.status && FIT.status !== 'ok' ? '상태 ' + FIT.status : ''].filter(Boolean).join(' · ');
+    return '<b>' + esc(head) + '</b>' + FIT.reasons.map(function (r) { return '<span class="sm">' + esc(r) + '</span>'; }).join('') + '<span class="by">' + esc(by) + '</span>';
+  }
+  function showFitness(f) { FIT = normFit(f); var b = $('fitBox'); if (b) { b.innerHTML = fitInner(); b.hidden = !FIT; b.classList.toggle('ok', !!(FIT && FIT.fit === true)); } return FIT; }
+  window.NeumannInput = { showFitness: showFitness, clearFitness: function () { return showFitness(null); }, reloadTemplates: loadTemplates };
   function readFile(file) {
     S.inErr = '';
     if (!file) return;
@@ -567,6 +666,10 @@
         fi.addEventListener('change', function () { readFile(fi.files[0]); });
       }
       var fx = $('fileX'); if (fx) fx.addEventListener('click', function () { S.text = ''; S.filename = ''; S.fileMeta = ''; render(); });
+      $('inCard').addEventListener('click', function (ev) {
+        var b = ev.target.closest('[data-tpl],[data-ex],[data-undo]'); if (!b) return;
+        if (b.dataset.undo) undoTemplate(); else if (b.dataset.ex) pickTemplate(b.dataset.ex, 'example'); else pickTemplate(b.dataset.tpl, 'template');
+      });
     } else if (S.step === 1) {
       document.body.dataset.view = 'job';
       app.innerHTML = renderJob();
@@ -593,7 +696,7 @@
   });
   $('scrim').addEventListener('click', closeAll);
   document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') closeAll(); });
-  renderSteps(); render(); loadHealth();
+  renderSteps(); render(); loadHealth(); loadTemplates();
 })();
 </script>
 </body>
