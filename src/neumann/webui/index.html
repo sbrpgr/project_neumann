@@ -558,7 +558,7 @@
   function undoTemplate() { if (T.undo == null) return; S.text = T.undo.text; S.filename = T.undo.filename; S.fileMeta = T.undo.fileMeta; T.undo = null; T.tpl = null; T.ex = null; T.loaded = null; render(); }
 
   /* 적합성 판정 자리. assess_fitness 결과 dict를 느슨하게 읽는다(필드 이름이 확정되면 PM이 맞춘다). */
-  var FITGEN = { astra: 'LLM 판정', rule: '규칙 비상 판정', mock: 'mock provider', fallback: '규칙 비상 판정' };
+  var FITGEN = { astra: 'LLM 판정', rule: '규칙 비상 판정', mock: '모의(mock)', fallback: '규칙 비상 판정' };
   function normFit(f) {
     if (!f || typeof f !== 'object') return null;
     var v = [f.fit, f.is_fit, f.suitable, f.is_research_plan, f.is_plan].filter(function (x) { return typeof x === 'boolean'; })[0];

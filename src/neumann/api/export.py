@@ -84,7 +84,8 @@ GENERATOR_LABELS: dict[Generator, str] = {
     Generator.mock: "테스트용 가짜(mock). 실제 분석 결과가 아니다",
 }
 GENERATOR_SHORT: dict[Generator, str] = {g: display_generator(g.value) for g in Generator}  # 모델명 없는 표시 이름
-# JSON 값에 대한 설명 한 줄(DISP-1). 사람용 문서에서 astra 글자는 이 줄과 JSON 코드 블록에만 나온다.
+# JSON 값에 대한 설명 한 줄(DISP-1). README·ai_context에만 싣는다. 사람용 문서에서 astra 글자는 이 줄과
+# 리포트의 예상 심사평 JSON 코드 블록(결과 값 그대로)에만 나온다.
 JSON_GENERATOR_NOTE = (
     "JSON 값 `generator: \"astra\"`는 계약 이름(제품 LLM)이고 모델명이 아니다. "
     "실제 모델은 `model`(카드·예상 심사평·체크리스트)에 있다."
@@ -310,8 +311,11 @@ def _gen_label(card: RiskCard, fallback_model: str | None = None) -> str:
 
 
 def _gen_name(c: _Ctx, g: Generator) -> str:
-    """결과 전체의 생성 방식 이름. LLM이면 카드들의 모델(여럿이면 모두), 없으면 manifest 모델."""
-    if g is not Generator.astra:
+    """결과 전체의 생성 방식 이름. LLM이면 카드들의 모델(여럿이면 모두), 없으면 manifest 모델.
+
+    LLM 카드가 0장이면 모델명을 붙이지 않는다("LLM 0장"). 쓰이지 않은 모델을 적지 않기 위해서다.
+    """
+    if g is not Generator.astra or not c.gen_counts[g.value]:
         return display_generator(g.value)
     models = list(dict.fromkeys(card.model for _ref, card in c.refs if card.generator is g and card.model))
     return display_generator(g.value, ", ".join(models) or _result_model(c.result))
@@ -680,8 +684,6 @@ def _report(c: _Ctx) -> bytes:
         er_gen = r.expected_review.get("generator")
         if er_gen:
             L += [f"생성: {display_generator(er_gen, r.expected_review.get('model'))}", ""]
-        if "astra" in json.dumps(r.expected_review, ensure_ascii=False).lower():
-            L += [JSON_GENERATOR_NOTE, ""]
         L.append("```json")
         L += json.dumps(r.expected_review, ensure_ascii=False, indent=2).split("\n")
         L.append("```")

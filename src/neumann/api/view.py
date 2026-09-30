@@ -54,10 +54,13 @@ GENERATORS = {"astra", "rule", "mock", "sample"}
 # 생성 방식 표시 이름(DISP-1, decisions 2026-09-30 21:5x). 계약 값 ``astra``는 "제품 LLM"이라는 이름일 뿐 모델이 아니다.
 # 저장 값(``generator: "astra"``)은 그대로 두고, 사람이 보는 화면·ZIP 문서·리포트 카드만 이 함수를 거친다
 # (``neumann.api.export``·``eval.report_card``도 여기서 가져다 쓴다).
-GENERATOR_DISPLAY = {"astra": "LLM", "rule": "비상 규칙", "mock": "모의(mock)", "sample": "샘플 · 분석 결과 아님"}
+# astra는 여기 없다: 모델명을 붙여 display_generator가 "LLM (모델명)"으로 만든다.
+GENERATOR_DISPLAY = {"rule": "비상 규칙", "mock": "모의(mock)", "sample": "샘플 · 분석 결과 아님"}
 UNKNOWN_GENERATOR_LABEL = "생성 방식 미표기"
 # 계약 이름으로 쓴 astra만 잡는다. 모델명 안의 astra(gpt-6-astra 등)는 실제 모델 이름이라 건드리지 않는다.
-_CONTRACT_ASTRA = re.compile(r"(?<![A-Za-z0-9_.\-])astra(?![A-Za-z0-9_\-])", re.IGNORECASE)
+# 바로 뒤에 붙은 조사도 잡아 받침에 맞게 바꾼다(astra가 → LLM이, astra는 → LLM은).
+_CONTRACT_ASTRA = re.compile(r"(?<![A-Za-z0-9_.\-])astra(?![A-Za-z0-9_\-])([가는를와로라나랑])?", re.IGNORECASE)
+_JOSA_AFTER_LLM = {"가": "이", "는": "은", "를": "을", "와": "과", "로": "으로", "라": "이라", "나": "이나", "랑": "이랑"}
 
 
 def display_generator(generator: Any, model: Any = None) -> str:
@@ -80,7 +83,7 @@ def display_generator(generator: Any, model: Any = None) -> str:
 
 def display_text(text: Any) -> str:
     """사람이 보는 자유 문구(알림·단계 사유)에서 계약 이름 ``astra``만 "LLM"으로 바꾼다. 인용·계획서 줄에는 쓰지 않는다."""
-    return _CONTRACT_ASTRA.sub("LLM", _text(text))
+    return _CONTRACT_ASTRA.sub(lambda m: "LLM" + _JOSA_AFTER_LLM.get(m.group(1) or "", ""), _text(text))
 
 
 # DecisionOutcome(models.py) → 화면 라벨. 원문 문자열(outcome_raw)보다 먼저 본다.

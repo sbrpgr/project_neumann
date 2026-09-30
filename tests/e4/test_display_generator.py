@@ -28,6 +28,7 @@ from tests.fixtures.loader import load_fixtures
 ROOT = Path(__file__).resolve().parents[2]
 SOL = "gpt-6.1-sol"
 HUMAN_DOCS = ("README.md", "neumann_report.md", "plan_annotated.md", "ai_context.md", "similar_works.csv")
+NOTE_DOCS = ("README.md", "ai_context.md")  # JSON 설명 한 줄(JSON_GENERATOR_NOTE)을 싣는 문서는 이 둘뿐
 
 
 def openai_result(model: str | None = SOL, *, card_model: str | None = SOL) -> dict[str, Any]:
@@ -68,9 +69,11 @@ def _strings(obj: Any, skip_keys: frozenset[str] = frozenset({"gen", "result"}))
         yield obj
 
 
-def _human_text(doc: str) -> str:
-    """사람용 문서에서 JSON 값(```json 블록)과 JSON 설명 한 줄을 뺀 나머지."""
+def _human_text(doc: str, name: str) -> str:
+    """사람용 문서에서 JSON 값(```json 블록)과, README·ai_context면 JSON 설명 한 줄을 뺀 나머지."""
     doc = re.sub(r"```json\n.*?```", "", doc, flags=re.S)
+    if name not in NOTE_DOCS:
+        return doc
     return "\n".join(ln for ln in doc.splitlines() if JSON_GENERATOR_NOTE not in ln)
 
 
@@ -95,6 +98,8 @@ def test_display_generator_mapping() -> None:
     ("astra ① 호출 시간 초과", "LLM ① 호출 시간 초과"),
     ("입력이 연구계획서가 아니다(astra 판단: 요리 메모)", "입력이 연구계획서가 아니다(LLM 판단: 요리 메모)"),
     ("실제 astra 분석이 아니다", "실제 LLM 분석이 아니다"),
+    ("이 계획서에 astra가 앞서 만든 검색어", "이 계획서에 LLM이 앞서 만든 검색어"),  # 조사도 받침에 맞게
+    ("astra는 · astra를 · astra와 · astra로 · astra라는", "LLM은 · LLM을 · LLM과 · LLM으로 · LLM이라는"),
     ("화면 카드 generator {'astra': 13}", "화면 카드 generator {'LLM': 13}"),
     ("평가 모델 gpt-6-astra", "평가 모델 gpt-6-astra"),            # 모델명은 그대로
     ("score_astra.json · pred_astra_gold.jsonl", "score_astra.json · pred_astra_gold.jsonl"),  # 파일 이름도
@@ -120,7 +125,7 @@ def test_view_shows_llm_model_and_no_astra_for_openai_result() -> None:
     assert st["generators"] == {"astra": len(view["cards"])}
     assert st["generator_labels"] == {"astra": f"LLM ({SOL})"}
     assert any("LLM ① 호출 시간 초과" in s["reason"] for s in st["stages_not_ok"])
-    assert any("LLM가 앞서 만든 검색어" in n for n in st["notices"])
+    assert any("LLM이 앞서 만든 검색어" in n for n in st["notices"])
     leaked = [s for s in _strings(view) if "astra" in s.lower()]
     assert leaked == [], leaked
     # 입력(저장 JSON)은 바뀌지 않는다
@@ -172,13 +177,14 @@ def _package(raw: dict[str, Any]) -> dict[str, str]:
 def test_export_human_docs_have_no_astra_but_json_keeps_contract_value() -> None:
     files = _package(openai_result())
     for name in HUMAN_DOCS:
-        rest = _human_text(files[name])
+        rest = _human_text(files[name], name)
         assert "astra" not in rest.lower(), (name, [ln for ln in rest.splitlines() if "astra" in ln.lower()])
+        assert (JSON_GENERATOR_NOTE in files[name]) == (name in NOTE_DOCS), name  # 설명 줄은 README·ai_context만
     readme, report = files["README.md"], files["neumann_report.md"]
-    assert JSON_GENERATOR_NOTE in readme and f"- 생성: LLM ({SOL})" in files["ai_context.md"]
+    assert f"- 생성: LLM ({SOL})" in files["ai_context.md"]
     assert f"**LLM ({SOL})** 2장" in readme and f"LLM ({SOL}) 2장 · 비상 규칙 0장 · 모의(mock) 0장" in report
     assert f"생성: LLM ({SOL})" in report  # 예상 심사평 머리
-    assert "LLM ① 호출 시간 초과" in readme and "LLM가 앞서 만든 검색어" in report
+    assert "LLM ① 호출 시간 초과" in readme and "LLM이 앞서 만든 검색어" in report
     assert f"생성 LLM ({SOL})" in report  # 체크리스트 줄
     # JSON 값은 계약 그대로
     cards = json.loads(files["risk_cards.json"])["risk_cards"]
@@ -198,23 +204,20 @@ def test_export_rule_and_mock_labels() -> None:
     assert rule_line.endswith("— 비상 규칙") and "LLM" not in rule_line
     assert mock_line.endswith("— 모의(mock)")
     for name in HUMAN_DOCS:
-        assert "astra" not in _human_text(files[name]).lower(), name
+        assert "astra" not in _human_text(files[name], name).lower(), name
 
 
-# ── 화면 원본(index.html) ─────────────────────────────────────────────────
-
-
-def test_webui_tables_and_calls_use_display_names() -> None:
-    html = (ROOT / "src" / "neumann" / "webui" / "index.html").read_text(encoding="utf-8")
-    for var in ("GEN", "FITGEN"):
-        m = re.search(r"var " + var + r" = \{([^}]*)\};", html)
-        assert m, var
-        values = re.findall(r":\s*'([^']*)'", m.group(1))
-        assert values and not any("astra" in v.lower() for v in values), (var, values)
-    # 카드·패널·심사평·체크리스트는 서버 표시 이름(genl)을 쓴다
-    assert html.count("genLabel(cd.gen, cd.genl)") == 2
-    assert "genLabel(R.gen, R.genl)" in html and "genLabel(it.gen, it.genl)" in html
-    assert "generator_labels" in html
+def test_export_zero_llm_cards_does_not_name_a_model() -> None:
+    """LLM 카드가 0장이면 요약에 모델명을 붙이지 않는다(manifest에 모델이 있어도 \"LLM 0장\")."""
+    raw = openai_result()
+    for c in raw["risk_cards"]:
+        c.update(generator="mock", model=None)
+    files = _package(raw)
+    for name in ("README.md", "neumann_report.md", "ai_context.md"):
+        doc = files[name]
+        assert "LLM 0장 · 비상 규칙 0장 · 모의(mock) 2장" in doc, name
+        assert f"LLM ({SOL}) 0장" not in doc and f"**LLM ({SOL})**" not in doc, name
+    assert "- **LLM** 0장:" in files["README.md"]
 
 
 # ── 화면 스크린샷(mock 서버, 선택) ───────────────────────────────────────

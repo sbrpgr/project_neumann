@@ -172,7 +172,7 @@ def shoot(base: str, out: Path, prefix: str = PREFIX, shots: tuple[str, ...] = S
         res["example_meta"] = page.inner_text("#tplMeta")
         snap(page, "example")
 
-        # 4 적합성 판정 자리: mock 판정 주입(연결 전 자리 확인용, 화면에 'mock provider'로 표기)
+        # 4 적합성 판정 자리: mock 판정 주입(연결 전 자리 확인용, 화면에 '모의(mock)'로 표기)
         page.fill("#ta", _norm(PLANS / "negative_recipe.md"))
         page.evaluate("""() => window.NeumannInput.showFitness({fit: false, generator: 'mock', field: '해당 없음', language: 'ko',
             reasons: ['[mock] 연구 질문·방법·데이터·평가 요소가 없다', '[mock] 조리법 문서로 보인다']})""")
