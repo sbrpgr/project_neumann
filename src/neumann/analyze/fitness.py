@@ -105,7 +105,17 @@ Return JSON that matches the schema:
 
 
 def _en(*words: str) -> re.Pattern[str]:
+    """요소·무관 사전용 영어 표지. 경계가 `\\b`라 한글 조사가 붙은 약어(`GNN을`)는 못 잡는다. 이 사전은 판정
+    (fit·unfit·uncertain)과 요소 줄 번호를 정해서 E3-L1z에서는 바꾸지 않았다(보고서 E3-L1z "결정")."""
     return re.compile(r"(?i)\b(?:" + "|".join(words) + r")\b")
+
+
+def _en_ascii(*words: str) -> re.Pattern[str]:
+    """분야 표지용 영어 표지(E3-L1z). 경계는 로마자·숫자만 본다: 한글 조사가 붙어도(`EEG와`, `fMRI로`, `DNA를`)
+    잡고, 로마자 낱말 한가운데(`brainstorm`, `EEG2`)는 잡지 않는다. 낱말 안 반복은 `\\w*` 대신 `[a-z0-9]*`로 써서
+    뒤에 붙은 한글 조사를 표지 문자열에 넣지 않는다. 둘러보기는 한 글자만 보고, 반복 뒤 경계는 반복이 먹지 못한
+    글자에서만 검사하므로 되돌아가기가 없다(선형 시간)."""
+    return re.compile(r"(?i)(?<![a-z0-9])(?:" + "|".join(words) + r")(?![a-z0-9])")
 
 
 _LEXICON: dict[str, tuple[tuple[str, ...], re.Pattern[str]]] = {
@@ -150,28 +160,38 @@ _OFFTOPIC_EN = _en(
 )
 
 # 신경과학 표지(E3-L1x). 인공 신경망(neural network, 신경망·심층신경망·신경회로망)과 신경 연산자(neural operator)는
-# AI 방법이지 신경과학이 아니다. 영어는 neur\w*가 아니라 neuro\w*(neuron·neuronal·neuroscience·neuroimaging)만 잡는다.
+# AI 방법이지 신경과학이 아니다. 영어는 neur\w*가 아니라 neuro…(neuron·neuronal·neuroscience·neuroimaging)만 잡는다.
 # 한국어는 "신경" 단독 대신 신경과학 복합어만 잡고, "뇌우"(기상)와 "~인지"(어미)는 빼려고 정규식으로 둔다.
+# 인지 복합어(E3-L1z): 붙여 쓴 복합어(인지과제·경도인지장애·사회인지기능)는 앞 글자와 상관없이 잡고, 띄어 쓴
+# "인지 과제"는 "인지"가 낱말 첫머리이거나 인지 접두어(사회인지·경도인지·신경인지·시각인지…) 뒤일 때만 잡는다.
+# "효과적인지 과제별로"·"것인지 기능"의 "인지"는 어미 "-ㄴ지"다. 접두어 뒷보기는 모두 두 글자(고정 길이)다.
+_NEURO_KO_COGNITION = r"(?:과학|과제|기능|능력|부하|저하|장애|심리)"
+_NEURO_KO_PREFIX = r"사회|경도|신경|시각|청각|공간|언어|정서|메타"
 _NEURO_KO = re.compile(
     r"신경\s?(?:과학|세포|생리|영상|활동|신호|질환)|신경\s?회로(?!망)|신경계|뉴런|뇌(?!우)"
-    r"|인지\s?(?:과학|과제|기능|능력|부하|저하|장애|심리)"
+    rf"|인지{_NEURO_KO_COGNITION}|(?:(?<![가-힣])|(?<={_NEURO_KO_PREFIX}))인지\s{_NEURO_KO_COGNITION}"
 )
-_NEURO_EN = _en(r"neuro\w*", r"fmri", r"eeg", r"brains?", r"cognit\w*")
+# neuromorphic(뉴로모픽 하드웨어)·neuro-symbolic(신경-기호 AI)은 AI 용어라 뺀다(E3-L1z). 부정 전방탐색은 최대 9글자만 본다.
+_NEURO_EN = _en_ascii(r"neuro(?!morphic|[-\s]?symbolic)[a-z0-9]*", r"fmri", r"eeg", r"brains?", r"cognit[a-z0-9]*")
 
+# 분야 표지(E3-L1z부터 영어는 `_en_ascii`): 분야 점수만 정하고 판정·요소 줄 번호에는 쓰이지 않는다.
 _FIELDS: tuple[tuple[str, tuple[str, ...] | re.Pattern[str], re.Pattern[str]], ...] = (
     ("재료·화학", ("전해액", "배터리", "전지", "분자", "소재", "촉매", "화합물", "고분자"),
-     _en(r"electrolyt\w*", r"batter(?:y|ies)", r"molecul\w*", r"materials?", r"catalys\w*", r"polymers?", r"chemi\w*")),
+     _en_ascii(r"electrolyt[a-z0-9]*", r"batter(?:y|ies)", r"molecul[a-z0-9]*", r"materials?", r"catalys[a-z0-9]*",
+               r"polymers?", r"chemi[a-z0-9]*")),
     ("신경과학·뇌영상", _NEURO_KO, _NEURO_EN),
     ("의료·의료영상", ("의료", "임상", "환자", "진단", "폐렴", "X선", "병변"),
-     _en(r"clinic\w*", r"patients?", r"diagnos\w*", r"x-?ray", r"radiolog\w*", r"medical", r"patholog\w*")),
+     _en_ascii(r"clinic[a-z0-9]*", r"patients?", r"diagnos[a-z0-9]*", r"x-?ray", r"radiolog[a-z0-9]*", r"medical",
+               r"patholog[a-z0-9]*")),
     ("자연어처리", ("자연어", "언어모델", "언어 모델", "텍스트", "말뭉치"),
-     _en(r"nlp", r"language models?", r"llms?", r"corpus", r"translation")),
-    ("컴퓨터비전", ("이미지", "객체 탐지", "영상 분할"), _en(r"images?", r"vision", r"object detection", r"segmentation")),
+     _en_ascii(r"nlp", r"language models?", r"llms?", r"corpus", r"translation")),
+    ("컴퓨터비전", ("이미지", "객체 탐지", "영상 분할"),
+     _en_ascii(r"images?", r"vision", r"object detection", r"segmentation")),
     ("생명과학·생물정보", ("유전체", "단백질", "세포", "유전자"),
-     _en(r"genom\w*", r"proteins?", r"cells?", r"genes?", r"rna", r"dna")),
+     _en_ascii(r"genom[a-z0-9]*", r"proteins?", r"cells?", r"genes?", r"rna", r"dna")),
     ("기후·지구과학", ("기후", "기상", "강수", "해양", "대기"),
-     _en(r"climate", r"weather", r"precipitation", r"ocean\w*", r"atmospher\w*")),
-    ("물리·공학", ("물리", "역학", "유체", "플라즈마"), _en(r"physic\w*", r"fluids?", r"plasma", r"quantum")),
+     _en_ascii(r"climate", r"weather", r"precipitation", r"ocean[a-z0-9]*", r"atmospher[a-z0-9]*")),
+    ("물리·공학", ("물리", "역학", "유체", "플라즈마"), _en_ascii(r"physic[a-z0-9]*", r"fluids?", r"plasma", r"quantum")),
 )
 
 

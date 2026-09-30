@@ -11,6 +11,8 @@ similar_works.csv, plan_annotated.md, neumann_report.md, ai_context.md, decision
 - 결정적: 같은 입력이면 manifest.json의 `created_at`(패키지 생성 시각)만 빼고 모든 파일이 바이트 단위로 같다.
   ZIP 항목 시각은 결과의 `generated_at`으로 고정한다. `created_at`을 넘기면 ZIP 전체가 같다.
 - 정직: 카드별 `generator`(astra·rule·mock)와 강등 단계(degraded·error·skipped)를 README·리포트에 그대로 적는다.
+  사람이 읽는 문서에는 표시 이름(`view.display_generator`: LLM (모델명)·비상 규칙·모의(mock))으로 적고,
+  JSON 값(`generator: "astra"`)은 계약대로 둔다(DISP-1).
   규칙 카드를 LLM 결과라고 쓰지 않는다. 카드가 0장이면 결과에 적힌 사유를 옮기고, 없으면 "사유 없음"이라고 쓴다.
 - 인용: `evidence`의 text를 가공 없이 옮긴다. 패키지는 원문을 다시 받지 않으므로 재대조 상태는 `not_reverified`다.
 - 개인정보: 계획서 줄은 `PlanDocument` 규칙(NFC+LF, 이메일·ORCID 가림)을 거친 줄만 쓴다. 설정·환경변수는 읽지 않는다.
@@ -33,6 +35,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Body, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
+from neumann.api.view import display_generator, display_text
 from neumann.models import (
     SCHEMA_VERSION,
     Excerpt,
@@ -79,11 +82,13 @@ GENERATOR_LABELS: dict[Generator, str] = {
     Generator.rule: "규칙(비상 경로: 키워드 태거·태그 빈도)으로 만든 카드. LLM 결과가 아니다",
     Generator.mock: "테스트용 가짜(mock). 실제 분석 결과가 아니다",
 }
-GENERATOR_SHORT: dict[Generator, str] = {
-    Generator.astra: "astra(LLM)",
-    Generator.rule: "rule(규칙 비상 경로)",
-    Generator.mock: "mock(테스트용 가짜)",
-}
+GENERATOR_SHORT: dict[Generator, str] = {g: display_generator(g.value) for g in Generator}  # 모델명 없는 표시 이름
+# JSON 값에 대한 설명 한 줄(DISP-1). README·ai_context에만 싣는다. 사람용 문서에서 astra 글자는 이 줄과
+# 리포트의 예상 심사평 JSON 코드 블록(결과 값 그대로)에만 나온다.
+JSON_GENERATOR_NOTE = (
+    "JSON 값 `generator: \"astra\"`는 계약 이름(제품 LLM)이고 모델명이 아니다. "
+    "실제 모델은 `model`(카드·예상 심사평·체크리스트)에 있다."
+)
 
 SOURCE_KIND_KO: dict[str, str] = {
     "review": "심사평",
@@ -171,7 +176,7 @@ def _checklist_line(item: Mapping[str, Any]) -> str:
     if item.get("plan_lines"):
         meta.append("계획서 줄 " + ", ".join(str(n) for n in item["plan_lines"]))
     if item.get("generator"):
-        meta.append(f"생성 {item['generator']}")
+        meta.append(f"생성 {display_generator(item['generator'], item.get('model'))}")
     line = (f"[{item_id}] " if item_id is not None else "") + _one_line(text)
     if meta:
         line += f" ({_one_line(' · '.join(meta))})"
@@ -293,21 +298,36 @@ def _risk_label(card: RiskCard) -> str:
     return f"{code} {card.risk_code.title_ko}"
 
 
-def _gen_label(card: RiskCard) -> str:
-    label = GENERATOR_SHORT[card.generator]
-    if card.generator is Generator.astra and card.model:
-        label += f", 모델 {card.model}"
-    return label
+def _result_model(r: PremortemResult) -> str | None:
+    """결과 manifest의 LLM 모델(카드에 모델이 없을 때만 쓴다)."""
+    m = r.manifest or {}
+    return next((str(m[k]) for k in ("model_id", "model", "llm_model") if m.get(k)), None)
+
+
+def _gen_label(card: RiskCard, fallback_model: str | None = None) -> str:
+    """카드 생성 방식 표시 이름. LLM 카드는 "LLM (모델명)", 규칙·mock은 모델을 붙이지 않는다."""
+    return display_generator(card.generator.value, card.model or fallback_model)
+
+
+def _gen_name(c: _Ctx, g: Generator) -> str:
+    """결과 전체의 생성 방식 이름. LLM이면 카드들의 모델(여럿이면 모두), 없으면 manifest 모델.
+
+    LLM 카드가 0장이면 모델명을 붙이지 않는다("LLM 0장"). 쓰이지 않은 모델을 적지 않기 위해서다.
+    """
+    if g is not Generator.astra or not c.gen_counts[g.value]:
+        return display_generator(g.value)
+    models = list(dict.fromkeys(card.model for _ref, card in c.refs if card.generator is g and card.model))
+    return display_generator(g.value, ", ".join(models) or _result_model(c.result))
 
 
 def _gen_summary(c: _Ctx) -> str:
-    return " · ".join(f"{GENERATOR_SHORT[g]} {c.gen_counts[g.value]}장" for g in Generator)
+    return " · ".join(f"{_gen_name(c, g)} {c.gen_counts[g.value]}장" for g in Generator)
 
 
 def _stage_line(s: StageStatus) -> str:
     text = f"{s.stage}: {s.state}"
     if s.detail:
-        text += f" — {_one_line(s.detail)}"
+        text += f" — {_one_line(display_text(s.detail))}"
     return text
 
 
@@ -317,7 +337,7 @@ def _zero_card_reasons(c: _Ctx) -> list[str]:
     if c.result.status == "error":
         reasons.append("분석이 오류로 끝났다(status=error).")
     reasons.extend(f"단계 {_stage_line(s)}" for s in c.not_ok_stages)
-    reasons.extend(_one_line(n) for n in c.result.notices)
+    reasons.extend(_one_line(display_text(n)) for n in c.result.notices)
     if not reasons:
         reasons.append("파이프라인이 근거가 연결된 위험을 찾지 못했다. 결과에 따로 적힌 사유는 없다.")
     return reasons
@@ -356,7 +376,7 @@ def _limitations(c: _Ctx) -> list[str]:
         "- PDF는 넣지 않는다. 화면에서 브라우저 인쇄로 만든다.",
     ]
     if c.gen_counts[Generator.rule.value]:
-        lines.append("- rule 카드는 LLM이 아니라 규칙(비상 경로)으로 만든 것이다. 품질이 astra 카드보다 낮을 수 있다.")
+        lines.append("- rule 카드는 LLM이 아니라 규칙(비상 경로)으로 만든 것이다. 품질이 LLM 카드보다 낮을 수 있다.")
     if c.gen_counts[Generator.mock.value]:
         lines.append("- mock 카드는 테스트용 가짜다. 실제 분석 결과로 쓰면 안 된다.")
     return lines
@@ -383,16 +403,17 @@ def _readme(c: _Ctx) -> bytes:
         "|---|---|",
     ]
     L += [f"| `{name}` | {FILE_ROLES[name]} |" for name in FILE_NAMES]
+    L += ["", JSON_GENERATOR_NOTE]
     L += ["", "## 생성 방식", ""]
-    L += [f"- **{g.value}** {c.gen_counts[g.value]}장: {GENERATOR_LABELS[g]}" for g in Generator]
+    L += [f"- **{_gen_name(c, g)}** {c.gen_counts[g.value]}장: {GENERATOR_LABELS[g]}" for g in Generator]
     if c.refs:
         L += ["", "카드별:", ""]
-        L += [f"- {ref} `{card.card_id}` — {_gen_label(card)}" for ref, card in c.refs]
+        L += [f"- {ref} `{card.card_id}` — {_gen_label(card, _result_model(r))}" for ref, card in c.refs]
     L += ["", "## 강등 단계", ""]
     if c.not_ok_stages:
         L += ["| 단계 | 상태 | 구현 | 사유 |", "|---|---|---|---|"]
         L += [
-            f"| {_cell(s.stage)} | {s.state} | {_cell(s.impl or '-')} | {_cell(s.detail or '-')} |"
+            f"| {_cell(s.stage)} | {s.state} | {_cell(s.impl or '-')} | {_cell(display_text(s.detail or '-'))} |"
             for s in c.not_ok_stages
         ]
     elif r.stages:
@@ -404,7 +425,7 @@ def _readme(c: _Ctx) -> bytes:
         L += [f"- {x}" for x in _zero_card_reasons(c)]
     if r.notices:
         L += ["", "## 결과 알림", ""]
-        L += [f"- {_one_line(n)}" for n in r.notices]
+        L += [f"- {_one_line(display_text(n))}" for n in r.notices]
     if c.warnings:
         L += ["", "## 주의", ""]
         L += [f"- {w}" for w in c.warnings]
@@ -513,7 +534,7 @@ def _card_legend(c: _Ctx) -> list[str]:
         return ["위험카드가 0장이라 연결된 줄이 없다."]
     L = ["| 표시 | 카드 id | 위험 유형 | 생성 | 제목 |", "|---|---|---|---|---|"]
     L += [
-        f"| {ref} | `{card.card_id}` | {_cell(_risk_label(card))} | {_cell(_gen_label(card))} | {_cell(card.title)} |"
+        f"| {ref} | `{card.card_id}` | {_cell(_risk_label(card))} | {_cell(_gen_label(card, _result_model(c.result)))} | {_cell(card.title)} |"
         for ref, card in c.refs
     ]
     return L
@@ -602,15 +623,15 @@ def _report(c: _Ctx) -> bytes:
     ]
     if r.notices:
         L += ["", "알림:", ""]
-        L += [f"- {_one_line(n)}" for n in r.notices]
+        L += [f"- {_one_line(display_text(n))}" for n in r.notices]
 
     L += ["", "## 생성 방식과 단계", ""]
-    L += [f"- **{g.value}** {c.gen_counts[g.value]}장: {GENERATOR_LABELS[g]}" for g in Generator]
+    L += [f"- **{_gen_name(c, g)}** {c.gen_counts[g.value]}장: {GENERATOR_LABELS[g]}" for g in Generator]
     L.append("")
     if r.stages:
         L += ["| 단계 | 상태 | 구현 | 사유 | 소요(초) |", "|---|---|---|---|---:|"]
         L += [
-            f"| {_cell(s.stage)} | {s.state} | {_cell(s.impl or '-')} | {_cell(s.detail or '-')} | {s.elapsed_s:.2f} |"
+            f"| {_cell(s.stage)} | {s.state} | {_cell(s.impl or '-')} | {_cell(display_text(s.detail or '-'))} | {s.elapsed_s:.2f} |"
             for s in r.stages
         ]
     else:
@@ -625,7 +646,7 @@ def _report(c: _Ctx) -> bytes:
         L += [
             f"### {i}. [{_risk_label(card)}] {_one_line(card.title)}",
             "",
-            f"- 카드 `{card.card_id}` ({ref}) · 생성: {_gen_label(card)}",
+            f"- 카드 `{card.card_id}` ({ref}) · 생성: {_gen_label(card, _result_model(r))}",
             f"- 점수 {s.total:.2f} (유사도 {s.similarity:.2f} · 빈도 {s.frequency:.2f} · "
             f"심각도 {s.severity:.2f} · 신뢰도 {s.confidence:.2f})",
             f"- 이 계획서에 해당하는 이유: {_one_line(card.why_applies.text)}",
@@ -658,7 +679,11 @@ def _report(c: _Ctx) -> bytes:
         L.append("유사 연구가 없다.")
 
     if r.expected_review:
-        L += ["", "## 예상 심사평 (결과의 expected_review를 그대로 옮김)", "", "```json"]
+        L += ["", "## 예상 심사평 (결과의 expected_review를 그대로 옮김)", ""]
+        er_gen = r.expected_review.get("generator")
+        if er_gen:
+            L += [f"생성: {display_generator(er_gen, r.expected_review.get('model'))}", ""]
+        L.append("```json")
         L += json.dumps(r.expected_review, ensure_ascii=False, indent=2).split("\n")
         L.append("```")
     if r.checklist:
@@ -688,6 +713,7 @@ def _ai_context(c: _Ctx) -> bytes:
         "- 따옴표 안 인용문은 실제 심사 기록 원문을 오프셋으로 잘라 옮긴 것이다. 고치거나 지어내지 않는다.",
         "- 근거는 발췌 id(`ex_…`)로 가리킨다. 근거 id가 없는 위험을 새로 덧붙이지 않는다.",
         "- generator=rule 카드는 규칙(비상 경로) 결과이고 LLM 판단이 아니다. generator=mock 카드는 테스트용 가짜다.",
+        f"- {JSON_GENERATOR_NOTE}",
         "- 위험은 가능성이다. 계획서의 결함이 확정됐다고 말하지 않는다.",
         "",
         "## 상태",
@@ -707,7 +733,7 @@ def _ai_context(c: _Ctx) -> bytes:
             "",
             f"- 위험 유형: {_risk_label(card)} ({card.risk_code.title_en})",
             f"- 제목: {_one_line(card.title)}",
-            f"- generator: {card.generator.value}" + (f" (model {card.model})" if card.model else ""),
+            f"- 생성: {_gen_label(card, _result_model(r))}",
             f"- 점수 total: {card.score.total:.2f}",
             f"- 해당 이유: {_one_line(card.why_applies.text)}",
         ]

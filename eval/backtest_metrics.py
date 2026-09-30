@@ -58,7 +58,8 @@ def _pct(sorted_xs: list[float], q: float) -> float:
 
 def bootstrap_ci(units: Sequence[Any], stat: Callable[[Sequence[Any]], float | None], *, n_boot: int = N_BOOT,
                  seed: int = SEEDS["bootstrap"], alpha: float = ALPHA) -> tuple[float, float] | None:
-    """단위(논문) 재표집 percentile 구간. 단위가 없으면 None."""
+    """단위(논문) 재표집 percentile 구간. 단위가 없거나 어떤 재표집에서도 값이 정의되지 않으면 None
+    (예: 모든 논문이 위험 0개라 근거율 분모가 늘 0)."""
     n = len(units)
     if n == 0:
         return None
@@ -68,6 +69,8 @@ def bootstrap_ci(units: Sequence[Any], stat: Callable[[Sequence[Any]], float | N
         s = stat([units[rng.randrange(n)] for _ in range(n)])
         if s is not None:
             vals.append(s)
+    if not vals:
+        return None
     vals.sort()
     return (round(_pct(vals, alpha / 2), 4), round(_pct(vals, 1 - alpha / 2), 4))
 
@@ -83,6 +86,31 @@ def _ratio_stat(units: Sequence[tuple[int, int]]) -> float | None:
     return num / den if den else None
 
 
+NO_SHUFFLE_NOTE = ("셔플 대조 없음(진짜 조건만 실행): 특이성(진짜 − 셔플)을 측정하지 않았다. "
+                   "적중이 그 계획서에만 맞는 지적인지는 이 결과로 말할 수 없다.")
+
+
+def risk_grade_share(grades: Sequence[Sequence[str | None]]) -> dict[str, Any]:
+    """낸 위험(빈 자리 제외) 중 다수결 A·B·C 개수와 비율."""
+    flat = [x for gs in grades for x in gs if x is not None]
+    n = len(flat)
+    c = Counter(flat)
+    return {"n": n, "counts": {k: c[k] for k in ("A", "B", "C")},
+            "share": {k: (round(c[k] / n, 4) if n else None) for k in ("A", "B", "C")}}
+
+
+def vote_patterns(votes_rows: Sequence[Sequence[Sequence[str] | None]]) -> dict[str, int]:
+    """위험별 3명 표의 모양: 만장일치 / 2:1 / 모두 다름(다수결 규칙상 B)."""
+    out = {"unanimous": 0, "split_2_1": 0, "all_differ": 0}
+    for row in votes_rows:
+        for v in row or []:
+            if not v:
+                continue
+            k = len(set(v))
+            out[{1: "unanimous", 2: "split_2_1"}.get(k, "all_differ")] += 1
+    return out
+
+
 def compute_metrics(graded: list[dict[str, Any]], *, work_ids: list[str] | None = None, n_boot: int = N_BOOT,
                     seed: int = SEEDS["bootstrap"]) -> dict[str, Any]:
     """graded 목록 → 시스템별 지표·특이성·Neumann−일반 LLM(짝지은 부트스트랩)."""
@@ -96,8 +124,11 @@ def compute_metrics(graded: list[dict[str, Any]], *, work_ids: list[str] | None 
             continue
         table.setdefault((g["system"], g["condition"]), {})[g["work_id"]] = g
 
+    has_shuffle = any(c == "shuffle" for _, c in table)
     out: dict[str, Any] = {"systems": {}, "comparison": {}, "definitions": "04_평가_명세 §0.4, eval/backtest_metrics.py 머리말",
-                           "n_boot": n_boot, "seed": seed, "work_ids_filter": sorted(wanted) if wanted else None}
+                           "n_boot": n_boot, "seed": seed, "work_ids_filter": sorted(wanted) if wanted else None,
+                           "controls": {"shuffle": has_shuffle, "conditions": sorted({c for _, c in table}),
+                                        "note": None if has_shuffle else NO_SHUFFLE_NOTE}}
     summary: dict[str, Any] = {}
     for system in sorted({s for s, _ in table}):
         res: dict[str, Any] = {}
@@ -119,6 +150,12 @@ def compute_metrics(graded: list[dict[str, Any]], *, work_ids: list[str] | None 
                 "grade_counts": dict(Counter(x if x else "-" for gs in grades for x in gs)),
                 "missing_slots": sum(1 for gs in grades for x in gs if x is None),
                 "failed_runs": sum(1 for w in wids if rows[w]["n_risks"] == 0),
+                "n_risks": sum(rows[w]["n_risks"] for w in wids),
+                "risk_grades": risk_grade_share(grades),
+                "vote_patterns": vote_patterns([rows[w].get("votes") for w in wids]),
+                "status_counts": dict(Counter(str(rows[w].get("status")) for w in wids)),
+                "generator_counts": dict(Counter(str(rows[w].get("generator")) for w in wids)),
+                "models": sorted({str(rows[w].get("model")) for w in wids}),
             }
         real, shuf = table.get((system, "real"), {}), table.get((system, "shuffle"), {})
         both = sorted(set(real) & set(shuf))
@@ -134,6 +171,8 @@ def compute_metrics(graded: list[dict[str, Any]], *, work_ids: list[str] | None 
             "fp_rate": res["real"].get("fp_rate"),
             "specificity": res["specificity"] if res["specificity"].get("measured") else "측정 못 함",
             "evidence_rate": res["real"].get("evidence_rate"),
+            "risk_grades": res["real"].get("risk_grades"),
+            "status_counts": res["real"].get("status_counts"),
         }
 
     a, b = table.get((MAIN, "real"), {}), table.get((BASELINE, "real"), {})
@@ -145,7 +184,17 @@ def compute_metrics(graded: list[dict[str, Any]], *, work_ids: list[str] | None 
         # McNemar용 불일치 쌍(hit@3). n이 작아 유의성은 주장하지 않는다(§2.3)
         bc = Counter((hit_at_3(a[w]["grades"]), hit_at_3(b[w]["grades"])) for w in paired)
         out["comparison"]["hit_at_3_discordant"] = {"neumann_only": bc[(1.0, 0.0)], "baseline_only": bc[(0.0, 1.0)], "n": len(paired)}
+        # 민감도: 어느 쪽이든 status가 ok가 아닌 논문(강등·실패)을 뺀 짝. 주 지표는 그 논문을 빼지 않는다
+        not_ok = [w for w in paired if a[w].get("status") != "ok" or b[w].get("status") != "ok"]
+        if not_ok:
+            ok_pairs = [w for w in paired if w not in not_ok]
+            sens: dict[str, Any] = {"excluded_work_ids": not_ok, "n": len(ok_pairs)}
+            for name, fn in (("precision_at_3", precision_at_3), ("hit_at_3", hit_at_3)):
+                diffs = [fn(a[w]["grades"]) - fn(b[w]["grades"]) for w in ok_pairs]
+                sens[f"{name}_diff"] = _metric(diffs, _mean, **kw) if ok_pairs else {"value": None, "ci95": None, "n": 0}
+            out["comparison"]["sensitivity_status_ok_only"] = sens
     summary["comparison"] = out["comparison"]
+    summary["controls"] = out["controls"]
     out["summary"] = summary
     return out
 

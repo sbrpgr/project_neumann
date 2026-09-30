@@ -25,11 +25,12 @@ except Exception:  # noqa: BLE001
 
 SAMPLE_FAIL = "파이프라인 미연결(샘플 모드)"
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]"}
-# index.html의 GEN 표와 같은 문구. 규칙 카드가 LLM 카드처럼 보이면 안 된다.
+# index.html의 GEN 표(서버 표시 이름 genl이 없을 때의 대비)와 같은 문구. 규칙 카드가 LLM 카드처럼 보이면 안 된다.
+# 화면은 카드마다 서버가 내려 준 genl(view.display_generator: "LLM (모델명)"·"비상 규칙"·"모의(mock)")을 먼저 쓴다(DISP-1).
 GEN_LABEL = {
-    "astra": "astra 합성",
-    "rule": "규칙 합성 · 비상 경로",
-    "mock": "mock provider",
+    "astra": "LLM",
+    "rule": "비상 규칙",
+    "mock": "모의(mock)",
     "sample": "샘플 · 분석 결과 아님",
 }
 DEFAULT_EMPTY_REASONS = {"", "사유 없음", "위험카드 0장 — 결과에 사유가 없다", "카드 0장(사유 미상)"}
@@ -186,11 +187,12 @@ def check_generators(dom: Mapping[str, Any], view: Mapping[str, Any] | None) -> 
     for c in dom.get("cards") or []:
         rank = str(c.get("rank"))
         gen = (vcards.get(rank) or {}).get("gen")
+        want = (vcards.get(rank) or {}).get("genl") or GEN_LABEL.get(gen)
         text = str(c.get("gen_text") or "")
         if not text:
             out.append(f"카드 {rank}: 생성 방식 표시 없음")
             continue
-        if gen in GEN_LABEL and text != GEN_LABEL[gen]:
+        if gen in GEN_LABEL and text != want:
             out.append(f"카드 {rank}: generator={gen}인데 화면 표시 '{text}'")
     return out
 
