@@ -37,7 +37,7 @@
 | E3-L1z 규칙 판정 조사·인지 오탐 | ⬜ 구축 세션이 띄움 | 선택 |
 | 참고: 세부 설정 키(`NEUMANN_LLM_MAX_INFLIGHT`, `NEUMANN_EXTRACT_PARALLEL` 등) | — | `.env`에서 안 읽힘(config 필드 없음). 기동 명령 환경변수로 준다 |
 | E2-L5 세부 분야 사다리·분야별 3건 실분석(추가 실험) | ⏳ 구축 세션 | 선정 규칙·충분 기준 사전 커밋, 모든 단계 보고. 실분석은 E3-L1s·E3-L1e 병합 뒤 v1 라이브·백테스트 사후 재실행과 묶음 |
-| **우선 병합(대표 23:1x)** | — | **E3-L1s·E3-L1e(v1 차단 해제) → E3-L2r·E4-L4r(재탄생)** → 그 뒤 E4-L2f → E4-L2g → E5-L3b → DISP-1 → E5-L1e2e → SEC-6 → E3-L1z → E5-L2c → E5-L2d. **v1** = 파이프라인+게이트+라이브, **v2** = 재탄생+라이브(07:00 전 목표) |
+| **우선 병합(00:2x)** | — | **v2 관문: E3-L1s·E3-L1e** → E4-L2f → E4-L3m → E4-L1g(샘플 갤러리, v2 필수) → E3-L2r·E4-L4r(재탄생). 공개 전 필수: PERF-pk·E4-L2g·OPS-tun·SEC-7. 그 밖: E4-L2h·E3-L1z2·TEST-1·E2-L5·E5-L3b 후속 + PM 과제 20개(SEC-8·DOC-1·A11Y-1·E2E-2·MCP-demo·E5-L1c·PERF-2·QA-1·REL-1·E5-L3c·LIC-1·JUDGE-H·CFG-1·OBS-1·PRIV-1·DATA-CARD·SYSTEM-CARD·PROMPT-AUDIT·FUZZ-1·UXC-1) |
 | E3-L2r·E4-L4r 수정 권고(서버·화면) | ⏳ 구축 세션(Fable, mock) | 대표 지시 시제품 추가. 큐 맨 뒤 |
 | E5-L2f 원문 복원 백테스트(추가 실험) | ⬜ 사전 기록(decisions 23:5x), arXiv 다운로드는 대표 승인 뒤 | 표본 순서·arXiv 공개판 필수·v1 우선, A/B/C 판정 재사용 |
 | E5-L2e 쌍비교(RFP) | ⏸ 보류(RFP 취소) | — |
