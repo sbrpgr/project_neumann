@@ -1,74 +1,108 @@
-# E4-L2f 보고서 — 화면 "IV 내보내기" 켜기
+# E4-L2f 보고서 — 화면 "IV 내보내기" 켜기 (+ 검증 보완 F1~F7)
 
 빌더: claude-opus-5.5 · 브랜치 `task/E4-L2f` · 모든 실행 `NEUMANN_LLM_PROVIDER=mock`(OpenAI 호출 0), 서버 8149만 사용.
+main 병합: E4-L2d(2bd2b58·03503d6), SEC-4(5ed9b45), 최신 29d96ee까지.
 
 ## 무엇을 했나
 
-1. **화면(index.html, 내보내기 부분)**: 단계 IV "내보내기"와 리포트 섹션 VI "ZIP 내려받기" 버튼을 켰다.
-   - 결과 없음·샘플·오류·원결과 없음이면 단계와 버튼을 끄고 사유를 보인다(단계는 `title`과 짧은 표시, 섹션은 `#expWhy`).
-   - 단계 IV를 누르면 리포트의 내보내기 섹션으로 이동한다.
-   - 버튼은 `{result, decisions}`를 `POST /premortem/package`로 보내고, 받은 ZIP을 내려받는다. 파일 이름은 서버의 `Content-Disposition`을 쓴다.
-   - 결정은 연구자가 고른 항목만 보낸다: `{item_id, decision(adopt|hold|reject), note?, decided_at?}`로 `export.py` `DecisionEntry` 형식 그대로다.
-     - 결과에 원래 실린 결정은 `set: true`로 온다. 화면에서 클릭한 결정은 클릭 시각을 `decided_at`으로 붙인다.
-     - 결정 전 기본값 "보류"는 싣지 않는다. 몇 건인지 화면에 적는다.
-   - 서버 오류 문구(`message` → `detail` → `reason` 순)는 `textContent`로 넣는다. 다시 그릴 때는 `esc()`를 거친다.
-2. **서버(view.py)**: `build_ui_view`가 화면 응답에 원결과를 싣는다(코디네이터 정정 지시 2).
-   - 싣는 것: `result`(`PremortemResult`로 검증한 계약 필드만의 JSON)와 `_status.export = {result, reason}`.
-   - `/premortem/view`와 E4-L2d jobs 화면 결과가 같은 함수를 쓰므로 둘 다 이 필드를 갖는다. `jobs.py`·`main.py`는 고치지 않았다(충돌 0).
-   - 샘플·오류·계약 밖 필드가 있는 결과는 `result: null`과 사유를 싣는다.
-   - 가림은 화면과 같다: 계획서 줄·인용은 결과 값 그대로이고, 이메일·ORCID는 분석 입구(`PlanDocument`)에서 이미 가려져 있다.
-   - 계약 밖 값(설정·경로·키)은 extra=forbid라 실리지 않는다. 계약 밖 필드가 섞인 결과는 통째로 싣지 않는다(테스트로 확인).
-3. **재분석 없음**: 첫 판에 있던 "같은 계획서로 `POST /premortem`을 다시 불러 원결과 받기" 경로는 지웠다.
-   - 내보내기 때 요청은 `/premortem/package` 한 건뿐이다(Playwright로 확인).
-4. **Playwright 실패 원인**: 테스트의 경쟁 조건이었다(실제 버그 아님).
-   - 디버그: 같은 `.dec`를 세 번 누르면 보류→기각→채택→보류로 매번 바뀌었다(mousedown·click 이벤트 3쌍).
-   - 원인: 집계는 클릭 뒤 다음 틱에 다시 그린다. C3의 첫 클릭 뒤 중간 상태("결정 3건 · 채택 1 · 기각 2")에서 `'결정 3건'` 대기가 먼저 풀렸다.
-   - 수정: 최종 값("채택 2 · 보류 0 · 기각 1")을 기다리고, 칸별 결정 문구도 확인한다.
+### 1. 화면(index.html, 내보내기 부분)
+
+- 단계 IV "내보내기"와 리포트 섹션 VI "ZIP 내려받기"를 켰다.
+- 버튼은 `{result, result_sig, decisions}`를 `POST /premortem/package`로 보내 ZIP을 받는다. 재분석은 하지 않는다.
+- 결과 없음·샘플·오류·원결과 없음이면 단계와 버튼을 끄고 사유를 보인다.
+- 서버 문구(`message` → `detail` → `reason`)는 `textContent`로 넣는다.
+- 내려받은 뒤 응답 헤더 `X-Neumann-Result-Origin`에 따라 "서버 서명 확인됨"이나 "서버 서명 확인 안 됨(서버 재기동 등) · ZIP에 경고가 적힘"을 보인다.
+- **결정(PM 결정 ③ 반영):** 채택·보류·기각 세 상태를 `{item_id, decision, note?, decided_at?}`로 보낸다.
+  - 결과에 원래 실린 결정은 그대로 싣는다.
+  - 화면에서 누른 항목은 누른 시각과 함께 싣는다. 한 바퀴 돌려 "보류"로 되돌린 항목도 `hold`와 시각으로 기록한다.
+  - 한 번도 건드리지 않은 항목(기본값 보류)은 싣지 않는다.
+
+### 2. 원결과 전달(view.py, 정정 지시 2)
+
+- `build_ui_view`가 `result`(원결과), `result_sig`(서버 서명), `_status.export`(`result`·`signed`·`reason`·`dropped_keys`)를 붙인다.
+- `/premortem/view`와 jobs 화면 결과(`jobs._present` → `build_ui_view`)가 같은 경로라 둘 다 이 필드를 갖는다. `jobs.py`는 고치지 않았다.
+
+### 3. F1 결과 출처 서명(`src/neumann/api/signing.py` 새 파일, export.py)
+
+- **서명:** HMAC-SHA256(키, `"neumann-result-v1\n"` + 정규화 JSON). 형식은 `v1.<64hex>`.
+- **정규화:** `PremortemResult`로 검증한 계약 필드를 JSON으로 되돌린다. 정수로 떨어지는 실수는 정수로 바꾼다(브라우저 JSON 왕복 대비). 키는 정렬하고 압축 JSON으로 쓴다.
+- **키:** 환경변수 `NEUMANN_RESULT_HMAC_KEY`. 없으면 모듈을 처음 읽을 때(서버 기동) 무작위 32바이트를 만든다. 재기동하면 옛 서명은 무효이고, 그 결과는 "unverified"로 나간다(PM 결정 ④: 정직한 표시).
+- **비노출:** 키 값과 키 설정 여부는 응답·ZIP·로그·/health 어디에도 없다(테스트). `.env.example`에는 이름만 넣었다.
+- **서명 확인(`/premortem/package`):** 확인되면 `result_origin: "server_signed"`, 아니면 `"client_submitted_unverified"`. 이 값은 manifest·evidence_pack·README·리포트·ai_context와 응답 헤더에 실린다.
+  - 파이썬에서 `build_package`를 직접 부르면 `"in_process"`다. 호출한 코드가 가진 결과이고 API를 거치지 않는다. 기존 E4-L2a 테스트와 동작은 그대로다.
+- **미확인일 때:**
+  - README·neumann_report·ai_context **첫 줄**에 경고를 넣는다: "**주의: 서버가 분석·서명한 결과가 아님.** …"
+  - "제품 LLM이 만든 카드", "원문을 오프셋으로 잘라" 같은 서버 보증 문구를 빼고 "결과에 generator=astra로 적힌 카드. 서버 서명이 없어 … 확인하지 못했다"로 쓴다.
+  - evidence_pack의 대조 안내도 "서버 서명이 없는 결과다"로 바꾼다.
+- **jobs 가림과의 관계:** jobs 응답은 뷰 전체에 `serving.scrub_ok_payload`(진단 칸 키·경로 가림)를 한 번 더 건다. 그래서 서명 전에 같은 규칙을 원결과에 먼저 적용한다. 두 번째 가림은 값을 바꾸지 않고 서명이 맞는다(테스트).
+
+### 4. 권고 반영
+
+- **F2:** 첫 판 문구 "계약 밖 값은 실리지 않는다"는 틀렸다. extra=forbid는 최상위 필드만 막고, 자유형 dict 칸(manifest·checklist 항목·expected_review·plan_checks 등)은 검증을 통과한다. 정정한 내용:
+  - docstring과 이 보고서를 고쳤다.
+  - manifest(pipeline·precomputed 키 + view가 읽는 모델 키)와 checklist 항목(E3 checklist.py 키 + 별칭)은 **화이트리스트**로 남긴다. 뺀 키 이름은 `_status.export.dropped_keys`에 적는다.
+  - 그 밖의 자유형 칸(expected_review·plan_checks 등)은 결과 값 그대로다.
+- **F4:**
+  - CSV 문자열 칸(work_id·title·venue·url·cited_by)이 `= + - @`·탭·CR로 시작하면 앞에 `'`를 붙인다.
+  - 마크다운 4종에 옮기는 결과 문자열의 `& < >`는 HTML 엔티티로 바꾼다. 렌더하면 같은 글자다. 글자 그대로의 인용은 `evidence_pack.json`에 있다.
+  - 코드 스팬 안 id의 백틱은 뺀다. http(s)가 아닌 URL은 자동 링크로 만들지 않는다.
+  - 리포트의 expected_review JSON과 ai_context 인용 JSON은 `< > &`를 `\u` 이스케이프한다. 디코드하면 원문 그대로다(테스트).
+- **F6:** 서빙 413 문구를 내보내기에만 따로 뒀다: `내보낼 결과가 너무 큽니다(최대 4MB).`
+- **F7:** Playwright 가로채기를 jobs 폴링(`**/premortem/jobs/**`)으로 바꿨고, `route.fetch(timeout=180_000)`을 준다.
+
+### 5. 첫 Playwright 실패(연속 클릭)
+
+- 원인은 테스트의 경쟁 조건이었다(실제 버그 아님). 디버그로 클릭마다 반영되는 것을 확인했다.
+- 집계는 다음 틱에 다시 그린다. 그래서 중간 상태("결정 3건")에서 대기가 먼저 풀렸다.
+- 최종 값("결정 4건 · 채택 2 · 보류 1 · 기각 1")을 기다리도록 바꿨다.
 
 ## 완료 기준별 측정
 
 | 기준 | 명령 | 결과 |
 |---|---|---|
-| 정적·서버 검사 | `NEUMANN_LLM_PROVIDER=mock python -m pytest tests/e4/test_export_ui.py -q` | `8 passed, 1 skipped` |
-| Playwright 1440×900, 서버 8149, mock, 끝나면 종료 | `NEUMANN_UI_TESTS=1 NEUMANN_LLM_PROVIDER=mock python -m pytest tests/e4/test_export_ui.py -q` (main 병합 뒤) | `9 passed in 24.67s`, 이후 `netstat`에 8149 LISTEN 없음 |
-| ZIP 9파일 | 같은 테스트(내려받은 ZIP을 `zipfile`로 엶) | `README.md, manifest.json, risk_cards.json, evidence_pack.json, similar_works.csv, plan_annotated.md, neumann_report.md, ai_context.md, decision_log.json` (`FILE_NAMES` 순서 그대로) |
-| decision_log 내용 | 같은 테스트 | 아래 표. `manifest.counts.decisions == 3`, 리포트에 `## 결정 로그`·`행동 \`C2\`: 기각`, ZIP 어디에도 원 이메일 없음 |
-| 재분석 없음 | 같은 테스트(POST 경로 기록) | `["/premortem/view", "/premortem/package"]` |
-| 결과 없음·샘플·원결과 없음 비활성 | 같은 테스트 | 첫 화면 `내보내기 · 분석 결과 없음`, 샘플 `내보낼 수 없음 · 샘플 데이터(분석 결과 아님)`, 원결과 없는 뷰 `내보낼 수 없음 · 화면 응답에 원결과가 없음`(POST는 view 1건뿐) |
-| 서버 문구 textContent | 같은 테스트(422 `detail`에 `<img onerror>`, 429 `message`) | 문구가 글자 그대로 보이고 `#expMsg img` 0개, `window.__xss` 없음. `내보내기 실패 · 요청이 많습니다. 잠시 뒤 다시 시도하세요.` |
-| verify | `NEUMANN_LLM_PROVIDER=mock python scripts/verify.py` (main 병합 뒤) | `1216 passed, 28 skipped` · `verify 통과` |
+| 서명·출처·이스케이프·413 | `NEUMANN_LLM_PROVIDER=mock python -m pytest tests/e4/test_export_ui_sign.py tests/e4/test_export_ui.py tests/e4/test_export.py -q` | `57 passed, 1 skipped` |
+| 서명 경우별 | 같은 명령 | 정상(브라우저 왕복 포함) → `server_signed`, README 첫 줄 제목 · 변조 5종(generator를 astra로, why 문구, 카드 제목, 점수, session_id) → `client_submitted_unverified`, 첫 줄 경고·서버 문구 없음 · 인용 문구·plan_id 변조는 계약 검증이 422 · 서명 없음·빈 값·형식 오류·다른 버전·가짜 hex → unverified · 재기동(무작위 키) → unverified · 설정 키 재기동 → 유지, 키 교체 → 무효 · 키 값·키 이름·"hmac"이 뷰·ZIP·헤더·로그·/health에 없음 |
+| Playwright 1440×900, jobs 경로, 8149, mock, 끝나면 종료 | `NEUMANN_UI_TESTS=1 NEUMANN_LLM_PROVIDER=mock python -m pytest tests/e4/test_export_ui.py -q -s -k playwright` | `1 passed in 77.53s`. POST `["/premortem/jobs", "/premortem/package"]`(재분석 0), 뒤이어 `8149 not listening` |
+| ZIP 9파일·decision_log | 같은 Playwright | 9파일 `FILE_NAMES` 순서 그대로, `manifest.result_origin == "server_signed"`, `counts.decisions == 4`, 결정은 아래 표 |
+| 비활성·오류 문구 | 같은 Playwright | 결과 없음·샘플·원결과 없음이면 비활성과 사유. 422 `detail`의 `<img onerror>`는 글자로 보임(요소 0), 429 `message`도 그대로 |
+| verify | `NEUMANN_LLM_PROVIDER=mock python scripts/verify.py` (main 29d96ee 병합 뒤) | `1383 passed, 27 skipped` · `verify 통과` |
 
-decision_log.json의 `decisions`(Playwright, plan.md, mock):
+decision_log.json의 `decisions`(Playwright, plan.md, mock, jobs 경로):
 
 | item_id | decision | note | decided_at |
 |---|---|---|---|
-| C1 | adopt | `표본 크기 근거 보강 · 담당 [EMAIL]` (뷰에 실린 결정·메모, 이메일은 `DecisionEntry`가 가림) | null |
-| C2 | reject | null | 클릭 시각(UTC) |
-| C3 | adopt | null | 클릭 시각(UTC) |
+| C1 | adopt | `표본 크기 근거 보강 · 담당 [EMAIL]`(뷰에 실린 결정·메모, 이메일은 `DecisionEntry`가 가림) | null |
+| C2 | reject | null | 클릭 시각 |
+| C3 | adopt | null | 클릭 시각 |
+| C4 | hold | null | 클릭 시각(한 바퀴 돌려 보류로 되돌림) |
 
-스크린샷: `docs/reports/E4-L2f_export.png`(1440×900, 내려받은 뒤 내보내기 섹션).
+스크린샷: `docs/reports/E4-L2f_export.png`(1440×900, 내려받은 뒤 "서버 서명 확인됨").
 
 ## 바꾼 파일
 
-- `src/neumann/webui/index.html`: `renderSteps`의 단계 IV, `renderReport` 반환 줄(`expHtml()` 추가), E4-L2f 블록(`exp*` 함수·클릭 처리), CSS 한 묶음.
-- `src/neumann/api/view.py`: `export_result`, `_attach_result`, `build_ui_view`에서 호출(정정 지시 2로 범위 넓힘).
-- `tests/e4/test_export_ui.py`(새 파일), `docs/reports/E4-L2f.md`, `docs/reports/E4-L2f_export.png`.
-- `export.py`·`main.py`·`jobs.py`·계약(`contracts/`, `models.py`)은 고치지 않았다.
+- `src/neumann/webui/index.html`: 단계 IV, `renderReport` 반환 줄(`expHtml()`), E4-L2f 블록(`exp*`), CSS 한 묶음.
+- `src/neumann/api/view.py`: `export_result`(화이트리스트·진단 가림), `_attach_result`(result·result_sig·_status.export).
+- `src/neumann/api/signing.py`(새 파일): 서명·확인·키.
+- `src/neumann/api/export.py`(검증 지시로 범위 넓힘): `result_origin`, 미확인 문구, F4 이스케이프, `PackageRequest.result_sig`, 응답 헤더.
+- `src/neumann/api/serving.py`: 내보내기 413 문구(F6).
+- `.env.example`: `NEUMANN_RESULT_HMAC_KEY=`(이름만).
+- 테스트:
+  - `tests/e4/test_export_ui.py`: 정적·서버 검사 + Playwright.
+  - `tests/e4/test_export_ui_sign.py`(새 파일): 서명·화이트리스트·이스케이프·413.
+  - `tests/e4/test_export.py`: 0장 사유 단언을 `&lt;`로 한 줄 고침.
+- `docs/reports/E4-L2f.md`, `docs/reports/E4-L2f_export.png`.
+- `main.py`·`jobs.py`·계약(`contracts/`, `models.py`)은 고치지 않았다.
 
 ## 결정
 
-- 필드 이름은 `result`로 했다. ui_view 계약 루트가 추가 필드를 허용해서 계약 변경이 없다(`validate_ui_view` 통과를 테스트로 확인).
-- 원결과는 `build_ui_view`에서 붙였다. 그래서 E4-L2d jobs(`_present`가 `build_ui_view` 호출)도 코드 변경 없이 같은 필드를 갖는다.
-- 결정 전(기본값 보류) 항목은 결정 로그에 싣지 않는다. 연구자가 고르지 않은 것을 결정으로 기록하지 않으려는 것이다.
-- 화면의 `result.plan_id`가 뷰의 `plan_id`와 다르면 내보내지 않는다.
+- 결과 출처 값은 셋이다. API는 `server_signed`·`client_submitted_unverified` 둘만 낸다. `in_process`는 파이썬 직접 호출 전용이다.
+- 서명 범위는 화면 뷰 경로(`/premortem/view`, jobs `format: "view"`)다. 다음은 서명하지 않는다: jobs `format: "result"`, `/premortem` 원결과 응답, `/premortem/precomputed` 사전 계산본. 이것들을 그대로 내보내면 unverified로 표시된다.
+- 서명을 만들지 못하면 원결과도 싣지 않는다. 서명 없는 원결과를 서버가 내지 않게 하려는 것이다.
+- 화이트리스트에 없는 새 manifest·checklist 키는 빠진다(안전한 쪽). E3가 키를 늘리면 `MANIFEST_EXPORT_KEYS`·`CHECKLIST_EXPORT_KEYS`에 더해야 화면·ZIP에 실린다.
 
 ## 못 한 것 · 제안
 
-- 메모 편집 UI는 없다(체크리스트 부분은 이 과제 소유가 아니다). 결과에 실린 메모(`note`)만 보낸다. 제안: 체크리스트 "메모" 칸을 입력칸으로 바꾸면 `it.m`이 그대로 실린다.
-- 화면 응답이 커진다. plan.md(mock) 기준 원결과 약 44KB가 뷰(약 28KB)에 붙는다. 제안: 커지면 서버 보관 결과 id로 바꿀 수 있다.
-
-## 다음 과제에 넘길 것
-
-- E4-L2d 병합 뒤 jobs 화면 결과(`format: "view"`)에도 `result`가 실리는지 한 번 확인하면 된다(같은 `build_ui_view` 경로).
-  - 확인 명령: 이 테스트를 `NEUMANN_UI_TESTS=1`로 다시 돌린다.
-  - POST 경로 기대값은 `/premortem/view` 대신 jobs 경로로 바뀔 수 있다. 바뀌면 테스트 기대값만 고친다.
+- 메모 편집 UI가 없다(체크리스트 부분은 이 과제 소유가 아님). 결과에 실린 메모만 보낸다.
+- 화면 응답이 커진다(plan.md 기준 원결과 약 44KB 추가). 커지면 서버 보관 결과 id로 바꾸는 것을 제안한다.
+- 공개 서버 여러 대나 재기동에도 서명을 유지하려면 `NEUMANN_RESULT_HMAC_KEY`를 실서비스 기동 환경에만 설정한다(PM).
+- jobs `format: "result"`·사전 계산본에도 서명이 필요하면 `jobs._present`·`precomputed`에서 `sign_result`를 부르면 된다(E4 다음 과제).
