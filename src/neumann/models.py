@@ -44,13 +44,57 @@ EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)*\.
 ORCID_RE = re.compile(r"\b\d{4}-\d{4}-\d{4}-\d{3}[\dX]\b")
 
 
+_EMAIL_LOCAL_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._%+-")
+_EMAIL_DOMAIN_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-")
+EMAIL_DOMAIN_MAX = 255  # RFC 1035 도메인 상한
+
+
+def email_spans(text: str) -> list[tuple[int, int]]:
+    """`EMAIL_RE.finditer`와 같은 (시작, 끝) 목록을 선형 시간에 구한다(SEC-4).
+
+    `EMAIL_RE.search`를 본문 전체에 돌리면 `@` 없는 긴 토큰에서 시작 위치마다 끝까지 훑어 제곱 시간이 된다
+    (20만 자 한 토큰에 수십 초, 공개 서버 이벤트 루프 정지). 여기서는 `@`마다 앞쪽 local 문자 연속(직전 `@`나
+    직전 일치 끝에서 멈춤)과 뒤쪽 도메인 문자(255자까지)만 걷고, 그 구간에서만 정규식을 맞춘다.
+    """
+    out: list[tuple[int, int]] = []
+    n = len(text)
+    floor = 0
+    at = text.find("@")
+    while at != -1:
+        s = at
+        while s > floor and text[s - 1] in _EMAIL_LOCAL_CHARS:
+            s -= 1
+        e = at + 1
+        while e < n and e - at <= EMAIL_DOMAIN_MAX and text[e] in _EMAIL_DOMAIN_CHARS:
+            e += 1
+        if s < at:
+            m = EMAIL_RE.match(text, s, e)
+            if m is not None:
+                out.append((m.start(), m.end()))
+                floor = m.end()
+                at = text.find("@", floor)
+                continue
+        at = text.find("@", at + 1)
+    return out
+
+
 def contains_pii(text: str) -> bool:
-    return bool(EMAIL_RE.search(text) or ORCID_RE.search(text))
+    return bool(email_spans(text) or ORCID_RE.search(text))
 
 
 def redact_pii(text: str) -> str:
     """이메일·ORCID를 가린다. 길이가 바뀌므로 반드시 Excerpt를 만들기 **전에** 부른다."""
-    return ORCID_RE.sub("[ORCID]", EMAIL_RE.sub("[EMAIL]", text))
+    spans = email_spans(text)
+    if spans:
+        parts: list[str] = []
+        prev = 0
+        for a, b in spans:
+            parts.append(text[prev:a])
+            parts.append("[EMAIL]")
+            prev = b
+        parts.append(text[prev:])
+        text = "".join(parts)
+    return ORCID_RE.sub("[ORCID]", text)
 
 
 PSEUDONYM_RE = r"^rvw_[0-9a-f]{16}$"
@@ -689,6 +733,7 @@ __all__ = [
     "WhyApplies",
     "Work",
     "contains_pii",
+    "email_spans",
     "make_reviewer_pseudonym",
     "normalize_text",
     "redact_pii",
