@@ -18,7 +18,8 @@
 |---|---|---|
 | E3-L1w v1 파이프라인 연결 | 🔍 빌드 끝(실제 호출 0), Sonnet 검증 중(mock) — task/E3-L1w 19b3fc1 | 끝나면 Sonnet/sol 검증 → 병합 → 실서버 재시작(sol) → 대표 점검 → 태그 `v1` |
 | E2-L1 검색 보정 | ✅ 병합(33dd641), .env.example 키 추가됨 | 병합 시 `.env.example`에 새 키 5개(SCORE_FLOOR는 비움), similar_works 유사도 정렬·무관 사유 노출은 E3 후속 |
-| E1-L1c eLife(+EPMC) 색인 | a3a4251, `index_elife`·`index_elife_epmc`에 DO_NOT_SERVE 표시(E1-L1b 실명 FAIL) | 데모 3건 모두 살리려면 `index_elife_epmc` 후보. E2-L1 병합 뒤 `NEUMANN_INDEX_DIR` 전환 결정·서버 재시작(첫 분석에 API 사용 = 허용) |
+| E4-L1e 입력 예시·템플릿 AI4S 정렬(대표 지시) | ⏳ 구축 세션(API 금지) | 예시: 전해액 GNN 유지 + 단백질-리간드·신경 연산자 PDE 기후 새로. 템플릿 5종 AI4S. 병합 뒤 사전 계산본·정적 판·시연 녹화의 예시도 맞출 것 |
+| E1-L1c eLife(+EPMC) 색인(우선순위 낮아짐: 예시에서 fMRI·의료영상 제외) | a3a4251, `index_elife`·`index_elife_epmc`에 DO_NOT_SERVE 표시(E1-L1b 실명 FAIL) | 데모 3건 모두 살리려면 `index_elife_epmc` 후보. E2-L1 병합 뒤 `NEUMANN_INDEX_DIR` 전환 결정·서버 재시작(첫 분석에 API 사용 = 허용) |
 | E1-L1b eLife·EPMC 수집 | ❌ FAIL(리뷰어 실명 22+3건) → PM 세션 빌더 재작업(오프라인) | 잔존 서명 0 증명 후 재검증 → 병합. **그 전에는 eLife/EPMC 색인을 서비스에 쓰지 않는다** |
 | E4-L2c 서빙 안정성 | 🔍 af008bb 공격적 검증 중(구축 세션) | 병합 + `docs/reports/E4-L2c_main.patch` 적용. 공개 모드 `NEUMANN_DAILY_BUDGET=0`(대표 정정), 동시 상한·대기열·속도 제한 유지 |
 | E4-L2d 비동기 작업 API | ⏳ 구축 세션 | E4-L2c 뒤 병합 + `E4-L2d_main.patch`. **터널 공개 전제**(Cloudflare 100초 제한) |
