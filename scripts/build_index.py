@@ -3,6 +3,7 @@
     python scripts/build_index.py                       # 공유 data/processed (E1 load_corpus)
     python scripts/build_index.py --source fixtures     # tests/fixtures (개발용)
     python scripts/build_index.py --out DIR --no-embed  # 임베딩 없이(어휘만, 강등 표시)
+    python scripts/build_index.py --source jsonl --processed DIR   # 폴더의 works.jsonl·reviews.jsonl
 
 환경변수: NEUMANN_DATA_DIR, NEUMANN_EMBED_MODEL, (선택) NEUMANN_INDEX_DIR, NEUMANN_EMBED_DEVICE, NEUMANN_EMBED_BATCH.
 색인 파일은 커밋하지 않는다(.gitignore의 data/).
@@ -68,6 +69,12 @@ def load_source(source: str, processed_dir: Path) -> tuple[list[Work], list[Revi
         fx = load_fixtures()
         files = [FIXTURES_DIR / "works.jsonl", FIXTURES_DIR / "reviews.jsonl"]
         return list(fx.works), list(fx.reviews), {"source": "fixtures", "dir": "tests/fixtures", **input_digest(files, FIXTURES_DIR)}
+    if source == "jsonl":
+        # 폴더의 works.jsonl·reviews.jsonl을 계약 모델로 바로 읽는다(load_corpus 없이 점검·개발할 때)
+        wpath, rpath = processed_dir / "works.jsonl", processed_dir / "reviews.jsonl"
+        works = [Work.model_validate_json(x) for x in wpath.read_text(encoding="utf-8").splitlines() if x.strip()]
+        reviews = [ReviewEvent.model_validate_json(x) for x in rpath.read_text(encoding="utf-8").splitlines() if x.strip()]
+        return works, reviews, {"source": "jsonl", "dir": str(processed_dir), **input_digest([wpath, rpath], processed_dir)}
     from neumann.sources.corpus import load_corpus
 
     works, reviews = _parts(load_corpus(processed_dir))
@@ -92,7 +99,8 @@ def gpu_info(device: str | None) -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--source", choices=["processed", "fixtures"], default="processed")
+    ap.add_argument("--source", choices=["processed", "fixtures", "jsonl"], default="processed",
+                    help="processed: E1 load_corpus(기본) · fixtures: tests/fixtures · jsonl: 폴더의 works/reviews.jsonl")
     ap.add_argument("--processed", type=Path, default=None, help="코퍼스 폴더(기본 {DATA_DIR}/processed)")
     ap.add_argument("--out", type=Path, default=None, help="색인 폴더(기본 {DATA_DIR}/index)")
     ap.add_argument("--no-embed", action="store_true", help="임베딩 없이 만든다(어휘 검색만, 강등 표시)")
