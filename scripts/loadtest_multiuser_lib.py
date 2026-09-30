@@ -269,8 +269,11 @@ class EmbedProbe:
 # ── 프로세스 자원 표본 ─────────────────────────────────────────────────────
 
 
-def _win_mem() -> tuple[int, int] | None:
-    """(현재 작업 집합, 최대 작업 집합) 바이트. Windows가 아니면 None."""
+def _win_mem() -> tuple[int, int, int] | None:
+    """(현재 작업 집합, 최대 작업 집합, 전용 커밋) 바이트. Windows가 아니면 None.
+
+    작업 집합은 Windows가 줄일(trim) 수 있어 표본 최대가 내려갈 수 있다. 전용 커밋(PagefileUsage)은 줄지 않는다.
+    """
     if sys.platform != "win32":
         return None
     import ctypes
@@ -291,14 +294,20 @@ def _win_mem() -> tuple[int, int] | None:
     psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(PMC), wintypes.DWORD]
     if not psapi.GetProcessMemoryInfo(k32.GetCurrentProcess(), ctypes.byref(pmc), pmc.cb):
         return None
-    return int(pmc.WorkingSetSize), int(pmc.PeakWorkingSetSize)
+    return int(pmc.WorkingSetSize), int(pmc.PeakWorkingSetSize), int(pmc.PagefileUsage)
+
+
+def process_private() -> int:
+    """전용 커밋 바이트(Windows). 그 밖은 0."""
+    win = _win_mem()
+    return win[2] if win else 0
 
 
 def process_memory() -> tuple[int, int]:
     """(현재, 프로세스 수명 최대) 상주 메모리 바이트."""
     win = _win_mem()
     if win is not None:
-        return win
+        return win[0], win[1]
     try:
         import resource
 
@@ -347,6 +356,7 @@ class ProcSampler:
             self.sys0 = system_cpu_times()
             self.mem_max = process_memory()[0]
             self.mem_start = self.mem_max
+            self.priv_max = process_private()
             self.cores_max = 0.0
             self.sys_cpu_max = 0.0
             self.threads_max = threading.active_count()
@@ -382,6 +392,7 @@ class ProcSampler:
                     busy = 1.0 - (sysc[0] - sys_prev[0]) / (sysc[1] - sys_prev[1])
                     self.sys_cpu_max = max(self.sys_cpu_max, busy * 100.0)
                 self.mem_max = max(self.mem_max, mem)
+                self.priv_max = max(self.priv_max, process_private())
                 self.threads_max = max(self.threads_max, threading.active_count())
                 self._last = (now, cpu, sysc)
 
@@ -413,6 +424,7 @@ class ProcSampler:
                 "rss_start_mb": round(self.mem_start / 2**20, 1),
                 "rss_max_mb": round(max(self.mem_max, process_memory()[0]) / 2**20, 1),
                 "rss_peak_lifetime_mb": round(process_memory()[1] / 2**20, 1),
+                "private_max_mb": round(max(self.priv_max, process_private()) / 2**20, 1),
                 "threads_max": self.threads_max,
                 "gil_probe_ms": {
                     "n": len(gil),

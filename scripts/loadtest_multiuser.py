@@ -297,7 +297,7 @@ def summarize_round(rnd: dict[str, Any], ref: dict[str, dict[str, Any]], gpu_bas
 
 def table(rows: list[dict[str, Any]], mode: str) -> str:
     head = ("| N | 성공 | 오류·예외 | 지문 불일치 | 검색상태 섞임 | 건별 총 시간 p50 / 최대(초) | 전체(초) | 처리량(건/분) "
-            "| 검색 단계 최대(초) | 임베딩 락 대기 최대(초) | GPU 최대 MiB(Δ) | 프로세스 RAM 최대 MB | CPU 코어 평균/최대 "
+            "| 검색 단계 최대(초) | 임베딩 락 대기 최대(초) | GPU 최대 MiB(Δ) | RAM 최대 MB(작업 집합/전용) | CPU 코어 평균/최대 "
             "| GIL 지연 p99/최대(ms) | 스레드 최대 |")
     lines = [head, "|" + "|".join(["---"] * (head.count("|") - 1)) + "|"]
     for r in rows:
@@ -310,7 +310,8 @@ def table(rows: list[dict[str, Any]], mode: str) -> str:
         lines.append(
             f"| {r['n']} | {r['ok']}/{r['n']} | {err} | {r['fingerprint_mismatch']} | {r['search_status_mixup']} "
             f"| {r['total_s'].get('p50')} / {r['total_s'].get('max')} | {r['makespan_s']} | {r['throughput_per_min']} "
-            f"| {r['stage_s']['search'].get('max')} | {r['embed_wait_s'].get('max')} | {gpu} | {p.get('rss_max_mb')} "
+            f"| {r['stage_s']['search'].get('max')} | {r['embed_wait_s'].get('max')} | {gpu} "
+            f"| {p.get('rss_max_mb')}/{p.get('private_max_mb', '-')} "
             f"| {p.get('cores_avg')}/{p.get('cores_max')} | {g.get('p99')}/{g.get('max')} | {p.get('threads_max')} |"
         )
     return f"### {mode}\n\n" + "\n".join(lines)
@@ -387,6 +388,36 @@ def encode_test(probe: EmbedProbe, ns: tuple[int, ...], repeats: int) -> dict[st
     return out
 
 
+def encode_table(enc: dict[str, Any]) -> str:
+    lines = ["### bge-m3 동시 encode(같은 모델 공유)", "",
+             f"질의 묶음 {enc.get('n_query_sets')}개(묶음당 질의 {enc.get('queries_per_set')}), "
+             f"서로 다른 질의 사이 최대 차이 {enc.get('sanity_diff_between_different_queries')}(비교기 정상 확인)", "",
+             "| 방식 | N | encode 수 | 오류 | 순차 기준과 최대 차이 | 완전히 같음 | encode/초 |", "|---|---|---|---|---|---|---|"]
+    for r in enc.get("runs", []):
+        lines.append(f"| {r['mode']} | {r['n']} | {r['encodes']} | {r['errors']} | {r['max_abs_diff']} "
+                     f"| {r['exact_equal']}/{r['compared']} | {r['encodes_per_s']} |")
+    return "\n".join(lines)
+
+
+def print_report(sources: list[Path]) -> int:
+    """결과 JSON에서 표를 다시 그린다(보고서용)."""
+    nl = "\n"
+    for src in sources:
+        res = json.loads(src.read_text(encoding="utf-8"))
+        print(f"## {src.name} (N={res.get('ns')}, 지연 배율 {res.get('delay_scale')})" + nl)
+        if "server" in res:
+            label = f"서버({res['server'].get('port')}, {res['server'].get('endpoint')})"
+            print(table(res["server"]["rounds"], label) + nl * 2 + stage_table(res["server"]["rounds"], label) + nl)
+        if "direct" in res:
+            label = "직접 호출(스레드)"
+            print(table(res["direct"]["rounds"], label) + nl * 2 + stage_table(res["direct"]["rounds"], label) + nl)
+        if "compute_only" in res:
+            print(table(res["compute_only"]["rounds"], "직접 호출, 지연 0(계산만)") + nl)
+        if "encode" in res:
+            print(encode_table(res["encode"]) + nl)
+    return 0
+
+
 # ── 실행 ──────────────────────────────────────────────────────────────────
 
 
@@ -401,7 +432,9 @@ def main(argv: list[str] | None = None) -> int:
     for stream in (sys.stdout, sys.stderr):
         stream.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
     ap = argparse.ArgumentParser(description="E4-L2e 다중 사용자 부하 시험(mock LLM 지연 + 실제 검색·임베딩)")
-    ap.add_argument("mode", choices=["direct", "server", "encode", "all"])
+    ap.add_argument("mode", choices=["direct", "server", "encode", "all", "report"])
+    ap.add_argument("--from", dest="sources", type=Path, action="append", default=[],
+                    help="report: 결과 JSON(여러 번)에서 표만 다시 그린다")
     ap.add_argument("--n", type=parse_ns, default=DEFAULT_NS)
     ap.add_argument("--delay-scale", type=float, default=1.0, help="모든 mock 지연에 곱하는 배율(0이면 계산만)")
     ap.add_argument("--delay", action="append", default=[], help="task=초 또는 task=최소:최대(기본값 덮어쓰기)")
@@ -413,6 +446,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--server-log", type=Path, default=None, help="서버 표준 출력 파일(기본: 결과 JSON 옆 또는 임시 폴더)")
     ap.add_argument("--out", type=Path, default=None, help="결과 JSON 경로")
     args = ap.parse_args(argv)
+    if args.mode == "report":
+        return print_report(args.sources)
 
     require_mock_env()
     block_openai()
