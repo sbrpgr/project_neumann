@@ -3,19 +3,19 @@
 다듬기 게이트) → .md·.docx 내려받기 → 실패·재시도·취소 → 브라우저 보존(새로고침) → 목업 모드(?mock=final, 외부 요청 0) → 390·1440.
 
     NEUMANN_UI_TESTS=1 NEUMANN_LLM_PROVIDER=mock python -m pytest tests/e4/test_revise_ui.py -q -s
-    NEUMANN_LLM_PROVIDER=mock python tests/e4/test_revise_ui.py [--port 8161] [--out docs/reports]
+    NEUMANN_LLM_PROVIDER=mock python tests/e4/test_revise_ui.py [--port 8171] [--out out/shots]
 
 - 기본 pytest(verify)에서는 건너뛴다(브라우저·서버 필요). ``NEUMANN_UI_TESTS=1``일 때만 돈다.
-- 서버(uvicorn)는 하위 프로세스로 띄우고 끝나면 끈다. 포트 기본 8161(8010·8020·8099 금지). 서버에는 mock provider만 주고
+- 서버(uvicorn)는 하위 프로세스로 띄우고 끝나면 끈다. 포트 기본 8171(8010·8020·8099 금지). 서버에는 mock provider만 주고
   ``OPENAI_API_KEY``를 넘기지 않는다(실제 API 호출 0).
 - 화면 데이터: ``/premortem/view`` 응답을 fixture 기반 풍부한 뷰(test_view_shots.rich_view, 샘플 표시 유지)로 가로채고,
-  E4-L2f처럼 원결과 ``result``를 실어 둔다(수정 권고 요청은 ``{result, plan_text, card_ids}``만 보내야 한다 — 계약 extra=forbid).
+  E4-L2f처럼 원결과 ``result``와 합성 ``result_sig``를 싣는다. 최신 E3-L2r 선택 서명 필드의 전달을 검사한다(HMAC 검증 아님).
 - 수정 권고 ``POST /premortem/revise`` 응답은 계약(contracts/revision.schema.json) 모양으로 여기서 만든다
   (카드 1 = E3-L2r mock 예시와 같은 줄·근거, 카드 2 = 같은 줄 충돌·[확인 필요] 자리표시 포함). 서버가 그 API를 갖든 아니든
   경로를 가로채므로 화면 어댑터는 서버와 같은 경로로 돈다. ``contracts/examples/revision.mock.json``이 있으면 카드 1에 그대로 쓴다.
 - 통합본 ``POST /premortem/revise/assemble``: 처음엔 404(화면 조립 경로), 뒤에는 계약(revised_plan.schema.json) 모양의
   작은 조립기 스텁(요청의 decisions로 줄 단위 통합·같은 줄 충돌·자리표시·통계·markdown 3판, polish는 게이트 거부 응답,
-  format=docx는 PK 바이트 + Content-Disposition).
+  format=docx는 python-docx로 만든 합성 문서 + Content-Disposition; ZIP/XML과 채운 값·편집 제외 안내도 검사).
 - 실패·취소: 카드 2 첫 요청은 500 → 재시도 → 성공. 취소는 응답을 붙잡아 둔 채 취소 버튼.
 - 목업 모드는 새 브라우저 문맥(빈 저장소)에서 ``/?mock=final``을 열어 서버 API 요청 0·외부 요청 0을 확인하고 새로고침 뒤 편집 보존을 본다.
 - 콘솔 오류·페이지 오류·실패 요청·외부 도메인 요청이 하나라도 있으면 실패(일부러 낸 404·500의 리소스 오류는 따로 센다).
@@ -25,10 +25,12 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import os
 import re
 import sys
+import zipfile
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -38,7 +40,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT / "src"), str(ROOT)]
 
 PREFIX = "E4-L4r"
-DEFAULT_PORT = 8161
+DEFAULT_PORT = 8171
 FORBIDDEN_PORTS = {8010, 8020, 8099}
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "[::1]", "::1"}
 REPORT_READY = ("document.body.dataset.view === 'report' && document.body.dataset.ready === '1' && "
@@ -186,6 +188,91 @@ def intentional(msg: str) -> bool:
     return "Failed to load resource" in msg and ("/premortem/jobs" in msg or "/premortem/revise" in msg)
 
 
+def trust_checks(browser, base: str, view: dict, revision: dict) -> dict:
+    """HMAC 검증은 서버 몫. 합성 응답·가짜 서명을 인증 배지로 오인하는 UI를 반증한다."""
+    from tests.fixtures.loader import plan_text
+
+    ctx = browser.new_context(viewport={"width": 1440, "height": 900}, locale="ko-KR")
+    page = ctx.new_page()
+    errors = []
+    page.on("pageerror", lambda error: errors.append(str(error)))
+    mode = {"value": "foreign"}
+    calls = []
+
+    def revise_route(route, request):
+        calls.append(json.loads(request.post_data or "{}"))
+        raw = json.loads(json.dumps(revision))
+        if mode["value"] == "missing":
+            route.fulfill(status=404, json={"message": "합성 테스트: 의존 API 없음"})
+            return
+        if mode["value"] == "foreign":
+            for card in raw["revisions"]:
+                card["card_id"] = "another-plan-card"
+                card["card_rank"] = 1  # 같은 순위라도 다른 카드 id면 거절
+        if mode["value"] == "other_plan":
+            raw["plan_id"] = "another-plan"
+        raw["origin"] = "client_submitted_unverified"
+        raw["revision_sig"] = "v1." + "0" * 64  # 가짜 서명 모양; 실제 키·인증값 아님
+        raw["notices"] = []  # 서버 안내가 빠져도 UI가 origin을 표시해야 한다
+        for card in raw["revisions"]:
+            card.update(generator="astra", model="forged-model", generator_label="LLM (forged-model)")
+        route.fulfill(status=200, json=raw)
+
+    def assembly_route(route, request):
+        raw = assemble_stub(json.loads(request.post_data or "{}"))
+        raw.update(origin="client_submitted_unverified", label="LLM (forged-model)", revised_plan_sig="v1." + "0" * 64)
+        route.fulfill(status=200, json=raw)
+
+    page.route("**/premortem/jobs", lambda route: route.fulfill(status=404, json={}))
+    page.route("**/premortem/view", lambda route: route.fulfill(status=200, json=view))
+    page.route("**/premortem/revise", revise_route)
+    page.route("**/premortem/revise/assemble", assembly_route)
+    try:
+        page.goto(base + "/", wait_until="networkidle")
+        page.fill("#ta", plan_text())
+        page.click("#btnStart")
+        page.wait_for_function(REPORT_READY)
+        page.evaluate("window.NeumannRevise.config.dev = false")  # 병합 후 설정을 브라우저 안에서만 시험
+        page.click("#s-cards .rc[data-card='1'] [data-rv]")
+        page.wait_for_selector("#rv-1 .errbox")
+        foreign_rejected = page.evaluate("!window.NeumannRevise.state().items[1].rev")
+        mode["value"] = "other_plan"
+        page.click("#rv-1 [data-rvretry]")
+        page.wait_for_function("window.NeumannRevise.state().items[1].status === 'error' && window.NeumannRevise.state().items[1].raw.plan_id === 'another-plan'")
+        other_plan_rejected = page.evaluate("!window.NeumannRevise.state().items[1].rev")
+        mode["value"] = "missing"
+        page.click("#rv-1 [data-rvretry]")
+        page.wait_for_function("window.NeumannRevise.state().items[1].status === 'error' && document.querySelector('#rv-1 .errbox').innerText.includes('의존 API 없음')")
+        api_missing = page.evaluate("() => ({no_revision: !window.NeumannRevise.state().items[1].rev, no_mock: !window.NeumannRevise.state().items[1].dev})")
+        mode["value"] = "unverified"
+        page.click("#rv-1 [data-rvretry]")
+        page.wait_for_selector("#rv-1 .rvdiff")
+        unverified = page.evaluate("""() => ({head: document.querySelector('#rv-1 .rvh').innerText,
+          generator: document.querySelector('#rv-1 .rvh .gen').innerText,
+          notice: document.getElementById('rvNotice').innerText})""")
+        page.click("#rv-1 .rdec[data-edit$='/e1'][data-d='adopt']")
+        page.click("#rvOpen")
+        page.wait_for_function("window.NeumannRevise.state().asm && window.NeumannRevise.state().asm.source === 'server' && !document.getElementById('rvAsmMsg').innerText.includes('조립 중')")
+        assembled = page.evaluate("""() => ({message: document.getElementById('rvAsmMsg').innerText,
+          paper: document.getElementById('rvPaper').innerText, md: window.NeumannRevise.markdown()})""")
+        page.evaluate("""() => { const key = 'neumann.revise.' + window.NeumannUI.D().plan_id;
+          const saved = JSON.parse(localStorage.getItem(key)); saved.items[1].raw.origin = 'server_signed';
+          localStorage.setItem(key, JSON.stringify(saved)); }""")  # 보존값 출처를 위조해도 이번 세션 인증이 아니다
+        page.reload(wait_until="networkidle")
+        page.fill("#ta", plan_text())
+        page.click("#btnStart")
+        page.wait_for_function(REPORT_READY)
+        page.click("#stpRevise")
+        page.wait_for_function(REVISE_READY)
+        restored = page.evaluate("""() => ({restored: window.NeumannRevise.state().restored,
+          head: (document.querySelector('#rv-1 .rvh') || {}).innerText || '', notice: document.getElementById('rvNotice').innerText,
+          items: Object.keys(window.NeumannRevise.state().items), stored: !!localStorage.getItem('neumann.revise.' + window.NeumannUI.D().plan_id)})""")
+        return {"foreign_rejected": foreign_rejected, "other_plan_rejected": other_plan_rejected, "api_missing": api_missing, "unverified": unverified,
+                "assembled": assembled, "restored": restored, "page_errors": errors, "requests": len(calls)}
+    finally:
+        ctx.close()
+
+
 def shoot(base: str, out: Path, prefix: str = PREFIX) -> dict:
     from playwright.sync_api import sync_playwright
 
@@ -194,6 +281,7 @@ def shoot(base: str, out: Path, prefix: str = PREFIX) -> dict:
 
     view = rich_view()
     view["result"] = load_fixtures().premortem_result.model_dump(mode="json")  # E4-L2f처럼 원결과를 실어 둔다
+    view["result_sig"] = "fixture-result-signature"  # 합성 전달값; HMAC 인증 검사는 아니다
     assert view["result"]["plan_id"] == view["plan_id"]
     assert len(view["cards"]) >= 2, "fixture 뷰에 카드 2장이 있어야 한다"
     c1, c2 = view["cards"][0], view["cards"][1]
@@ -204,6 +292,7 @@ def shoot(base: str, out: Path, prefix: str = PREFIX) -> dict:
         if ex.get("plan_id") == view["plan_id"] and ex.get("revisions") and ex["revisions"][0].get("card_id") == c1["id"]:
             resp1, example_used = ex, True
     resp2 = build_revision(view, c2, conflict_line=c1["lines"][0])
+    resp1["revision_sig"] = "fixture-revision-signature"
     console_errors: list[str] = []
     page_errors: list[str] = []
     failed: list[str] = []
@@ -230,13 +319,21 @@ def shoot(base: str, out: Path, prefix: str = PREFIX) -> dict:
 
     def assemble_route(route, req):
         body = json.loads(req.post_data or "{}")
-        asm_calls.append({"format": body.get("format"), "polish": body.get("polish"), "keys": sorted(body.keys()), "decisions": body.get("decisions")})
+        asm_calls.append({"format": body.get("format"), "polish": body.get("polish"), "keys": sorted(body.keys()), "decisions": body.get("decisions"),
+                          "result_sig": body.get("result_sig"), "revision_sig": body.get("revision_sig")})
         if not asm_mode["on"]:
             route.fulfill(status=404, content_type="application/json", body="{}")
             return
         if body.get("format") == "docx":
+            from docx import Document
+
+            document = Document()
+            for line in assemble_stub(body)["lines"]:
+                document.add_paragraph(line["text"])
+            stream = io.BytesIO()
+            document.save(stream)
             route.fulfill(status=200, content_type=DOCX_MEDIA, headers={"Content-Disposition": 'attachment; filename="neumann_revised_plan_test.docx"',
-                                                                        "X-Neumann-Changes": "3", "X-Neumann-Conflicts": "0"}, body=b"PK\x03\x04TESTDOCX")
+                                                                        "X-Neumann-Changes": "3", "X-Neumann-Conflicts": "0"}, body=stream.getvalue())
             return
         route.fulfill(status=200, content_type="application/json", body=json.dumps(assemble_stub(body), ensure_ascii=False))
 
@@ -361,6 +458,14 @@ def shoot(base: str, out: Path, prefix: str = PREFIX) -> dict:
           };
         }""")
         snap("viewer_marks")
+        page.emulate_media(media="print")
+        print_view = page.evaluate("""() => ({paper_visible: document.getElementById('rvPaper').getBoundingClientRect().height > 0,
+          app_display: getComputedStyle(document.getElementById('app')).display,
+          controls_display: getComputedStyle(document.getElementById('rvVBar')).display,
+          draft_visible: document.querySelector('#rvPaper .meta').innerText.includes('초안'),
+          source_visible: document.getElementById('rvPaper').innerText.includes('출처 확인 정보 없음')})""")
+        snap("viewer_print")
+        page.emulate_media(media="screen")
         page.hover("#rvViewer .rvpaper p.chg >> nth=0")
         page.wait_for_selector("#rvTip.on")
         tip = page.inner_text("#rvTip")
@@ -462,6 +567,11 @@ def shoot(base: str, out: Path, prefix: str = PREFIX) -> dict:
             page.click("#rvDocx")
         docx_name = dl2.value.suggested_filename
         docx_bytes = Path(dl2.value.path()).read_bytes()
+        from docx import Document
+
+        with zipfile.ZipFile(io.BytesIO(docx_bytes)) as archive:
+            docx_xml = archive.read("word/document.xml").decode("utf-8")
+        docx_text = "\n".join(p.text for p in Document(io.BytesIO(docx_bytes)).paragraphs)
         page.wait_for_function("document.getElementById('rvDocxMsg').innerText.indexOf('내려받음') >= 0")
         docx_msg = page.inner_text("#rvDocxMsg")
         page.check("#rvPolish")
@@ -551,7 +661,6 @@ def shoot(base: str, out: Path, prefix: str = PREFIX) -> dict:
         pg.click("#rvOpen")
         pg.wait_for_selector("#rvViewer.on")
         mock_after = pg.evaluate("() => ({text_in_paper: document.getElementById('rvPaper').innerText.indexOf(%s) >= 0, conflict: !!document.getElementById('rvConfBanner'), cnt: document.getElementById('rvVCnt').innerText, restored: window.NeumannRevise.state().restored})" % json.dumps(EDIT_TEXT + " (목업)"))
-        pg.click("#rvMockReset") if False else None
         pg.set_viewport_size({"width": 390, "height": 844})
         pg.wait_for_timeout(300)
         mock_narrow = no_hscroll(pg)
@@ -561,8 +670,22 @@ def shoot(base: str, out: Path, prefix: str = PREFIX) -> dict:
         pg.evaluate("window.scrollTo(0, 0)")
         mock_narrow_revise = no_hscroll(pg)
         snap("mock_390_revise", full=True, pg=pg)
+        pg.evaluate("localStorage.setItem('unrelated-preference', 'preserve')")
+        pg.click("#rvMockReset")
+        pg.wait_for_function(REPORT_READY)
+        pg.click("#stpRevise")
+        pg.wait_for_function(REVISE_READY)
+        pg.click("#rvOpen")
+        pg.wait_for_selector("#rvViewer.on")
+        mock_reset = pg.evaluate("""() => ({restored: window.NeumannRevise.state().restored,
+          text_absent: !document.getElementById('rvPaper').innerText.includes(%s), conflict: !!document.getElementById('rvConfBanner'),
+          unrelated: localStorage.getItem('unrelated-preference'),
+          mock_key: !!localStorage.getItem('neumann.revise.mock.' + window.NeumannUI.D().plan_id),
+          normal_key: !!localStorage.getItem('neumann.revise.' + window.NeumannUI.D().plan_id),
+          conflict_original: window.NeumannRevise.assemble().paras.filter(p => p.conflict).every(p => p.t === p.orig)})""" % json.dumps(EDIT_TEXT + " (목업)"))
         pg.evaluate("() => { try { localStorage.clear(); } catch (e) {} }")
         ctx2.close()
+        trust = trust_checks(browser, base, view, resp1)
         browser.close()
 
     external = [u for u in requests if urlparse(u).scheme not in {"data", "blob", "about"} and urlparse(u).hostname not in LOCAL_HOSTS]
@@ -573,34 +696,48 @@ def shoot(base: str, out: Path, prefix: str = PREFIX) -> dict:
         "console_errors_intentional": [c for c in main_console_errors if intentional(c)],
         "console_errors_after_cancel": [c for c in console_errors[len(main_console_errors):] if not intentional(c)], "page_errors": page_errors,
         "failed_requests": [f for f in failed if "premortem/revise" not in f], "external_requests": external, "requests_total": len(requests),
-        "revise_calls": [{"keys": sorted(c.keys()), "card_ids": c.get("card_ids"), "plan_text_ok": c.get("plan_text") == plan_text(),
+        "revise_calls": [{"keys": sorted(c.keys()), "card_ids": c.get("card_ids"), "result_sig": c.get("result_sig"), "plan_text_ok": c.get("plan_text") == plan_text(),
                           "result_plan_id": (c.get("result") or {}).get("plan_id")} for c in revise_calls],
         "asm_calls": asm_calls,
-        "entry": entry, "rev1": rev1, "ev": ev, "record": rec, "dec": dec, "viewer": vw, "tip": tip, "clean": clean, "notes": notes, "filled": filled,
+        "entry": entry, "rev1": rev1, "ev": ev, "record": rec, "dec": dec, "viewer": vw, "print": print_view, "tip": tip, "clean": clean, "notes": notes, "filled": filled,
         "edit_dom": edit_dom, "after_edit": after_edit, "undone": undone, "edit2": edit2, "esc": esc,
         "md": {"name": md_name, "has_adopted": "제안 문단을 뷰어에서 고친 문장" in md_text, "has_edited": "직접 수정한 문장" in md_text, "has_overlay": EDIT_TEXT in md_text,
                "rejected_absent": "테스트 추가 문단: 카드 1" not in md_text, "has_log": "## 수정 결정 로그" in md_text, "has_fill": "착수 후 4주 차" in md_text,
                "head": md_text.splitlines()[0][:200]},
         "md_server": {"has_footnote": "[^1]" in md_server, "has_history": "수정 이력" in md_server, "has_fill": "착수 후 4주 차" in md_server, "has_overlay": EDIT_TEXT in md_server},
-        "docx_absent": docx_absent, "docx": {"name": docx_name, "bytes": len(docx_bytes), "magic": docx_bytes[:2] == b"PK", "msg": docx_msg},
+        "docx_absent": docx_absent, "docx": {"name": docx_name, "bytes": len(docx_bytes), "magic": docx_bytes[:2] == b"PK", "msg": docx_msg,
+                                            "valid_xml": "<w:document" in docx_xml, "filled": "착수 후 4주 차" in docx_text, "overlay_absent": EDIT_TEXT not in docx_text},
         "polish": polish, "report_after": report_after, "err": err, "multi": multi, "conflict": conf, "picked": picked, "wait": wait_dom, "cancel": cancel,
         "narrow": narrow,
-        "mock": {"report": mock_report, "revise": mock_revise, "viewer": mock_viewer, "docx": mock_docx, "after_reload": mock_after,
+        "mock": {"report": mock_report, "revise": mock_revise, "viewer": mock_viewer, "docx": mock_docx, "after_reload": mock_after, "reset": mock_reset,
                  "api_requests": mock_api, "external": mock_external, "narrow_viewer": mock_narrow, "narrow_revise": mock_narrow_revise},
         "rich_ev1_quote": view["ev"]["1"]["q"], "plan_id": view["plan_id"],
+        "trust": trust,
     }
 
 
 def check(r: dict) -> list[str]:
     """완료 기준 판정. 빈 목록이면 통과."""
     bad = []
+    trust = r["trust"]
+    if not trust["foreign_rejected"] or not trust["other_plan_rejected"] or trust["api_missing"] != {"no_revision": True, "no_mock": True} or trust["page_errors"] or trust["requests"] != 4:
+        bad.append(f"타 카드 거절·병합 후 API 오류 표시 이상: {trust}")
+    uv = trust["unverified"]
+    if "미확인" not in uv["generator"] or "서버 서명 확인 안 됨" not in uv["head"] or "미확인" not in uv["notice"] or "LLM (forged-model)" in uv["head"]:
+        bad.append(f"가짜 서명·미확인 생성자 표시 이상: {uv}")
+    assembled = trust["assembled"]
+    if "미확인" not in assembled["message"] or "LLM (forged-model)" in assembled["message"] or "서버 서명 확인 안 됨" not in assembled["md"] or "통합본 출처: 서버 서명 확인 안 됨" not in assembled["paper"]:
+        bad.append(f"미확인 통합본·MD·인쇄 원고 표시 이상: {assembled}")
+    restored = trust["restored"]
+    if not restored["restored"] or "서명 재검증 안 됨" not in restored["head"] or "다시 확인하지 않음" not in restored["notice"] or "LLM (forged-model)" in restored["head"] or "서명 확인됨" in restored["head"]:
+        bad.append(f"브라우저 보존값 출처 표시 이상: {restored}")
     for key in ("console_errors", "console_errors_after_cancel", "page_errors", "failed_requests", "external_requests"):
         if r[key]:
             bad.append(f"{key}: {r[key][:3]}")
     e = r["entry"]
     if e["card_buttons"] < 2 or not e["top_button"] or "수정 권고" not in e["step_v"] or e["step_v_disabled"] or "V" not in e["step_v"]:
         bad.append(f"진입점 이상: {e}")
-    if not r["revise_calls"] or any(c["keys"] != ["card_ids", "plan_text", "result"] or not c["plan_text_ok"] or c["result_plan_id"] != r["plan_id"] for c in r["revise_calls"]):
+    if not r["revise_calls"] or any(c["keys"] != ["card_ids", "plan_text", "result", "result_sig"] or c["result_sig"] != "fixture-result-signature" or not c["plan_text_ok"] or c["result_plan_id"] != r["plan_id"] for c in r["revise_calls"]):
         bad.append(f"수정 권고 요청 모양 이상(계약 {{result, plan_text, card_ids}}): {r['revise_calls'][:2]}")
     v = r["rev1"]
     if v["focus"] != "rvTitle":
@@ -629,6 +766,8 @@ def check(r: dict) -> list[str]:
     if sorted(x["decision"] for x in d["server"]) != ["기각", "수정", "채택"] or not any(x.get("revised_text", "").startswith("직접 수정한 문장") for x in d["server"]):
         bad.append(f"서버용 결정(채택·수정·기각) 이상: {d['server']}")
     w = r["viewer"]
+    if r["print"] != {"paper_visible": True, "app_display": "block", "controls_display": "none", "draft_visible": True, "source_visible": True}:
+        bad.append(f"실제 print 렌더링 이상: {r['print']}")
     if w["role"] != "dialog" or w["modal"] != "true" or w["focus"] != "rvVTitle" or w["chg"] != 2 or w["chips"] != 1 or w["me_tags"] != 1 or not w["marks"] or w["body_overflow"] != "hidden" or not w["print_rule"] or w["paper_w"] > 760 or "화면 조립" not in w["asm"]:
         bad.append(f"뷰어 모달 이상: {w}")
     if "원문" not in r["tip"] or "근거 요약" not in r["tip"] or "#" not in r["tip"]:
@@ -676,6 +815,8 @@ def check(r: dict) -> list[str]:
     if sorted(pk["payload_keys"]) != ["revised_plan", "revision", "revision_decisions", "revision_sig"]:
         bad.append(f"내보내기 payload 모양 이상: {pk['payload_keys']}")
     x = r["docx"]
+    if not (x["valid_xml"] and x["filled"] and x["overlay_absent"]):
+        bad.append(f"DOCX 스텁 문서·채운 값·원문 편집 제외 이상: {x}")
     if not (x["name"].endswith(".docx") and x["magic"] and "내려받음" in x["msg"] and "변경 3" in x["msg"] and "직접 편집한 1문단" in x["msg"]):
         bad.append(f".docx 내려받기(편집 문단 안내 포함) 이상: {x}")
     if "게이트 거부" not in r["polish"]["asm"] or "미적용" not in r["polish"]["asm"]:
@@ -684,8 +825,10 @@ def check(r: dict) -> list[str]:
     if not (ms["has_overlay"] and ms["has_fill"]):  # 직접 편집 문단이 있으면 화면 조립 .md(편집 반영)
         bad.append(f"서버 통합본 상태의 .md 이상: {ms}")
     formats = [a["format"] for a in r["asm_calls"]]
-    if "docx" not in formats or not all(set(a["keys"]) <= {"decisions", "format", "plan_text", "polish", "result", "revision", "title"} for a in r["asm_calls"]):
+    if "docx" not in formats or not all(set(a["keys"]) <= {"decisions", "format", "plan_text", "polish", "result", "result_sig", "revision", "revision_sig", "title"} for a in r["asm_calls"]):
         bad.append(f"assemble 요청 모양 이상: {[(a['format'], a['keys']) for a in r['asm_calls']][:3]}")
+    if not all(a["result_sig"] == "fixture-result-signature" for a in r["asm_calls"]) or not any(a["revision_sig"] == "fixture-revision-signature" for a in r["asm_calls"]) or not any(a["revision_sig"] is None for a in r["asm_calls"]):
+        bad.append("assemble 서명 전달·다중 카드 서명 제거 이상")
     if "만드는 중" not in r["wait"]["msg"] or r["wait"]["stages"] != 4 or not r["wait"]["cancel"]:
         bad.append(f"대기 화면 이상: {r['wait']}")
     if "취소" not in r["cancel"]["err"] or not r["cancel"]["retry"]:
@@ -697,6 +840,8 @@ def check(r: dict) -> list[str]:
     if nw["viewer_inner"]["sw"] > nw["viewer_inner"]["cw"] or nw["sheet"]["w"] != nw["sheet"]["iw"] or nw["sheet"]["h"] != nw["sheet"]["ih"]:
         bad.append(f"390 뷰어 시트 이상: {nw}")
     mk = r["mock"]
+    if mk["reset"] != {"restored": False, "text_absent": True, "conflict": True, "unrelated": "preserve", "mock_key": True, "normal_key": False, "conflict_original": True}:
+        bad.append(f"목업 초기화·보존 분리·미결 충돌 원문 이상: {mk['reset']}")
     if mk["api_requests"] or mk["external"]:
         bad.append(f"목업 모드 서버 API·외부 요청: {mk['api_requests'][:3]} {mk['external'][:3]}")
     if "목업" not in mk["report"]["bar"] or "가짜 데이터" not in mk["report"]["bar"] or "완료" not in mk["report"]["status1"] or "완료" not in mk["report"]["status2"] or not mk["report"]["mock"]:
@@ -721,15 +866,10 @@ def _run(port: int, out: Path) -> dict:
     if port in FORBIDDEN_PORTS:
         raise SystemExit(f"{port}는 금지 포트(8010·8020·8099)")
     out.mkdir(parents=True, exist_ok=True)
-    saved = dict(os.environ)
     os.environ.pop("OPENAI_API_KEY", None)
     os.environ.pop("NEUMANN_LIVE_LLM_OK", None)
-    os.environ.update({"NEUMANN_LLM_PROVIDER": "mock", "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"})
-    try:
-        proc = start_server(port)
-    finally:
-        os.environ.clear()
-        os.environ.update(saved)
+    os.environ.update({"NEUMANN_LLM_PROVIDER": "mock", "NEUMANN_LIVE_TESTS": "0", "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"})
+    proc = start_server(port)
     try:
         return shoot(f"http://127.0.0.1:{port}", out)
     finally:
@@ -739,6 +879,8 @@ def _run(port: int, out: Path) -> dict:
 def test_revise_ui(tmp_path):
     out = Path(os.environ.get("NEUMANN_UI_SHOTS_OUT") or tmp_path)
     r = _run(int(os.environ.get("NEUMANN_UI_SHOTS_PORT", DEFAULT_PORT)), out)
+    if os.environ.get("NEUMANN_UI_SHOTS_OUT"):
+        (out / "E4-L4r.metrics.json").write_text(json.dumps(r, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps({k: v for k, v in r.items() if k not in ("rich_ev1_quote",)}, ensure_ascii=False, indent=1))
     assert check(r) == []
 

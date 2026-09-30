@@ -613,7 +613,8 @@
   body.rvmock .top { top: 0; }
   @media print { .rvmockbar, .rvedbox .rvtb { display: none !important; } }
   @media print {
-    body.rvmopen > :not(#rvViewer) { display: none !important; }
+    body.rvmopen > :not(#app) { display: none !important; }
+    body.rvmopen #app > :not(#rvViewer) { display: none !important; }
     body.rvmopen { overflow: visible; }
     #rvViewer.rvm { display: block !important; position: static; padding: 0; background: #fff; }
     #rvViewer .sheet { width: auto; height: auto; max-height: none; border: none; box-shadow: none; overflow: visible; display: block; }
@@ -1132,7 +1133,7 @@
          → 카드별 (a) 거절 사유 해석 (b) 채택 연구의 대응 (c) 계획서 수정안(줄 단위 전후 비교, 제안(근거 아님)) (d) 확인 질문 (e) 결정(채택·직접 수정·기각)
          → 수정본 뷰어 모달(깨끗한 원고 · 변경 표시 · 각주 판 · 미해결 충돌 선택 · [확인 필요: …] 입력 · .md/.docx/인쇄).
    서버: POST /premortem/revise (계약 contracts/revision.schema.json, E3-L2r). 응답의 새 발췌(records)는 기존 근거 패널에 번호를 이어 등록한다.
-   서버 API가 없으면(404·405·501) 개발용 어댑터가 모의(mock) 권고를 만들고 화면에 '모의(mock) · 개발용 어댑터'로 표시한다 — 병합 뒤 REV.dev = false 한 줄.
+   서버 API가 없으면(404·405·501) 개발용 어댑터가 모의(mock) 권고를 만들고 화면에 '모의(mock) · 개발용 어댑터'로 표시한다 — 의존 API 병합 뒤 REV.dev = false.
    서버·LLM 문자열은 전부 textContent로 넣는다(innerHTML에 서버 문자열 없음). 외부 요청 0. 결정은 체크리스트 결정 로그와 같은 모양(item_id·decision·note·decided_at). */
 (function () {
   'use strict';
@@ -1141,7 +1142,7 @@
   var $ = function (id) { return document.getElementById(id); };
   var S = U.S;
   var D = function () { return U.D(); };
-  /* 계약 어댑터 — 서버 경로가 정해지면 여기만 맞춘다. dev: 서버 API가 없을 때 모의 권고(개발용). 병합 뒤 false. */
+  /* 계약 어댑터 — dev는 의존 API 병합 전까지 유지한다. 통합 체크리스트를 통과한 뒤 false로 바꾼다. */
   var REV = { api: 'premortem/revise', assemble: 'premortem/revise/assemble', pollDefault: 'premortem/revise/jobs/', dev: true, mockDelayMs: 350 };
   var DEC_KO = { adopt: '채택', edit: '수정', reject: '기각' };  /* 서버 assemble의 결정 값(채택·수정·기각) */
   var STAGES = [['interpret', '거절 사유 해석'], ['precedents', '채택 연구의 대응 찾기'], ['draft', '수정안 작성'], ['gate', '근거 대조·게이트']];
@@ -1155,7 +1156,7 @@
   function state() { var d = D(); if (RV.d !== d) { if (RV.tick) clearInterval(RV.tick); RV = fresh(d, RV.gen + 1); if (d) restore(); } return RV; }
   /* 목업 모드(?mock=final): 서버 호출 없이 embedded fixture(가짜 데이터)로 전체 흐름의 완성 상태를 보인다 — 디자인 점검용 */
   var MOCK = /[?&]mock=final(?:&|$)/.test(location.search), MOCK_DATA = null;
-  var STORE_KEY = function () { var d = D(); return d && d.plan_id ? 'neumann.revise.' + d.plan_id : ''; };
+  var STORE_KEY = function () { var d = D(); return d && d.plan_id ? 'neumann.revise.' + (MOCK ? 'mock.' : '') + d.plan_id : ''; };
   function persist() {
     var st = state(), key = STORE_KEY(); if (!key) return;
     try {
@@ -1168,11 +1169,12 @@
     var saved = null; try { saved = JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) { saved = null; }
     if (!saved || typeof saved !== 'object' || saved.v !== 1) return;
     try {
-      Object.keys(saved.items || {}).forEach(function (r) { var cd = cardOf(+r); if (!cd) return; var raw = saved.items[r].raw, it = item(+r); var rev = normRevision(raw, cd); if (!rev) return; it.raw = raw; it.rev = rev; it.dev = !!saved.items[r].dev; it.devWhy = String(saved.items[r].devWhy || ''); rev.dev = it.dev; it.status = rev.skipped ? 'skipped' : 'done'; if (rev.skipped) it.err = rev.skipped; });
+      Object.keys(saved.items || {}).forEach(function (r) { var cd = cardOf(+r); if (!cd || (!MOCK && !REV.dev && saved.items[r].dev)) return; var raw = saved.items[r].raw, it = item(+r); var rev = normRevision(raw, cd); if (!rev) return; it.raw = raw; it.rev = rev; it.dev = !!saved.items[r].dev; it.devWhy = String(saved.items[r].devWhy || ''); rev.dev = it.dev; it.status = rev.skipped ? 'skipped' : 'done'; if (rev.skipped) it.err = rev.skipped; });
       Object.keys(saved.dec || {}).forEach(function (r) { var it = st.items[r]; if (it && it.rev) Object.keys(saved.dec[r]).forEach(function (eid) { if (findEdit(it, eid)) it.dec[eid] = saved.dec[r][eid]; }); });
       st.conf = saved.conf && typeof saved.conf === 'object' ? saved.conf : {}; st.fill = saved.fill && typeof saved.fill === 'object' ? saved.fill : {}; st.pedit = saved.pedit && typeof saved.pedit === 'object' ? saved.pedit : {};
       if (saved.view === 'clean' || saved.view === 'marks' || saved.view === 'notes') st.view = saved.view;
-      st.restored = !!Object.keys(saved.items || {}).length; st.restoredAt = String(saved.at || '');
+      st.restored = Object.keys(st.items).some(function (r) { return !!st.items[r].rev; }); st.restoredAt = String(saved.at || '');
+      if (st.restored) Object.keys(st.items).forEach(function (r) { var it = st.items[r]; if (it.rev) { it.rev.genl = '브라우저 보존값 · 생성자·모델 재확인 안 됨'; it.rev.origin = '브라우저 보존값 · 서명 재검증 안 됨'; } });
     } catch (e) { /* 깨진 보존값은 무시 */ }
   }
   function forget() { var key = STORE_KEY(); try { if (key) localStorage.removeItem(key); } catch (e) { /* 없음 */ } }
@@ -1209,6 +1211,7 @@
   }
   function genCls(g) { g = String(g || '').toLowerCase(); return g === 'astra' || g === 'llm' || g === 'openai' ? 'astra' : (g === 'rule' || g === 'mock' || g === 'sample' ? g : 'unknown'); }
   function genEl(g, model, genl) { return el('span', 'gen ' + genCls(g), genText(g, model, genl)); }
+  function originText(raw) { if (RV.restored) return '브라우저 보존값 · 출처·서명 재검증 안 됨'; return raw && raw.origin === 'server_signed' ? '서버 응답: 서명 확인됨' : (raw && raw.origin === 'client_submitted_unverified' ? '서버 서명 확인 안 됨 · 생성자·모델·근거 출처 미확인' : '출처 확인 정보 없음'); }
   function outcomeLabel(v, label) { if (label) return String(label); v = String(v || '').toLowerCase(); return OUTCOME[v] || (v ? v.slice(0, 24) : '미정'); }
 
   /* ---------- 새 발췌(records) → 기존 근거 패널에 번호를 이어 등록(인용은 서버가 원문 오프셋으로 자른 text 그대로) ---------- */
@@ -1239,12 +1242,12 @@
   function refs(raw, m) { var d = D(), out = []; L(raw).forEach(function (r) { var k = null; if (typeof r === 'number') k = String(r); else if (typeof r === 'string') { if (r === 'map') return; k = m[r] || (d.ev[r] ? r : null); } else if (r && typeof r === 'object') { var id = T(pick(r, 'excerpt_id', 'eid', 'id')); k = m[id] || (d.ev[id] ? id : null); } if (k != null && d.ev[k] && out.indexOf(k) < 0) out.push(k); }); return out; }
   function sents(raw, m, gate, sec) { var out = []; L(raw).forEach(function (s) { var o = typeof s === 'string' ? { text: s } : (s && typeof s === 'object' ? s : {}); var t = T(pick(o, 'text', 't', 'sentence')); if (!t) return; var c = refs(pick(o, 'excerpt_ids', 'evidence', 'evidence_ids', 'c'), m); if (!c.length) { gate.dropped++; gate.items.push([sec, t]); return; } out.push({ t: t, c: c, work: T(pick(o, 'work_id', 'work')), outcome: outcomeLabel(o.outcome, o.outcome_label), lines: L(pick(o, 'plan_lines', 'lines')).map(Number).filter(function (n) { return isFinite(n); }) }); }); return out; }
   function normRevision(raw, cd) {
-    if (!raw || typeof raw !== 'object') return null;
+    if (!raw || typeof raw !== 'object' || raw.plan_id !== D().plan_id) return null;
     var list = L(pick(raw, 'revisions', 'cards', 'items')), r = null;
-    list.forEach(function (x) { if (!r && x && typeof x === 'object' && (T(pick(x, 'card_id')) === cd.id || N(pick(x, 'card_rank', 'rank')) === cd.rank)) r = x; });
+    list.forEach(function (x) { if (!r && x && typeof x === 'object' && T(x.card_id) === cd.id) r = x; });
     var skipped = null; L(raw.cards_skipped).forEach(function (x) { if (x && T(x.card_id) === cd.id) skipped = T(x.reason) || '사유 없음'; });
     if (!r && skipped) return { skipped: skipped, gen: T(raw.generator).toLowerCase(), model: T(raw.model), status: 'skipped', notices: L(raw.notices).map(T).filter(Boolean), interp: [], prec: { status: 'none', note: '', items: [] }, edits: [], qs: [], audit: {}, gate: { dropped: 0, items: [] } };
-    if (!r) r = list.length ? list[0] : (raw.card_id || raw.edits || raw.interpretation ? raw : null);
+    if (!r) r = !list.length && T(raw.card_id) === cd.id ? raw : null;
     if (!r) return null;
     registerRecords(raw, cd);
     var m = evMap(), gate = { dropped: 0, items: [] }, d = D(), lineSet = {}; d.plan.lines.forEach(function (l) { lineSet[l.n] = l.t; });
@@ -1271,7 +1274,7 @@
     return {
       interp: sents(pick(r, 'interpretation', 'reasons', 'analysis'), m, gate, 'interpretation'),
       prec: { status: T(pr.status) === 'found' && prItems.length ? 'found' : 'none', note: T(pr.note) || (T(pr.status) === 'found' && !prItems.length ? '대응 사례 없음 — 근거가 연결된 대응 문장이 없어 화면 게이트가 뺐다' : ''), items: prItems },
-      edits: edits, qs: qs, gen: gen, model: T(pick(r, 'model') || pick(raw, 'model')), genl: T(pick(r, 'genl', 'generator_label')), effort: T(pick(r, 'effort') || pick(raw, 'effort')),
+      edits: edits, qs: qs, gen: gen, model: T(pick(r, 'model') || pick(raw, 'model')), genl: raw.origin === 'client_submitted_unverified' ? '생성자·모델 미확인(클라이언트 제출)' : T(pick(r, 'genl', 'generator_label')), origin: originText(raw), effort: T(pick(r, 'effort') || pick(raw, 'effort')),
       status: T(pick(r, 'status')) || T(raw.status) || 'ok', why: T(pick(r, 'reason', 'fallback_reason') || raw.reason),
       audit: { gen: N(pick(au, 'generated')), pass: N(pick(au, 'passed', 'pass')), drop: N(pick(au, 'dropped', 'drop')), noev: N(pick(au, 'no_evidence')), gate: T(au.gate),
         items: L(pick(au, 'dropped_detail', 'dropped')).map(function (x) { return typeof x === 'string' ? x : (Array.isArray(x) ? T(x[1]) : [T(pick(x || {}, 'section')), T(pick(x || {}, 'reason')), T(pick(x || {}, 'text'))].filter(Boolean).join(' · ')); }).filter(Boolean) },
@@ -1308,7 +1311,7 @@
   function serverMsg(j, code) { j = j || {}; if (typeof j.message === 'string' && j.message) return j.message; if (typeof j.detail === 'string' && j.detail) return j.detail; if (Array.isArray(j.detail) && j.detail.length) return j.detail.map(function (x) { return x && x.msg ? String(x.msg) : String(x); }).join(' · '); if (typeof j.reason === 'string' && j.reason) return j.reason; return 'HTTP ' + code; }
   function asJson(r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, code: r.status, body: j }; }); }
   function rawResult() { var d = D(), r = d && d.result; return r && typeof r === 'object' && r.plan_id ? r : null; }  /* 화면 응답에 실린 원결과(E4-L2f). 없으면 서버 API를 부를 수 없다 */
-  function reqBody(cd) { return { result: rawResult(), plan_text: S.text, card_ids: [cd.id] }; }
+  function reqBody(cd) { var body = { result: rawResult(), plan_text: S.text, card_ids: [cd.id] }; if (D().result_sig) body.result_sig = D().result_sig; return body; }
   function pollRevise(b, it) {
     var url = T(b.poll_url || b.status_url) || (REV.pollDefault + encodeURIComponent(T(b.job_id)));
     return new Promise(function (res, rej) { (function tick(delay) { setTimeout(function () {
@@ -1407,7 +1410,8 @@
         var chosen = null; if (repl.length === 1) chosen = repl[0]; else { var ck = st.conf[l.n] && st.conf[l.n].key; repl.forEach(function (c) { if (c.key === ck) chosen = c; }); }
         var open = repl.length > 1 && !chosen; if (open) { chosen = repl[repl.length - 1]; conflicts.push({ n: l.n, options: repl }); }
         var p = { n: l.n, h: l.h, orig: l.t, src: chosen, conflict: open, options: repl.length > 1 ? repl : null };
-        if (chosen.kind === 'delete' || !chosen.text.trim()) { p.kind = 'deleted'; p.t = l.t; counts.deleted++; } else { p.kind = 'changed'; p.t = chosen.text; counts.changed++; }
+        if (open) { p.kind = 'same'; p.t = l.t; p.src = null; }
+        else if (chosen.kind === 'delete' || !chosen.text.trim()) { p.kind = 'deleted'; p.t = l.t; counts.deleted++; } else { p.kind = 'changed'; p.t = chosen.text; counts.changed++; }
         paras.push(p);
       }
       ins.forEach(function (c) { paras.push({ n: l.n, t: c.text, kind: 'inserted', src: c }); counts.inserted++; });
@@ -1422,6 +1426,9 @@
     if (asm.source === 'server' && asm.md && !asm.counts.overlay) return asm.md;
     var d = D(), st = state(), c = asm.counts, gens = {}; Object.keys(st.items).forEach(function (r) { var it = st.items[r]; if (it.rev) gens[genText(it.rev.gen, it.rev.model, it.rev.genl) + (it.rev.dev ? ' · 개발용 어댑터' : '')] = 1; });
     var head = ['<!-- Neumann 계획서 수정본(화면 조립) · 원본 ' + (d.plan.file || '직접 입력') + ' · ' + new Date().toISOString().slice(0, 19) + ' · 수정 ' + c.changed + '줄 · 추가 ' + c.inserted + '줄 · 삭제 ' + c.deleted + '줄 · 미해결 충돌 ' + c.conflicts + ' · 확인 필요 ' + c.fills + ' · 직접 편집 ' + (c.overlay || 0) + '문단 · 제안 문안은 근거가 아니며 최종 판단은 연구자에게 · 수정안 생성: ' + (Object.keys(gens).join(', ') || '없음') + ' -->', ''];
+    Object.keys(st.items).forEach(function (r) { var it = st.items[r]; if (it.raw) head.push('> 수정 권고 출처: ' + originText(it.raw)); });
+    if (st.restored) head.push('> 브라우저 보존값 · 이번 세션에서 서버 서명을 다시 확인하지 않음');
+    head.push('');
     var body = [];
     asm.paras.forEach(function (p) { if (p.kind === 'deleted') return; var t = finalText(p); if (/^\s{0,3}#{1,6}\s/.test(t) && body.length) body.push(''); body.push(t); });
     var log = decisionsLog(), tail = ['', '---', '', '## 수정 결정 로그 (Neumann · 제안은 근거가 아님)', '', '| 항목 | 결정 | 줄 | 문안·메모 | 시각 |', '|---|---|---|---|---|'];
@@ -1460,7 +1467,7 @@
     });
     return m;
   }
-  function assembleBody(format) { var st = state(), body = { plan_text: S.text, revision: mergedRevision(), decisions: serverDecisions(), polish: !!st.polish, format: format || 'json', title: (D().plan.title || '수정된 연구계획서').slice(0, 200) }; var r = rawResult(); if (r) body.result = r; return body; }
+  function assembleBody(format) { var st = state(), body = { plan_text: S.text, revision: mergedRevision(), decisions: serverDecisions(), polish: !!st.polish, format: format || 'json', title: (D().plan.title || '수정된 연구계획서').slice(0, 200) }; var r = rawResult(); if (r) body.result = r; if (D().result_sig) body.result_sig = D().result_sig; if (body.revision && body.revision.revision_sig) body.revision_sig = body.revision.revision_sig; return body; }
   function rankOfCard(cid) { var r = 0; cards().forEach(function (c) { if (c.id === cid) r = c.rank; }); return r; }
   function localEdit(cid, eid) { var r = rankOfCard(cid), it = r ? item(r) : null; return it && it.rev ? findEdit(it, eid) : null; }
   /* 서버 통합본(revised_plan@v1) → 뷰어 모델. 줄·변경·충돌·자리표시·통계·다듬기를 그대로 옮긴다(자리표시 값은 이미 revised_text로 보냈다) */
@@ -1499,7 +1506,7 @@
     var po = (out.polish && typeof out.polish === 'object') ? out.polish : { requested: false, applied: false };
     var md = (out.markdown && typeof out.markdown === 'object') ? out.markdown : {};
     return { paras: paras, conflicts: conflicts, notes: notes, counts: counts, complete: counts.proposed > 0 && counts.undecided === 0 && counts.conflicts === 0 && counts.fills === 0,
-      source: 'server', polish: po, label: T(out.label), md: T(md.footnoted) ? T(md.footnoted) + '\n\n' + T(md.history) : '', rid: T(out.revised_plan_id), notices: L(out.notices).map(T).filter(Boolean), raw: out };
+      source: 'server', polish: po, label: (out.origin === 'client_submitted_unverified' ? '생성자·모델·근거 출처 미확인' : T(out.label)) + ' · ' + originText(out), md: T(md.footnoted) ? '> ' + originText(out) + '\n\n' + T(md.footnoted) + '\n\n' + T(md.history) : '', rid: T(out.revised_plan_id), notices: L(out.notices).map(T).filter(Boolean), raw: out };
   }
   function overlay(asm) {
     var st = state(), n = 0, me = 0;
@@ -1543,7 +1550,7 @@
       if (!r.ok) return asJson(r).then(function (x) { throw new RevError(serverMsg(x.body, x.code), x.code); });
       var name = fileNameOf(r.headers.get('Content-Disposition'), mdName('docx')), ch = r.headers.get('X-Neumann-Changes'), cf = r.headers.get('X-Neumann-Conflicts');
       var ov = currentAsm().counts.overlay || 0;
-      return r.blob().then(function (bl) { saveBlob(bl, name); docxMsg('내려받음 · ' + name + ' · ' + U.upSize(bl.size) + (ch != null ? ' · 변경 ' + ch : '') + (cf != null && N(cf) ? ' · 미해결 충돌 ' + cf : '') + (ov ? ' · 뷰어에서 직접 편집한 ' + ov + '문단은 서버 .docx에 없음(.md에는 반영)' : ''), !!ov); });
+      return r.blob().then(function (bl) { saveBlob(bl, name); docxMsg('내려받음 · ' + name + ' · ' + U.upSize(bl.size) + (ch != null ? ' · 변경 ' + ch : '') + (cf != null && N(cf) ? ' · 미해결 충돌 ' + cf : '') + ' · DOCX 응답의 출처 확인 정보 없음 — 문서 안내 확인' + (ov ? ' · 뷰어에서 직접 편집한 ' + ov + '문단은 서버 .docx에 없음(.md에는 반영)' : ''), !!ov); });
     }).catch(function (e) { docxMsg('.docx 실패 · ' + (e && e.message ? e.message : '서버 연결 실패'), true); })
       .then(function () { st.docxBusy = false; var b2 = $('rvDocx'); if (b2) b2.disabled = false; });
   }
@@ -1605,6 +1612,7 @@
     var pb = el('div', 'pbody'); pb.id = 'pbody'; add(panel, tabs, pb); add(rep, panel);
     var fab = btn('btn sm rvfab', '근거 · 계획서'); fab.dataset.rvopen = '1'; add(rep, fab);
     add(app, rep, viewerShell());
+    activeRanks().forEach(paintCardBody);
     paintNotice(); paintHub(); paintSummary(); U.renderPanel();
     document.body.dataset.ready = '1';
   }
@@ -1619,6 +1627,8 @@
     if (dev) parts.push(['개발용 어댑터', (devWhy || '서버 수정 권고 API(POST /premortem/revise) 없음') + ' → 모의(mock) 권고 · 분석 결과 아님']);
     var gk = Object.keys(gens); if (gk.length) parts.push(['생성 주체', gk.join(' · ') + ' · 제안 문안은 근거가 아니며 최종 판단은 연구자에게']);
     Object.keys(notes).forEach(function (n) { parts.push(['', n]); });
+    Object.keys(st.items).forEach(function (r) { var it = st.items[r]; if (it.rev && it.raw) parts.push(['수정 권고 출처', originText(it.raw)]); });
+    if (st.restored) parts.push(['브라우저 보존값', '이번 세션에서 서버 서명을 다시 확인하지 않음']);
     if (!parts.length) { nt.hidden = true; return; }
     nt.hidden = false; parts.forEach(function (p, i) { if (i === 0) { add(nt, p[0] ? el('b', null, p[0]) : '', p[1]); } else { var s = el('span', 'sm'); add(s, p[0] ? el('b', null, p[0]) : '', p[1]); add(nt, s); } });
   }
@@ -1652,7 +1662,6 @@
     var cd = cardOf(rank), f = U.fam(cd.fam), sec = el('section', 'rvsec'); sec.id = 'rv-' + rank;
     var hd = el('div', 'sec'); add(hd, el('span', 'num', pad2(rank)), el('h2', null, f.n), el('span', 'd', f.k + ' · 심각도 S' + cd.sev + ' · ' + cd.src)); add(sec, hd);
     var card = el('div', 'card rvcard'); card.id = 'rvc-' + rank; add(sec, card);
-    paintCardBody(rank);
     return sec;
   }
   function paintCardBody(rank) {
@@ -1683,6 +1692,7 @@
     var r = it.rev, h = el('div', 'rvh'); add(h, el('div', 'rk', pad2(it.rank)));
     var b = el('div'); add(b, el('h3', null, '수정 권고'));
     var sub = el('div', 'sub'); add(sub, genEl(r.gen, r.model, r.genl));
+    add(sub, el('span', 'warn', r.origin || originText(it.raw)));
     if (r.dev) add(sub, el('span', 'warn', '개발용 어댑터 · ' + (it.devWhy || '서버 API 없음') + ' · 모의 권고'));
     if (r.sample) add(sub, el('span', 'warn', '샘플 · 분석 결과 아님'));
     if (r.status && r.status !== 'ok') add(sub, el('span', 'warn', '상태 ' + r.status + (r.why ? ' · ' + r.why : '')));
@@ -1806,7 +1816,10 @@
     if (n.fills) { var fb = el('div', 'sm', ''); fb.id = 'rvFillCnt'; fb.style.cssText = 'color:var(--amber); font-weight:600; margin-bottom:12px;'; fb.textContent = '연구자 확인 필요 ' + n.fills + '곳 — 칩을 누르면 바로 입력'; add(paper, fb); }
     var title = null; asm.paras.forEach(function (p) { if (!title && p.h === 'title') title = p; });
     add(paper, el('div', 't', title ? (headingOf(finalText(title)) || { text: finalText(title) }).text : (d.plan.title || '연구계획서')));
-    add(paper, el('div', 'meta', (d.plan.file || '직접 입력') + ' · 수정본 · ' + new Date().toISOString().slice(0, 10) + ' · 변경 ' + (n.changed + n.inserted + n.deleted) + '곳' + (asm.complete ? ' · 완성본' : '') + ' · 제안 문안은 근거가 아니며 최종 판단은 연구자에게'));
+    add(paper, el('div', 'meta', (d.plan.file || '직접 입력') + ' · 수정본 · ' + new Date().toISOString().slice(0, 10) + ' · 변경 ' + (n.changed + n.inserted + n.deleted) + '곳' + (asm.complete ? ' · 완성본' : ' · 초안 · 미결 ' + n.undecided + ' · 충돌 ' + n.conflicts + ' · 확인 필요 ' + n.fills) + ' · 제안 문안은 근거가 아니며 최종 판단은 연구자에게'));
+    var origins = {}; Object.keys(st.items).forEach(function (r) { var it = st.items[r]; if (it.raw) origins[originText(it.raw)] = 1; });
+    add(paper, el('div', 'sm muted', '수정 권고 출처: ' + (Object.keys(origins).join(' / ') || '없음') + (st.restored ? ' · 브라우저 보존값 · 이번 세션에서 서버 서명을 다시 확인하지 않음' : '')));
+    if (asm.raw) add(paper, el('div', 'sm muted', '통합본 출처: ' + originText(asm.raw)));
     if (!asm.paras.length) add(paper, el('div', 'empty', '계획서 줄 없음'));
     asm.paras.forEach(function (p) { if (p === title) return; add(paper, paraEl(p, st)); if (p.conflict || (p.options && p.options.length > 1 && st.view !== 'clean')) add(paper, conflictEl(p, st)); });
     if (st.view === 'notes' && asm.notes.length) add(paper, notesEl(asm));
@@ -1941,6 +1954,7 @@
   /* ---------- 이벤트 ---------- */
   document.addEventListener('click', function (ev) {
     var t;
+    if (MOCK && ev.target.closest('#rvMockReset')) { forget(); location.reload(); return; }
     if ((t = ev.target.closest('[data-rv]'))) { var r = +t.dataset.rv; goRevise([r], item(r).status !== 'done'); return; }
     if (ev.target.closest('#rvTop')) { goRevise(adoptedRanks(), true); return; }
     if ((t = ev.target.closest('[data-rstep]'))) { if (!t.disabled) goRevise(null, false); return; }
