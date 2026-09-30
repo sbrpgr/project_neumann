@@ -379,23 +379,66 @@ def longest_token(text: str) -> int:
     return max((len(t) for t in text.split()), default=0)
 
 
-# 로그의 job_id 가리기(재작업 3): 경로(대소문자·겹 슬래시·%2F)와 쿼리(?job=·?job_id=·?id=·?ticket=), 그리고
-# 접근 로그에서는 job_id 모양(URL-safe 32자 이상) 토큰 전부. 앞 6자 + "…"만 남기고, 두 번 걸려도 결과가 같다.
-_JOB_PATH_RE = re.compile(r"(?i)(/premortem/+jobs(?:/|%2F)+)([A-Za-z0-9_\-]{1,6})[A-Za-z0-9_\-%]*…?")
-_JOB_QUERY_RE = re.compile(r"(?i)([?&;](?:job|job_id|jobid|id|ticket)=)([A-Za-z0-9_\-]{1,6})[A-Za-z0-9_\-%]*…?")
-_LONG_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9_\-])([A-Za-z0-9_\-]{6})[A-Za-z0-9_\-]{26,}(?![A-Za-z0-9_\-])")
+# 로그의 job_id 가리기(재작업 3·4). job_id는 결과 열람 자격(URL-safe 32자)이다.
+# - 퍼센트 인코딩 인식(재작업 4): uvicorn 접근 로그는 쿼리를 날것으로 적으므로 ``%45``처럼 인코딩한 글자도 토큰의
+#   일부로 읽는다. [URL-safe 글자 | %XX]가 이어진 구간을 풀어(decoded) 보고, 푼 글자가 URL-safe로 N자 이상 이어지면
+#   그 부분을 "푼 앞 6자 + …"로 바꾼다(접근 로그 20자, 앱 로그 26자: 요청 번호·예외 이름은 남긴다).
+# - 경로(/premortem/jobs/…, 대소문자·겹 슬래시·%2F)와 쿼리(?job=·?job_id=·?id=·?ticket=)는 길이와 무관하게 가린다.
+# - 결과는 두 번 걸어도 같다("…"는 토큰 글자가 아니다).
+_URLSAFE_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
+_ENC_RUN_RE = re.compile(r"(?:[A-Za-z0-9_\-]|%[0-9A-Fa-f]{2})+")
+_ENC_UNIT_RE = re.compile(r"[A-Za-z0-9_\-]|%[0-9A-Fa-f]{2}")
+_JOB_PATH_RE = re.compile(r"(?i)(/premortem/+jobs(?:/|%2F)+)((?:[A-Za-z0-9_\-]|%[0-9A-Fa-f]{2})+)…?")
+_JOB_QUERY_RE = re.compile(r"(?i)([?&;](?:job|job_id|jobid|id|ticket)=)((?:[A-Za-z0-9_\-]|%[0-9A-Fa-f]{2})+)…?")
+ACCESS_TOKEN_MIN = 20
+APP_TOKEN_MIN = 26
+
+
+def _decode_units(run: str) -> list[tuple[str, str]]:
+    """토큰 구간 → [(날것 단위, 푼 글자)]. ``%XX``는 한 바이트를 글자 하나로 푼다(URL-safe 판정용)."""
+    return [(u, chr(int(u[1:], 16)) if u[0] == "%" else u) for u in _ENC_UNIT_RE.findall(run)]
+
+
+def _head6(raw: str) -> str:
+    """토큰(인코딩 포함)을 풀어 앞에서부터 URL-safe 글자 최대 6자 + "…"(두 번 걸어도 같게 구분 글자에서 멈춘다)."""
+    head: list[str] = []
+    for _, c in _decode_units(raw):
+        if c not in _URLSAFE_CHARS or len(head) == 6:
+            break
+        head.append(c)
+    return "".join(head) + "…"
+
+
+def _mask_run(run: str, min_len: int) -> str:
+    """토큰 구간 하나: 푼 글자가 URL-safe로 min_len자 이상 이어지는 부분을 앞 6자 + "…"로."""
+    out: list[str] = []
+    raw: list[str] = []
+    dec: list[str] = []
+
+    def flush() -> None:
+        out.append("".join(dec[:6]) + "…" if len(dec) >= min_len else "".join(raw))
+        raw.clear()
+        dec.clear()
+
+    for u, c in _decode_units(run):
+        if c in _URLSAFE_CHARS:
+            raw.append(u)
+            dec.append(c)
+        else:  # 인코딩된 구분 글자(%2F 등)는 그대로 두고 앞뒤를 따로 본다
+            flush()
+            out.append(u)
+    flush()
+    return "".join(out)
 
 
 def mask_job_paths(text: str, *, access: bool = False) -> str:
-    """로그용: job_id(결과 열람 자격)를 앞 6자만 남긴다. ``access``면 32자 이상 URL-safe 토큰도 모두 가린다."""
-    low = text.lower()
-    if "jobs" in low:
-        text = _JOB_PATH_RE.sub(lambda m: m.group(1) + m.group(2) + "…", text)
+    """로그용: job_id(결과 열람 자격)를 앞 6자만 남긴다(퍼센트 인코딩을 풀어서 판정, 두 번 걸어도 같다)."""
+    if "jobs" in text.lower():
+        text = _JOB_PATH_RE.sub(lambda m: m.group(1) + _head6(m.group(2)), text)
     if "=" in text:
-        text = _JOB_QUERY_RE.sub(lambda m: m.group(1) + m.group(2) + "…", text)
-    if access:
-        text = _LONG_TOKEN_RE.sub(lambda m: m.group(1) + "…", text)
-    return text
+        text = _JOB_QUERY_RE.sub(lambda m: m.group(1) + _head6(m.group(2)), text)
+    n = ACCESS_TOKEN_MIN if access else APP_TOKEN_MIN
+    return _ENC_RUN_RE.sub(lambda m: _mask_run(m.group(0), n) if len(m.group(0)) >= n else m.group(0), text)
 
 
 def _scrub_log(text: str, access: bool = False) -> str:
