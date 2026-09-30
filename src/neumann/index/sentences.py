@@ -31,15 +31,22 @@ ABBREVIATIONS: frozenset[str] = frozenset(
 _TERMINAL = re.compile(r"[.!?]+[\"'”’)\]]*")
 # 종결부호 뒤에 오면 경계로 보는 것
 _AFTER_SPACE_START = re.compile(r"\s+[\"'“‘(\[]?[A-Z0-9]")  # 공백 + 대문자/숫자로 시작
-_AFTER_GLUED_ENUM = re.compile(r"\(?\d{1,2}[.)]\s*[A-Za-z]")  # 'below.2. Certain', 'x.2)The'
+_AFTER_GLUED_ENUM = re.compile(r"\(?(?:\d{1,2}|[A-Z]{1,2}\d{1,2})[.):]\s*[A-Za-z]")  # 'below.2. Certain', 'x.2)The'
 _AFTER_BULLET = re.compile(r"\s*[-*•]\s")  # 'Table 2!- The'
+_AFTER_GLUED_CAP = re.compile(r"[A-Z][a-z]")  # 'weight.The authors'
+_TOKEN_BEFORE = re.compile(r"[\w.]*$")
+_COLON_BULLET = re.compile(r":(?=\s*[-*•]\s)")  # 'transformer:- instead'
+_GLUED_DASH = re.compile(r"(?<=[A-Za-z0-9)\]$])(?=[-•]\s+(?!(?:and|or|to|vs|nor)\b)[A-Za-z(])")  # 'distances- the'
 # 문장 앞머리 목록 기호
 _LEADING_MARKER = re.compile(
     r"(?:[-*•+>]+\s*|\(?\d{1,2}[.)](?!\d)\s*|\([a-zA-Z]\)\s*|\([ivxIVX]{1,4}\)\s*|[ivx]{1,4}\)\s*)+"
 )
 _WORD_BEFORE = re.compile(r"([A-Za-z][A-Za-z.]*)$")
-_ENUM_ONLY = re.compile(r"\s*(?:[-*•]\s*)?\(?(?:\d{1,2}|[a-zA-Z]|[ivxIVX]{1,4})")
+_ENUM_ONLY = re.compile(r"\s*(?:[-*•]\s*)?\(?(?:\d{1,2}|[a-zA-Z]|[ivxIVX]{1,4}|[A-Z]{1,2}\d{1,2})")
 _HAS_WORD = re.compile(r"[^\W_]")  # 글자나 숫자가 하나라도 있어야 문장으로 본다
+
+# 코드 이름(torch.Tensor)의 마침표는 문장 끝이 아니다
+_CODE_PREFIXES = frozenset({"torch", "numpy", "np", "nn", "tf", "jax", "jnp", "pd", "self", "scipy", "sklearn", "math", "os", "sys", "plt"})
 
 # 구분자 없이 너무 긴 문장은 ';'에서 한 번 더 나눈다(LLM에 넘기는 단위를 줄이려고)
 LONG_SENTENCE_CHARS = 800
@@ -59,7 +66,7 @@ def _is_abbreviation(line: str, dot_pos: int) -> bool:
 
 def _split_line(line: str) -> list[tuple[int, int]]:
     """줄 하나(줄바꿈 없음)를 문장 구간으로 나눈다. 구간은 line 기준 [s, e)."""
-    spans: list[tuple[int, int]] = []
+    cuts: set[int] = set()
     start = 0
     for m in _TERMINAL.finditer(line):
         end = m.end()
@@ -73,17 +80,35 @@ def _split_line(line: str) -> list[tuple[int, int]]:
             # 'Section 4.2. The'는 제외: 마침표 앞이 글자·닫는 괄호·$여야 붙은 목록 번호로 본다
             prev = line[m.start() - 1] if m.start() > 0 else ""
             boundary = prev.isalpha() or prev in ")]$\"'"
+        elif len(m.group(0)) == 1 and _AFTER_GLUED_CAP.match(line, rest_pos):
+            # 줄바꿈이 사라져 붙은 문장('weight.The authors'). 앞 낱말이 3글자 이상 소문자 끝이어야 한다
+            prev_tok = _TOKEN_BEFORE.search(line, 0, m.start()).group(0)
+            boundary = (
+                len(prev_tok) >= 3 and prev_tok[-1].islower() and "." not in prev_tok and "_" not in prev_tok
+                and prev_tok.lower() not in _CODE_PREFIXES
+            )
         if not boundary:
             continue
-        # 문장 앞머리 목록 번호('2.', '(3)')의 마침표는 경계가 아니다
+        # 문장 앞머리 목록 번호('2.', '(3)', 'W1.')의 마침표는 경계가 아니다
         if _ENUM_ONLY.fullmatch(line, start, m.start()):
             continue
         if m.group(0)[0] == "." and len(m.group(0).rstrip("\"'”’)]")) == 1:
             if _is_abbreviation(line, m.start()):
                 continue
-        spans.append((start, end))
+        cuts.add(end)
         start = end
-    spans.append((start, len(line)))
+    # 종결부호 없이 붙은 목록: 'transformer:- instead', 'distances- the initial'
+    for m in _COLON_BULLET.finditer(line):
+        cuts.add(m.end())
+    for m in _GLUED_DASH.finditer(line):
+        cuts.add(m.start())
+    spans: list[tuple[int, int]] = []
+    prev = 0
+    for c in sorted(cuts):
+        if 0 < c < len(line) and c > prev:
+            spans.append((prev, c))
+            prev = c
+    spans.append((prev, len(line)))
     return spans
 
 

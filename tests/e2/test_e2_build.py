@@ -49,6 +49,23 @@ def test_build_script_jsonl_no_embed(tmp_path, corpus):
     assert st.n_excerpts() == m["counts"]["excerpts"]
 
 
+def test_corpus_adapter_accepts_e1_shape(corpus):
+    from dataclasses import dataclass
+
+    works, reviews = corpus
+
+    @dataclass
+    class FakeCorpus:  # E1 Corpus 모양: works는 dict, reviews는 list
+        works: dict
+        reviews: list
+
+    build = _load_script("build_index")
+    w, r = build._parts(FakeCorpus({x.work_id: x for x in works}, reviews))
+    assert w == works and r == reviews
+    with pytest.raises(TypeError):
+        build._parts(FakeCorpus({"a": "not a work"}, reviews))
+
+
 def test_build_is_deterministic(tmp_path, corpus):
     src = tmp_path / "processed"
     _write_corpus(corpus, src)

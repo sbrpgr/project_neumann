@@ -36,6 +36,24 @@ def test_inline_numbering_and_bullets_glued():
     ]
 
 
+def test_glued_sentences_without_newlines():
+    # 실데이터(ResearchArcade)에서 본 모양: 줄바꿈이 사라진 문장·목록
+    t = (
+        "adding up the weight.The authors propose four changes to a transformer:- instead of atoms it uses rows"
+        "- the initial features are distances- The output is pooled.W1. The first- and second-order terms use "
+        "torch.Tensor ops.Q2: why?"
+    )
+    assert texts(t) == [
+        "adding up the weight.",
+        "The authors propose four changes to a transformer:",
+        "instead of atoms it uses rows",
+        "the initial features are distances",
+        "The output is pooled.",
+        "W1. The first- and second-order terms use torch.Tensor ops.",
+        "Q2: why?",
+    ]
+
+
 def test_newlines_headings_and_markers():
     t = "Strengths:\n- Good writing.\n\nWeaknesses:\n* No code. Why?\n(a) missing seeds\n  \n"
     assert texts(t) == ["Strengths:", "Good writing.", "Weaknesses:", "No code.", "Why?", "missing seeds"]

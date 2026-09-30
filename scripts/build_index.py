@@ -37,6 +37,9 @@ from neumann.index.store import IndexStore  # noqa: E402
 from neumann.models import ReviewEvent, Work  # noqa: E402
 
 
+CORPUS_FILES = ("works.jsonl", "reviews.jsonl", "corpus_manifest.json")
+
+
 def sha256_file(path: Path) -> str:
     h = hashlib.sha256()
     with path.open("rb") as f:
@@ -51,15 +54,27 @@ def input_digest(files: list[Path], base: Path) -> dict[str, Any]:
     return {"sha256": combined, "files": per}
 
 
+def _values(x: Any) -> list[Any]:
+    return list(x.values()) if isinstance(x, dict) else list(x)
+
+
 def _parts(corpus: Any) -> tuple[list[Work], list[ReviewEvent]]:
-    """load_corpus 반환값에서 works·reviews를 꺼낸다(속성·dict·튜플 모두 받는다)."""
+    """load_corpus 반환값(E1 `Corpus`: works는 dict, reviews는 list)에서 works·reviews를 꺼낸다."""
     if isinstance(corpus, dict):
-        return list(corpus["works"]), list(corpus["reviews"])
-    if hasattr(corpus, "works") and hasattr(corpus, "reviews"):
-        return list(corpus.works), list(corpus.reviews)
-    if isinstance(corpus, tuple) and len(corpus) >= 2:
-        return list(corpus[0]), list(corpus[1])
-    raise TypeError(f"load_corpus 반환형을 모른다: {type(corpus).__name__}")
+        works, reviews = corpus["works"], corpus["reviews"]
+    elif hasattr(corpus, "works") and hasattr(corpus, "reviews"):
+        works, reviews = corpus.works, corpus.reviews
+    elif isinstance(corpus, tuple) and len(corpus) >= 2:
+        works, reviews = corpus[0], corpus[1]
+    else:
+        raise TypeError(f"load_corpus 반환형을 모른다: {type(corpus).__name__}")
+    works, reviews = _values(works), _values(reviews)
+    bad = [type(w).__name__ for w in works[:1] if not isinstance(w, Work)] + [
+        type(r).__name__ for r in reviews[:1] if not isinstance(r, ReviewEvent)
+    ]
+    if bad:
+        raise TypeError(f"load_corpus가 Work/ReviewEvent가 아닌 것을 돌려줬다: {bad}")
+    return works, reviews
 
 
 def load_source(source: str, processed_dir: Path) -> tuple[list[Work], list[ReviewEvent], dict[str, Any]]:
@@ -78,7 +93,8 @@ def load_source(source: str, processed_dir: Path) -> tuple[list[Work], list[Revi
     from neumann.sources.corpus import load_corpus
 
     works, reviews = _parts(load_corpus(processed_dir))
-    files = [p for p in processed_dir.iterdir() if p.is_file() and p.suffix in (".jsonl", ".json")]
+    # 색인이 실제로 읽는 입력만 해시한다(같은 폴더의 다른 소스 파일, 예 retraction.jsonl은 제외)
+    files = [processed_dir / n for n in CORPUS_FILES if (processed_dir / n).is_file()]
     return works, reviews, {"source": "processed", "dir": str(processed_dir), **input_digest(files, processed_dir)}
 
 
