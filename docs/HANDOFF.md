@@ -7,6 +7,8 @@ PM이 병합할 때마다 갱신한다. Claude 한도가 다 되면 이 문서�
 - PM이 `AGENTS.md`를 개정 계획서에 맞춤(push는 주요 에픽마다, HANDOFF 병합마다 갱신, 인계 뒤 astra→sol 검증, astra 주력), 패키지 골격(`src/neumann/{sources,index,analyze,api}/__init__.py`, `eval/__init__.py`)과 pytest `pythonpath` 추가
 - 과제 지시문: `docs/tasks/_COMMON.md`(공통) + W1 1차 `E0b`(모델·설정·fixture) · `E1-L0`(코퍼스) · `E4-L0`(API·화면) · `E5-L1a`(DISAPERE 골드·Macro-F1)
 - 18:26 `models.py`·`config.py`(E0b 커밋 73a264b)를 main에 선병합(def820d). verify 통과(tests/e0 39개)
+- 18:45 **E0 완료**: E0b 전체 병합(fixture·로더·데모 계획서, Sonnet 검증 PASS), `tests/conftest.py`(기본 mock), verify 훅 경고 수정 → **첫 push**
+- 끝난 빌더: E0b(병합), E5-L1a(골드 148건, 빈도 기준선 Macro-F1 0.3308, Sonnet 검증 중)
 - 진행 중 빌더 7명(Claude Opus 5.5, worktree `.claude/worktrees/agent-*`, 브랜치 `task/<과제ID>`): E0b(fixture 계속), E1-L0, E4-L0, E5-L1a, E2-L0, E3-L0, E5-L0
 - 대기: E1-L2 Retraction Watch(자리 나면). 빌더가 끝나면 Sonnet 검증(`docs/tasks/_VERIFY.md`) → 병합 → 에픽이면 push
 - Codex 인계 시험 통과(18:21). 인계 명령은 계획서 §5.6
