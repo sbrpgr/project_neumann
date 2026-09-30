@@ -250,7 +250,9 @@ class _Gate:
                 ctx.refusal, ctx.error_kind = refusal, "refused"  # 미들웨어가 같은 거절 응답(_refusal_reply)으로 바꿔 보낸다
                 err = serving._err(error_code, message, ctx.ticket, retry_after_s=retry)
                 return _json(err, code, {"Retry-After": str(retry)})
-        self.ticket, ctx.reservation, ctx.budget_spent = ctx.reservation, None, False
+        # 검증을 마치기 전에는 미들웨어가 예약·예산을 소유한다.
+        # 모든 422 조기 반환은 _drop_reservation으로 자동 취소·환불된다.
+        self.ticket = ctx.reservation
         if self.ticket is not None:
             self.ticket.plan_id = f"revise:{ctx.plan_id[:12]}"  # 작업(jobs) 상태 조회가 분석 자리로 오인하지 않게
         return None
@@ -264,8 +266,9 @@ class _Gate:
             try:
                 await asyncio.wait_for(gate.acquire(t), timeout=timeout_s)
             except asyncio.TimeoutError:
-                gate.cancel(t)
+                self.srv._drop_reservation(self.ctx)
                 raise serving.AnalysisTimeout("queue wait") from None
+        self.ctx.reservation, self.ctx.budget_spent = None, False
         try:
             remaining = max(timeout_s - (time.monotonic() - started), 0.01)
             return await asyncio.wait_for(asyncio.to_thread(fn), timeout=remaining)

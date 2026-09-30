@@ -80,18 +80,21 @@ def test_revise_happy_path_contract_and_gate_release(tmp_path, monkeypatch):
 
 
 def test_revise_rejects_mismatched_plan_and_invalid_result(tmp_path, monkeypatch):
-    _srv, app = make(tmp_path, monkeypatch)
+    srv, app = make(tmp_path, monkeypatch)
 
     async def go() -> None:
         async with client(app) as c:
             r = await c.post("/premortem/revise", json={"result": result_json(), "plan_text": PLAN + "\n바뀐 줄"})
             assert r.status_code == 422 and r.json()["error_code"] == "plan_mismatch"
+            assert srv.gate.active == srv.gate.waiting == srv.budget.used == 0
             r = await c.post("/premortem/revise", json={"result": {"session_id": "x", "plan_id": "y", "bogus": "SECRET_VALUE_9f3"},
                                                         "plan_text": PLAN})
             assert r.status_code == 422 and r.json()["error_code"] == "invalid_request"
             assert "SECRET_VALUE_9f3" not in r.text  # 입력 값을 되돌려 보내지 않는다(위치·종류만)
+            assert srv.gate.active == srv.gate.waiting == srv.budget.used == 0
             r = await c.post("/premortem/revise", json={"plan_text": PLAN})
             assert r.status_code == 422
+            assert srv.gate.active == srv.gate.waiting == srv.budget.used == 0
     run(go())
 
 
@@ -227,20 +230,28 @@ def test_assemble_json_md_docx_and_polish(tmp_path, monkeypatch):
 
 
 def test_assemble_rejects_bad_revision_and_mismatch(tmp_path, monkeypatch):
-    _srv, app = make(tmp_path, monkeypatch)
+    srv, app = make(tmp_path, monkeypatch)
 
     async def go() -> None:
         async with client(app) as c:
             bundle = await _bundle(c)
+            baseline = srv.budget.used
             r = await c.post("/premortem/revise/assemble", json={"plan_text": PLAN, "revision": {"version": "x"}, "decisions": []})
             assert r.status_code == 422 and r.json()["error_code"] == "invalid_request"
+            assert srv.gate.active == srv.gate.waiting == 0 and srv.budget.used == baseline
             r = await c.post("/premortem/revise/assemble", json={"plan_text": PLAN + "\n다른 계획서", "revision": bundle, "decisions": []})
             assert r.status_code == 422 and r.json()["error_code"] == "plan_mismatch"
+            assert srv.gate.active == srv.gate.waiting == 0 and srv.budget.used == baseline
             other = {**result_json(), "plan_id": "0" * 64, "plan": None}
             r = await c.post("/premortem/revise/assemble", json={"plan_text": PLAN, "revision": bundle, "decisions": [], "result": other})
             assert r.status_code == 422 and r.json()["error_code"] == "plan_mismatch"
+            assert srv.gate.active == srv.gate.waiting == 0 and srv.budget.used == baseline
+            r = await c.post("/premortem/revise/assemble", json={"plan_text": PLAN, "revision": bundle, "result": {}})
+            assert r.status_code == 422
+            assert srv.gate.active == srv.gate.waiting == 0 and srv.budget.used == baseline
             r = await c.post("/premortem/revise/assemble", json={"plan_text": PLAN, "revision": bundle, "decisions": [], "format": "pdf"})
             assert r.status_code == 422
+            assert srv.gate.active == srv.gate.waiting == 0 and srv.budget.used == baseline
     run(go())
 
 

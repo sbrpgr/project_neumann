@@ -1,5 +1,13 @@
 # E3-L2r 보고서 — 계획서 수정 권고 뒷단(서버·계약·파이프라인) + 통합본(완전한 유기체)
 
+## Codex 인수 수정 1 — F1 예약 누수 (2026-09-30)
+
+- 빌더: codex-gpt-6.1-sol. 검증 전에는 요청 컨텍스트가 예약·예산을 보유하도록 바꿨다. 실행 시작 때만 소유권을 옮겨 모든 422 조기 반환에서 미들웨어가 취소·환불한다. 대기 시간 초과도 환불한다.
+- 먼저 기존 코드에 거절 직후 `active == waiting == 0`, 예산 변화 없음 단언을 추가해 **2 failed**를 재현했다. result 계약·plan mismatch·본문 계약·assemble revision 계약·assemble result 계약을 검사한다.
+- 명령: `python -m pytest tests/e4/test_revise_api.py -p no:cacheprovider --basetemp <허용된 임시 경로> -q` → **12 passed in 1.82s**.
+- 환경: provider mock, LIVE_TESTS=0, LIVE_LLM_OK 미설정, OPENBLAS_NUM_THREADS=1. 실제 API 0회. 전체 verify는 PM 직렬 큐에서 별도 시행한다.
+- 다음: F2 채택 저자 답변 필수, F3 카드 8장·협력 취소, F4 서명·조립 재검사. E4-L2f 공개 서명 인터페이스는 PM에 요청했다.
+
 - 빌더: Claude Fable 5.1 · 브랜치 `task/E3-L2r`(main `03503d6` 기준) · 2026-09-30
 - 모든 명령은 `NEUMANN_LLM_PROVIDER=mock`, `NEUMANN_LIVE_LLM_OK=0`으로 돌렸다. **OpenAI 호출 0회.** 라이브 확인은 대표 승인 뒤 구축 세션(§9).
 
