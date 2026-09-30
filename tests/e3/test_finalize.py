@@ -34,7 +34,9 @@ def test_default_mock_is_honest_and_bounded():
     assert out["status"] == "partial"
     assert out["generator"] == "mock"
     assert out["issues"][0]["status"] == "unchecked"
-    assert out["counters"] == {"assessment_calls": 1, "correction_calls": 1, "correction_batches": 0, "recheck_runs": 0}
+    assert {k: out["counters"][k] for k in ("assessment_calls", "correction_calls", "correction_batches", "recheck_runs")} == {
+        "assessment_calls": 1, "correction_calls": 1, "correction_batches": 0, "recheck_runs": 0}
+    assert out["counters"]["tool_runs"] == dict.fromkeys(("z3", "pint", "networkx", "citation"), 0)
 
 
 def test_safe_edit_preserves_line_ids_and_semantic_residual():

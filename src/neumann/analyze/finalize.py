@@ -19,6 +19,7 @@ from neumann.analyze.revise import (
 )
 from neumann.llm import LLMCall, make_llm, validate_output
 from neumann.models import PlanDocument, contains_pii
+from neumann.finalize.tools.extract import extract_checks, run_checks
 
 VERSION = "finalization@v1"
 ASSESSMENT_TASK = "final_assessment"
@@ -189,6 +190,55 @@ def _run_checks(text: str, checks: list, event: Any) -> list:
     return rows
 
 
+def _run_code_checks(text: str, event: Any, reserved_ids: set[str] | None = None) -> tuple[list, list]:
+    """Execute code-selected checks through the existing bounded tool registry.
+
+    Keep exact source anchors and ToolResult evidence; never label an unavailable
+    tool as a successful check. The namespace also keeps model ids independent.
+    """
+    extracted = extract_checks(text)
+    reserved = set(reserved_ids or ())
+    checks, rows = [], []
+    for item in run_checks(extracted, cancel_event=event):
+        check, result = item["check"], item["result"]
+        cid = "code:" + check["check_id"]
+        while cid in reserved:
+            cid = "code:" + cid
+        reserved.add(cid)
+        kind = {"sum": "constraint", "arithmetic": "constraint", "unit": "units",
+                "structure": "dependency", "reference": "dependency", "citation": "citation"}[check["kind"]]
+        checks.append({**check, "check_id": cid, "kind": kind,
+                       "params": {"sources": [{"line": a["line"], "quote": a["text"]} for a in check["anchors"]]}})
+        verdict = result["verdict"]
+        rows.append({"check_id": cid, "kind": kind, "tool": check["tool"],
+                     "plan_lines": check["plan_lines"], "status": {"pass": "passed", "fail": "failed"}.get(verdict, "unchecked"),
+                     "message": result["output"].get("reason") or result.get("error") or "bounded_check_" + verdict,
+                     "details": {**result["output"], "evidence": result["evidence"],
+                                 "anchors": check["anchors"], "code_selected": True}})
+    return checks, rows
+
+
+def _count_tools(output: dict, rows: list) -> None:
+    for row in rows:
+        name = "citation" if row.get("tool") == "citation_lookup" else row.get("tool")
+        if name in output["counters"]["tool_runs"]:
+            output["counters"]["tool_attempts"][name] += 1
+            if row.get("status") in _DONE:
+                output["counters"]["tool_runs"][name] += 1
+
+
+def _add_tool_issues(issues: list, rows: list) -> None:
+    for row in rows:
+        if row["status"] not in ("pass", "passed", "ok") and not any(row["check_id"] in i["check_ids"] for i in issues):
+            iid = "tool:" + row["check_id"]
+            while any(i["issue_id"] == iid for i in issues):
+                iid = "tool:" + iid
+            issues.append({"issue_id": iid,
+                           "kind": {"constraint": "logical", "units": "physical", "dependency": "structural"}.get(row["kind"], "logical"),
+                           "plan_lines": row["plan_lines"], "message": row["message"],
+                           "check_ids": [row["check_id"]], "status": "unchecked"})
+
+
 def _numbers(text: str) -> set[str]:
     return set(extract_numbers(text) + written_numbers(text))
 
@@ -228,6 +278,9 @@ def _computed_numbers(check: dict, row: dict) -> set[str]:
         token = str(value)
     elif type(value) is float and math.isfinite(value):
         token = str(int(value)) if value.is_integer() else str(value)
+    elif isinstance(value, str) and details.get("code_selected") and re.fullmatch(r"-?\d+(?:\.\d+)?", value):
+        # FIN-TOOLS code-selected checks report exact computed values as decimal strings.
+        token = value
     else:
         return set()
     return set(extract_numbers(token))
@@ -348,10 +401,14 @@ def finalize_plan(plan_text: str, *, result=None, provider=None, checks=None,
               "output_plan_id": plan.plan_id, "input_text": text, "final_text": text,
               "issues": [], "tool_checks_before": [], "tool_checks_after": [], "corrections": [],
               "counters": {"assessment_calls": 0, "correction_calls": 0, "correction_batches": 0, "recheck_runs": 0},
+              "code_selected_checks": 0, "code_checks_label": "코드 선택 검사 0건",
               "generator": "rule", "model": "none",
               "notices": ["최종 초안입니다. 제한된 검사 범위이며 모든 오류의 부재를 보장하지 않습니다."]}
+    for key in ("tool_runs", "tool_attempts"):
+        output["counters"][key] = dict.fromkeys(("z3", "pint", "networkx", "citation"), 0)
     def stop(reason: str) -> dict:
         output["notices"].append(reason)
+        _add_tool_issues(output["issues"], output["tool_checks_before"])
         for issue in output["issues"]:
             if issue.get("status") == "unchecked":
                 issue.setdefault("unchecked_reason", "review_incomplete")
@@ -363,6 +420,13 @@ def finalize_plan(plan_text: str, *, result=None, provider=None, checks=None,
         return stop("빈 계획서는 최종 검토할 수 없습니다.")
     if len(text) > MAX_PLAN_CHARS:
         return stop(f"계획서가 {MAX_PLAN_CHARS:,}자를 넘어 최종 검토를 시작하지 않았습니다.")
+    code_checks, code_before = _run_code_checks(text, cancel_event)
+    output["tool_checks_before"] = code_before
+    output["code_selected_checks"] = len(code_checks)
+    output["code_checks_label"] = f"코드 선택 검사 {len(code_checks)}건"
+    _count_tools(output, code_before)
+    if _cancelled(cancel_event):
+        return stop("취소되어 추가 모델 호출과 수정을 중단했습니다.")
     try:
         llm = make_llm(provider=provider) if isinstance(provider, (str, type(None))) else provider
         invoke = llm_call or llm.complete_json
@@ -411,16 +475,22 @@ def finalize_plan(plan_text: str, *, result=None, provider=None, checks=None,
         selected = _bind_sources(selected, lines)
     except (AttributeError, TypeError, ValueError):
         return stop("도구 검사 원문 참조 형식이 유효하지 않습니다.")
-    output["tool_checks_before"] = _run_checks(text, selected, cancel_event)
+    # Preserve externally supplied/model ids. Code ids get an additional prefix
+    # on collision, including ids already deliberately using the code namespace.
+    reserved = set(ids)
+    for check, row in zip(code_checks, code_before):
+        cid = check["check_id"]
+        while cid in reserved:
+            cid = "code:" + cid
+        reserved.add(cid)
+        check["check_id"] = row["check_id"] = cid
+    model_before = _run_checks(text, selected, cancel_event)
+    output["tool_checks_before"] = model_before + code_before
+    _count_tools(output, model_before)
     if _cancelled(cancel_event):
         return stop("취소되어 추가 모델 호출과 수정을 중단했습니다.")
     # A failed tool check is always an auditable residual, including externally supplied checks.
-    for row in output["tool_checks_before"]:
-        if row["status"] not in ("pass", "passed", "ok") and not any(row["check_id"] in i["check_ids"] for i in issues):
-            issues.append({"issue_id": "tool:" + row["check_id"],
-                           "kind": {"constraint": "logical", "units": "physical", "dependency": "structural"}.get(row["kind"], "logical"),
-                           "plan_lines": row["plan_lines"], "message": row["message"],
-                           "check_ids": [row["check_id"]], "status": "unchecked"})
+    _add_tool_issues(issues, output["tool_checks_before"])
     correction = call(CORRECTION_TASK, CORRECT_INSTRUCTIONS,
                       {**payload, "issues": issues, "tool_checks": output["tool_checks_before"]}, correction_schema(len(lines)))
     if _cancelled(cancel_event):
@@ -429,7 +499,7 @@ def finalize_plan(plan_text: str, *, result=None, provider=None, checks=None,
         return stop("수정 제안 실패로 원문을 보존했습니다. 최종 검토 미완료입니다.")
     updated, edited, touched = list(lines), set(), set()
     issue_by_id = {i["issue_id"]: i for i in issues}
-    check_by_id = {c.get("check_id"): c for c in selected if isinstance(c, dict) and isinstance(c.get("check_id"), str)}
+    check_by_id = {c.get("check_id"): c for c in selected + code_checks if isinstance(c, dict) and isinstance(c.get("check_id"), str)}
     rows_before = {r["check_id"]: r for r in output["tool_checks_before"]}
     for edit in correction["edits"]:
         no, replacement = edit["line"], edit["replacement"]
@@ -487,9 +557,36 @@ def finalize_plan(plan_text: str, *, result=None, provider=None, checks=None,
         output["counters"]["recheck_runs"] = 1
         targeted, rebound = _rebind_for_recheck(targeted, updated, edited)
         output["tool_checks_after"] = _run_checks(final_text, targeted, cancel_event)
+        _count_tools(output, output["tool_checks_after"])
         for row in output["tool_checks_after"]:
             if row["check_id"] in rebound:
                 row["details"] = {**row.get("details", {}), "rebound_to_corrected_lines": rebound[row["check_id"]]}
+    # Re-extract actual corrected assertions; stale numeric args are never reused.
+    code_after_checks, code_after = _run_code_checks(final_text, cancel_event, set(ids))
+    if code_checks or code_after_checks:
+        output["counters"]["recheck_runs"] = 1
+    _count_tools(output, code_after)
+    # IDs include an extraction ordinal, which can change when a preceding claim
+    # disappears. Match only the same label and source lines, in occurrence order.
+    available = list(zip(code_after_checks, code_after))
+    matched = []
+    for before in code_checks:
+        index = next((j for j, (c, _) in enumerate(available)
+                      if c["label"] == before["label"] and c["plan_lines"] == before["plan_lines"]), None)
+        if index is None:
+            matched.append({**rows_before[before["check_id"]], "status": "unchecked",
+                            "message": "claim_not_reextracted", "details": {"code_selected": True}})
+        else:
+            _, row = available.pop(index)
+            matched.append({**row, "check_id": before["check_id"]})
+    used = {r["check_id"] for r in output["tool_checks_before"] + output["tool_checks_after"]}
+    for _, row in available:
+        while row["check_id"] in used:
+            row["check_id"] = "code:" + row["check_id"]
+        used.add(row["check_id"])
+        matched.append(row)
+    output["tool_checks_after"].extend(matched)
+    _add_tool_issues(issues, matched)
     if _cancelled(cancel_event):
         output["status"] = "incomplete"
         return stop("취소되어 재검토가 미완료입니다.")
