@@ -12,7 +12,8 @@
   E4-L2f처럼 원결과 ``result``와 합성 ``result_sig``를 싣는다. 최신 E3-L2r 선택 서명 필드의 전달을 검사한다(HMAC 검증 아님).
 - 수정 권고 ``POST /premortem/revise`` 응답은 계약(contracts/revision.schema.json) 모양으로 여기서 만든다
   (카드 1 = E3-L2r mock 예시와 같은 줄·근거, 카드 2 = 같은 줄 충돌·[확인 필요] 자리표시 포함). 서버가 그 API를 갖든 아니든
-  경로를 가로채므로 화면 어댑터는 서버와 같은 경로로 돈다. ``contracts/examples/revision.mock.json``이 있으면 카드 1에 그대로 쓴다.
+  경로를 가로채므로 화면 어댑터는 서버와 같은 경로로 돈다. 결정·칩·충돌을 재현하는 고정 합성 fixture를 사용한다.
+  현재 실제 API의 수정 권고·서명·문서 흐름은 test_ui_connect.py에서 가로채기 없이 별도로 검사한다.
 - 통합본 ``POST /premortem/revise/assemble``: 처음엔 404(화면 조립 경로), 뒤에는 계약(revised_plan.schema.json) 모양의
   작은 조립기 스텁(요청의 decisions로 줄 단위 통합·같은 줄 충돌·자리표시·통계·markdown 3판, polish는 게이트 거부 응답,
   format=docx는 python-docx로 만든 합성 문서 + Content-Disposition; ZIP/XML과 채운 값·편집 제외 안내도 검사).
@@ -40,13 +41,12 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT / "src"), str(ROOT)]
 
 PREFIX = "E4-L4r"
-DEFAULT_PORT = 8171
-FORBIDDEN_PORTS = {8010, 8020, 8099}
+DEFAULT_PORT = 8176
+FORBIDDEN_PORTS = {8010, 8020, 8099, 8171, 8172}
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "[::1]", "::1"}
 REPORT_READY = ("document.body.dataset.view === 'report' && document.body.dataset.ready === '1' && "
                 "!!(document.querySelector('#s-cards .rc') || document.querySelector('#noCards'))")
 REVISE_READY = "document.body.dataset.view === 'revise' && document.body.dataset.ready === '1'"
-MOCK_EXAMPLE = ROOT / "contracts" / "examples" / "revision.mock.json"
 DOCX_MEDIA = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 DEC_EN = {"채택": "adopt", "수정": "modify", "기각": "reject", "adopt": "adopt", "modify": "modify", "reject": "reject"}
 EDIT_TEXT = "연구자가 뷰어에서 직접 편집한 문장이다."
@@ -229,6 +229,7 @@ def trust_checks(browser, base: str, view: dict, revision: dict) -> dict:
     page.route("**/premortem/revise/assemble", assembly_route)
     try:
         page.goto(base + "/", wait_until="networkidle")
+        page.evaluate("window.NeumannFinal.config.legacyReport = true")
         page.fill("#ta", plan_text())
         page.click("#btnStart")
         page.wait_for_function(REPORT_READY)
@@ -259,10 +260,11 @@ def trust_checks(browser, base: str, view: dict, revision: dict) -> dict:
           const saved = JSON.parse(localStorage.getItem(key)); saved.items[1].raw.origin = 'server_signed';
           localStorage.setItem(key, JSON.stringify(saved)); }""")  # 보존값 출처를 위조해도 이번 세션 인증이 아니다
         page.reload(wait_until="networkidle")
+        page.evaluate("window.NeumannFinal.config.legacyReport = true")
         page.fill("#ta", plan_text())
         page.click("#btnStart")
         page.wait_for_function(REPORT_READY)
-        page.click("#stpRevise")
+        page.evaluate("window.NeumannRevise.open()")
         page.wait_for_function(REVISE_READY)
         restored = page.evaluate("""() => ({restored: window.NeumannRevise.state().restored,
           head: (document.querySelector('#rv-1 .rvh') || {}).innerText || '', notice: document.getElementById('rvNotice').innerText,
@@ -287,10 +289,6 @@ def shoot(base: str, out: Path, prefix: str = PREFIX) -> dict:
     c1, c2 = view["cards"][0], view["cards"][1]
     resp1 = build_revision(view, c1)
     example_used = False
-    if MOCK_EXAMPLE.is_file():
-        ex = json.loads(MOCK_EXAMPLE.read_text(encoding="utf-8"))
-        if ex.get("plan_id") == view["plan_id"] and ex.get("revisions") and ex["revisions"][0].get("card_id") == c1["id"]:
-            resp1, example_used = ex, True
     resp2 = build_revision(view, c2, conflict_line=c1["lines"][0])
     resp1["revision_sig"] = "fixture-revision-signature"
     console_errors: list[str] = []
@@ -366,6 +364,7 @@ def shoot(base: str, out: Path, prefix: str = PREFIX) -> dict:
 
         # 1) 리포트 → 진입 버튼
         page.goto(base + "/", wait_until="networkidle")
+        page.evaluate("window.NeumannFinal.config.legacyReport = true")
         page.wait_for_selector('body[data-view="input"][data-ready="1"]')
         page.evaluate("() => { try { localStorage.clear(); } catch (e) {} }")
         page.fill("#ta", plan_text())
@@ -416,9 +415,14 @@ def shoot(base: str, out: Path, prefix: str = PREFIX) -> dict:
           k: document.querySelector('#evHead .cite').innerText, quote: document.getElementById('evQuote').textContent,
           link: (document.getElementById('evLink') || {}).href || '', lines: document.querySelectorAll('#evLines .pline').length,
         })""")
-        page.click("#rvB-1 .rvs .cite >> nth=0")
-        page.wait_for_function("document.getElementById('evQuote') && document.getElementById('evQuote').textContent.indexOf('scaffold') >= 0", timeout=10_000)
+        response_cite = page.evaluate("""() => { const d = window.NeumannUI.D();
+          const b = Array.from(document.querySelectorAll('#rvB-1 .rvs .cite')).find(b => d.ev[b.dataset.ev].kind === 'author_response');
+          return b ? {k: b.dataset.ev, quote: d.ev[b.dataset.ev].q} : null; }""")
+        assert response_cite, "채택 연구의 저자 답변 발췌가 대응 근거에 연결돼야 한다"
+        page.click("#rvB-1 .rvs .cite[data-ev='%s']" % response_cite["k"])
+        page.wait_for_function("expected => document.getElementById('evQuote') && document.getElementById('evQuote').textContent === expected", arg=response_cite["quote"], timeout=10_000)
         rec = page.evaluate("() => ({quote: document.getElementById('evQuote').textContent, kind: document.querySelector('#pbody .plbl').innerText, head: document.getElementById('pbody').innerText})")
+        assert rec["quote"] == response_cite["quote"] and "저자 답변" in rec["kind"]
         page.evaluate("document.getElementById('rv-1').scrollIntoView({block: 'start'})")
         snap("evidence")
 

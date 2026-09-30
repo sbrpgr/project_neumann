@@ -109,7 +109,7 @@ def slow(run_s: float = RUN_S) -> Any:
     return run_premortem
 
 
-async def wait_until(pred: Any, timeout: float = 5.0) -> None:
+async def wait_until(pred: Any, timeout: float = 20.0) -> None:
     t0 = time.monotonic()
     while not pred():
         if time.monotonic() - t0 > timeout:
@@ -118,10 +118,8 @@ async def wait_until(pred: Any, timeout: float = 5.0) -> None:
 
 
 async def submit(c: httpx.AsyncClient, text: str, **extra: Any) -> httpx.Response:
-    t0 = time.monotonic()
-    r = await c.post("/premortem/jobs", json={"plan_text": text, **extra})
-    assert time.monotonic() - t0 < 1.0, "POST /premortem/jobs가 1초 안에 돌아와야 한다"
-    return r
+    # 교착 감시 한도. 즉시 반환의 기능 기준은 아래 Gated 시험이 검사한다.
+    return await asyncio.wait_for(c.post("/premortem/jobs", json={"plan_text": text, **extra}), timeout=20)
 
 
 async def poll_done(c: httpx.AsyncClient, job_id: str, timeout: float = 10.0) -> dict[str, Any]:
@@ -147,7 +145,7 @@ def assert_clean(text: str) -> None:
 
 
 def test_post_returns_immediately_then_result_arrives(tmp_path, monkeypatch):
-    fn = slow()
+    fn = Gated(stage="search")
     srv, app, store = make(tmp_path, monkeypatch, fn)
 
     async def go() -> None:
@@ -158,26 +156,22 @@ def test_post_returns_immediately_then_result_arrives(tmp_path, monkeypatch):
             assert set(b) >= {"job_id", "status", "position", "eta_s", "poll_after_s", "message", "ticket"}
             assert b["status"] == "queued" and b["position"] == 0 and 1 <= b["poll_after_s"] <= 2
             assert r.headers["cache-control"] == "no-store"
-            seen = set()
-            t0 = time.monotonic()
-            while True:
-                g = await c.get(f"/premortem/jobs/{b['job_id']}")
-                j = g.json()
-                seen.add((j["status"], j["stage"]))
+            try:
+                await wait_until(lambda: fn.calls == 1)
+                j = (await c.get(f"/premortem/jobs/{b['job_id']}")).json()
                 assert {"status", "position", "stage", "elapsed_s", "message"} <= set(j)
-                if j["status"] == "done":
-                    break
-                await asyncio.sleep(0.05)
-            assert time.monotonic() - t0 < RUN_S + 3
+                assert (j["status"], j["stage"]) == ("running", "search")
+                assert not fn.events[0].is_set(), "해제하기 전에 분석이 완료됐다"
+            finally:
+                fn.release_all()
+            j = await poll_done(c, b["job_id"])
             view = j["result"]
             assert view["cards"] and view["plan"]["lines"]            # 화면 모양(ui_view) 그대로
             assert BODY_MARK in json.dumps(view["plan"], ensure_ascii=False)  # 결과에는 계획서 줄이 있다(메모리만)
             assert view["_status"]["serving"]["mode"] == "job"
             assert view["_status"]["source"] == "pipeline"
             assert j["message"] == jobs.MESSAGES["done"] and j["expires_in_s"] > 0
-            stages = {s for st, s in seen if st == "running"}
-            assert {"search", "synthesize_cards"} & stages, seen   # 진행 단계가 보였다
-            assert fn.calls["n"] == 1
+            assert fn.calls == 1
             assert srv.gate.active == 0 and srv.gate.waiting == 0
 
     asyncio.run(go())

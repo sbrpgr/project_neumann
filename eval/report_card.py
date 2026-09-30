@@ -47,6 +47,7 @@ from pathlib import Path
 from typing import Any
 
 from eval.macro_f1 import REFERENCE_LINES
+from neumann.api.view import display_generator, display_text
 
 GENERIC_SCHEMA = "neumann.metrics/1"
 LINKAGE_SCHEMA = "neumann.linkage/1"
@@ -54,7 +55,7 @@ MACRO_F1_PREFIX = "review-level multilabel Tier-1 Macro-F1"
 NOT_MEASURED = "측정 전"
 
 SYSTEM_LABELS: dict[str, str] = {
-    "neumann": "Neumann (astra)",
+    "neumann": "Neumann (LLM)",  # 계약 값 astra = 제품 LLM. 실제 모델은 조건 칸(DISP-1)
     "neumann_rule": "Neumann 비상 규칙",
     "llm_baseline": "일반 LLM 기준선",
     "freq_baseline": "빈도 기준선(안 읽음)",
@@ -85,6 +86,7 @@ METRIC_LABELS: dict[str, tuple[str, str]] = {
     "corpus_linked_papers": ("표본 연결 논문 수", "count"),
     "source_link_rate": ("원문 링크 유효율", "ratio"),
     "demo_e2e": ("대표 계획 end-to-end 시연", "count"),
+    "e2e_cards": ("라이브 E2E 화면 위험카드 수 (데모 계획서 합)", "count"),
 }
 
 
@@ -133,6 +135,13 @@ EXPECTED_DETAIL: tuple[tuple[str, str], ...] = (
     ("judge_human_kappa", "all"),
 )
 
+# 백테스트 표본 한계(PM 결정 2026-09-30, E5-L3b 전달): 대표 결정으로 n=5, 사유는 비용.
+BACKTEST_LIMIT = (
+    "백테스트는 n=5(대표 결정, 비용 사유; real 대 기준선, 셔플 없음, sol)다(docs/decisions.md 정정 main `a9f28e1`: "
+    "real만, 셔플 미실행). 표본이 작아 95% 구간이 매우 넓다. "
+    "유의성을 주장하지 않고 점추정·구간·차이의 방향만 말한다. 셔플이 없어 특이성(진짜 − 셔플)은 재지 않는다."
+)
+
 FOOTNOTE_R7 = (
     "**[주1] R7 매핑 한계.** Macro-F1 골드의 R7(일반화·적용범위)은 DISAPERE `asp_motivation-impact`(동기·영향)를 "
     "옮긴 근사다(04_평가_명세 §3.1). 동기·영향 지적은 R7의 하위 유형 중 '영향·함의 불명확'에 가깝고, "
@@ -167,6 +176,7 @@ class Metric:
     source: str = ""  # 입력 파일 이름
     computed: bool = False  # 여러 입력을 합쳐 이 생성기가 계산한 값
     promise_note: str = ""  # 약속 표 판정 칸에 같이 적을 말(예: 비상 규칙 카드 수)
+    model: str | None = None  # 입력 파일에 기록된 모델(없으면 None → "(모델 기록 없음)")
 
     @property
     def label(self) -> str:
@@ -238,9 +248,41 @@ def _macro_system(obj: dict) -> str:
     return "mixed"
 
 
+def _pred_file_model(obj: dict, where: str) -> str | None:
+    """채점한 예측 파일의 행별 `model` 기록. 파일이 없으면 None(기록 없음).
+    파일이 채점 때(`pred_sha256`)와 다르면 어느 모델의 예측인지 알 수 없어 멈춘다."""
+    pf = obj.get("pred_file")
+    path = Path(str(pf)) if pf else None
+    if path is None or not path.is_file():
+        return None
+    raw = path.read_bytes()
+    want = obj.get("pred_sha256")
+    if want and hashlib.sha256(raw).hexdigest() != want:
+        raise InputError(f"{where}: 예측 파일 {path.name}이 채점 때와 다르다(sha256). 어느 모델의 예측인지 확인할 수 없다")
+    models: set[str] = set()
+    total = missing = 0
+    for line in raw.decode("utf-8").splitlines():
+        if not line.strip():
+            continue
+        total += 1
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise InputError(f"{where}: 예측 파일 {path.name} JSON 파싱 실패({exc})") from exc
+        mdl = row.get("model") if isinstance(row, dict) else None
+        if mdl:
+            models.add(str(mdl))
+        else:
+            missing += 1
+    if not models:
+        return None
+    return "·".join(sorted(models)) + (f" (기록 없음 {missing}/{total}행)" if missing else "")
+
+
 def _read_macro_f1(obj: dict, name: str, col: Collected) -> None:
     where = name
     system = _macro_system(obj)
+    model = _pred_file_model(obj, where)
     n = _int_or_none(obj.get("n"), f"{where}.n")
     boot = obj.get("bootstrap") or {}
     gens = (obj.get("predictions") or {}).get("generator_counts") or {}
@@ -252,7 +294,7 @@ def _read_macro_f1(obj: dict, name: str, col: Collected) -> None:
     cond = (
         f"리뷰 단위 멀티라벨 Tier-1, 골드 {gold_name} n={n} (sha256 {gold_sha[:12] or '없음'}), "
         f"부트스트랩 {boot.get('n_resamples', '?')}회 시드 {boot.get('seed', '?')} percentile, "
-        f"generator {gens}, 예측 없음 {pred.get('missing', '?')}건은 빈 예측으로 채점"
+        f"generator {_gens_text(gens) or '없음'}, 예측 없음 {pred.get('missing', '?')}건은 빈 예측으로 채점"
     )
     lim = f"골드 support 0 클래스 {excluded or '없음'} 제외[주3], R7 근사[주1], 골드 대체[주2]"
     if system == "freq_baseline":
@@ -264,7 +306,7 @@ def _read_macro_f1(obj: dict, name: str, col: Collected) -> None:
             raise InputError(f"{where}: {mid}가 없다")
         lo, hi = _ci(obj.get(f"{mid}_ci95"), f"{where}.{mid}")
         col.metrics.append(
-            Metric(mid, system, _num(obj[mid], f"{where}.{mid}"), n, lo, hi, "", cond, lim, name)
+            Metric(mid, system, _num(obj[mid], f"{where}.{mid}"), n, lo, hi, "", cond, lim, name, model=model)
         )
     col.excluded_classes[system] = excluded
     col.scored_classes[system] = scored
@@ -310,6 +352,9 @@ def _read_generic(obj: dict, name: str, col: Collected) -> None:
         if "value" not in m:
             raise InputError(f"{where}: value가 없다(측정 전이면 null)")
         lo, hi = _ci(m.get("ci95"), where)
+        model = m.get("model")
+        if model is not None and (not isinstance(model, str) or not model.strip()):
+            raise InputError(f"{where}: model은 비지 않은 문자열이거나 없어야 한다({model!r})")
         cond = str(m.get("conditions") or "")
         if src and not cond:
             cond = f"출처 {src}"
@@ -325,6 +370,7 @@ def _read_generic(obj: dict, name: str, col: Collected) -> None:
                 cond,
                 str(m.get("limits") or ""),
                 name,
+                model=model,
             )
         )
 
@@ -341,6 +387,11 @@ def _linkage_system(obj: dict) -> str:
     if set(gens) <= {"astra", "rule"}:
         return "neumann"  # astra + 비상 규칙 혼합: Neumann 칸에 두되 규칙 카드 수를 약속 행에 병기
     return "mixed"
+
+
+def _gens_text(gens: dict) -> str:
+    """generator별 개수 → 사람이 읽는 한 줄(DISP-1: 계약 값 astra는 "LLM"으로 보인다). 비었으면 빈 문자열."""
+    return " · ".join(f"{display_generator(g)} {c}" for g, c in gens.items())
 
 
 def _check_rate(rate: Any, ok: int, total: int, where: str) -> None:
@@ -410,17 +461,18 @@ def _linkage_group(system: str, reports: list[tuple[dict, str]], col: Collected)
     n_gen = sum(real.values())
     single = len(reports) == 1
     one = reports[0][0]
-    cond = f"결과 {len(reports)}건 전수(표본 아님), 원문 글자 단위 대조, 카드 generator {real or '없음'}, 판정 {verdicts}"
+    cond = (f"결과 {len(reports)}건 전수(표본 아님), 원문 글자 단위 대조, 카드 generator {_gens_text(real) or '없음'}, "
+            f"판정 {verdicts}")
     lim = "전수 계산이라 구간 없음. 폐기율과 같이 읽는다(폐기율 없는 100%는 의미가 약하다, 04_평가_명세 §2.2)"
     note = ""
     if real.get("rule"):
         note = f"비상 규칙 카드 {real['rule']}/{n_gen}장 포함"
         cond += f", {note}"
-        lim = "비상 규칙(비LLM) 카드가 들어 있다. astra 카드만의 값이 아니다. " + lim
+        lim = "비상 규칙(비LLM) 카드가 들어 있다. LLM 카드만의 값이 아니다. " + lim
     if system in ("mock", "mixed_mock"):
         lim = f"mock 카드 {real.get('mock', 0)}/{n_gen}장이 들어 있다. 성능 수치가 아니고 약속 판정에 쓰지 않는다. " + lim
     elif system in ("mixed", "unknown_generator"):
-        lim = "카드 generator가 astra·규칙이 아니거나 비어 있다. 약속 판정에 쓰지 않는다. " + lim
+        lim = "카드 generator가 LLM·규칙이 아니거나 비어 있다. 약속 판정에 쓰지 않는다. " + lim
     rate = one.get("linkage_rate") if single else (links_ok / links_total if links_total else None)
     col.metrics.append(
         Metric("linkage_rate", system, _num(rate, "linkage_rate"), links_total, None, None,
@@ -507,7 +559,8 @@ def fmt_n(m: Metric | None) -> str:
 
 
 def _cell(s: str) -> str:
-    return s.replace("|", "\\|").replace("\n", " ")
+    # 계약 이름 astra → "LLM"(DISP-1). 모델명(gpt-6-astra)·파일 이름(score_astra.json)은 그대로 둔다.
+    return display_text(s).replace("|", "\\|").replace("\n", " ")
 
 
 def _sys(system: str) -> str:
@@ -536,6 +589,13 @@ def _order(verdict: str) -> int:
     return 2
 
 
+def _model_cell(m: Metric | None) -> str:
+    """모델 칸: 값이 있는 행만 입력에 기록된 모델을 적는다. 측정 전 행은 비운다."""
+    if m is None or m.value is None:
+        return "—"
+    return _cell(m.model) if m.model else "(모델 기록 없음)"
+
+
 def render(col: Collected, *, now: str, commit: str, command: str) -> str:
     by = {(m.id, m.system): m for m in col.metrics}
     L: list[str] = []
@@ -546,6 +606,8 @@ def render(col: Collected, *, now: str, commit: str, command: str) -> str:
     add(f"- 생성: {now} · 코드 커밋: `{commit}` · 생성 명령: `{command}`")
     add("- 규칙(04_평가_명세 §7): 참조선 먼저 · 미달 먼저 · 모든 숫자에 n과 95% 구간 · 없는 지표는 \"측정 전\"(추정 금지)")
     add("- 값은 입력 JSON의 숫자를 그대로 옮겼다. 합쳐서 계산한 값은 '계산'으로 표시했다.")
+    add("- 모델 칸: 행마다 입력 파일에 기록된 모델(Macro-F1은 채점한 예측 파일의 행별 `model`, 일반 지표는 행의 `model`). "
+        "기록이 없으면 \"(모델 기록 없음)\", 측정 전 행은 비운다.")
     add("")
 
     # 1. 참조선
@@ -584,8 +646,8 @@ def render(col: Collected, *, now: str, commit: str, command: str) -> str:
     add(f"- **목표 미달 {len(miss)}건:** {', '.join(miss) if miss else '없음'}")
     add(f"- **측정 전 {len(todo)}건:** {', '.join(todo) if todo else '없음'}")
     add("")
-    add("| # | 약속 (신청서) | 목표 | 측정값 | 95% 구간 | n | 판정 | 입력 |")
-    add("|---|---|---|---|---|---|---|---|")
+    add("| # | 약속 (신청서) | 목표 | 측정값 | 95% 구간 | n | 판정 | 입력 | 모델 |")
+    add("|---|---|---|---|---|---|---|---|---|")
     for p, m, v in rows:
         val = fmt_value(m.value if m else None)
         if m and m.detail and m.value is not None:
@@ -593,7 +655,7 @@ def render(col: Collected, *, now: str, commit: str, command: str) -> str:
         verdict = f"**{v}**" + (f" · {m.promise_note}" if m and m.promise_note and m.value is not None else "")
         add(
             f"| {p.key} | {p.label} | {p.target_text} | {val} | {fmt_ci(m)} | {fmt_n(m)} | {verdict} "
-            f"| {_cell(m.source) if m else '—'} |"
+            f"| {_cell(m.source) if m else '—'} | {_model_cell(m)} |"
         )
     add("")
     add("판정은 점추정과 목표를 비교한다. 구간 하한이 목표 아래면 그렇게 적는다. "
@@ -603,8 +665,8 @@ def render(col: Collected, *, now: str, commit: str, command: str) -> str:
     # 3. 지표별 상세
     add("## 3. 지표별 값·n·95% 구간·조건·한계")
     add("")
-    add("| 지표 | 시스템 | 값 | 95% 구간 | n | 조건 | 한계 | 입력 |")
-    add("|---|---|---|---|---|---|---|---|")
+    add("| 지표 | 시스템 | 값 | 95% 구간 | n | 조건 | 한계 | 입력 | 모델 |")
+    add("|---|---|---|---|---|---|---|---|---|")
     order_ids = list(METRIC_LABELS)
     seen = set()
     detail_keys = list(dict.fromkeys([*[(m.id, m.system) for m in col.metrics], *EXPECTED_DETAIL]))
@@ -617,7 +679,7 @@ def render(col: Collected, *, now: str, commit: str, command: str) -> str:
         mid, system = key
         label = METRIC_LABELS.get(mid, (f"(기타) {mid}", ""))[0]
         if m is None:
-            add(f"| {label} | {_sys(system)} | {NOT_MEASURED} | — | — | — | — | 입력 없음 |")
+            add(f"| {label} | {_sys(system)} | {NOT_MEASURED} | — | — | — | — | 입력 없음 | — |")
             continue
         val = fmt_value(m.value)
         if m.detail:
@@ -626,7 +688,7 @@ def render(col: Collected, *, now: str, commit: str, command: str) -> str:
             val += " 계산"
         add(
             f"| {label} | {_sys(system)} | {val} | {fmt_ci(m)} | {fmt_n(m)} | {_cell(m.conditions) or '—'} "
-            f"| {_cell(m.limits) or '—'} | {_cell(m.source)} |"
+            f"| {_cell(m.limits) or '—'} | {_cell(m.source)} | {_model_cell(m)} |"
         )
     add("")
 
@@ -664,7 +726,7 @@ def render(col: Collected, *, now: str, commit: str, command: str) -> str:
         "측정 전 지표는 비워 두지 않고 '측정 전'으로 적었다. 이 카드의 빈칸을 추정값으로 읽지 않는다.",
         "사람 간 상한 0.725는 DISAPERE 외부 실측이다. 우리 시스템 성능이 아니라 과제 난이도의 천장이다.",
         "빈도 기준선은 입력을 읽지 않는다. 기준선 없는 단독 숫자는 보고하지 않는다(04_평가_명세 §6).",
-        "백테스트 n=30이면 95% 구간 폭이 약 0.2다. 유의성을 주장하지 않고 점추정·구간·차이의 방향만 말한다.",
+        BACKTEST_LIMIT,
         "백테스트 판정 조건(블라인드 여부·판정자 수와 구성·사람 재검토 여부)은 각 지표의 '조건' 칸을 본다. "
         "입력에 없으면 측정 전이다.",
     ]

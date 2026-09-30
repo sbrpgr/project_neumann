@@ -1,8 +1,24 @@
+## 최신 핵심 판정 — 2026-10-01 02:20 KST (이 절이 현재 상태)
+
+- main은 아직 17c8058이며 기능 병합·push는 보류다. root 제품 디스크는 그대로 유지한다. 고정 core cfec213은 C:/Users/User/Desktop/project_neumann/out/codex/core-final에 있고, 후속 callguard 포함 후보709494a는 out/codex/integration에 분리돼 있다.
+- 전체3 cfec213: **2169 통과·48 건너뜀·1 실패,135.65초**, 보안534·계약4. 실패는 total200007자 긴 토큰 요청이 새 pre-NFC200000 상한으로413인데 기존 검사에서422/long_token을 기대한 정책 경계 충돌이다. CPU/temp 실패가 아니다. 원SEC7 owner가 <=200000 payload의 기존422 의미와 >200000의413/NFC·pipeline0를 각각 실측하는 test-only 회귀를 수정한다.
+- 날짜/README fixed1a64 독립19 PASS, fonts/raw fixed243 독립74 및 fonts404×4·adjacent4 PASS, fixedcfec 최종 결합20focused PASS를 확인했다. 이 좁은 PASS는 다음 신규 출처 결합 반례를 포함하지 않는다.
+- **별도 핵심 F4 출처 결합 FAIL:** 정상 서명된 서로 다른 result/revision/assembled를 혼합하면 누락 카드·다른 수정안·거절 결정/채택 통합본 모순·같은 발췌ID의 다른 인용이 trusted로 남는4반례. 보고서 out/codex/results/ASTRA-provenance-coupling-audit-evidence.md. 원export 단일owner가 contracts 변경 없이 export-local validator를 추가하고6-sol이 반례/양성을 검증해야한다. 전체 검사 PASS를 이 결함 해결로 간주하지 않는다.
+- 두 수정이02:25까지 stable+독립PASS면같은finalcandidate 전체4 한 번→02:28결과→02:30main운영분리/docs를목표로한다. 미충족이면 main보류/WIP와원인 그대로 인계한다. 02:25 새 기능 동결·작업자 체크포인트,02:30최종Git/문서,02:35docs/inbox/커밋 인수 종료.
+- 8020/8099 프로세스와 root 제품 파일은 변경하지 않았다. 서버 기동 코드 HEAD는 미확인이다. 실제 OpenAI 호출0. Fast는 CLI 요청값이며 actual served tier 관측은null,주간사용량은root실측52%사용·48%잔여로모두소진이아니다.
+
 # 과제 대기열 (PM이 병합·배정할 때마다 갱신)
+
+**최종 검사·교정 후속 인수(10/01):** `codex/finalization-20261001`의 구현·독립 집중·브라우저·전체 검증 완료, main/서비스 미반영. [전용 인계](../FINALIZATION_HANDOFF.md)에 코드·검증·통합 순서를 기록했다. 다음은 최신 core의 출처 결합 4반례/export 오류 수정 반영 → 동일 후보 독립·전체 결합 검증 → PM 병합 판단이다. 최종 Word·실 LLM 품질·보강 효과 평가는 별도 미완료다.
+
+**최신 통합 준비(10/01):** 핵심 후보 코드 `f44fa06`에는 TEST-1 `dc87885`, E3-L1s `47acaba`, E3-L1e `4c47892`, E4-L2f `5ac22b5`, E3-L2r `f8932e0`와 정책 회귀 `8642d64`·계획서 출처 수정 `1ec7645`가 포함됐다. 첫 전체 verify는 1980 통과·48 건너뜀·1 실패였고 정책 수정 대상 200 통과·출처/근거 결합 160 통과·1 건너뜀을 확인했다. 두 번째 전체 verify와 독립 최종 후보 판정 뒤 root PM이 main 병합을 결정한다. 별도 UI 후보는 core→L3m→L1g→L4r 순이며 원 L4r 단일 index owner가 실제 mock API 연결을 완성 중이다. SEC-7·PERF·L2g·OPS 등 후속은 별도다. Git 병합은 기존 8020 배포 완료가 아니다. 32개 실제 편성/모델/노력/실행·대기는 대시보드 현재 기록을 따른다.
+**최신 통합(10/01):** core894e15c 두 번째 whole2014 통과·48 건너뜀/보안523·계약4 PASS, authority1ec 독립116 PASS. 최종894 독립은README 미서명 수정권고 출처 표시의 제한 FAIL로CONDITIONAL이며 policy23/authority13/display54는PASS다. 원L2f가README+날짜500 3건, SEC7/raw가fonts500 4건을 단일파일소유권으로 좁게수정중이다. 안정HEAD+독립반례/양성PASS뒤 통합담당이 세 번째whole1회를실행한다. 최종PASS조건부 main-approved 분리 반영을 root가승인했으나 아직main17c8058/서비스제품디스크불변이다. UIff7e474는독립UI/A11Y/QA/UXC 대기, metrics는core→P6→L3c 원E5owner 의미충돌해결, public은SEC7→PERF→L2g→OPS 고정판정별 후속후보다. 편성모델/effort/실행·대기는현재대시보드registry를따르며 개발은 02:25까지 계속하고 02:25 새 기능 동결·체크포인트, 02:30 최종 Git·문서, 02:35 docs/inbox/커밋 인수 종료를 완료한다. 안정된 핵심 수정·좁은 독립 PASS 뒤 전체 세 번째 검사를 시작하며 이후 변경은 별도 후보로 분리한다.
+
+**Codex 인수 진행(09/30 23:5x):** 개발 6.1-sol, 독립 검증 6-sol. E3-L2r F1~F4 커밋 후 후속 보강, E3-L1e 최종 view/export 게이트 보강, E3-L1s는 전체 verify 시간 단언 실패로 보류. CLI 병렬 실행 배정 중이며 전체 verify는 직렬이다. 최신 상태는 HANDOFF 맨 위 Codex PM 절과 대시보드 codex_progress/attention을 따른다. 종료 10/01 02:40.
 
 인계 받는 쪽(Codex PM)은 이 표 위에서부터 진행한다. 실행은 `bash scripts/codex_task.sh build <과제ID>`, 검증은 `bash scripts/codex_task.sh verify <과제ID>`, 병합은 PM 규칙(`AGENTS.md`)대로. 상태: ✅ main 병합 · 🔍 검증 대기/중 · ⏳ 빌더 작업 중 · ⬜ 대기(착수 전) · ⛔ 막힘
 
-마지막 갱신: 2026-09-30 21:2x (PM "로컬 세팅") — Codex 인계 취소(Claude 계속). 열린 브랜치 머리는 HANDOFF 맨 위 표 참고
+마지막 갱신: 2026-10-01 00:5x (PM "로컬 세팅") — PM 인수 완료. HANDOFF 맨 위 "PM 인수 완료" 절이 최신
 
 ## ⚠ 최종 마감: 발표자료 제출 10/01 09:00 (HANDOFF 표). 발표 작업(E6)을 모든 L3 확장보다 앞에 둔다
 
@@ -23,7 +39,7 @@
 | E1-L1c eLife(+EPMC) 색인 | ✅ 코드만 병합(43d116f). 색인 `index_elife*`는 DO_NOT_SERVE 유지 | E1-L1b PASS 뒤 재빌드(입력 해시 rc 0). 권고: 색인 로더가 DO_NOT_SERVE를 거부(E2, 선택) |
 | E1-L1b eLife·EPMC 수집 | 🔍 재검증 3 PASS-조건부(실명 잔존 0, 부분 가림 3건 `’`·`–`) → 재작업 3 중(PM 세션) | 재검증 → **squash 병합** → 색인 재빌드(해시 rc 0) |
 | E4-L2c 서빙 안정성 | 🔍 재검증 PASS-조건부(83754ff): 인코딩 우회 fail-closed, 혼입 0. 남은 것(E4-L1f 테스트 request_id, serve.py UTF-8)은 E4-L2d에서 고침. **공개 금지** | **E4-L2d 하나로 병합**(L2d가 L2c 포함), 패치 L2c → L2d 순서. SEC-4 먼저 |
-| E4-L2d 비동기 작업 API(L2c 포함) | ❌ 재검증 FAIL 1건(접근 로그에 퍼센트 인코딩 job_id 노출) → 재작업 4(구축 세션). 나머지 통과(main 임시 병합 1270 passed, 저장소 상한·BOM fail-closed) | 재작업 4 PASS → 병합 + 패치 L2c→L2d, .env.example 새 키, README 75행. 다음 SEC-5 |
+| E4-L2d 비동기 작업 API(L2c 포함) | ✅ 병합(2bd2b58, 패치·키 03503d6) | 8020 재기동(구축 세션). 공개는 SEC-2r 필수 조치 뒤 |
 | SEC-4 이메일 정규식 ReDoS | 🔍 task/SEC-4 386621a(PM), Sonnet 검증 중 | `models.contains_pii`·`redact_pii` 선형화(`email_spans`), 결과 동일. 공개 전 필수 |
 | E3-L1x rule_fitness "neural" 오분류 | ✅ 병합(Sonnet PASS) | 남은 한계: `~인지 과제` 오탐, neuromorphic(후속 소과제, 선택) |
 | E4-L1f 화면 업로드 | ✅ 병합(cf43101, Sonnet PASS) | 8020 재기동 시 반영. 발표 9쪽 "PDF·DOCX 포함" |
@@ -37,16 +53,47 @@
 | E3-L1z 규칙 판정 조사·인지 오탐 | ⬜ 구축 세션이 띄움 | 선택 |
 | 참고: 세부 설정 키(`NEUMANN_LLM_MAX_INFLIGHT`, `NEUMANN_EXTRACT_PARALLEL` 등) | — | `.env`에서 안 읽힘(config 필드 없음). 기동 명령 환경변수로 준다 |
 | E2-L5 세부 분야 사다리·분야별 3건 실분석(추가 실험) | ⏳ 구축 세션 | 선정 규칙·충분 기준 사전 커밋, 모든 단계 보고. 실분석은 E3-L1s·E3-L1e 병합 뒤 v1 라이브·백테스트 사후 재실행과 묶음 |
-| **우선 병합** | — | E4-L2d(r4) → SEC-5 → **E3-L1s·E3-L1e(v1 차단 해제)** → E3-L1z·E5-L2c·E1-L1b(squash) |
+| **우선 병합(00:2x)** | — | **v2 관문: E3-L1s·E3-L1e** → E4-L2f → E4-L3m → E4-L1g(샘플 갤러리, v2 필수) → E3-L2r·E4-L4r(재탄생). 공개 전 필수: PERF-pk·E4-L2g·OPS-tun·SEC-7. 그 밖: E4-L2h·E3-L1z2·TEST-1·E2-L5·E5-L3b 후속 + PM 과제 20개(SEC-8·DOC-1·A11Y-1·E2E-2·MCP-demo·E5-L1c·PERF-2·QA-1·REL-1·E5-L3c·LIC-1·JUDGE-H·CFG-1·OBS-1·PRIV-1·DATA-CARD·SYSTEM-CARD·PROMPT-AUDIT·FUZZ-1·UXC-1) |
+| E3-L2r·E4-L4r 수정 권고(서버·화면) | ⏳ 구축 세션(Fable, mock) | 대표 지시 시제품 추가. 큐 맨 뒤 |
+| E5-L2f 원문 복원 백테스트(추가 실험) | ⬜ 사전 기록(decisions 23:5x), arXiv 다운로드는 대표 승인 뒤 | 표본 순서·arXiv 공개판 필수·v1 우선, A/B/C 판정 재사용 |
+| E5-L2e 쌍비교(RFP) | ⏸ 보류(RFP 취소) | — |
 | SEC-2 재점검 | 대기 | E4-L2c·L2d 병합 뒤 → 통과하면 cloudflared 터널 공개(주소는 발표자료로) |
 | E4-L1a 업로드 | ✅ 병합(2e38839, 긴 경계 400 수정 80e024c 포함) | 공개 전 `/upload/plan` 속도 제한(E4-L2c 보호 경로), 화면 문구 "정리 뒤 50,000자 상한" |
 | E6-docs 문서·README | ✅ 병합(7049da9), 루트 README 교체(38b01e4) | 07:00 동결 때 숫자·상태 한 번 더 맞춤. SEC-3 병합 뒤 RUNNING에 LIVE_LLM_OK 두 줄 |
 | E4-L1f 화면 업로드 → `/upload/plan` | ✅ 병합(cf43101) | 선택 개선: 업로드 AbortController 40초 |
 | E6-pres2 발표자료 숫자 | 🔍 PASS-조건부(숫자 불일치 0) → 12·11쪽 문구, GPU "약 77초" 수정 중(구축 세션) | 설계 쪽 "설계"+"예정", 결과 쪽 실측만. 07:00 체크리스트: 테스트 수 동결 main 실측 1개, 백테스트 못 돌리면 "미측정"(15편 삭제), 터널 없으면 주소 칸 "로컬 시연·영상", 작업 메모·형광 제거 |
 | E3-L1d 사전 추출 스크립트 | 중지·선택 병합 | 재개는 대표 승인 뒤, 데모 상위 논문만 `--work-ids` |
-| **E5-L2b 백테스트 n=5** | 🟡 대표 승인(n=5, sol 양쪽). 표본 규칙 기록(a59a4ec, 앞 5편 거절 3·채택 2), mock 예행 통과 | 실제 실행은 구축 세션(승인 받은 세션): real만 약 $2.5 / real+shuffle 약 $5 대표 선택. 파일 `riskset_*.sol.first5.jsonl` → PM이 Sonnet 판정 3명·대표 블라인드 5편 → 지표 → 발표 12쪽 |
+| **E5-L2b 백테스트 n=5** | ✅ 실행(real, sol)·판정(Sonnet 3명, 재판정 뒤 일치 0.947). Neumann 낸 위험 4/4 A·근거율 1.0, 0장 3편 → hit@3 0.4 대 기준선 0.8 | 결과 `data/eval/judge_n5_results.md`. 대표 블라인드 판정 꾸러미 `judge_n5/human`. E5-L2c 검증 중 → 병합 |
 
 **발표 마감 10/01 09:00**(HANDOFF 맨 위 일정표)
+
+
+## PM 세션 과제 20개 (00:3x 가동, 브랜치는 `git log --all --oneline --grep '^\[<ID>\]'`로 찾는다)
+
+| ID | 내용 | 산출 | 상태 |
+|---|---|---|---|
+| SEC-8 | 공개 직전 보안 재감사(Fable, 읽기 전용) | docs/reports/SEC-8.md | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| DOC-1 | 심사위원용 README·ARCHITECTURE·API·RUNNING | 문서 4개 | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| LIC-1 | 라이선스·출처 점검, 고지 문구 | docs/LICENSES.md | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| A11Y-1 | 화면 접근성 감사(보고서만) | docs/reports/A11Y-1.md | 정지됨(TaskStop) — worktree에 미커밋 변경 있을 수 있음(git status 확인) |
+| E2E-2 | jobs 경로 다중 사용자 E2E(mock) | tests/e2e/test_jobs_multiuser* | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| MCP-demo | 외부 에이전트 MCP 연결 시연 | scripts/mcp_demo.py, docs/MCP_DEMO.md | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| E5-L1c | P1 Macro-F1 sol 재측정 준비(실행 안 함) | docs/reports/E5-L1c_plan.md | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| PERF-2 | 분석 지연 단축 연구(모의) | scripts/perf_sim_pipeline.py | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| QA-1 | 시연 흐름 QA(보고서만) | docs/reports/QA-1.md | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| REL-1 | 07:00 동결 시트·태그 절차 | scripts/release_check.py, docs/RELEASE.md | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| E5-L3c | 지표 generator 분리(rule ≠ LLM 적중) | eval/, tests/e5 | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| JUDGE-H | 대표 블라인드 판정 HTML 양식 | eval/human_form.py | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| CFG-1 | .env 읽기 일관화(SEC-3 플래그 제외) | config.py | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| OBS-1 | 운영 사용량·비용 보고 | scripts/ops_report.py | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| PRIV-1 | 개인정보·보존 감사(보고서만) | docs/reports/PRIV-1.md | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| DATA-CARD | 코퍼스·색인 데이터 카드 | docs/DATA_CARD.md | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| SYSTEM-CARD | 시스템 카드(모델·한계) | docs/SYSTEM_CARD.md | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| PROMPT-AUDIT | 제품 프롬프트 감사(보고서만) | docs/reports/PROMPT-AUDIT.md | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| FUZZ-1 | 공개 API 퍼징 테스트 | tests/e4/test_fuzz_api.py | ⏸ 인수 신호로 WIP 정지(검증 전) |
+| UXC-1 | 화면 문구 정직성·용어(보고서만) | docs/reports/UXC-1.md | 정지됨(TaskStop) — worktree에 미커밋 변경 있을 수 있음(git status 확인) |
+
+모든 과제는 빌드 뒤 다른 모델(Sonnet) 검증이 병합 조건. 보고서만 쓰는 과제는 내용 검토 뒤 docs 병합.
 
 ## v0 크리티컬 패스
 

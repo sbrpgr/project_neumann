@@ -11,6 +11,12 @@
   강하면 `uncertain`으로 내린다. 판정 신호를 하나에 걸지 않는다(모델 판정 + 근거 줄 + 규칙 신호).
 - 모델에 보내는 본문은 개인정보를 다시 가린다(`pii.mask_pii`). 모델이 쓴 사유·분야도 가린다.
 - 언어(ko·en·mixed)는 코드가 글자 수로 잰다(결정적이고 호출이 필요 없다).
+- **입력 분량 단계(E3-L1s, `input_quality`)**: 규칙으로 먼저 잰다(호출 없음). 길이는 앞뒤 공백을 뺀 원문 글자 수
+  (공백 포함, 한글 가중치 없음, 대표 지시 2026-09-30).
+  `reject`: 300자 미만(범위 밖 글 포함), 또는 지시어로 시작하거나 요소가 적은 한 문장, 분야와 방법을 알 수 없는 짧은 글.
+  **LLM을 부르지 않고** 거절하고 무엇을 적을지 안내한다(옛 MIN_CHARS 40자 사전검사를 이 단계로 합침).
+  `warn`(600자 미만 또는 요소 2개 이하)은 끝까지 분석하되 "입력이 짧아 신뢰도가 낮다"를 결과·화면에 싣는다. `ok`는 경고 없음.
+  기준값은 보고서 docs/reports/E3-L1s.md의 기준표(백테스트 5편·데모·직접 만든 짧은 입력)로 정했다.
 """
 
 from __future__ import annotations
@@ -29,7 +35,14 @@ from neumann.models import Generator, PlanDocument, StageStatus
 LLMCallable = Callable[..., dict[str, Any] | None]
 
 DEFAULT_EFFORT = "low"
-MIN_CHARS = 40  # 공백을 뺀 글자 수가 이보다 적으면 판정할 거리가 없다(호출하지 않는다)
+# 입력 분량 단계(E3-L1s). 길이 = 앞뒤 공백을 뺀 원문 글자 수(공백 포함, 한글 가중치 없음).
+# 대표 지시(2026-09-30): "300자 미만은 거절하자. 그런 게 연구계획서라고 보기는 어렵다." 옛 사전검사(공백 제외 40자)를 합쳤다.
+MIN_CHARS = 300  # 이보다 짧으면 거절 단계 too_short(호출하지 않는다)
+WARN_CHARS = 600  # 이보다 짧으면 경고(데모 계획서 3건 629~689자, 템플릿·예시 644~925자는 경고 없음)
+WARN_MAX_ELEMENTS = 2  # 연구 요소(질문·방법·데이터·평가)가 이 개수 이하면 경고
+SINGLE_SENTENCE_MIN_ELEMENTS = 3  # 한 문장뿐이면 요소가 이만큼 있어야 거절하지 않는다
+MIN_UNIT_TOKENS = 3  # 문장·항목 하나로 세는 최소 낱말 수(또는 MIN_UNIT_CHARS자)
+MIN_UNIT_CHARS = 12
 MAX_INPUT_CHARS = 12000  # 모델에 보내는 본문 상한
 MAX_REASON_CHARS = 500
 MAX_FIELD_CHARS = 60
@@ -105,7 +118,17 @@ Return JSON that matches the schema:
 
 
 def _en(*words: str) -> re.Pattern[str]:
+    """요소·무관 사전용 영어 표지. 경계가 `\\b`라 한글 조사가 붙은 약어(`GNN을`)는 못 잡는다. 이 사전은 판정
+    (fit·unfit·uncertain)과 요소 줄 번호를 정해서 E3-L1z에서는 바꾸지 않았다(보고서 E3-L1z "결정")."""
     return re.compile(r"(?i)\b(?:" + "|".join(words) + r")\b")
+
+
+def _en_ascii(*words: str) -> re.Pattern[str]:
+    """분야 표지용 영어 표지(E3-L1z). 경계는 로마자·숫자만 본다: 한글 조사가 붙어도(`EEG와`, `fMRI로`, `DNA를`)
+    잡고, 로마자 낱말 한가운데(`brainstorm`, `EEG2`)는 잡지 않는다. 낱말 안 반복은 `\\w*` 대신 `[a-z0-9]*`로 써서
+    뒤에 붙은 한글 조사를 표지 문자열에 넣지 않는다. 둘러보기는 한 글자만 보고, 반복 뒤 경계는 반복이 먹지 못한
+    글자에서만 검사하므로 되돌아가기가 없다(선형 시간)."""
+    return re.compile(r"(?i)(?<![a-z0-9])(?:" + "|".join(words) + r")(?![a-z0-9])")
 
 
 _LEXICON: dict[str, tuple[tuple[str, ...], re.Pattern[str]]] = {
@@ -150,28 +173,38 @@ _OFFTOPIC_EN = _en(
 )
 
 # 신경과학 표지(E3-L1x). 인공 신경망(neural network, 신경망·심층신경망·신경회로망)과 신경 연산자(neural operator)는
-# AI 방법이지 신경과학이 아니다. 영어는 neur\w*가 아니라 neuro\w*(neuron·neuronal·neuroscience·neuroimaging)만 잡는다.
+# AI 방법이지 신경과학이 아니다. 영어는 neur\w*가 아니라 neuro…(neuron·neuronal·neuroscience·neuroimaging)만 잡는다.
 # 한국어는 "신경" 단독 대신 신경과학 복합어만 잡고, "뇌우"(기상)와 "~인지"(어미)는 빼려고 정규식으로 둔다.
+# 인지 복합어(E3-L1z): 붙여 쓴 복합어(인지과제·경도인지장애·사회인지기능)는 앞 글자와 상관없이 잡고, 띄어 쓴
+# "인지 과제"는 "인지"가 낱말 첫머리이거나 인지 접두어(사회인지·경도인지·신경인지·시각인지…) 뒤일 때만 잡는다.
+# "효과적인지 과제별로"·"것인지 기능"의 "인지"는 어미 "-ㄴ지"다. 접두어 뒷보기는 모두 두 글자(고정 길이)다.
+_NEURO_KO_COGNITION = r"(?:과학|과제|기능|능력|부하|저하|장애|심리)"
+_NEURO_KO_PREFIX = r"사회|경도|신경|시각|청각|공간|언어|정서|메타"
 _NEURO_KO = re.compile(
     r"신경\s?(?:과학|세포|생리|영상|활동|신호|질환)|신경\s?회로(?!망)|신경계|뉴런|뇌(?!우)"
-    r"|인지\s?(?:과학|과제|기능|능력|부하|저하|장애|심리)"
+    rf"|인지{_NEURO_KO_COGNITION}|(?:(?<![가-힣])|(?<={_NEURO_KO_PREFIX}))인지\s{_NEURO_KO_COGNITION}"
 )
-_NEURO_EN = _en(r"neuro\w*", r"fmri", r"eeg", r"brains?", r"cognit\w*")
+# neuromorphic(뉴로모픽 하드웨어)·neuro-symbolic(신경-기호 AI)은 AI 용어라 뺀다(E3-L1z). 부정 전방탐색은 최대 9글자만 본다.
+_NEURO_EN = _en_ascii(r"neuro(?!morphic|[-\s]?symbolic)[a-z0-9]*", r"fmri", r"eeg", r"brains?", r"cognit[a-z0-9]*")
 
+# 분야 표지(E3-L1z부터 영어는 `_en_ascii`): 분야 점수만 정하고 판정·요소 줄 번호에는 쓰이지 않는다.
 _FIELDS: tuple[tuple[str, tuple[str, ...] | re.Pattern[str], re.Pattern[str]], ...] = (
     ("재료·화학", ("전해액", "배터리", "전지", "분자", "소재", "촉매", "화합물", "고분자"),
-     _en(r"electrolyt\w*", r"batter(?:y|ies)", r"molecul\w*", r"materials?", r"catalys\w*", r"polymers?", r"chemi\w*")),
+     _en_ascii(r"electrolyt[a-z0-9]*", r"batter(?:y|ies)", r"molecul[a-z0-9]*", r"materials?", r"catalys[a-z0-9]*",
+               r"polymers?", r"chemi[a-z0-9]*")),
     ("신경과학·뇌영상", _NEURO_KO, _NEURO_EN),
     ("의료·의료영상", ("의료", "임상", "환자", "진단", "폐렴", "X선", "병변"),
-     _en(r"clinic\w*", r"patients?", r"diagnos\w*", r"x-?ray", r"radiolog\w*", r"medical", r"patholog\w*")),
+     _en_ascii(r"clinic[a-z0-9]*", r"patients?", r"diagnos[a-z0-9]*", r"x-?ray", r"radiolog[a-z0-9]*", r"medical",
+               r"patholog[a-z0-9]*")),
     ("자연어처리", ("자연어", "언어모델", "언어 모델", "텍스트", "말뭉치"),
-     _en(r"nlp", r"language models?", r"llms?", r"corpus", r"translation")),
-    ("컴퓨터비전", ("이미지", "객체 탐지", "영상 분할"), _en(r"images?", r"vision", r"object detection", r"segmentation")),
+     _en_ascii(r"nlp", r"language models?", r"llms?", r"corpus", r"translation")),
+    ("컴퓨터비전", ("이미지", "객체 탐지", "영상 분할"),
+     _en_ascii(r"images?", r"vision", r"object detection", r"segmentation")),
     ("생명과학·생물정보", ("유전체", "단백질", "세포", "유전자"),
-     _en(r"genom\w*", r"proteins?", r"cells?", r"genes?", r"rna", r"dna")),
+     _en_ascii(r"genom[a-z0-9]*", r"proteins?", r"cells?", r"genes?", r"rna", r"dna")),
     ("기후·지구과학", ("기후", "기상", "강수", "해양", "대기"),
-     _en(r"climate", r"weather", r"precipitation", r"ocean\w*", r"atmospher\w*")),
-    ("물리·공학", ("물리", "역학", "유체", "플라즈마"), _en(r"physic\w*", r"fluids?", r"plasma", r"quantum")),
+     _en_ascii(r"climate", r"weather", r"precipitation", r"ocean[a-z0-9]*", r"atmospher[a-z0-9]*")),
+    ("물리·공학", ("물리", "역학", "유체", "플라즈마"), _en_ascii(r"physic[a-z0-9]*", r"fluids?", r"plasma", r"quantum")),
 )
 
 
@@ -193,6 +226,163 @@ def detect_language(text: str) -> dict[str, Any]:
         share = 2 * hangul / (2 * hangul + latin)
         lang = "ko" if share >= 0.6 else "en" if share <= 0.25 else "mixed"
     return {"language": lang, "hangul_share": round(share, 3), "hangul_chars": hangul, "latin_chars": latin}
+
+
+# ── 입력 분량 단계(E3-L1s) ─────────────────────────────────────────────────
+# 문장·항목 경계: 문장 끝 부호 뒤 공백, 또는 줄바꿈. 고정 폭 뒤보기와 단순 반복만 쓴다(역추적 폭증 없음).
+_UNIT_SPLIT = re.compile(r"(?<=[.!?。])\s+|\n+")
+# 앞 문장을 가리키는 지시어로 시작(앞뒤 맥락 없이 잘려 나온 한 문장). 첫 문장의 앞 40자에만 건다.
+_DEMONSTRATIVE = re.compile(
+    r"(?i)^(?:this|these|that|those|it|its|such|they|here)\b"
+    r"|^(?:이는|이것|이러한|이런|이와|그것|그러한|이\s(?:방법|문제|점|연구|결과))"
+)
+INPUT_LEVELS: tuple[str, ...] = ("reject", "warn", "ok")
+INPUT_LABEL_KO: dict[str, str] = {
+    "reject": "입력이 짧아 분석하지 않음",
+    "warn": "입력이 짧아 결과 신뢰도 낮음",
+    "ok": "",
+}
+_REJECT_WHY_KO: dict[str, str] = {
+    "too_short": f"입력이 {MIN_CHARS}자 미만이다",
+    "single_sentence": "연구 요소가 부족한 한 문장뿐이다",
+    "demonstrative_sentence": "앞 문장을 가리키는 지시어로 시작하는 한 문장뿐이다",
+    "no_topic": "짧은 글에서 연구 분야나 방법을 알 수 없다",
+}
+_WARN_WHY_KO: dict[str, str] = {
+    "short": "입력이 짧다",
+    "few_elements": "연구 요소가 적다",
+    "fitness_uncertain": "연구계획서인지 판정이 보류됐다",
+    "few_elements_llm": "적합성 판정에서 확인된 연구 요소가 적다",
+}
+ASK_MORE_KO = "연구 질문·방법·데이터·평가를 더 적어 주세요"
+ASK_KO = "연구 질문·방법·데이터·평가를 적어 주세요"
+# 화면 거절 문구(대표 지시 문구 그대로)
+TOO_SHORT_MESSAGE = f"입력이 {MIN_CHARS}자 미만이라 연구계획서로 분석하지 않습니다. {ASK_KO}."
+
+
+def sentence_units(text: str) -> list[str]:
+    """문장·항목 단위(문장 끝 부호 또는 줄바꿈으로 나눔). 낱말 MIN_UNIT_TOKENS개 또는 글자 MIN_UNIT_CHARS자 이상만."""
+    out: list[str] = []
+    for part in _UNIT_SPLIT.split(text):
+        s = part.strip()
+        if not s:
+            continue
+        if len(s.split()) >= MIN_UNIT_TOKENS or sum(1 for ch in s if not ch.isspace()) >= MIN_UNIT_CHARS:
+            out.append(s)
+    return out
+
+
+def input_length(text: str) -> int:
+    """분량 단계의 길이: 앞뒤 공백을 뺀 원문 글자 수(공백 포함, 한글 가중치 없음)."""
+    return len(text.strip())
+
+
+def _iq_message(level: str, codes: list[str], metrics: dict[str, Any], missing: list[str]) -> str | None:
+    miss = ", ".join(ELEMENT_KO[e] for e in missing)
+    size = f"{metrics['length']}자, 문장·항목 {metrics['n_sentences']}개, 연구 요소 {metrics['n_elements']}/4"
+    if level == "reject" and codes == ["too_short"]:
+        return TOO_SHORT_MESSAGE
+    if level == "reject":
+        why = "; ".join(_REJECT_WHY_KO[c] for c in codes)
+        return f"입력을 연구계획서로 분석하지 않습니다({why}; {size}). {ASK_KO}" + (f" — 빠진 요소: {miss}." if miss else ".")
+    if level == "warn":
+        return (f"입력이 짧아 결과 신뢰도가 낮습니다 — {ASK_MORE_KO}({size}"
+                + (f"; 빠진 요소: {miss}" if miss else "") + ").")
+    return None
+
+
+def _iq_record(level: str, codes: list[str], metrics: dict[str, Any], missing: list[str], source: str) -> dict[str, Any]:
+    reasons = [{"code": c, "text": (_REJECT_WHY_KO | _WARN_WHY_KO)[c]} for c in codes]
+    return {
+        "level": level,
+        "status": {"reject": "rejected_thin_input", "warn": "warn_short_input", "ok": "ok"}[level],
+        "label_ko": INPUT_LABEL_KO[level],
+        "message": _iq_message(level, codes, metrics, missing),
+        "reasons": reasons,
+        "missing": list(missing),
+        "followup_questions": _followups(missing) if level != "ok" else [],
+        "metrics": dict(metrics),
+        "thresholds": {
+            "min_chars": MIN_CHARS, "warn_chars": WARN_CHARS, "warn_max_elements": WARN_MAX_ELEMENTS,
+            "single_sentence_min_elements": SINGLE_SENTENCE_MIN_ELEMENTS, "length": "len(text.strip()), 공백 포함",
+        },
+        "source": source,  # rule(규칙 신호만) | rule+fitness(적합성 판정으로 경고를 더함)
+        "generator": "rule",  # 단계 판정은 규칙이다(LLM 결과라고 쓰지 않는다)
+    }
+
+
+_UNSET: Any = object()
+
+
+def input_quality(plan: PlanDocument, *, elements: dict[str, list[int]] | None = None,
+                  field: str | None = _UNSET, offtopic_hits: int | None = None) -> dict[str, Any]:
+    """입력 분량 단계(reject·warn·ok). 규칙만 쓰고 호출하지 않는다.
+
+    길이는 앞뒤 공백을 뺀 원문 글자 수(공백 포함, 한글 가중치 없음).
+    거절(reject) — 판정할 거리가 없다:
+      too_short: MIN_CHARS(300)자 미만. 범위 밖 글(조리법 등)도 여기서 호출 없이 거절한다
+      demonstrative_sentence: 문장·항목이 1개 이하이고 지시어("This is…", "이는…")로 시작
+      single_sentence: 문장·항목이 1개 이하이고 연구 요소가 SINGLE_SENTENCE_MIN_ELEMENTS개 미만
+      no_topic: WARN_CHARS자 미만인데 분야 표지도 방법 표지도 없고, 무관한 글(조리법·여행·광고 등)의 표지도 없다
+        (무관한 글의 표지가 있으면 여기서 거절하지 않고 지금처럼 적합성 판정이 "연구계획서가 아니다"로 거절한다)
+    경고(warn) — 짧지만 분야·방법을 알 수 있다: WARN_CHARS자 미만(short) 또는 요소 WARN_MAX_ELEMENTS개 이하(few_elements).
+    elements·field를 주면(rule_fitness 안에서) 다시 세지 않는다.
+    """
+    if elements is None or field is _UNSET or offtopic_hits is None:
+        rule = rule_fitness(plan)
+        elements = {e: rule["elements"][e]["plan_lines"] for e in ELEMENTS}
+        field = rule["field"]
+        offtopic_hits = int(rule["offtopic_hits"])
+    text = plan.text
+    n_chars = sum(1 for ch in text if not ch.isspace())
+    units = sentence_units(text)
+    n_elem = sum(1 for e in ELEMENTS if elements.get(e))
+    has_method = bool(elements.get("method"))
+    length = input_length(text)
+    demonstrative = bool(units) and bool(_DEMONSTRATIVE.match(units[0][:40]))
+    metrics = {
+        "length": length, "n_chars": n_chars, "n_sentences": len(units), "n_elements": n_elem,
+        "field": field, "has_method": has_method, "starts_with_demonstrative": demonstrative,
+        "offtopic_hits": offtopic_hits,
+    }
+    missing = [e for e in ELEMENTS if not elements.get(e)]
+    codes: list[str] = []
+    if length < MIN_CHARS:
+        codes.append("too_short")
+    elif len(units) <= 1 and demonstrative:
+        codes.append("demonstrative_sentence")
+    elif len(units) <= 1 and n_elem < SINGLE_SENTENCE_MIN_ELEMENTS:
+        codes.append("single_sentence")
+    elif length < WARN_CHARS and field is None and not has_method and not offtopic_hits:
+        codes.append("no_topic")
+    if codes:
+        return _iq_record("reject", codes, metrics, missing, "rule")
+    if length < WARN_CHARS:
+        codes.append("short")
+    if n_elem <= WARN_MAX_ELEMENTS:
+        codes.append("few_elements")
+    return _iq_record("warn" if codes else "ok", codes, metrics, missing, "rule")
+
+
+def refine_input_quality(iq: dict[str, Any], fit: dict[str, Any]) -> dict[str, Any]:
+    """적합성 판정 뒤: 판정 보류(uncertain)이거나 모델이 확인한 요소가 WARN_MAX_ELEMENTS개 이하면 경고를 더한다.
+
+    거절 단계는 바꾸지 않는다. 경고 사유·빠진 요소는 모델 판정(근거 줄이 있는 요소)을 쓴다.
+    """
+    if iq.get("level") == "reject" or fit.get("decided_by") != "llm":
+        return iq
+    codes = [r["code"] for r in iq.get("reasons", [])]
+    llm_present = [e for e in ELEMENTS if (fit.get("elements") or {}).get(e, {}).get("present")]
+    add: list[str] = []
+    if fit.get("verdict") == "uncertain":
+        add.append("fitness_uncertain")
+    if len(llm_present) <= WARN_MAX_ELEMENTS:
+        add.append("few_elements_llm")
+    if not add:
+        return iq
+    missing = [e for e in ELEMENTS if e not in llm_present]
+    metrics = {**iq["metrics"], "n_elements_llm": len(llm_present)}
+    return _iq_record("warn", [*codes, *[c for c in add if c not in codes]], metrics, missing, "rule+fitness")
 
 
 def rule_fitness(plan: PlanDocument) -> dict[str, Any]:
@@ -218,10 +408,14 @@ def rule_fitness(plan: PlanDocument) -> dict[str, Any]:
     n_elem = sum(1 for e in ELEMENTS if elements[e])
     research_hits = sum(len(v) for v in elements.values())
     offtopic_hits = len(offtopic_lines)
+    field = max(field_scores, key=lambda k: field_scores[k]) if field_scores else None
+    iq = input_quality(plan, elements=elements, field=field, offtopic_hits=offtopic_hits)
 
-    if n_chars < MIN_CHARS:
-        verdict, precheck = "unfit", "too_short"
-        reason = f"본문이 너무 짧다(공백 제외 {n_chars}자, 최소 {MIN_CHARS}자). 연구 질문·방법·데이터·평가를 적어 달라."
+    if iq["level"] == "reject":  # 판정할 거리가 없다(E3-L1s 거절 단계, 옛 too_short 포함): 호출하지 않는다
+        verdict = "unfit"
+        codes = [r["code"] for r in iq["reasons"]]
+        precheck = "too_short" if codes == ["too_short"] else "too_thin"
+        reason = iq["message"]
     elif n_elem >= 3 and offtopic_hits <= research_hits:
         verdict, precheck = "fit", None
         reason = f"연구 요소 {n_elem}/4개의 표지가 보인다(규칙 판정)."
@@ -233,10 +427,10 @@ def rule_fitness(plan: PlanDocument) -> dict[str, Any]:
         verdict, precheck = "uncertain", None
         reason = f"연구 요소 표지 {n_elem}/4개, 무관 표지 {offtopic_hits}줄: 규칙으로는 판단하기 어렵다(규칙 판정)."
 
-    field = max(field_scores, key=lambda k: field_scores[k]) if field_scores else None
     return {
         "verdict": verdict,
         "precheck": precheck,
+        "input_quality": iq,
         "reason": reason,
         "elements": {e: {"present": bool(elements[e]), "plan_lines": elements[e]} for e in ELEMENTS},
         "n_elements": n_elem,
@@ -347,7 +541,7 @@ def _result(
     t0: float,
 ) -> dict[str, Any]:
     missing = [e for e in ELEMENTS if not elements[e]["present"]]
-    return {
+    out = {
         "verdict": verdict,
         "analyze": verdict != "unfit",
         "is_research_plan": {"fit": True, "unfit": False}.get(verdict),
@@ -370,6 +564,19 @@ def _result(
         "checks": checks,
         "elapsed_s": round(time.perf_counter() - t0, 3),
     }
+    # 입력 분량 단계(E3-L1s): 규칙 단계에 적합성 판정(보류·요소 수)을 더한다. 거절 단계는 판정 사유가 곧 안내 문구다.
+    iq = rule.get("input_quality") or input_quality_placeholder()
+    out["input_quality"] = refine_input_quality(iq, out)
+    if decided_by == "precheck" and out["input_quality"].get("message"):
+        out["notice"] = out["input_quality"]["message"]
+        out["followup_questions"] = list(out["input_quality"].get("followup_questions", []))
+    return out
+
+
+def input_quality_placeholder() -> dict[str, Any]:
+    """규칙 신호에 단계가 없을 때(옛 호출부)의 빈 기록: 경고 없음."""
+    return {"level": "ok", "status": "ok", "label_ko": "", "message": None, "reasons": [], "missing": [],
+            "followup_questions": [], "metrics": {}, "thresholds": {}, "source": "none", "generator": "rule"}
 
 
 def _rule_result(rule: dict[str, Any], language: dict[str, Any], checks: dict[str, Any], t0: float, *,
@@ -412,6 +619,21 @@ def _resolve_model(llm_call: Any, explicit: str | None) -> str | None:
     return str(attr) if attr else None
 
 
+def _short_but_on_topic(rule: dict[str, Any]) -> bool:
+    """짧은 입력(경고 단계) + 연구 요소 표지 1개 이상 + 분야 또는 방법 표지 + 무관 표지 0줄.
+
+    모델의 '연구 아님'을 보류(uncertain)로 낮춘다. 보류는 거절이 아니다: 파이프라인은 유사 연구 검색이 강하게 맞을 때만
+    (pipeline.RESEARCH_GATE_MIN_TOP·MIN_WORKS) 끝까지 분석하므로, 여기서 넓게 살려도 무관한 글은 검색 근거에서 멈춘다.
+    """
+    iq = rule.get("input_quality") or {}
+    return (
+        iq.get("level") == "warn"
+        and rule.get("offtopic_hits", 1) == 0
+        and rule.get("n_elements", 0) >= 1
+        and bool(rule.get("field") or rule["elements"]["method"]["present"])
+    )
+
+
 def assess_fitness(
     plan: PlanDocument,
     llm_call: LLMCallable | None,
@@ -436,7 +658,7 @@ def assess_fitness(
     language = detect_language(plan.text)
     checks: dict[str, Any] = {"dropped_lines": 0, "overrides": []}
 
-    if rule["precheck"] == "too_short":  # 판정할 거리가 없다: 호출하지 않는다(강등 아님)
+    if rule["precheck"]:  # 판정할 거리가 없다(거절 단계 too_short·too_thin): 호출하지 않는다(강등 아님)
         return _rule_result(rule, language, checks, t0, status="ok", decided_by="precheck", degraded_reason=None)
     if llm_call is None:
         return _rule_result(rule, language, checks, t0, status="degraded", decided_by="rule_fallback",
@@ -474,6 +696,12 @@ def assess_fitness(
             checks["overrides"].append(
                 f"모델은 연구계획서가 아니라고 봤지만 규칙 신호(연구 요소 {rule['n_elements']}/4)가 강해 거절하지 않는다"
             )
+        elif _short_but_on_topic(rule):
+            verdict = "uncertain"  # E3-L1s: 짧지만 분야·방법이 보이는 입력(연구 배경만 적은 초록 등)은 거절하지 않는다
+            checks["overrides"].append(
+                f"모델은 연구계획서가 아니라고 봤지만 짧은 입력에 분야·방법 표지가 있고(요소 {rule['n_elements']}/4) "
+                "무관한 글의 표지가 없어 거절하지 않는다"
+            )
         else:
             verdict = "unfit"
     else:
@@ -502,6 +730,9 @@ def fitness_stage(result: dict[str, Any]) -> StageStatus:
         detail += f" — {result['degraded_reason']}"
     if result["checks"].get("overrides"):  # 규칙 신호가 모델 판정을 바꿨으면 단계 기록에도 남긴다
         detail += f" (model {result['model_verdict']} → {result['verdict']}: 규칙 신호로 조정)"
+    iq = result.get("input_quality") or {}
+    if iq.get("level") in ("reject", "warn"):  # 입력 분량 단계(E3-L1s)
+        detail += f"; 입력 단계 {iq['level']}(" + ", ".join(r["code"] for r in iq.get("reasons", [])) + ")"
     return StageStatus(
         stage="fitness",
         state="degraded" if result["status"] == "degraded" else "ok",
@@ -521,8 +752,18 @@ __all__ = [
     "DEFAULT_EFFORT",
     "ELEMENTS",
     "FITNESS_SCHEMA",
+    "INPUT_LABEL_KO",
+    "INPUT_LEVELS",
     "INSTRUCTIONS",
+    "MIN_CHARS",
+    "TOO_SHORT_MESSAGE",
+    "WARN_CHARS",
+    "WARN_MAX_ELEMENTS",
     "assess_fitness",
+    "input_length",
+    "input_quality",
+    "refine_input_quality",
+    "sentence_units",
     "build_llm_input",
     "detect_language",
     "fitness_stage",

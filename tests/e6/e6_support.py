@@ -77,6 +77,54 @@ def block_external_network() -> Iterator[list[tuple[str, str]]]:
         socket.getaddrinfo = real_getaddrinfo  # type: ignore[assignment]
 
 
+LIVE_WHEN = "2026-09-30T12:20:00Z"  # 가짜 라이브 결과 생성 시각(KST 21:20)
+
+
+def fake_live_result(plan_rel: str, *, provider: str = "openai", model: str = "gpt-6.1-sol", when: str = LIVE_WHEN,
+                     rule_cards: int = 0, session_id: str = "sess_live0001") -> dict[str, Any]:
+    """E5-L1e2e 라이브 결과를 흉내 낸 가짜 PremortemResult JSON(실제 결과 파일은 저장소에 넣지 않는다).
+
+    AI4S 계획서는 공용 fixture의 근거·카드(가짜 데이터)를 빌려 generator=astra·model=<model>로 붙인다.
+    범위 밖(negative_recipe)은 카드 0장 + 사유. manifest에 llm_provider·llm_model을 적는다(파이프라인과 같은 키).
+    """
+    from neumann.models import PlanDocument
+    from tests.fixtures.loader import FIXTURES_DIR
+
+    text = (ROOT / plan_rel).read_text(encoding="utf-8")
+    plan = PlanDocument.from_text(text, session_id=session_id)
+    fx = json.loads((FIXTURES_DIR / "premortem_result.json").read_text(encoding="utf-8"))
+    oos = Path(plan_rel).name == "negative_recipe.md"
+    cards = [] if oos else [{**c, "generator": "astra", "model": model} for c in fx["risk_cards"]]
+    for c in cards[:rule_cards]:
+        c.update(generator="rule", model=None)
+    impl = f"{provider}:{model}"
+    stages = [{"name": "fitness", "status": "ok", "phase": "INPUT", "impl": impl}]
+    stages += [] if oos else [{"name": "synthesize_cards", "status": "ok", "phase": "RISK", "impl": impl}]
+    return {
+        "session_id": session_id,
+        "plan_id": plan.plan_id,
+        "generated_at": when,
+        "status": "ok",
+        "plan": plan.model_dump(mode="json"),
+        "similar_works": [] if oos else fx["similar_works"],
+        "evidence": [] if oos else fx["evidence"],
+        "risk_cards": cards,
+        "stages": stages,
+        "notices": [],
+        "risk_synthesis": {"no_card_reason": "입력이 연구계획서가 아니다(가짜)"} if oos else {},
+        "manifest": {"pipeline_version": "neumann-1", "llm_provider": provider, "llm_model": model, "total_s": 61.2},
+    }
+
+
+def write_live_results(folder: Path, plans: list[str], **kw: Any) -> Path:
+    """E5-L1e2e 저장 모양(`<접두어>_live/<계획서>.result.json`)으로 가짜 라이브 결과를 쓴다."""
+    folder.mkdir(parents=True, exist_ok=True)
+    for rel in plans:
+        data = fake_live_result(rel, **kw)
+        (folder / f"{Path(rel).stem}.result.json").write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    return folder
+
+
 def fake_pipeline_result(plan_text: str, session_id: str) -> dict[str, Any]:
     """가짜 run_premortem 결과: plan.md는 fixture 카드 2장(astra 1·rule 1), 다른 계획서는 카드 0장."""
     from neumann.models import PlanDocument

@@ -392,15 +392,21 @@ def test_char_limit_pdf_and_docx():
     assert extract_plan("ok.docx", docx_with_paragraphs(under)).lines == len(under)
 
 
-def test_docx_bomb_rejected_fast():
+def test_docx_bomb_rejected_fast(monkeypatch):
     bomb = inflate_docx(MAX_ZIP_UNCOMPRESSED + 5 * 1024 * 1024)  # 압축 해제 25MB
     assert len(bomb) < 500 * 1024  # 파일 자체는 작다
-    start = time.perf_counter()
+    opened: list[str] = []
+
+    def forbid_payload(self, name, *args, **kwargs):
+        opened.append(str(name))
+        raise AssertionError("zip 폭탄의 압축 내용을 열면 안 된다")
+
+    monkeypatch.setattr(zipfile.ZipFile, "open", forbid_payload)
     err = reject("bomb.docx", bomb)
     assert err.status_code == 413 and err.message == upload.ZIP_BOMB_MESSAGE
-    assert time.perf_counter() - start < 2.0  # 풀지 않고 목록만 보고 막는다
     # 확장자를 바꿔도 zip 목록 단계에서 막힌다
     assert reject("bomb.txt", bomb).message == upload.ZIP_BOMB_MESSAGE
+    assert opened == [], "풀지 않고 목록만 보고 막아야 한다"
 
 
 def test_docx_high_ratio_entry_rejected():
@@ -454,12 +460,32 @@ def test_isolated_rejections_pass_through():
     assert pytest.raises(UploadRejected, extract_plan_isolated, "b.docx", bomb).value.message == upload.ZIP_BOMB_MESSAGE
 
 
-def test_isolated_timeout_kills_worker():
-    start = time.perf_counter()
+def test_isolated_timeout_kills_worker(monkeypatch):
+    # 시험이 만든 작업자를 확실히 미완료로 둔다. 부모가 상한 뒤 kill/wait 했는지 직접 검사한다.
+    monkeypatch.setattr(upload, "_worker_command", lambda: [
+        sys.executable, "-c", "import sys,time; sys.stdin.buffer.read(); time.sleep(60)",
+    ])
+    original = upload.subprocess.Popen
+    workers, killed = [], []
+
+    def spawn(*args, **kwargs):
+        proc = original(*args, **kwargs)
+        workers.append(proc)
+        kill = proc.kill
+
+        def record_kill():
+            killed.append(proc.pid)
+            return kill()
+
+        monkeypatch.setattr(proc, "kill", record_kill)
+        return proc
+
+    monkeypatch.setattr(upload.subprocess, "Popen", spawn)
     with pytest.raises(UploadRejected) as info:
         extract_plan_isolated("p.pdf", make_pdf([KOREAN_LINES]), timeout_s=0.05)
     assert info.value.status_code == 413 and info.value.message == upload.TIMEOUT_MESSAGE
-    assert time.perf_counter() - start < 5.0
+    assert len(workers) == 1 and killed == [workers[0].pid]
+    assert workers[0].poll() is not None, "시간 초과 뒤 시험 작업자가 남아 있다"
 
 
 def test_concurrency_limit_503(monkeypatch):
@@ -642,12 +668,13 @@ def test_api_amplification_limits(client):
         ("long.txt", ("가" * (MAX_PLAN_CHARS + 1)).encode("utf-8"), upload.TOO_MANY_CHARS_MESSAGE),
     ]
     for name, data, message in cases:
-        start = time.perf_counter()
+        start = time.process_time()
         res = post(client, name, data)
         assert res.status_code == 413, (name, res.text)
         assert res.json()["detail"] == message
         assert len(res.content) < 1024
-        assert time.perf_counter() - start < 10.0, name
+        # 부모의 요청 처리 계산 예산은 유지한다. 자식 추출 상한은 timeout 시험이 별도로 검사한다.
+        assert time.process_time() - start < 10.0, name
 
 
 def test_api_request_shape_errors(client):

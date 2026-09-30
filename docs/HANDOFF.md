@@ -1,6 +1,121 @@
+## 최신 핵심 판정 — 2026-10-01 02:20 KST (이 절이 현재 상태)
+
+- main은 아직 17c8058이며 기능 병합·push는 보류다. root 제품 디스크는 그대로 유지한다. 고정 core cfec213은 C:/Users/User/Desktop/project_neumann/out/codex/core-final에 있고, 후속 callguard 포함 후보709494a는 out/codex/integration에 분리돼 있다.
+- 전체3 cfec213: **2169 통과·48 건너뜀·1 실패,135.65초**, 보안534·계약4. 실패는 total200007자 긴 토큰 요청이 새 pre-NFC200000 상한으로413인데 기존 검사에서422/long_token을 기대한 정책 경계 충돌이다. CPU/temp 실패가 아니다. 원SEC7 owner가 <=200000 payload의 기존422 의미와 >200000의413/NFC·pipeline0를 각각 실측하는 test-only 회귀를 수정한다.
+- 날짜/README fixed1a64 독립19 PASS, fonts/raw fixed243 독립74 및 fonts404×4·adjacent4 PASS, fixedcfec 최종 결합20focused PASS를 확인했다. 이 좁은 PASS는 다음 신규 출처 결합 반례를 포함하지 않는다.
+- **별도 핵심 F4 출처 결합 FAIL:** 정상 서명된 서로 다른 result/revision/assembled를 혼합하면 누락 카드·다른 수정안·거절 결정/채택 통합본 모순·같은 발췌ID의 다른 인용이 trusted로 남는4반례. 보고서 out/codex/results/ASTRA-provenance-coupling-audit-evidence.md. 원export 단일owner가 contracts 변경 없이 export-local validator를 추가하고6-sol이 반례/양성을 검증해야한다. 전체 검사 PASS를 이 결함 해결로 간주하지 않는다.
+- 두 수정이02:25까지 stable+독립PASS면같은finalcandidate 전체4 한 번→02:28결과→02:30main운영분리/docs를목표로한다. 미충족이면 main보류/WIP와원인 그대로 인계한다. 02:25 새 기능 동결·작업자 체크포인트,02:30최종Git/문서,02:35docs/inbox/커밋 인수 종료.
+- 8020/8099 프로세스와 root 제품 파일은 변경하지 않았다. 서버 기동 코드 HEAD는 미확인이다. 실제 OpenAI 호출0. Fast는 CLI 요청값이며 actual served tier 관측은null,주간사용량은root실측52%사용·48%잔여로모두소진이아니다.
+
 # 인계 문서
 
+## 후속 기능 인수 안내 — 2026-10-01
+
+최종 검사·교정 후보의 인수 위치, 재검증 명령, 기존 core 차단 사항과 통합 순서는 [FINALIZATION_HANDOFF.md](FINALIZATION_HANDOFF.md)에 정리했다. 이 브랜치의 PASS와 root 최신 core의 미해결 출처 결합/export 오류를 구분한다. 서비스 연결 전 최신 core 수정과 동일 결합 후보 검증이 필요하다.
+
+## 최종 검사·교정 후속 후보 — 2026-10-01 (이 채팅의 별도 개발 브랜치)
+
+- `codex/finalization-20261001`은 기존 UI/core `ff7e474`에서 분리한 후속 후보다. 기존 main/8020/8099와 다른 PM의 core 통합 작업은 변경하지 않았다.
+- 구현: 수정 확정 한 번 → 조립 → 의미 검사·실제 Z3/Pint/NetworkX 제한 검사 → 근거 게이트를 통과한 교정 1묶음 → 대상 도구 재검사 → 최종 초안/미해결/변경 이력 반환. 추가 응답 계약과 선택 `finalization` 의존성을 등록했다.
+- 검증: 통합 집중 68 PASS, 독립 다른 모델 집중 68 PASS, 실제 HTTP/브라우저 1 PASS. 전체 `scripts/verify.py`는 2175 PASS·56 skipped / 보안592·계약5 PASS (mock/offline, OpenAI 실제 호출0).
+- 한계: 실 LLM 품질·범용 실험 실행·최종 Word·보강 효과 평가는 미확인/후속. 기존 Word는 통합본, 최종 초안은 Markdown이다. main 병합·push·서비스 반영 없음.
+- 상세 보고서 `docs/reports/FINAL-PM.md`, 독립 결과 `FINAL-INDEPENDENT.md`·`FINAL-UI-INDEPENDENT.md`. 실제 제품 내용 `e121eef`, 독립 보고 커밋 `59bc248`; 이후 문서 커밋은 코드 변경이 아니다. 다른 PM이 기존 core/UI와 결합할 때 중복 변경을 보존하고 결합 검증한다.
+
 PM이 병합할 때마다 갱신한다. Claude 한도가 다 되면 이 문서를 Codex에 주고 PM 역할을 넘긴다.
+
+## ★ Codex 핵심 후보 — 2026-10-01, 전체 PASS·최종 독립 결함 수정 중
+
+- 최신 제품 검증 대상은 `894e15cefdbc308a286de631f332041c556d63ef`이다. 문서 전용 후속33f1ca8은 CFG-1 allowlist 소유권 예외만 기록했다. main은 아직17c8058이며 병합하지 않았다.
+- 포함: E3-L1s47acaba, E3-L1e4c47892, E4-L2f5ac22b5, E3-L2rf8932e0, TEST-1dc87885 및 선행 커밋 전체. 정책 비교 회귀8642d64와 계획서 해시 출처1ec7645도 포함한다. view1/export10 충돌에서 표시 정리·입력 품질·검색 상태·근거 게이트·서명·선택 수정본을 함께 보존했다.
+- 첫 전체 verify da5aba7은1980 통과·48 건너뜀·1 실패(125.35초)였다. 원 E3 빌더가 기존 분야 비교와 모든 결정적 반환값 비교를 유지하며 정책 기대값·길이 경계·9종 변이 검사를 보강했다(후보 대상200 통과). 이후 authority/근거 결합160 통과·1 건너뜀.
+- **두 번째 전체 verify894e15c:2014 통과·48 건너뜀(135.38초), 보안523·계약4·tests/verify 모두 PASS.** mock/offline이며 OpenAI 실제 호출0. 다른 whole/load 실행은 통합 담당 단일 큐가 통제한다.
+- 고정1ec7645 authority 독립6-sol 보고37bd88b는116 통과와 원 반례422, hash_verified/missing/unverified 분리, 정상 revise→assemble→11 ZIP을 확인했다. L1e 고정4c47892 독립186 통과·1 건너뜀/browser1/형식19, L2r 고정f8932e0 독립119/실제 signing119/보안454 범위를 유지한다.
+- **최종894 독립 판정은 CONDITIONAL이다.** 요청11충돌 중 README의 미서명 수정권고 generator/model이 인접 출처 경고 없이 보이는 제한 FAIL을 발견했다. policy23·authority13·display54는 독립 PASS. result HMAC 위조는 아니며 revision.json은unverified다. 원 L2f 단일 export owner가 README와 실제 남은 날짜500 3건을 수정 중이고 SEC7/raw owner가 fonts500 4건을 처리한다. 가짜 현재시각으로 바꾸지 않고 명시 거절한다. 안정HEAD·독립 반례/양성 PASS 뒤 새 변경용 세 번째 전체 verify1회를 실행한다.
+- root는 위 최종 관문 PASS를 조건으로 main Git 반영을 승인했다. 현재 기존 root 제품 디스크를 보존하고 승인 뒤만 root를동일17c8058 내용으로detach, `out/codex/main-approved`에서main을작업한다. 실제 서비스 기동 코드 HEAD는 미확인이다. Git 성과는8020 배포가 아니다. 8010/8020/8099 재시작·종료·핫패치·tag·push·공개는 수행하지 않았다.
+- UI 후보ff7e474는 실제 mock HTTP UI 빌더d230073과 core894 결합이다. 병합 충돌0, 빌더의87 통과·3 건너뜀·1 deselect/반응형1은병합전범위이며 독립 UI/A11Y/QA/UXC 확인 대기다. E5 metrics 후보는최신core→P6c0 의미충돌을원owner가해결후 L3c41을다음합친다. public 후보는core기준준비만했고 SEC7/PERF/L2g/OPS 최종독립판정과원owner변경을기다린다.
+- 개발6.1-sol/독립6-sol, 실제 effort·실행·대기와확대편성은 대시보드 현재registry를 따른다. 과제 편성이 모두 실행 중이라는 뜻은 아니다. 최종 마감은 02:35 KST다. 대표 최신 지시로 개발은 02:25까지 계속하고, 02:25 새 기능 동결·작업자 체크포인트, 02:30 최종 Git·문서 점검, 02:35 docs/inbox/커밋 인수 종료를 완료한다. 안정된 핵심 수정과 좁은 독립 PASS가 확인되면 전체 세 번째 검사를 시작하며 뒤늦은 변경은 별도 후보로 분리한다.
+## ★ 07:00 완성 기준과 시간표 (대표 확정 03:3x, WBS: out/dashboard/plan_wbs.json) — 가장 최신
+1. main에 1·2·3단계 전체 흐름(입력 → 분석 → 재탄생 → 수정 확정·검증 → 최종 초안) 병합, 전체 verify + FIN-E2E 통과
+2. 실제 모델(gpt-6.1-sol)로 시연 샘플 2~3편 전체 흐름 성공
+3. 시연: 최종 형태 목업(8172) + 실제 서비스(8020) + 정적 판 폴백 + 녹화 러너
+4. 발표자료 최종 형태 → 07:00 동결 → 07:30 녹화 → 09:00 제출
+5. 공개 터널은 선택(PUB-A·B·C, SEC-8 필수 항목 통과 시)
+| 시각 | 할 일 |
+|---|---|
+| 03:00~04:15 | B1(서명 결합)·B2B3(dropped_reasons 500, baseline) |
+| 04:00~04:30 | VER-CORE·VER-FIN 판정 → **core-final(f54ef1d) + finalization(b629789) main 병합**(PM 예행: 2344 passed, 0 failed) |
+| ~05:15 | FIN-ENGINE·FIN-TOOLS·FIN-UI·WAIT-UX 완성 |
+| 04:30~06:00 | B1·B2B3 → INTEG-2 → FIN-* → WAIT-UX·E4-L1g 병합, 전체 verify |
+| 06:00 | 8020 재기동(main 최신, `OPENBLAS_NUM_THREADS=1 NEUMANN_LIVE_LLM_OK=1 NEUMANN_LLM_PROVIDER=openai NEUMANN_LLM_MODEL=gpt-6.1-sol`) |
+| 06:00~06:30 | 라이브 시연 샘플 2~3편 전체 흐름 |
+| 06:30~06:50 | 샘플 선별·사전 계산본·정적 판 |
+| 06:45~07:00 | 동결(REL-FIN 시트) |
+
+## ★ Codex PM 작업 중 (2026-09-30 23:5x KST, 대표 즉시 착수 지시)
+
+- 개발 주력 `gpt-6.1-sol/high`, 독립 검증 `gpt-6-sol/high`; PM은 배정·검증 큐·통합·보고를 맡는다. 제품은 `gpt-6.1-sol`, 개발·검증은 mock.
+- 마감은 **10/01 02:40 KST**. 02:25부터 정리, 02:30까지 WIP 포함 커밋, 02:35부터 프로세스·인계 상태 점검. Claude 복귀 예약 문서는 02:45이므로 그전에 인계한다.
+- E3-L2r: F1 `6bf5f3f`, F2 `01fb7d4`, F3 `884e02f`, F4 `43415a3`; 모두 아직 main 미병합. 최신 자체 대상 검사 101 통과, F5~F8 보강 중. 실제 signing 모듈 연결 후 독립 검증이 필요하다.
+- E3-L1e: `53e30c2` 인수 정리 후 독립 검증에서 view·내보내기 우회 반례 발견. 같은 빌더가 최종 게이트를 보강 중. 보고서 `docs/reports/E3-L1e.codex.verify.md`.
+- E3-L1s: 독립 대상 144 통과. 전체 verify는 시간 단언 1건 실패(1342 passed, 46 skipped), main view.py 병합 충돌 1곳. **병합 보류**, TEST-1 해결 필요. 보고서 `docs/reports/E3-L1s.codex.verify.md`.
+- 대시보드 담당이 기존 Claude 이력을 보존하며 attention·usage·inbox·codex_progress를 관리한다. 현재 실제 실행 수만 표시하고 미검증을 PASS로 표시하지 않는다.
+- 독립 CLI의 사용자 계정 ChatGPT 로그인 확인 완료. 병렬 실행 관리자가 기존 worktree별 작업과 고정 HEAD 검증을 배정한다. 전체 verify·부하 시험은 동시에 하나만.
+- 8020·8099 유지, 공개 터널·실제 API는 기존 게이트와 승인 범위를 그대로 따른다. E1-L1b 보류 및 키트 데모 반입 판단은 대표 대기다.
+
+## ★ PM 인수 완료 (2026-10-01 00:5x, 대표 지시 "인수인계 준비·작업 마무리") — 이 절이 최신
+
+- **main HEAD는 `git log -1 main`** (이 커밋 직후, push됨). 되받을 때는 이 절 → 아래 "Codex 인수 시 첫 30분" → 대시보드 메시지함 "인수 종료" 요약 순서로 읽는다.
+- **이번 창에서 병합한 것(20:00 이후):** E3-L1w(v1 파이프라인), E1-L1c(코드), E4-L1e, E4-L1f, E6-docs+README, E3-L1x, SEC-3(실제 호출 잠금+astra 금지), SEC-4(ReDoS), E4-L2e, SEC-5, E4-L2d(+E4-L2c, 패치 2개), E3-L1y, E5-L2c(판정 경로+블라인드 v3), DISP-1, E3-L1z, SEC-2r DO_NOT_SERVE 가드(cherry-pick+실효 경로 보강), E5-L3b(4354284), SEC-6, 테스트 안정화 2건, 리포트 카드 재생성.
+- **결과:** 백테스트 n=5 판정 완료 — 주 결과 블라인드 v3 `docs/reports/E5-L2b_n5_results.md`(Neumann A 3/4·hit@3 0.2, 기준선 A 4/15·hit@3 0.6, 통계적 결론 없음).
+- **검증 대기(PASS 나면 병합):** E3-L1s(47acaba 재검증)·E3-L1e(b64abeb 조건 반영) = v2 관문 → E4-L2f(서명, DISP-1 충돌 해결) → E4-L3m(8803fdd) → E4-L1g(샘플 갤러리) → E3-L2r·E4-L4r. 공개 전: PERF-pk, E4-L2g, OPS-tun, SEC-7. 그 밖: E4-L2h, E3-L1z2, TEST-1, E2-L5, E5-L3b 후속(5c84c88·bb3c129).
+- **PM 과제 20개:** 인수 신호로 WIP 커밋 + 보고서 "남은 일" 5줄 뒤 정지. 목록·산출물은 QUEUE "PM 세션 과제 20개" 표. 브랜치는 `git log --all --oneline --grep '^\[<ID>\]'`. 모두 **검증 전**이며 병합하지 않았다.
+- **막힌 것·대표 대기:** 라이브 묶음(v1 확인·원문 복원 7편·E2-L5 분야 6편)은 E3-L1s·E3-L1e 병합 뒤. E1-L1b는 병합 보류(대표 결정 대기). 대표 블라인드 판정(`data/eval/judge_n5v3/human`, JUDGE-H 양식은 검증 뒤). 터널은 공개 전 필수 묶음 뒤.
+- **되받기:** 02:39 초기화 뒤 구축 세션이 되받는다(예약). PM 세션도 이 절과 메시지함부터 읽는다.
+
+### PM 과제 20개 — 인수 시점 브랜치·상태(모두 WIP, 검증 전, 병합 안 함)
+
+| ID | 브랜치 · 머리 | 상태 · 핵심 |
+|---|---|---|
+| LIC-1 | task/LIC-1 · 287a8b6 | LICENSES.md 초안. 위험: 심사평 인용 라이선스 미확인(OpenReview 약관), DISAPERE 비상업, **키트 데모 계획서 3편 반입**(decisions 00:5x) |
+| DOC-1 | task/DOC-1 · ccfbedf | README·ARCHITECTURE·API 개정(RUNNING 미편집). main 기준 사실로 정정(관문 40자, HWPX 415, 화면 내보내기 준비 중) |
+| PERF-2 | worktree-agent-acb6309df7b7878ad · 410109e | 지연 시뮬레이터(라이브 보정). 추정: EXTRACT_PARALLEL 32면 추출 1파, 동시 6명이면 상한 32 대기로 규칙 강등 위험 |
+| OBS-1 | task/OBS-1 · 4c059ef | ops_report.py. **토큰 사용량이 manifest에 없음** → 비용 추정 불가(E3 manifest.llm_usage 제안) |
+| REL-1 | worktree-agent-a41b74d979c55aa30 · 88bba3c | 동결 시트 작동(--skip-tests). 테스트·RELEASE.md 미완 |
+| JUDGE-H | worktree-agent-a99b4bb99789be31d · 4234fb3 | 대표 판정 HTML 양식 완성(테스트 11). 생성: `python -m eval.human_form --judge-dir judge_n5v3` |
+| E5-L1c | worktree-agent-aefb52ad3e6f89337 · a3bca7a | sol 재측정 준비(모델별 캐시, dry-run). gold만 약 $1.1~1.2, 명령은 보고서 |
+| FUZZ-1 | worktree-agent-a6d1e116df0df0aa9 · ee086fc | 보고서만. 500 결함 4건(B1 /fonts Windows 금지 문자, B2~B4 package 입력) |
+| CFG-1 | worktree-agent-a249a205b33b8b10d · 86e941f | .env 읽기 필드 17개·env_value(). **주의: main .env의 튜닝 키가 병합 뒤 적용됨** |
+| SYSTEM-CARD | task/SYSTEM-CARD · 82939c7 | 초안. 발견: 분야 수준 카드 화면 라벨 미구현(E3-L1s), P3 측정값 있음 |
+| PROMPT-AUDIT | worktree-agent-a1c0f2f573a9e1b93 · dd7f9fb | 호출별 표·우선 10·탐침 43 |
+| E5-L3c | worktree-agent-a8e282159ab7af9ab · c5ec724 | generator 분리 코드. 새 테스트 미실행 |
+| QA-1 | worktree-agent-acc37aea9a4ea9854 · 62138a4 | 결함 12(높음 3: 화면 내보내기 꺼짐→E4-L2f, HWPX 415→E4-L2h, 300자 없음→E3-L1s). **녹화 전 예열 필수(첫 분석 166초)**, mock에서 "OpenAI 전송" 안내 부정확 |
+| PRIV-1 | task/PRIV-1 · 87f101c | **높음: 검색어 캐시가 계획서 요약을 만료 없이 디스크에**(끄는 설정 없음). 전화번호 가림 하이픈만. 맨 uvicorn이면 실제 IP 로그 → `serve.py --public` 필수 |
+| E2E-2 | task/E2E-2 · 75d7a00 | 12개 중 9통과·1실패(연결 끊김 뒤 합류 미확인)·2건너뜀. 설계 공백: 300자 거절도 job 생성(202) |
+| SEC-8 | worktree-agent-a7bc54b0191dce7c1 · 67b8117 | **판정 조건부.** 공개 전 필수 2: SEC8-01 줄 수 폭탄으로 LLM 프롬프트 ×592 증폭(지출 한도 없음) → 줄 상한, SEC8-05 `--public` 사전 점검이 LIVE_LLM_OK를 안 봐 공개 서버가 통째로 mock이 될 수 있음. 중간 3(캐시 적중 작업으로 저장소 채우기, 내보내기 CPU 증폭, zip 선언 크기) |
+| MCP-demo | task/MCP-demo · f80d6a7 | 3개 도구 시연(mock·실색인), 테스트 8. premortem 도구는 없음(다음 단계) |
+| DATA-CARD | worktree-agent-ab5683d4620ff6a54 · 5edd89d | 데이터 카드 완성(1,128편·리뷰 5,366·문장 133,769·거절 60.28%, 리뷰 없는 논문 60편) |
+| UXC-1 · A11Y-1 | (TaskStop으로 정지됨) | **정지됨 — worktree에 미커밋 변경 있을 수 있음(git status 확인)** |
+
+### 구축 세션 판정(인수 직전, 전체는 out/dashboard/handoff_agents.md E절)
+- **E3-L2r FAIL(68385cd): 422 요청이 관문 자리를 반납하지 않아 한 IP 6건이면 전체 /premortem 504** 등 — 재탄생 병합 전 필수, **Codex 1순위**.
+- PERF-pk PASS-조건부(보고서 docs/reports/PERF-pk.verify.md): 한글+결합 문자 NFC 제곱 → 정규화 전 길이 관문, 줄 상한 3,000~5,000.
+- E4-L2g·OPS-tun PASS-조건부(수정 필요), E6-L3d ✅ 병합(이 커밋 직전). WIP: SEC-7 554d2b9, TEST-1 2bd6704, E3-L1z2 0f4e93e, E5-L3b 1a1da0e, E4-L1g a97a165, E5-L2f 0a720b4.
+- 정적 판 교체 명령(E6-L3d): `precompute_demo.py --from-results <E5 worktree>/docs/reports/E5-L1e2e_live --run-commit a9f28e1 --allow-partial` → `build_static_site.py`(공유 data/precomputed·data/site를 바꾸므로 8010·8020 영향 확인 뒤).
+
+## ★ Codex 인수 시 첫 30분 (00:4x 준비, 사용량 92%에 구축 세션이 인수 신호)
+
+실행 방법·첫 메시지·체크리스트: `out/dashboard/codex_kickoff.md`(gitignore). 진행 중 작업 표: `out/dashboard/handoff_agents.md`. 대시보드 http://127.0.0.1:8099 메시지함을 먼저 읽는다. Codex는 개발용(gpt-6-astra 빌드 → gpt-6-sol 검증, 구독)이고 **제품 API는 gpt-6.1-sol만**(astra 금지, 코드가 막음).
+
+1. **상태 파악(5분):** `git log --oneline -15 main`, `docs/tasks/QUEUE.md` 맨 위 "우선 병합" 줄과 "PM 세션 과제 20개" 표, `docs/decisions.md` 끝 20줄.
+2. **병합 대기열(순서 고정):**
+   - v2 관문: **E3-L1s(47acaba 재검증) → E3-L1e(b64abeb 조건 반영분)**. 둘이 병합되면 구축 세션(또는 대표)에 알리고 8020 재기동 → 라이브 묶음.
+   - UI: E4-L2f → E4-L3m → E4-L1g → E3-L2r·E4-L4r(재탄생). 뒤에 병합하는 쪽이 main을 먼저 병합해 index.html 충돌을 푼다.
+   - 공개 전 필수: PERF-pk(models 패치는 PM이 적용+decisions) → E4-L2g(캐시 키) → OPS-tun 재작업 → SEC-7 → SEC-8 보고서 반영 → 터널.
+   - 그 밖: E4-L2h, E3-L1z2, TEST-1, E2-L5, E5-L3b 후속(5c84c88·bb3c129), PM 과제들.
+   - 병합 조건: 다른 모델의 검증 PASS(또는 PASS-조건부의 조건 반영 확인) + `NEUMANN_LLM_PROVIDER=mock` verify.py 통과. 병합 뒤 push, HANDOFF·QUEUE 한 줄.
+3. **라이브 묶음 실행 조건:** E3-L1s·E3-L1e 병합 뒤에만. v1 확인 1회, 원문 복원 7편, E2-L5 분야 6편(결합·도킹 override 포함). 모두 대표 승인 범위. 실행은 8020 경유 또는 `NEUMANN_LIVE_LLM_OK=1`이 명시된 명령만. 재실행은 대표 승인.
+4. **금지:** `.env` 열기·출력, 환경변수 전체 출력, `git add -A`, `--no-verify`, `git stash`(worktree 공유), force push, astra 제품 호출(`NEUMANN_ALLOW_ASTRA`), 터널을 SEC-2r·SEC-7·PERF-pk 병합 전 공개, 키트 원문 반입, 리뷰어 실명, 사전 등록(백테스트 표본·판정) 변경, 07:00 동결 뒤 숫자 변경(REL-1 동결 시트 기준).
+5. **되받기:** 02:39 초기화 뒤 Claude가 되받는다. Codex는 대시보드 메시지함에 **"인수 종료" 요약**(병합한 것, 진행 중, 막힌 것, 대표 대기)을 남긴다.
 
 ## ★ Codex 즉시 인수 (취소 — Claude 계속, 대표 21:3x) · 아래 표는 21:2x 상태 기록
 
@@ -63,12 +178,16 @@ PM이 병합할 때마다 갱신한다. Claude 한도가 다 되면 이 문서�
 - **대표 지시: astra 금지.** 제품·평가 모두 `gpt-6.1-sol`. SEC-3(task/SEC-3, 검증 중)이 병합되면
   - 실제 OpenAI 호출은 프로세스 환경변수 `NEUMANN_LIVE_LLM_OK=1`이 있을 때만 된다(.env에서는 읽지 않음). 없으면 mock으로 강등
   - 모델명에 astra가 있으면 `NEUMANN_ALLOW_ASTRA=1` 없이는 sol로 바뀐다
-  - 실서버 기동: `NEUMANN_LIVE_LLM_OK=1 NEUMANN_LLM_PROVIDER=openai NEUMANN_LLM_MODEL=gpt-6.1-sol python -m uvicorn neumann.api.main:app --host 127.0.0.1 --port 8020` → `/health`의 `llm.effective=openai`, `llm.model=gpt-6.1-sol` 확인
+  - 실서버 기동: `OPENBLAS_NUM_THREADS=1 NEUMANN_LIVE_LLM_OK=1 NEUMANN_LLM_PROVIDER=openai NEUMANN_LLM_MODEL=gpt-6.1-sol python -m uvicorn neumann.api.main:app --host 127.0.0.1 --port 8020`(공개는 `scripts/serve.py --public` 또는 `scripts\serve_public.cmd`) → `/health`의 `llm.effective=openai`, `llm.model=gpt-6.1-sol` 확인
 - **이미 떠 있는 Claude·Codex 앱 프로세스는 옛 사용자 환경변수(provider=openai, model=gpt-6-astra)를 물려받았다.** 21:40 인수 때 앱을 재시작하면 사라진다. 그 전까지 모든 명령에 `NEUMANN_LLM_PROVIDER=mock`을 명시한다
 - **터널 공개 금지**: E4-L2c(재작업 재검증 중) → E4-L2d(재작업 재검증 중) → SEC-2 → 공개. 공개 기동 때 `NEUMANN_MAX_CONCURRENT=6`(E4-L2e 부하 시험), 같은 와이파이 심사위원 대비(기본값이면 5명 중 2명 거절, 아래 값이면 10명 접수) `NEUMANN_JOB_PER_IP=10 NEUMANN_JOB_RATE_PER_MIN=30 NEUMANN_RATE_PER_MIN=30 NEUMANN_JOB_POLL_PER_MIN=1200`, `NEUMANN_DAILY_BUDGET=0`, `NEUMANN_REQUEST_TIMEOUT_S=90`
 - 공개 전 필수: SEC-4(이메일 정규식 ReDoS 선형화, 검증 중), SEC-5(검색 상태 스레드별·OpenAI 동시 요청 상한, 빌드 중), E4-L2d(L2c 포함), SEC-2
 - verify는 **venv 파이썬**으로: `NEUMANN_LLM_PROVIDER=mock PYTHONPATH="src;." C:/Users/User/.venvs/neumann/Scripts/python.exe scripts/verify.py`
 - worktree에서 `git stash` 금지(공유돼서 과제 변경이 섞인다)
+
+## 대시보드 메시지함
+
+- 대시보드(http://127.0.0.1:8099)에 메시지함(대표 ↔ Claude·Codex·PM, `inbox.jsonl`)과 확인 항목 체크가 있다. **Codex(또는 인계받은 에이전트)는 메시지함을 읽고 확인·처리·완료로 답한다.** 대시보드 서버는 감시 스크립트가 죽으면 다시 띄우고 로그인 때 자동 시작한다.
 
 ## 도구·경로
 
@@ -80,7 +199,7 @@ PM이 병합할 때마다 갱신한다. Claude 한도가 다 되면 이 문서�
 
 ## 대표 지시 요약(누적)
 
-- 제품: 연구 사전기획 단계용 에이전트 서비스. astra 주력, 규칙은 비상 경로
+- 제품: Neumann의 에이전트는 불완전한 연구계획을, 불완전한 거절 기록들을 모아 설명해 주고, 완전한 기획으로 다시 재탄생시켜 주는 에이전트다(대표 정의). 제품 LLM은 gpt-6.1-sol(astra 금지), 규칙은 비상 경로. 오늘 목표는 "재탄생"까지(v2).
 - 프로토타입 주소 = 로컬 라이브 서버를 터널로 공개(토큰 없이, 안정성 장치로 버틴다). 정적 판은 폴백
 - 입력 화면에 AI for Science 템플릿 선택기와 "AI 활용 과학 연구 계획서 전용" 안내. 범위 밖 입력은 적합성 판정으로 막는다
 - 발표자료에 프로토타입 주소와 시연 영상(주최측 요구)

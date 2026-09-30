@@ -12,6 +12,9 @@
 
 정직성 규칙(AGENTS.md):
 - 근거가 하나도 연결되지 않는 카드와 예상 심사평 문장은 화면에 내보내지 않고 ``_status``에 개수를 남긴다.
+- 체크리스트 항목도 같다(E3-L1e): 근거 번호로 풀리지 않는 항목은 내보내지 않는다. 앞 단계(체크리스트 생성·2차 검증)의
+  근거 게이트가 뺀 수와 합쳐 ``checklist_audit``(``note`` = "근거 없는 항목 k개 제외")에, 심사평은 ``review.audit``의
+  ``no_evidence``·``note``에 싣는다.
 - 인용문은 결과의 ``text``를 그대로 쓴다. 이 모듈은 문장을 만들지 않는다.
 - 생성 방식(``generator``)과 강등 단계는 그대로 화면까지 전달한다.
 """
@@ -31,9 +34,18 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+from neumann.analyze.gate import EvidenceLinkIndex, review_evidence_problem
+from neumann.models import redact_pii
+
 SCHEMA_PATH = Path(__file__).resolve().parents[3] / "contracts" / "ui_view.schema.json"
 
 SAMPLE_LABEL = "분석 파이프라인 미연결(샘플 데이터)"
+# E3-L1e: "근거 없는 항목 k개 제외"로 세는 폐기 사유(= analyze.gate.NO_EVIDENCE_FAMILY + 화면에서 뺀 것).
+# 화면(index.html)은 이 목록으로 삭제 문장을 "근거가 없어 제외한 문장"과 "검증에서 제외한 문장"으로 나눈다.
+NO_EVIDENCE_REASON_CODES: tuple[str, ...] = (
+    "missing_citation", "unknown_excerpt_id", "unknown_card_id", "excerpt_card_mismatch", "malformed",
+    "no_evidence_in_view",
+)
 ERROR_LABEL = "분석 실패"
 
 # 택소노미 v1 최상위 유형(부록/설계/03_risk_taxonomy.md). (이름, 지도 열 이름)
@@ -51,6 +63,41 @@ TAXONOMY: dict[str, tuple[str, str]] = {
 }
 
 GENERATORS = {"astra", "rule", "mock", "sample"}
+# 생성 방식 표시 이름(DISP-1, decisions 2026-09-30 21:5x). 계약 값 ``astra``는 "제품 LLM"이라는 이름일 뿐 모델이 아니다.
+# 저장 값(``generator: "astra"``)은 그대로 두고, 사람이 보는 화면·ZIP 문서·리포트 카드만 이 함수를 거친다
+# (``neumann.api.export``·``eval.report_card``도 여기서 가져다 쓴다).
+# astra는 여기 없다: 모델명을 붙여 display_generator가 "LLM (모델명)"으로 만든다.
+GENERATOR_DISPLAY = {"rule": "비상 규칙", "mock": "모의(mock)", "sample": "샘플 · 분석 결과 아님"}
+UNKNOWN_GENERATOR_LABEL = "생성 방식 미표기"
+# 계약 이름으로 쓴 astra만 잡는다. 모델명 안의 astra(gpt-6-astra 등)는 실제 모델 이름이라 건드리지 않는다.
+# 바로 뒤에 붙은 조사도 잡아 받침에 맞게 바꾼다(astra가 → LLM이, astra는 → LLM은).
+_CONTRACT_ASTRA = re.compile(r"(?<![A-Za-z0-9_.\-])astra(?![A-Za-z0-9_\-])([가는를와로라나랑])?", re.IGNORECASE)
+_JOSA_AFTER_LLM = {"가": "이", "는": "은", "를": "을", "와": "과", "로": "으로", "라": "이라", "나": "이나", "랑": "이랑"}
+
+
+def display_generator(generator: Any, model: Any = None) -> str:
+    """생성 방식(계약 값) → 사람이 보는 이름. ``astra`` → "LLM (모델명)"(모델명이 없으면 "LLM").
+
+    ``rule`` → "비상 규칙", ``mock`` → "모의(mock)". 규칙·mock에는 모델명을 붙이지 않는다(LLM 결과로 보이지 않게).
+    모르는 값은 추정하지 않고 그 값을 보인다. 모델명은 고치지 않는다(실제 모델이 astra 계열이면 그 이름이 보인다).
+    """
+    g = _text(generator).strip()
+    key = g.lower()
+    if key == "astra":
+        m = _text(model).strip()
+        return f"LLM ({m})" if m else "LLM"
+    if key in GENERATOR_DISPLAY:
+        return GENERATOR_DISPLAY[key]
+    if not key or key == "unknown":
+        return UNKNOWN_GENERATOR_LABEL
+    return display_text(g)
+
+
+def display_text(text: Any) -> str:
+    """사람이 보는 자유 문구(알림·단계 사유)에서 계약 이름 ``astra``만 "LLM"으로 바꾼다. 인용·계획서 줄에는 쓰지 않는다."""
+    return _CONTRACT_ASTRA.sub(lambda m: "LLM" + _JOSA_AFTER_LLM.get(m.group(1) or "", ""), _text(text))
+
+
 # DecisionOutcome(models.py) → 화면 라벨. 원문 문자열(outcome_raw)보다 먼저 본다.
 OUTCOME_LABEL = {
     "accept_oral": "Oral", "accept_spotlight": "Spotlight", "accept_poster": "Poster", "accept": "채택",
@@ -372,6 +419,7 @@ class _Ctx:
         self.ev_line: dict[str, int] = {}  # 발췌 id → 계획서 줄(명시 필드가 없으면 인용한 카드의 첫 줄)
         self.section_errors: dict[str, str] = {}
         self.dropped: dict[str, int] = {}
+        self.card_ev: dict[str, set[str]] = {}  # card_id → 화면에 나가는 그 카드의 근거 발췌 id(E3-L1e 체크리스트 게이트)
 
     def drop(self, what: str, n: int = 1) -> None:
         self.dropped[what] = self.dropped.get(what, 0) + n
@@ -662,6 +710,7 @@ def _build_cards(res: Mapping[str, Any], works: list[dict[str, Any]], ctx: _Ctx)
         cid = _text(_get(c, "card_id", "id"))
         if cid:
             ctx.card_rank.setdefault(cid, len(cards) + 1)
+            ctx.card_ev.setdefault(cid, set()).update(eids)
         cards.append({
             "rank": len(cards) + 1,
             "fam": fam,
@@ -675,6 +724,7 @@ def _build_cards(res: Mapping[str, Any], works: list[dict[str, Any]], ctx: _Ctx)
             "ev": ev_nums,
             "acts": acts,
             "gen": gen,
+            "genl": display_generator(gen, _get(c, "model")),
             "id": _text(_get(c, "card_id", "id")),
             "_works": sorted(card_works),
         })
@@ -753,10 +803,11 @@ def _build_ev(ctx: _Ctx, card_fam_of: dict[str, int]) -> dict[str, dict[str, Any
 def _build_review(res: Mapping[str, Any], ctx: _Ctx, has_works: bool) -> dict[str, Any]:
     """예상 심사평. 화면에서 근거 번호로 풀리지 않는 문장은 내보내지 않는다.
 
-    ``"map"`` 인용(평가이력 지도 참조)은 유사 연구 목록이 있을 때만 근거로 인정한다.
+    모든 발췌·카드 id를 공용 근거 검사로 확인한다. 일부만 유효한 문장은 통째로 제외한다.
     """
     er = _as_dict(_get(res, "expected_review", "review"))
     out: dict[str, Any] = {}
+    links = EvidenceLinkIndex(set(ctx.evidence), ctx.card_ev)
     kept = dropped_n = 0
     dropped: list[list[str]] = []
     for key, aliases in (("strength", ("strength", "strengths")), ("weakness", ("weakness", "weaknesses")),
@@ -765,26 +816,27 @@ def _build_review(res: Mapping[str, Any], ctx: _Ctx, has_works: bool) -> dict[st
         for raw in _list(_get(er, *aliases)):
             s = _as_dict(raw) if not isinstance(raw, str) else {"text": raw}
             t = _text(_get(s, "text", "t", "sentence"))
+            reason, _detail = review_evidence_problem(s, links)
+            if not t or reason is not None:
+                dropped_n += 1
+                dropped.append([reason or "malformed", redact_pii(t)[:200]])
+                continue
             cites: list[int | str] = []
             for ref in _list(_get(s, "evidence", "excerpt_ids", "c", "citations", "cites")):
-                if ref == "map":
-                    if has_works and "map" not in cites:
-                        cites.append("map")
-                    continue
                 eid = _text(ref) if not isinstance(ref, Mapping) else _text(_get(ref, "excerpt_id", "id"))
                 n = _number_ev(eid, ctx) if eid else None
                 if n is not None and n not in cites:
                     cites.append(n)
             if not t or not cites:
                 dropped_n += 1
-                dropped.append(["no_evidence_in_view", t[:200]])
+                dropped.append(["no_evidence_in_view", redact_pii(t)[:200]])
                 continue
             kept += 1
             sent: dict[str, Any] = {"t": t, "c": cites}
             lns = [n for v in _list(_get(s, "plan_lines", "lines", "ln")) if (n := _int(v)) in ctx.plan_line_ns]
             if lns:
                 sent["ln"] = list(dict.fromkeys(lns))
-            ranks = [ctx.card_rank[cid] for cid in (_text(x) for x in _list(s.get("cards"))) if cid in ctx.card_rank]
+            ranks = [ctx.card_rank[cid] for cid in (_text(x) for x in _list(_get(s, "cards", "card_ids"))) if cid in ctx.card_rank]
             if ranks:
                 sent["cards"] = list(dict.fromkeys(ranks))
             sents.append(sent)
@@ -803,6 +855,12 @@ def _build_review(res: Mapping[str, Any], ctx: _Ctx, has_works: bool) -> dict[st
         ctx.drop("review_sentences_without_evidence", dropped_n)
     # pass = 화면에 실제로 나가는 문장 수. 게이트가 뺀 것과 화면이 뺀 것이 모두 drop에 들어간다.
     out["audit"] = {"gen": gen, "pass": kept, "drop": max(0, gen - kept), "dropped": dropped}
+    # E3-L1e: 근거를 확인할 수 없어 뺀 문장 수 = 화면에 싣는 삭제 목록 중 NO_EVIDENCE_REASON_CODES 사유의 수
+    # (화면의 "근거가 없어 제외한 문장 · k"와 "근거 없는 항목 k개 제외"가 같은 수가 되게 목록에서 센다)
+    no_ev = sum(1 for d in dropped if d[0] in NO_EVIDENCE_REASON_CODES)
+    out["audit"]["no_evidence"] = no_ev
+    out["audit"]["no_evidence_reasons"] = list(NO_EVIDENCE_REASON_CODES)
+    out["audit"]["note"] = excluded_note(no_ev)
     gate = _text(audit.get("gate"))
     if gate:
         out["audit"]["gate"] = gate
@@ -814,6 +872,10 @@ def _build_review(res: Mapping[str, Any], ctx: _Ctx, has_works: bool) -> dict[st
         v = _text(_get(er, *aliases))
         if v:
             out[key] = v[:300]
+    if out.get("gen"):
+        out["genl"] = display_generator(out["gen"], out.get("model"))
+    if out.get("why"):
+        out["why"] = display_text(out["why"])
     return out
 
 
@@ -838,19 +900,44 @@ def _build_checklist(res: Mapping[str, Any], ctx: _Ctx | None = None) -> list[di
         if ctx is not None:
             lns = [n for v in _list(_get(it, "plan_lines", "lines")) if (n := _int(v)) in ctx.plan_line_ns]
             item["ln"] = list(dict.fromkeys(lns))
-            evs = [ctx.ev_num[e] for e in (_text(x) for x in _list(_get(it, "evidence", "evidence_ids")))
-                   if e in ctx.ev_num]
-            item["ev"] = list(dict.fromkeys(evs))
-            rank = ctx.card_rank.get(_text(it.get("card_id")))
-            if rank is not None:
-                item["card"] = rank
+            # E3-L1e 화면 게이트(생성 직후·2차 검증과 같은 검사): 근거 1개 이상, 연결 카드가 화면에 있고,
+            # 근거가 전부 그 카드의 근거이며 근거 번호로 풀린다. 하나라도 어기면 항목을 내보내지 않는다.
+            cid = _text(it.get("card_id"))
+            ids = [_text(x) for x in _list(_get(it, "evidence", "evidence_ids"))]
+            pool = ctx.card_ev.get(cid) if cid else None
+            if not ids or pool is None or any(e not in pool or e not in ctx.ev_num for e in ids):
+                ctx.drop("checklist_items_without_evidence")
+                continue
+            item["ev"] = list(dict.fromkeys(ctx.ev_num[e] for e in ids))
+            item["card"] = ctx.card_rank[cid]
         for key, aliases in (("v", ("verify",)), ("gen", ("generator",)), ("why", ("fallback_reason",)),
                              ("cv", ("card_verdict",))):
             v = _text(_get(it, *aliases))
             if v:
                 item[key] = v[:300]
+        if item.get("gen"):
+            item["genl"] = display_generator(item["gen"], _get(it, "model"))
         out.append(item)
     return out
+
+
+def excluded_note(n: int) -> str:
+    """근거 게이트 제외 수의 화면 문구(E3-L1e). 0이면 빈 문자열(화면이 그리지 않는다)."""
+    return f"근거 없는 항목 {n}개 제외" if n else ""
+
+
+def _checklist_audit(res: Mapping[str, Any], shown: int, ctx: _Ctx) -> dict[str, Any]:
+    """체크리스트 근거 게이트 제외 수(E3-L1e): 생성 직후 + 2차 검증 + 화면. 수만 싣고 뺀 문구는 싣지 않는다.
+    화면에 남은 항목이 없으면 note는 "근거 있는 항목이 없어 모두 제외했습니다(k개)"다(절을 숨기지 않는다)."""
+    ver = _as_dict(res.get("verification"))
+    at_build = _int(_as_dict(ver.get("checklist_evidence")).get("dropped")) or 0
+    at_validate = _int(_as_dict(_as_dict(ver.get("semantic")).get("counts")).get("actions_no_evidence")) or 0
+    at_view = ctx.dropped.get("checklist_items_without_evidence", 0)
+    total = max(0, at_build) + max(0, at_validate) + at_view
+    return {"shown": shown, "excluded": total,
+            "by_stage": {"checklist": max(0, at_build), "semantic_validate": max(0, at_validate), "view": at_view},
+            "note": (f"근거 있는 항목이 없어 모두 제외했습니다({total}개)" if total and not shown
+                     else excluded_note(total))}
 
 
 def _build_pipeline(res: Mapping[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]], float | None]:
@@ -863,7 +950,7 @@ def _build_pipeline(res: Mapping[str, Any]) -> tuple[list[dict[str, Any]], list[
         name = _text(_get(st, "name", "stage")) or "stage"
         phase = (_text(_get(st, "phase")) or name).upper()
         status = _text(_get(st, "status", "state")).lower() or "ok"
-        reason = _text(_get(st, "reason", "detail"))
+        reason = display_text(_get(st, "reason", "detail"))
         impl = _text(_get(st, "impl"))
         el = _num(st.get("elapsed_s"))
         if el is not None and el >= 0:
@@ -898,6 +985,22 @@ def _fill_work_flags(works: list[dict[str, Any]], cards: list[dict[str, Any]], c
         w["f"] = [1 if w["id"] in fw else 0 for fw in fam_works]
 
 
+def _generator_labels(view: dict[str, Any], gens: Mapping[str, int]) -> dict[str, str]:
+    """생성 방식별 표시 이름(DISP-1). 모델명이 없는 LLM 카드·심사평·체크리스트는 결과 manifest의 모델로 채운다.
+
+    계약 값(``gen``)은 그대로 두고 ``genl``만 채운다. 규칙·mock에는 모델을 붙이지 않는다.
+    """
+    model = (view.get("kpi") or {}).get("model_id")
+    for d in [*view.get("cards", []), view.get("review", {}), *view.get("checklist", [])]:
+        if d.get("gen") == "astra" and d.get("genl") == "LLM" and model:
+            d["genl"] = display_generator("astra", model)
+    labels: dict[str, str] = {}
+    for g in gens:
+        names = list(dict.fromkeys(cd["genl"] for cd in view.get("cards", []) if cd.get("gen") == g and cd.get("genl")))
+        labels[g] = " · ".join(names) if names else display_generator(g, model if g == "astra" else None)
+    return labels
+
+
 # ───────────────────────── 공개 함수 ─────────────────────────
 
 
@@ -906,8 +1009,11 @@ def empty_view() -> dict[str, Any]:
         "plan_id": "", "session_id": "",
         "plan": {"file": "", "size": "0 B", "meta": "계획서 줄 없음", "title": "", "lines": []},
         "pipeline": [], "works": [], "fams": [], "corpus": [], "ev": {}, "cards": [], "others": [],
-        "review": {"strength": [], "weakness": [], "request": [], "audit": {"gen": 0, "pass": 0, "drop": 0, "dropped": []}},
+        "review": {"strength": [], "weakness": [], "request": [], "audit": {"gen": 0, "pass": 0, "drop": 0, "dropped": [],
+                   "no_evidence": 0, "no_evidence_reasons": list(NO_EVIDENCE_REASON_CODES), "note": ""}},
         "checklist": [],
+        "checklist_audit": {"shown": 0, "excluded": 0, "by_stage": {"checklist": 0, "semantic_validate": 0, "view": 0},
+                            "note": ""},
         "kpi": {"n_works": 0, "n_reject": 0, "n_accept": 0, "n_evidence": 0, "n_cards_total": 0, "review_count": 0,
                 "model_id": None, "model_provider": None, "elapsed_s": None},
     }
@@ -935,9 +1041,11 @@ def build_ui_view(
     try:
         if records is AUTO:
             records = None if sample else default_records()
-        return _build(result, filename=filename, sample=sample, pipeline_state=pipeline_state, error=error,
+        view = _build(result, filename=filename, sample=sample, pipeline_state=pipeline_state, error=error,
                       input_info=input_info, extra_notices=list(extra_notices),
                       records=records if isinstance(records, RecordLookup) else None)
+        _attach_result(view, result, sample=sample, error=error)
+        return view
     except Exception as exc:  # noqa: BLE001 - 마지막 방어선: 빈 뷰 + 오류 상태
         view = empty_view()
         view["_status"] = _status_block(
@@ -945,6 +1053,130 @@ def build_ui_view(
             error=error or f"화면 데이터 조립 실패: {type(exc).__name__}", notices=list(extra_notices),
             input_info=input_info)
         return view
+
+
+# 원결과의 자유형 칸(계약이 dict[str, Any]·list[dict]로 둔 곳)에서 화면·내보내기로 넘길 키(E4-L2f F2·R3). 나머지 키는 뺀다.
+# 키 출처: 실제 결과 29건(사전 계산본 3·백테스트 실행 26)과 mock 실행에서 모은 키 + 각 칸을 쓰는 코드(E3 pipeline·checklist·
+# review·validate·fitness, sources/retraction.compute_field_prior, models.PostStatus) + view가 읽는 별칭.
+# 한 단계(최상위 키, 목록이면 항목의 키)만 거른다. 그 아래 값은 결과 값 그대로다.
+MANIFEST_EXPORT_KEYS = frozenset({
+    "backend", "llm_model", "llm_provider", "pipeline_version", "prompt_versions", "query_cache", "stage_limits_s",
+    "timings_s", "total_s", "v1_parallel", "v1_wall_s", "model_id", "model_provider", "model", "provider",
+    "precomputed",
+})
+CHECKLIST_EXPORT_KEYS = frozenset({
+    "item_id", "id", "action", "t", "text", "title", "card_id", "risk_code", "r", "risk", "subcode", "evidence",
+    "evidence_ids", "plan_lines", "plan_lines_source", "verify", "generator", "model", "fallback_reason",
+    "card_verdict", "validation", "dropped", "decision", "s", "choice", "note", "m", "memo", "decided_at",
+    "decision_log", "why",
+})
+FREE_DICT_EXPORT_KEYS: dict[str, frozenset[str]] = {
+    "manifest": MANIFEST_EXPORT_KEYS,
+    "expected_review": frozenset({
+        "strength", "weakness", "request", "strengths", "weaknesses", "requests", "audit", "generator", "gen",
+        "generator_source", "model", "status", "reason", "error", "attempts", "effort", "elapsed_s", "version",
+    }),
+    "plan_stats": frozenset({"chars", "lines"}),
+    "plan_checks": frozenset({"fitness", "queries", "search", "suitability"}),
+    "verification": frozenset({
+        "findings_drop_rate", "findings_drop_reasons", "findings_dropped", "findings_kept", "findings_rule",
+        "findings_total", "linkage_rate", "quotes_total", "quotes_verified", "semantic",
+    }),
+    "risk_synthesis": frozenset({
+        "drops", "fallback_reason", "generator", "no_card_reason", "pool_size", "score_formula", "tags",
+    }),
+    "field_prior": frozenset({
+        "citation", "kinds", "matched_subjects", "n_baseline", "n_records", "procedural_excluded", "reasons",
+        "records", "risk_codes", "snapshot", "source", "status", "subject", "subject_keywords", "unit", "url",
+    }),
+    "research_questions": frozenset(),  # 채우는 코드가 아직 없다: 오는 키는 모두 뺀다
+}
+FREE_LIST_EXPORT_KEYS: dict[str, frozenset[str]] = {
+    "checklist": CHECKLIST_EXPORT_KEYS,
+    "post_status": frozenset({
+        # models.PostStatus 필드 그대로
+        "post_status_id", "kind", "work_id", "target_doi", "notice_doi", "reason_codes", "text", "url", "provenance",
+        "schema_version",
+    }),
+    "plan_side_candidates": frozenset(),  # 채우는 코드가 아직 없다
+}
+
+
+def _whitelist(data: dict[str, Any]) -> list[str]:
+    """자유형 칸의 모르는 키를 뺀다. 뺀 키 이름(값 아님) 목록을 돌려준다."""
+    dropped: set[str] = set()
+    for name, allowed in FREE_DICT_EXPORT_KEYS.items():
+        d = data.get(name)
+        if isinstance(d, dict):
+            dropped.update(f"{name}.{k}" for k in d if k not in allowed)
+            data[name] = {k: v for k, v in d.items() if k in allowed}
+    for name, allowed in FREE_LIST_EXPORT_KEYS.items():
+        items = []
+        for it in data.get(name) or []:
+            if isinstance(it, dict):
+                dropped.update(f"{name}[].{k}" for k in it if k not in allowed)
+                it = {k: v for k, v in it.items() if k in allowed}
+            items.append(it)
+        data[name] = items
+    return sorted(dropped)
+
+
+def export_result(result: Any) -> tuple[dict[str, Any] | None, str | None, list[str]]:
+    """내보내기(``POST /premortem/package``)에 그대로 넘길 원결과(E4-L2f). 실패하면 ``(None, 사유, [])``.
+
+    - ``PremortemResult`` 계약으로 검증한 뒤 JSON으로 되돌린다. 모델이 extra=forbid라 계약에 없는 **최상위** 필드는
+      검증에서 걸린다(그런 결과는 싣지 않는다). 계약이 자유형으로 둔 칸(manifest·checklist·expected_review·plan_checks·
+      verification·risk_synthesis·post_status 등)은 검증을 통과하므로, 칸마다 아는 키만 남긴다(한 단계, 뺀 키 이름을
+      셋째 값으로 돌려준다). 그 아래 값은 결과 값 그대로다.
+    - 진단 문구 칸(notices·detail 등)은 서빙 계층과 같은 규칙(``serving.scrub_ok_payload``: 키·절대 경로·트레이스 가림)을
+      미리 적용한다. 그래야 jobs 응답이 한 번 더 가려도 값이 같아 서명이 맞는다.
+    - 계획서 줄·인용·카드는 결과 값 그대로다(화면과 같다). 계획서의 이메일·ORCID는 분석 입구(``PlanDocument``)에서 가려졌다.
+    """
+    try:
+        from neumann.models import PremortemResult
+
+        res = result if isinstance(result, PremortemResult) else PremortemResult.model_validate(_as_dict(result))
+        data = res.model_dump(mode="json")
+        dropped = _whitelist(data)
+        try:
+            from neumann.api.serving import scrub_ok_payload
+        except ImportError:  # 서빙 계층이 없는 배포: 진단 가림 없이 그대로
+            pass
+        else:
+            data = scrub_ok_payload(data)
+        return PremortemResult.model_validate(data).model_dump(mode="json"), None, dropped
+    except Exception as exc:  # noqa: BLE001 - 화면은 그대로 그리고, 내보내기만 막는다
+        return None, f"원결과가 계약(PremortemResult)과 맞지 않음: {type(exc).__name__}", []
+
+
+def _attach_result(view: dict[str, Any], result: Any, *, sample: bool, error: str | None) -> None:
+    """뷰에 ``result``(원결과 또는 None)·``result_sig``(서버 서명)·``_status.export``를 붙인다.
+
+    계약(ui_view)은 루트 추가 필드를 허용한다. 서명은 ``neumann.api.signing``(HMAC, 키는 환경변수·기동 시 무작위)이
+    만들고 ``/premortem/package``가 확인한다. 서명 키·키 설정 여부는 싣지 않는다.
+    """
+    data: dict[str, Any] | None = None
+    sig: str | None = None
+    dropped: list[str] = []
+    if sample:
+        reason: str | None = "샘플 데이터라 원결과를 싣지 않음"
+    elif error or not result:
+        reason = "분석 결과 없음"
+    elif view.get("_status", {}).get("contract_ok") is False:
+        reason = "화면 계약을 어긴 결과라 싣지 않음"
+    else:
+        data, reason, dropped = export_result(result)
+        if data is not None:
+            try:
+                from neumann.api.signing import sign_result
+
+                sig = sign_result(data)
+            except Exception as exc:  # noqa: BLE001 - 서명을 못 하면 원결과도 싣지 않는다(서명 없는 결과를 만들지 않게)
+                data, reason = None, f"원결과 서명 실패: {type(exc).__name__}"
+    view["result"] = data
+    view["result_sig"] = sig
+    view.setdefault("_status", {})["export"] = {"result": data is not None, "signed": sig is not None,
+                                                "reason": reason, "dropped_keys": dropped}
 
 
 def _status_block(*, sample: bool, pipeline_state: str, result_status: str | None, error: str | None,
@@ -970,6 +1202,29 @@ def _status_block(*, sample: bool, pipeline_state: str, result_status: str | Non
         "stages_not_ok": [], "generators": {}, "empty_reason": None,
         "dropped": {}, "section_errors": {}, "contract_ok": True, "contract_errors": [],
         "generated_at": None, "pipeline_version": None,
+    }
+
+
+# 입력 분량 단계(E3-L1s, 결과 plan_checks.input_quality) → 화면 문구. 문구는 E3가 만든 message를 그대로 쓴다.
+INPUT_LEVEL_LABEL = {"reject": "입력이 짧아 분석하지 않음", "warn": "입력이 짧아 결과 신뢰도 낮음"}
+
+
+def _input_quality(res: Mapping[str, Any]) -> dict[str, Any] | None:
+    """결과의 입력 분량 단계 → `_status.input_quality`(level·label·message·missing·followups). 없으면 None."""
+    iq = _as_dict(_as_dict(res.get("plan_checks")).get("input_quality"))
+    level = _text(iq.get("level")).lower()
+    if level not in ("reject", "warn", "ok"):
+        return None
+    return {
+        "level": level,
+        "status": _text(iq.get("status")) or None,
+        "label": INPUT_LEVEL_LABEL.get(level, ""),
+        "message": _text(iq.get("message")) or None,
+        "missing": [_text(m) for m in _list(iq.get("missing")) if _text(m)],
+        "followups": [_text(_as_dict(q).get("question")) for q in _list(iq.get("followup_questions"))
+                      if _text(_as_dict(q).get("question"))],
+        "metrics": {k: v for k, v in _as_dict(iq.get("metrics")).items()
+                    if k in ("length", "n_chars", "n_sentences", "n_elements", "n_elements_llm")},
     }
 
 
@@ -1013,6 +1268,8 @@ def _build(result: Any, *, filename: str | None, sample: bool, pipeline_state: s
         "pipeline": pipeline, "works": works, "fams": ctx.fams, "corpus": [None] * len(ctx.fams),
         "ev": ev, "cards": cards, "others": [], "review": review, "checklist": checklist,
     })
+    view["checklist_audit"] = section("checklist_audit", lambda: _checklist_audit(res, len(checklist), ctx),
+                                      view["checklist_audit"])
     plan_text_for_id = "\n".join(line["t"] for line in view["plan"]["lines"])
     view["plan_id"] = _text(res.get("plan_id")) or (
         "sha256:" + hashlib.sha256(plan_text_for_id.encode("utf-8")).hexdigest()[:16] if plan_text_for_id else "")
@@ -1033,13 +1290,14 @@ def _build(result: Any, *, filename: str | None, sample: bool, pipeline_state: s
     result_status = _text(res.get("status")).lower() or (None if not res else "ok")
     if error:
         result_status = "error"
-    notices = [_text(n) for n in _list(res.get("notices")) if _text(n)] + [n for n in extra_notices if n]
+    notices = [display_text(n) for n in _list(res.get("notices")) if _text(n)] + [display_text(n) for n in extra_notices if n]
     status = _status_block(sample=sample, pipeline_state=pipeline_state, result_status=result_status,
                            error=error, notices=notices, input_info=input_info)
     gens: dict[str, int] = {}
     for cd in cards:
         gens[cd["gen"]] = gens.get(cd["gen"], 0) + 1
     status["generators"] = gens
+    status["generator_labels"] = _generator_labels(view, gens)
     status["stages_not_ok"] = not_ok
     status["degraded"] = bool(status["degraded"] or not_ok or any(g != "astra" for g in gens))
     if not cards:
@@ -1049,7 +1307,35 @@ def _build(result: Any, *, filename: str | None, sample: bool, pipeline_state: s
             reason = (card_stage or {}).get("reason", "")
         if not reason and ctx.dropped.get("cards_without_evidence"):
             reason = f"근거가 연결되지 않은 카드 {ctx.dropped['cards_without_evidence']}장을 뺐다"
-        status["empty_reason"] = reason or error or "위험카드 0장 — 결과에 사유가 없다"
+        status["empty_reason"] = display_text(reason or error or "위험카드 0장 — 결과에 사유가 없다")
+    # 입력 분량 단계(E3-L1s): 거절·경고면 안내 문구를 notices 맨 앞에, 라벨에 표시(화면 공지 상자가 라벨이 있을 때 뜬다).
+    iqv = None if sample else _input_quality(res)
+    status["input_quality"] = iqv
+    if iqv and iqv["level"] in ("reject", "warn"):
+        msg = iqv["message"]
+        if msg:
+            status["notices"] = [msg, *[n for n in status["notices"] if n != msg]]
+        if not error and result_status != "error":
+            status["label"] = iqv["label"] + (f" · {status['label']}" if status["label"] else "")
+    # 검색어 규칙 대체·낮은 유사도·적합성 보류 진행(E3-L1s): 결과 plan_checks에서 옮겨 표시한다(정직 표기).
+    pcs = _as_dict(res.get("plan_checks"))
+    srch, gate = _as_dict(pcs.get("search")), _as_dict(pcs.get("research_gate"))
+    marks = []
+    if _text(srch.get("queries_source")) == "rule":
+        marks.append("검색어 규칙 대체")
+    if srch.get("low_similarity") is True:
+        marks.append("낮은 유사도")
+    if gate.get("passed") is True:
+        marks.append(_text(gate.get("note")) or "적합성 보류였으나 유사 연구 근거로 진행")
+    status["search"] = {
+        "queries_source": _text(srch.get("queries_source")) or None,
+        "low_similarity": srch.get("low_similarity") is True,
+        "research_gate": _text(gate.get("status")) or None,
+        "marks": marks,
+    } if (srch or gate) else None
+    if marks and not sample and not error and result_status != "error":
+        extra = " · ".join(m for m in marks if m not in status["label"])
+        status["label"] = f"{status['label']} · {extra}" if status["label"] and extra else (status["label"] or extra)
     status["dropped"] = ctx.dropped
     status["section_errors"] = ctx.section_errors
     status["generated_at"] = _text(res.get("generated_at")) or None

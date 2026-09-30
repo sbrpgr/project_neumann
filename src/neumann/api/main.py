@@ -5,7 +5,7 @@
 라우트(L0)
 - ``GET /``                  화면(webui/index.html)
 - ``GET /fonts/...``         로컬 폰트(CDN 없음)
-- ``GET /health``            서버 상태 + 단계별 모듈 import 가능 여부(정직하게)
+- ``GET /health``            서버 상태 + 단계별 모듈 import 가능 여부(정직하게). 공개 모드는 축약(SEC-7, ``_public_health``)
 - ``POST /premortem``        {"plan_text": str, "filename"?: str} → 분석 결과 JSON(PremortemResult 모양)
 - ``POST /premortem/view``   같은 입력 → 화면 데이터 계약(ui_view) JSON + ``_status``
 
@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse, JSONResponse
@@ -39,6 +39,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
 import neumann
+from neumann.api.plan_limits import PlanLimitError, check_plan_text
 from neumann.api.view import SAMPLE_LABEL, build_ui_view
 
 log = logging.getLogger("neumann.api")
@@ -67,8 +68,47 @@ STAGE_MODULES: dict[str, list[str]] = {
     "config": ["neumann.config"],
 }
 
+_FONT_DEVICE_NAMES = frozenset({"CON", "PRN", "AUX", "NUL"} | {
+    f"{prefix}{n}" for prefix in ("COM", "LPT") for n in range(1, 10)
+})
+
+
+def _safe_font_path(path: str) -> bool:
+    """Reject Windows-invalid names before stat; StaticFiles still checks containment."""
+    if any(ord(char) < 32 or char in '<>:"\\|?*' for char in path):
+        return False
+    for part in path.split("/"):
+        if not part:
+            continue
+        if part in {".", ".."} or part.endswith((" ", ".")) or len(part) > 255:
+            return False
+        if sum(2 if ord(char) > 0xFFFF else 1 for char in part) > 255:
+            return False
+        stem = part.split(".", 1)[0].upper()
+        if stem in _FONT_DEVICE_NAMES:
+            return False
+    return True
+
+
+class _FontFiles(StaticFiles):
+    async def __call__(self, scope, receive, send) -> None:
+        # Check the original decoded path: Windows normpath turns valid forward
+        # separators into backslashes, and could hide unsafe dot segments.
+        if not _safe_font_path(scope.get("path", "")):
+            await JSONResponse({"detail": "Not Found"}, status_code=404)(scope, receive, send)
+            return
+        await super().__call__(scope, receive, send)
+
+    async def get_response(self, path, scope):
+        try:
+            return await super().get_response(path, scope)
+        except (OSError, ValueError):
+            # Filesystem-specific invalid names fail closed, without a path/error leak.
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+
+
 app = FastAPI(title="Neumann", version=neumann.__version__, description="Research pre-mortem API")
-app.mount("/fonts", StaticFiles(directory=WEBUI_DIR / "fonts"), name="fonts")
+app.mount("/fonts", _FontFiles(directory=WEBUI_DIR / "fonts"), name="fonts")
 
 from neumann.api import serving  # noqa: E402  E4-L2c 서빙 층(동시 상한·대기열·속도 제한·예산·캐시·오류 문구·로그 위생)
 
@@ -79,6 +119,7 @@ OPTIONAL_ROUTERS: tuple[str, ...] = (
     "neumann.api.export",
     "neumann.api.upload",
     "neumann.api.precomputed",
+    "neumann.api.samples",
     "neumann.api.templates",
     "neumann.api.meta",
 )
@@ -246,7 +287,10 @@ def wait_css() -> FileResponse:
 
 
 @app.get("/health")
-def health() -> dict[str, Any]:
+def health(request: Request) -> dict[str, Any]:
+    srv = getattr(request.app.state, "serving", None)
+    if srv is not None and srv.config.public:
+        return _public_health(srv)
     stages: dict[str, Any] = {}
     cache: dict[str, tuple[str, str]] = {}
     for stage, modules in STAGE_MODULES.items():
@@ -267,6 +311,29 @@ def health() -> dict[str, Any]:
         "stages": stages,
         "routers": dict(ROUTER_STATE),
         "llm": _llm_state(),
+    }
+
+
+def _public_health(srv: Any) -> dict[str, Any]:
+    """공개 모드(SEC-7) /health: 운영·화면에 필요한 값만. 모듈별 import 상태·라우터·키 존재 여부·실패 사유·기동 시각은 뺀다.
+
+    남기는 값: status·version·commit, pipeline.state/mode/label(화면 머리 표시·녹화 판정·터널 점검),
+    llm.effective/model/live_llm_ok(OPS-tun 점검), accepting(새 분석을 받는지).
+    """
+    _fn, state, _reason = _load_pipeline()
+    llm = _llm_state()
+    try:
+        accepting = bool(srv.queue_status().get("accepting"))
+    except Exception:  # noqa: BLE001 - 상태 확인이 /health를 깨지 않게
+        accepting = False
+    return {
+        "status": "ok",
+        "version": neumann.__version__,
+        "commit": SERVER_COMMIT,
+        "pipeline": {"state": state, "mode": "pipeline" if state == "connected" else (
+            "sample" if state == "unavailable" else "error"), "label": SAMPLE_LABEL if state == "unavailable" else ""},
+        "llm": {k: llm.get(k) for k in ("effective", "model", "live_llm_ok")},
+        "accepting": accepting,
     }
 
 
@@ -295,6 +362,10 @@ def _llm_state() -> dict[str, Any]:
 
 @app.post("/premortem")
 async def premortem(req: PremortemRequest) -> JSONResponse:
+    try:
+        check_plan_text(req.plan_text)
+    except PlanLimitError as exc:
+        return JSONResponse(exc.detail, status_code=exc.status_code)
     fn, state, reason = _load_pipeline()
     if fn is None and state == "unavailable":
         return JSONResponse(_sample_result(reason))
@@ -311,6 +382,10 @@ async def premortem(req: PremortemRequest) -> JSONResponse:
 
 @app.post("/premortem/view")
 async def premortem_view(req: PremortemRequest) -> JSONResponse:
+    try:
+        check_plan_text(req.plan_text)
+    except PlanLimitError as exc:
+        return JSONResponse(exc.detail, status_code=exc.status_code)
     t0 = time.perf_counter()
     info = _input_info(req)
     fn, state, reason = _load_pipeline()
@@ -338,3 +413,12 @@ async def premortem_view(req: PremortemRequest) -> JSONResponse:
 from neumann.api import jobs  # noqa: E402
 
 jobs.install(app, load_pipeline=lambda: _load_pipeline(), sample_result=lambda reason: _sample_result(reason))
+
+# ───────────────────────── 수정 권고(E3-L2r) ─────────────────────────
+# POST /premortem/revise(카드별 해석·대응·수정안) · POST /premortem/revise/assemble(통합본·md·docx). 관문은 serving과 같다.
+from neumann.api import revise as revise_api  # noqa: E402
+
+revise_api.install(app)
+from neumann.api import finalize as finalize_api  # noqa: E402
+
+finalize_api.install(app)

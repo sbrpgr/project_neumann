@@ -38,7 +38,7 @@ def _dom(v: dict, **over) -> dict:
     for cd in view.get("cards") or []:
         evs = [{"quote_len": len(view["ev"][str(k)]["q"]), "href": view["ev"][str(k)]["u"] or "",
                 "no_link_tag": not view["ev"][str(k)]["u"]} for k in cd["ev"]]
-        cards.append({"rank": str(cd["rank"]), "gen_class": f"gen {cd['gen']}", "gen_text": C.GEN_LABEL.get(cd["gen"], ""),
+        cards.append({"rank": str(cd["rank"]), "gen_class": f"gen {cd['gen']}", "gen_text": cd.get("genl") or C.GEN_LABEL.get(cd["gen"], ""),
                       "ev": evs})
     st = view.get("_status") or {}
     notice = None
@@ -194,6 +194,7 @@ def test_negative_reason_from_pipeline_notices(result, build_ui_view) -> None:
     """카드 0장 사유가 notices에만 있을 때(view.py가 empty_reason으로 올리지 않음): 화면에 보이면 통과."""
     why = "위험카드 0장: 입력이 연구계획서가 아니다(astra 판단: 요리 메모); 연구성 0.02"
     view = build_ui_view(_zero_card_result(result, [why]), pipeline_state="connected")
+    why = why.replace("astra 판단", "LLM 판단")  # 화면 문구는 계약 이름 astra를 LLM으로 보인다(DISP-1)
     st = view["_status"]
     assert st["empty_reason"] in C.DEFAULT_EMPTY_REASONS, st["empty_reason"]  # 오탐이 나던 모양 재현
     assert C.zero_card_reasons(view) == [why]
@@ -225,6 +226,7 @@ def test_negative_reason_from_skipped_card_stage(result, build_ui_view) -> None:
               {"name": "synthesize_cards", "phase": "RISK", "status": "skipped", "reason": reason},
               {"name": "verify_evidence", "phase": "REVIEW", "status": "skipped", "reason": "카드 없음"}]
     view = build_ui_view(_zero_card_result(result, [f"위험카드 0장: {reason}"], stages), pipeline_state="connected")
+    reason = reason.replace("astra 판단", "LLM 판단")  # 화면 문구는 계약 이름 astra를 LLM으로 보인다(DISP-1)
     assert view["_status"]["empty_reason"] == reason
     dom = _dom(view)  # label이 없어 상단 안내는 없다 → #noCards에 사유
     assert dom["notice"] is None and reason in dom["no_cards"]

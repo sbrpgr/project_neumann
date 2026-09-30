@@ -7,11 +7,13 @@
 from __future__ import annotations
 
 import json
+import re
+import time
 from pathlib import Path
 
 import pytest
 
-from neumann.analyze.fitness import _FIELDS, _line_hits, assess_fitness, rule_fitness
+from neumann.analyze.fitness import _FIELDS, _NEURO_EN, _NEURO_KO, _line_hits, assess_fitness, rule_fitness
 from neumann.models import PlanDocument
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -129,3 +131,149 @@ def test_real_neuroscience_plans_stay_neuroscience(text: str, expected_terms: se
     plan = _plan(text)
     assert set(_neuro_terms(plan)) == expected_terms
     assert rule_fitness(plan)["field"] == NEURO
+
+
+# ── E3-L1z: "~인지" 어미, 영어 약어 + 한글 조사, neuromorphic·neuro-symbolic ─────────────
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "효과적인지 과제별로 검증한다.",  # E3-L1x 검증에서 남은 오탐
+        "나은 것인지 기능 단위로 분해한다.",
+        "누출이 없는 분할인지 과제마다 확인한다.",
+        "기준선보다 나은지, 충분한 것인지 능력 범위 안에서 본다.",
+        "타당한 설계인지 부하 시험으로 확인한다.",
+        "이것이 문화인지 기능인지 따진다.",  # 접두어 목록 밖(문화)의 "-ㄴ지"는 그대로 뺀다
+        "위험을 인지하고 대응 절차를 둔다.",
+    ],
+)
+def test_korean_ending_inji_is_not_neuroscience(text: str) -> None:
+    """어미 "-ㄴ지"의 "인지" 뒤에 과제·기능·능력·부하가 띄어서 와도 신경과학 표지가 아니다."""
+    plan = _plan(text)
+    assert _neuro_terms(plan) == []
+    assert rule_fitness(plan)["field"] != NEURO
+
+
+@pytest.mark.parametrize(
+    ("text", "expected_terms"),
+    [
+        ("인지 과제 수행 중 반응 시간을 잰다.", {"인지 과제"}),
+        ("fMRI 기반 인지과제 분류 모델을 만든다.", {"fmri", "인지과제"}),
+        ("경도인지장애 환자의 기억 검사 점수를 본다.", {"인지장애"}),
+        ("경도 인지장애와 치매를 구분한다.", {"인지장애"}),
+        ("노인의 인지 기능 저하를 추적한다.", {"인지 기능"}),
+        ("과제 난이도(인지 부하)를 세 단계로 둔다.", {"인지 부하"}),
+        ("사회인지기능 척도로 평가한다.", {"인지기능"}),
+        ("인지심리학 실험 설계를 따른다.", {"인지심리"}),
+        # E3-L1z 검증 발견 A: 인지 접두어 뒤에 띄어 쓴 복합어(main에서는 잡혔다)
+        ("사회인지 기능 척도로 평가한다.", {"인지 기능"}),
+        ("경도인지 장애 환자를 모은다.", {"인지 장애"}),
+        ("신경인지 기능 검사를 한다.", {"인지 기능"}),
+        ("사회인지 과제 중 시선을 추적한다.", {"인지 과제"}),
+        ("시각인지 능력을 비교한다.", {"인지 능력"}),
+    ],
+)
+def test_cognition_compounds_stay_neuroscience(text: str, expected_terms: set[str]) -> None:
+    """낱말 첫머리의 "인지 ~"와 붙여 쓴 복합어(경도인지장애·사회인지기능)는 그대로 신경과학 표지다."""
+    plan = _plan(text)
+    assert set(_neuro_terms(plan)) == expected_terms
+    assert rule_fitness(plan)["field"] == NEURO
+
+
+@pytest.mark.parametrize(
+    ("text", "field", "expected_terms"),
+    [
+        ("EEG와 fMRI로 작업기억 과제 중 신호를 기록한다.", NEURO, {"eeg", "fmri"}),
+        ("전기 신호는 EEG를, 혈류는 fMRI를 쓴다.", NEURO, {"eeg", "fmri"}),
+        ("쥐 brain을 절편으로 만들어 neuroimaging을 한다.", NEURO, {"brain", "neuroimaging"}),
+        ("DNA와 RNA를 시퀀싱해 발현량을 잰다.", "생명과학·생물정보", {"dna", "rna"}),
+        ("LLM으로 초록을 요약하고 NLP를 적용한다.", "자연어처리", {"llm", "nlp"}),
+        ("x-ray로 찍은 흉부 사진을 쓴다.", "의료·의료영상", {"x-ray"}),
+        ("plasma를 자기장으로 가둔다.", "물리·공학", {"plasma"}),
+        ("EEG_data 폴더의 기록을 쓴다.", NEURO, {"eeg"}),  # 밑줄은 로마자·숫자가 아니다
+    ],
+)
+def test_english_term_followed_by_korean_particle(text: str, field: str, expected_terms: set[str]) -> None:
+    """영어 약어·낱말 바로 뒤에 한글 조사가 붙어도 분야 표지로 잡고, 표지 문자열에 조사를 넣지 않는다."""
+    plan = _plan(text)
+    [(ko, en)] = [(ko, en) for name, ko, en in _FIELDS if name == field]
+    got = {t for ln in plan.lines for t in _line_hits(ln.text, ko, en)}
+    assert got == expected_terms
+    assert rule_fitness(plan)["field"] == field
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "brainstorming과 rebranding을 논의한다.",  # 로마자 낱말 한가운데
+        "EEGs2 같은 식별자는 표지가 아니다.",
+        "neuronal이 아니라 aneuronal이라는 가상의 낱말.",
+    ],
+)
+def test_english_terms_inside_latin_words_are_not_hits(text: str) -> None:
+    hits = _neuro_terms(_plan(text))
+    assert "brain" not in hits and "eeg" not in hits and "aneuronal" not in hits
+    assert hits in ([], ["neuronal"])  # 셋째 줄의 독립 낱말 neuronal만 잡힌다
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "neuromorphic hardware accelerator에 올린다.",
+        "Neuromorphic 칩으로 추론 전력을 줄인다.",
+        "neuro-symbolic reasoning으로 규칙을 배운다.",
+        "Neuro-Symbolic AI 기법을 기준선으로 둔다.",
+        "neurosymbolic program synthesis를 쓴다.",
+        "neuro symbolic 모델과 비교한다.",
+    ],
+)
+def test_neuromorphic_and_neuro_symbolic_are_ai_terms(text: str) -> None:
+    plan = _plan(text)
+    assert _neuro_terms(plan) == []
+    assert rule_fitness(plan)["field"] != NEURO
+
+
+@pytest.mark.parametrize(
+    ("text", "expected_terms"),
+    [
+        ("neuroscience 공개 데이터를 쓴다.", {"neuroscience"}),
+        ("We record neurons and neuronal oscillations.", {"neurons", "neuronal"}),
+        ("neuro-oncology 코호트의 MRI를 분석한다.", {"neuro"}),
+        ("cognitive load를 과제별로 바꾼다.", {"cognitive"}),
+    ],
+)
+def test_other_neuro_terms_still_neuroscience(text: str, expected_terms: set[str]) -> None:
+    plan = _plan(text)
+    assert set(_neuro_terms(plan)) == expected_terms
+    assert rule_fitness(plan)["field"] == NEURO
+
+
+# ── 적대 입력: 새로 넣거나 바꾼 정규식은 10만 자에서 0.2초 미만(ReDoS 금지) ─────────────
+
+_ADVERSARIAL_UNITS = (
+    "인지", "인지 ", "가인지 ", "인지\u3000", "인지과", "신경 ", "뇌", "가", "a", "a가", "neuro", "neuro-", "neuro ",
+    "neurosymboli", "neuromorphi", "neuro-symboli", "cognit", "eeg와", "x-", "x-ra", "brain", "_", "9",
+    "사회인지 ", "경도인지", "사회인지　", "사회",
+)
+
+
+def _adversarial_inputs() -> list[tuple[str, str]]:
+    n = 100_000
+    return [(u, (u * (n // len(u) + 1))[:n]) for u in _ADVERSARIAL_UNITS]
+
+
+def _changed_patterns() -> list[tuple[str, re.Pattern[str]]]:
+    pats = [("neuro_ko", _NEURO_KO), ("neuro_en", _NEURO_EN)]
+    pats += [(f"field_en:{name}", en) for name, _ko, en in _FIELDS]
+    return pats
+
+
+@pytest.mark.parametrize(("pname", "pattern"), _changed_patterns(), ids=[p for p, _ in _changed_patterns()])
+def test_changed_patterns_are_linear_on_adversarial_input(pname: str, pattern: re.Pattern[str]) -> None:
+    for unit, text in _adversarial_inputs():
+        assert len(text) == 100_000
+        t0 = time.process_time()
+        n = sum(1 for _ in pattern.finditer(text))
+        dt = time.process_time() - t0
+        assert dt < 0.2, f"{pname}: 반복 단위 {unit!r} 10만 자에서 {dt:.3f}s ({n}건)"

@@ -90,7 +90,7 @@ def shoot(base: str, out: Path, prefix: str = PREFIX) -> dict:
         pg.click("#btnStart")
         pg.wait_for_function("document.body.dataset.view === 'job'")
         pg.wait_for_timeout(1400)
-        r["job"] = {"waitux": pg.locator("#waitux").count(), "cur": pg.inner_text("#finStepper .fs.cur"), "wait": (pg.locator("#jobWait").inner_text() if pg.locator("#jobWait").count() else ""), "text_has_mock": "목업" in body_text() or "mock" in body_text()}
+        r["job"] = {"waitux": pg.locator("#waitux").count(), "cur": pg.inner_text("#finStepper .fs.cur"), "wait": (pg.locator("#jobWait").inner_text() if pg.locator("#jobWait").count() else ""), "text_has_mock": "시험 모드" in body_text()}
         snap("1440_2_job")
         # 3) 채택
         pg.wait_for_function("document.body.dataset.view === 'adopt' && document.body.dataset.ready === '1'", timeout=30_000)
@@ -115,6 +115,7 @@ def shoot(base: str, out: Path, prefix: str = PREFIX) -> dict:
         pg.click(".fd-mark >> nth=0")
         pg.wait_for_selector("#fdPop:not([hidden])")
         r["pop"] = pg.evaluate("() => ({text: document.getElementById('fdPop').innerText.slice(0, 200), has_orig: document.getElementById('fdPop').innerText.includes('원문'), has_ev: !!document.querySelector('#fdPop .ev'), focus_in: !!(document.activeElement && document.activeElement.closest('#fdPop'))})")
+        pg.wait_for_timeout(200)
         snap("1440_4_popover")
         pg.keyboard.press("Escape")
         r["pop_closed"] = pg.evaluate("document.getElementById('fdPop').hidden")
@@ -174,9 +175,9 @@ def shoot(base: str, out: Path, prefix: str = PREFIX) -> dict:
             pg.click("#fzMd")
         md_text = Path(dl.value.path()).read_text(encoding="utf-8")
         r["md"] = {"name": dl.value.suggested_filename, "has_fix": "[확인 필요: 항목 합" in md_text, "has_summary": "## 최종 점검 요약" in md_text, "has_fixes": "## 자동 수정" in md_text, "has_log": "## 도구 호출 기록" in md_text, "kst": "KST" in md_text, "lines": len(md_text.splitlines())}
-        pg.click("#fzDocx")
+        assert pg.locator("#fzDocx").is_disabled()
         pg.wait_for_timeout(200)
-        r["docx_msg"] = pg.inner_text("#toast")
+        r["docx_msg"] = pg.inner_text("#fzDocx")
         # 스테퍼로 되돌아가기(채택) → 결정 변경 → 최종 점검 무효화 → 다시 수정 계획서로
         pg.click("[data-finstep='adopt']")
         pg.wait_for_function("document.body.dataset.view === 'adopt'")
@@ -232,7 +233,7 @@ def check(r: dict) -> list[str]:
     i = r["input"]
     if i["view"] != "input" or i["stepper"] != 6 or "입력" not in i["cur"] or i["old_nav_visible"] or i["mockbar"] or i["samples"] != 3 or i["btn"] != "분석 시작" or not i["cnt"].endswith("자") or i["chip"] != "시험 모드" or "외부로 전송하지 않" not in i["note"]:
         bad.append(f"입력 화면 이상: {i}")
-    if i["dev_words"] or i["quote_count"] != 1:
+    if i["dev_words"] or i["quote_count"] != 0:
         bad.append(f"개발자 문구·중복 인용: {i['dev_words']} quote={i['quote_count']}")
     if "HWPX" not in r["upload"]["drop"] or ".hwpx" not in r["upload"]["accept"] or "300자 이상" not in r["guide_short"]:
         bad.append(f"업로드·안내 이상: {r['upload']} {r['guide_short']!r}")

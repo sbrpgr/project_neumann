@@ -408,3 +408,50 @@ def test_demo_aborts_when_server_down(tmp_path):
     code, meta = rd.run_demo("http://demo.test", PLAN, tmp_path, health_fetcher=lambda _u: None)
     assert code == 2 and meta == {}
     assert not list(tmp_path.iterdir())
+
+
+# ── E6-L3d: 시연 예시 선택(AI4S 3건) ─────────────────────────────────────────
+def test_demo_examples_match_web_catalog_and_drop_old_examples():
+    catalog = json.loads((ROOT / "src" / "neumann" / "api" / "templates" / "catalog.json").read_text(encoding="utf-8"))
+    assert [(e["id"], e["path"]) for e in catalog["examples"]] == list(rd.DEMO_EXAMPLES.items())
+    assert all((ROOT / p).is_file() for p in rd.DEMO_EXAMPLES.values())
+    joined = " ".join(rd.DEMO_EXAMPLES.values()).lower()
+    assert "elife" not in joined and "medimaging" not in joined and "negative" not in joined
+    assert rd.DEFAULT_DEMO in rd.DEMO_EXAMPLES and rd.DEFAULT_PLAN == rd.DEMO_EXAMPLES[rd.DEFAULT_DEMO]
+
+
+@pytest.mark.parametrize(
+    ("demo", "plan", "example", "want"),
+    [
+        (None, None, "auto", ("tests/fixtures/plans/plan.md", "example-battery")),
+        ("example-binding", None, "auto", ("src/neumann/api/templates/examples/protein_ligand_affinity.md", "example-binding")),
+        ("operator", None, "auto", ("src/neumann/api/templates/examples/neural_operator_weather.md", "example-operator")),
+        ("binding", None, "none", ("src/neumann/api/templates/examples/protein_ligand_affinity.md", "none")),
+        (None, "my/plan_x.md", "auto", ("my/plan_x.md", "auto")),  # 예시 밖 계획서는 예전처럼 파일 이름으로 찾기
+    ],
+)
+def test_select_demo(demo, plan, example, want):
+    assert rd.select_demo(demo, plan, example) == want
+
+
+def test_select_demo_rejects_unknown_or_conflicting(capsys):
+    with pytest.raises(ValueError, match="example-battery"):
+        rd.select_demo("plan_elife_neuro", None, "auto")
+    with pytest.raises(ValueError, match="둘 중 하나만"):
+        rd.select_demo("example-binding", "tests/fixtures/plans/plan.md", "auto")
+    assert rd.main(["--demo", "fmri"]) == 2
+    assert "예시 id 'fmri'는 없다" in capsys.readouterr().err
+
+
+def test_main_passes_demo_example_to_run(monkeypatch, tmp_path):
+    seen = {}
+
+    def fake_run(base_url, plan, out_dir, **kw):
+        seen.update(plan=plan, example=kw["example"])
+        return 0, {}
+
+    monkeypatch.setattr(rd, "run_demo", fake_run)
+    monkeypatch.setitem(sys.modules, "playwright", sys.modules.get("playwright") or type(sys)("playwright"))
+    assert rd.main(["--demo", "example-operator", "--out", str(tmp_path)]) == 0
+    assert Path(seen["plan"]).resolve() == (ROOT / "src/neumann/api/templates/examples/neural_operator_weather.md").resolve()
+    assert seen["example"] == "example-operator"

@@ -57,6 +57,11 @@ TASK_DEFAULTS: dict[str, dict[str, Any]] = {
     "expected_review": {"effort": "medium", "timeout_s": 90.0},
     "checklist": {"effort": "medium", "timeout_s": 90.0},
     "semantic_validate": {"effort": "medium", "timeout_s": 90.0},
+    # E3-L2r 뒷단(분석 결과 뒤에 붙는 단계): 카드별 수정 권고 1회 · 통합본 다듬기 1회(선택)
+    "revise_card": {"effort": "medium", "timeout_s": 90.0},
+    "polish_plan": {"effort": "medium", "timeout_s": 90.0},
+    "final_assessment": {"effort": "medium", "timeout_s": 60.0},
+    "final_correction": {"effort": "medium", "timeout_s": 60.0},
 }
 
 # 실패 분류. 호출부는 reason()을 StageStatus.detail에 옮긴다.
@@ -610,8 +615,10 @@ def make_llm(settings: Any = None, provider: str | None = None) -> LLMProvider:
         return OpenAIProvider(api_key=key, model=model, default_timeout_s=timeout)
     if name in ("mock", "rules"):
         from neumann.analyze.mock_responders import default_responders
+        from neumann.analyze.finalize import mock_assessment, mock_correction
 
-        return MockProvider(default_responders())
+        return MockProvider({**default_responders(), "final_assessment": mock_assessment,
+                             "final_correction": mock_correction})
     if name in ("off", "none", "disabled"):
         return DisabledProvider(f"provider={name}")
     return DisabledProvider(f"알 수 없는 provider {name!r}")

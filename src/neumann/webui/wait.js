@@ -12,6 +12,7 @@
   var $ = function (id) { return document.getElementById(id); };
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = String(text); return e; }
   function add(p) { for (var i = 1; i < arguments.length; i++) { var c = arguments[i]; if (c == null || c === false) continue; p.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); } return p; }
+  function chevron() { var svg=document.createElementNS('http://www.w3.org/2000/svg','svg'); svg.setAttribute('class','car'); svg.setAttribute('viewBox','0 0 16 16'); svg.setAttribute('width','16'); svg.setAttribute('height','16'); var path=document.createElementNS('http://www.w3.org/2000/svg','path'); path.setAttribute('d','M6 3l5 5-5 5'); path.setAttribute('fill','none'); path.setAttribute('stroke','currentColor'); path.setAttribute('stroke-width','1.5'); svg.appendChild(path); return svg; }
   function clear(e) { while (e.firstChild) e.removeChild(e.firstChild); return e; }
   var RM = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
   function reduced() { return !!(RM && RM.matches); }
@@ -118,16 +119,16 @@
     var cts = el('div', 'wx-counts'); cts.id = 'wxCounts';
     COUNTS.forEach(function (c) { var t = el('div', 'wx-ct todo'); t.dataset.ct = c.id; add(t, el('div', 'l', c.label), el('div', 'v', '—'), el('div', 's', '대기')); add(cts, t); });
     var feedW = el('div', 'wx-feed'); feedW.id = 'wxFeedWorks'; feedW.hidden = true;
-    var hw = el('h3'); add(hw, '찾은 유사 연구', el('span', 'n', ''), el('span', 'note', '눌러서 연도·학회·유사도 보기 · 서버가 보고한 순서')); add(feedW, hw, el('ul', 'wx-list'));
+    var hw = el('h3'); add(hw, '찾은 유사 연구', el('span', 'n', ''), el('span', 'note', '눌러서 연도·학회·유사도를 확인합니다')); add(feedW, hw, el('ul', 'wx-list'));
     var feedC = el('div', 'wx-feed'); feedC.id = 'wxFeedCards'; feedC.hidden = true;
     var hc = el('h3'); add(hc, '위험카드 후보', el('span', 'n', ''), el('span', 'note', '원문 대조 전 · 대조에서 탈락할 수 있음')); add(feedC, hc, el('ul', 'wx-list'));
     var steps = el('ol', 'wx-steps'); steps.id = 'wxSteps';
     STEPS.forEach(function (s, i) {
       var li = el('li', 'wx-step todo'); li.dataset.step = String(i);
       var b = el('button'); b.type = 'button'; b.setAttribute('aria-expanded', 'false'); b.dataset.wxstep = String(i);
-      var tm = el('span', 'tm'); add(tm, el('span', 'sec', ''), el('span', 'car', '›'));
+      var tm = el('span', 'tm'); add(tm, el('span', 'sec', ''), chevron());
       var ttl = el('span', 'ttl'); add(ttl, el('span', 'n', s.name), el('span', 'st', ''));
-      add(b, el('span', 'nm', s.en), ttl, tm);
+      add(b, ttl, tm);
       var body = el('div', 'wx-body'); body.id = 'wxBody' + i; body.hidden = true;
       add(body, el('p', null, s.why), el('div', 'kv'));
       add(li, b, body); add(steps, li);
@@ -168,13 +169,12 @@
       if (w.stageElapsed != null) add(eta, el('span', 'sub', '이 단계 ' + fmtN(w.stageElapsed) + '초째'));
     }
     var badge = $('wxBadge'); var mock = w.mock || HEALTH.mock;
-    badge.hidden = !mock; badge.textContent = w.mock ? '목업 재생' : 'mock provider';
+    badge.hidden = true;
     paintCounts(); paintFeed(false); paintSteps();
     var foot = $('wxFoot'); clear(foot);
-    add(foot, el('span', null, '수치와 제목은 서버 진행 보고(jobs API)에서 온 것만 표시합니다. 보고가 없으면 "—"로 둡니다.'));
-    if (mock) add(foot, el('span', 'mock', w.mock ? w.mockNote : '모의(mock) provider · 실제 LLM 분석이 아닙니다'));
+    add(foot, el('span', null, '계획서의 주장과 유사 연구의 근거를 확인합니다.'));
     /* 기존 머리(상태 글자·진행 막대·대기 문구)도 단계 기준으로 맞춘다(시간으로 지어내지 않는다) */
-    var js = $('jobState'); if (js) { js.textContent = st === 'done' ? 'complete' : (st === 'fail' ? 'failed' : st); js.style.color = st === 'done' ? 'var(--green)' : 'var(--red)'; }
+    var js = $('jobState'); if (js) { js.textContent = st === 'done' ? '완료' : (st === 'fail' ? '실패' : (st === 'queued' ? '대기 중' : '진행 중')); js.style.color = st === 'done' ? 'var(--green)' : 'var(--red)'; }
     var pb = $('pbar'); if (pb) { var doneN = 0; for (var i = 0; i < STEPS.length; i++) if (stepState(i) === 'done') doneN++; var pct = w.finished ? 100 : Math.round((doneN + (st === 'running' && w.cur >= 0 ? 0.5 : 0)) / STEPS.length * 100); pb.style.width = Math.max(st === 'queued' ? 3 : 6, pct) + '%'; }
     var jw = $('jobWait'); if (jw && U_ && U_.S.job && U_.S.job.waitText) jw.textContent = U_.S.job.waitText;
     vizMode();
@@ -187,7 +187,7 @@
       if (v != null) { add(vEl, fmtN(v)); if (of != null) add(vEl, el('small', null, '/ ' + fmtN(of))); else if (c.unit) add(vEl, el('small', null, c.unit)); }
       else add(vEl, '—');
       t.className = 'wx-ct ' + (ss === 'run' ? 'run' : (ss === 'done' ? 'done' : 'todo'));
-      sEl.textContent = v != null ? (ss === 'run' ? '집계 중 · 지금까지' : '서버 보고') : (ss === 'run' ? '진행 중 · 아직 보고 없음' : (ss === 'done' ? '보고 없음' : (ss === 'fail' ? '중단' : '대기')));
+      sEl.textContent = v != null ? (ss === 'run' ? '집계 중 · 지금까지' : '확인 완료') : (ss === 'run' ? '확인 중' : (ss === 'done' ? '확인 대기' : (ss === 'fail' ? '중단' : '대기')));
     });
   }
   function paintFeed(force) {
@@ -226,10 +226,10 @@
       var stTxt = ss === 'run' ? (w.label && stepOf(w.stage) === i ? w.label : '진행 중') : (ss === 'done' ? '완료' : (ss === 'fail' ? '중단' : '대기'));
       var subs = s.stages.filter(function (st) { return w.done[st] && w.done[st].status && w.done[st].status !== 'ok'; }).map(function (st) { return (STAGE_LABEL[st] || st) + ' ' + w.done[st].status; });
       b.querySelector('.st').textContent = stTxt + (subs.length ? ' · ' + subs.join(', ') : '');
-      var e = stepElapsed(i); b.querySelector('.sec').textContent = e != null ? (Math.round(e * 10) / 10).toFixed(1) + 's' : '';
+      var e = stepElapsed(i); b.querySelector('.sec').textContent = e != null ? (Math.round(e * 10) / 10).toFixed(1) + '초' : '';
       var kvEl = body.querySelector('.kv'); clear(kvEl);
-      s.stages.forEach(function (st) { var d = w.done[st], c = counts(st); var parts = []; if (d) parts.push(d.status + (d.s != null ? ' ' + d.s.toFixed(1) + 's' : '')); else if (w.stage === st) parts.push('진행 중'); if (c) Object.keys(c).slice(0, 8).forEach(function (k) { parts.push(k + ' ' + c[k]); }); if (parts.length) { var sp = el('span'); add(sp, el('b', null, STAGE_LABEL[st] || st), ' ' + parts.join(' · ')); add(kvEl, sp); } });
-      if (!kvEl.childNodes.length) add(kvEl, el('span', null, ss === 'todo' ? '아직 시작 전' : '서버 단계 보고 없음'));
+      s.stages.forEach(function (st) { var d = w.done[st], c = counts(st); var parts = []; if (d) parts.push((d.status === 'ok' ? '확인 완료' : '확인 필요') + (d.s != null ? ' ' + d.s.toFixed(1) + '초' : '')); else if (w.stage === st) parts.push('진행 중'); if (c) Object.keys(c).slice(0, 8).forEach(function (k) { parts.push(k + ' ' + c[k]); }); if (parts.length) { var sp = el('span'); add(sp, el('b', null, STAGE_LABEL[st] || st), ' ' + parts.join(' · ')); add(kvEl, sp); } });
+      if (!kvEl.childNodes.length) add(kvEl, el('span', null, ss === 'todo' ? '아직 시작 전' : '진행 정보를 기다립니다'));
     });
   }
 

@@ -219,20 +219,47 @@ def test_exception_in_one_stage_equals_sequential_and_is_contained(no_fitness, m
 
 
 def test_v1_stages_overlap_and_respect_dependency(no_fitness, monkeypatch):
+    """두 독립 단계는 함께 진입하고, 검증은 체크리스트 반환 뒤에만 진입한다."""
     monkeypatch.setattr(pl, "V1_PARALLEL", True)
-    llm = SlowMock(default_responders(), delays={t: 0.25 for t in V1})
-    r = _run(llm=llm)
-    span = {}
-    for task, t0, t1, thread in llm.spans:
-        if task in V1:
-            lo, hi, threads = span.get(task, (t0, t1, set()))
-            span[task] = (min(lo, t0), max(hi, t1), threads | {thread})
-    er, cl, sv = span["expected_review"], span["checklist"], span["semantic_validate"]
-    assert er[0] < cl[1] and cl[0] < er[1], "예상 심사평과 체크리스트가 겹쳐 돌아야 한다"
-    assert sv[0] >= cl[1], "2차 검증은 체크리스트가 끝난 뒤 시작한다"
-    assert all(th != threading.current_thread().name for _, _, ths in span.values() for th in ths)
-    serial = sum(r.manifest["timings_s"][t] for t in V1)
-    assert r.manifest["v1_wall_s"] < serial * 0.85, (r.manifest["v1_wall_s"], serial)
+    rendezvous = threading.Barrier(2, timeout=20)
+    checklist_done = threading.Event()
+    completed_checklists: list[list] = []
+    entered: dict[str, int] = {}
+    violations: list[str] = []
+
+    def wrap(module, target, stage):
+        original = getattr(module, target)
+
+        def run(*args, **kwargs):
+            entered[stage] = threading.get_ident()
+            if stage == "semantic_validate":
+                if not checklist_done.is_set():
+                    violations.append("2차 검증이 체크리스트 반환 전에 진입했다")
+                elif not args[0].checklist or args[0].checklist != completed_checklists[0]:
+                    violations.append("2차 검증에 완료된 체크리스트가 전달되지 않았다")
+            else:
+                try:
+                    rendezvous.wait()
+                except threading.BrokenBarrierError:
+                    # 파이프라인은 단계 예외를 결과로 변환하므로 바깥에서도 실패를 검사한다.
+                    violations.append("예상 심사평과 체크리스트가 함께 진입하지 못했다")
+            result = original(*args, **kwargs)
+            if stage == "checklist":
+                completed_checklists.append(result.checklist)
+                checklist_done.set()
+            return result
+
+        monkeypatch.setattr(module, target, run)
+
+    wrap(review_mod, "attach_expected_review", "expected_review")
+    wrap(checklist_mod, "attach_checklist", "checklist")
+    wrap(validate_mod, "attach_validation", "semantic_validate")
+    r = _run()
+    assert violations == []
+    assert set(entered) == set(V1)
+    assert all(ident != threading.get_ident() for ident in entered.values())
+    assert all(_st(r, stage).state == "ok" for stage in V1)
+    assert r.expected_review and r.checklist and r.verification["semantic"]
 
 
 @pytest.mark.parametrize("failing", V1)

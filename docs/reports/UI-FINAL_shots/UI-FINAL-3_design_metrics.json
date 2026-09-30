@@ -1,0 +1,221 @@
+[
+  {
+    "width": 1440,
+    "step": "input",
+    "overflow": 0,
+    "primary": 1,
+    "sizes": [
+      "20px",
+      "14px",
+      "28px",
+      "16px"
+    ],
+    "fonts": [
+      "Pretendard, sans-serif"
+    ],
+    "badInfo": [],
+    "stepperHeight": 56
+  },
+  {
+    "width": 1440,
+    "step": "job",
+    "overflow": 0,
+    "primary": 0,
+    "sizes": [
+      "20px",
+      "14px",
+      "28px",
+      "16px"
+    ],
+    "fonts": [
+      "Pretendard, sans-serif"
+    ],
+    "badInfo": [],
+    "stepperHeight": 56
+  },
+  {
+    "width": 1440,
+    "step": "adopt",
+    "overflow": 0,
+    "primary": 1,
+    "sizes": [
+      "20px",
+      "14px",
+      "28px",
+      "16px"
+    ],
+    "fonts": [
+      "Pretendard, sans-serif"
+    ],
+    "badInfo": [],
+    "stepperHeight": 56
+  },
+  {
+    "width": 1440,
+    "step": "draft",
+    "overflow": 0,
+    "primary": 1,
+    "sizes": [
+      "20px",
+      "14px",
+      "28px",
+      "16px"
+    ],
+    "fonts": [
+      "Pretendard, sans-serif"
+    ],
+    "badInfo": [],
+    "stepperHeight": 56,
+    "popover": {
+      "top": 433.046875,
+      "bottom": 775.046875,
+      "height": 342,
+      "viewport": 900,
+      "parent": "BODY",
+      "evDisplay": "block"
+    }
+  },
+  {
+    "width": 1440,
+    "step": "check",
+    "overflow": 0,
+    "primary": 1,
+    "sizes": [
+      "20px",
+      "14px",
+      "28px",
+      "16px"
+    ],
+    "fonts": [
+      "Pretendard, sans-serif"
+    ],
+    "badInfo": [],
+    "stepperHeight": 56
+  },
+  {
+    "width": 1440,
+    "step": "done",
+    "overflow": 0,
+    "primary": 1,
+    "sizes": [
+      "20px",
+      "14px",
+      "28px",
+      "16px"
+    ],
+    "fonts": [
+      "Pretendard, sans-serif"
+    ],
+    "badInfo": [],
+    "stepperHeight": 56
+  },
+  {
+    "width": 390,
+    "step": "input",
+    "overflow": 0,
+    "primary": 1,
+    "sizes": [
+      "20px",
+      "14px",
+      "28px",
+      "16px"
+    ],
+    "fonts": [
+      "Pretendard, sans-serif"
+    ],
+    "badInfo": [],
+    "stepperHeight": 56
+  },
+  {
+    "width": 390,
+    "step": "job",
+    "overflow": 0,
+    "primary": 0,
+    "sizes": [
+      "20px",
+      "14px",
+      "16px"
+    ],
+    "fonts": [
+      "Pretendard, sans-serif"
+    ],
+    "badInfo": [],
+    "stepperHeight": 56
+  },
+  {
+    "width": 390,
+    "step": "adopt",
+    "overflow": 0,
+    "primary": 1,
+    "sizes": [
+      "20px",
+      "14px",
+      "28px",
+      "16px"
+    ],
+    "fonts": [
+      "Pretendard, sans-serif"
+    ],
+    "badInfo": [],
+    "stepperHeight": 56
+  },
+  {
+    "width": 390,
+    "step": "draft",
+    "overflow": 0,
+    "primary": 1,
+    "sizes": [
+      "20px",
+      "14px",
+      "28px",
+      "16px"
+    ],
+    "fonts": [
+      "Pretendard, sans-serif"
+    ],
+    "badInfo": [],
+    "stepperHeight": 56,
+    "popover": {
+      "top": 334,
+      "bottom": 760,
+      "height": 426,
+      "viewport": 844,
+      "parent": "BODY",
+      "evDisplay": "block"
+    }
+  },
+  {
+    "width": 390,
+    "step": "check",
+    "overflow": 0,
+    "primary": 1,
+    "sizes": [
+      "20px",
+      "14px",
+      "28px",
+      "16px"
+    ],
+    "fonts": [
+      "Pretendard, sans-serif"
+    ],
+    "badInfo": [],
+    "stepperHeight": 56
+  },
+  {
+    "width": 390,
+    "step": "done",
+    "overflow": 0,
+    "primary": 1,
+    "sizes": [
+      "20px",
+      "14px",
+      "28px",
+      "16px"
+    ],
+    "fonts": [
+      "Pretendard, sans-serif"
+    ],
+    "badInfo": [],
+    "stepperHeight": 56
+  }
+]

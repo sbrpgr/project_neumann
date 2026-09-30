@@ -134,7 +134,7 @@ def test_upload_time_limit_504_keeps_slot_until_work_ends(tmp_path):
             assert body["error_code"] == "timeout" and body["request_id"] == "tk_up_timeout"
             assert "0초 안에 끝나지 않았습니다" in body["message"]
             assert srv.aux_gate.active == 1  # 처리는 아직 돈다 → 슬롯을 쥐고 있다(과부하 누적 방지)
-            await wait_until(lambda: srv.aux_gate.active == 0, timeout=3)
+            await wait_until(lambda: srv.aux_gate.active == 0)
             assert slow.done == 1
 
     asyncio.run(go())
@@ -547,9 +547,11 @@ def test_run_rechecks_admission_when_middleware_did_not_reserve(tmp_path):
 # ───────────────────────── FAIL 대응 2: IPv6 /64, 공개 프로필 XFF 무시 ─────────────────────────
 
 
-def test_ipv6_addresses_in_same_64_share_one_rate_limit(tmp_path, monkeypatch):
-    assert serving.ip_key("2001:db8:1:2:aaaa::1") == serving.ip_key("2001:db8:1:2:ffff:1:2:3") == "2001:db8:1:2::/64"
-    assert serving.ip_key("2001:db8:1:3::1") != serving.ip_key("2001:db8:1:2::1")
+def test_ipv6_addresses_in_same_56_share_one_rate_limit(tmp_path, monkeypatch):
+    # SEC-7: 묶음이 /64 → /56. 같은 /64는 물론 같은 /56 안의 다른 /64도 한 통, 다른 /56은 다른 통
+    assert serving.ip_key("2001:db8:1:2:aaaa::1") == serving.ip_key("2001:db8:1:2:ffff:1:2:3") == "2001:db8:1::/56"
+    assert serving.ip_key("2001:db8:1:3::1") == serving.ip_key("2001:db8:1:2::1") == serving.ip_key("2001:db8:1:ff::1")
+    assert serving.ip_key("2001:db8:1:100::1") != serving.ip_key("2001:db8:1:2::1")
     assert serving.ip_key("::ffff:198.51.100.7") == "198.51.100.7" and serving.ip_key("198.51.100.7") == "198.51.100.7"
     srv, app = make(tmp_path, monkeypatch, lambda t: fake_result(t), rate_per_min=3)
 
@@ -596,6 +598,60 @@ def test_ip_tag_is_salted_hmac_and_hides_env_salt(monkeypatch):
     monkeypatch.setattr(serving, "_IP_SALT", None)
     monkeypatch.delenv("NEUMANN_PSEUDONYM_SALT")
     assert serving._ip_tag("198.51.100.7") != a  # 솔트가 없으면 프로세스마다 무작위
+
+
+def test_serve_public_preflight_refuses_do_not_serve_index(monkeypatch, tmp_path):
+    """SEC-2r: 서비스 금지 표시(DO_NOT_SERVE.txt)가 있는 색인으로는 공개 기동을 거부한다."""
+    from neumann.config import Settings
+
+    monkeypatch.setenv("NEUMANN_LLM_PROVIDER", "openai")
+    monkeypatch.setenv("OPENAI_API_KEY", "not-a-real-key-for-tests")
+    bad, good = tmp_path / "index_elife", tmp_path / "index"
+    bad.mkdir()
+    good.mkdir()
+    (bad / "DO_NOT_SERVE.txt").write_text("DO NOT SERVE", encoding="utf-8")
+    monkeypatch.setenv("NEUMANN_INDEX_DIR", str(bad))
+    ok, why = serve_script.preflight_public(Settings(_env_file=None))
+    assert not ok and "DO_NOT_SERVE" in why and "not-a-real" not in why
+    monkeypatch.setenv("NEUMANN_INDEX_DIR", str(good))
+    ok, why = serve_script.preflight_public(Settings(_env_file=None))
+    assert ok, why
+    monkeypatch.delenv("NEUMANN_INDEX_DIR")  # 지정이 없으면 <data_dir>/index를 본다
+    monkeypatch.setenv("NEUMANN_DATA_DIR", str(tmp_path))
+    (good / "DO_NOT_SERVE.txt").write_text("x", encoding="utf-8")
+    ok, why = serve_script.preflight_public(Settings(_env_file=None))
+    assert not ok and "DO_NOT_SERVE" in why
+
+
+def test_serve_public_preflight_checks_effective_index_dir(monkeypatch, tmp_path):
+    """.env에만 적힌 NEUMANN_INDEX_DIR처럼 서버가 실제로 읽는 경로(index.settings)에 DO_NOT_SERVE가 있어도 거부한다."""
+    from types import SimpleNamespace
+
+    import neumann.index.settings as idx_settings
+    from neumann.config import Settings
+
+    monkeypatch.setenv("NEUMANN_LLM_PROVIDER", "openai")
+    monkeypatch.setenv("OPENAI_API_KEY", "not-a-real-key-for-tests")
+    good, bad = tmp_path / "index", tmp_path / "index_elife_epmc"
+    good.mkdir()
+    bad.mkdir()
+    (bad / "DO_NOT_SERVE.txt").write_text("x", encoding="utf-8")
+    monkeypatch.setenv("NEUMANN_INDEX_DIR", str(good))  # 환경변수 쪽은 정상
+
+    fake = SimpleNamespace(resolved_index_dir=lambda: bad)  # 실효 경로(.env 등)는 금지 색인
+    fake_get = lambda: fake  # noqa: E731
+    fake_get.cache_clear = lambda: None
+    monkeypatch.setattr(idx_settings, "get_index_settings", fake_get)
+    ok, why = serve_script.preflight_public(Settings(_env_file=None))
+    assert not ok and "DO_NOT_SERVE" in why
+
+    def boom():
+        raise RuntimeError("x")
+
+    boom.cache_clear = lambda: None
+    monkeypatch.setattr(idx_settings, "get_index_settings", boom)
+    ok, why = serve_script.preflight_public(Settings(_env_file=None))
+    assert not ok and "색인 경로" in why  # 경로를 못 구하면 닫힌 쪽
 
 
 def test_serve_public_preflight_refuses_whitespace_key(monkeypatch):
@@ -744,7 +800,7 @@ def test_upload_timeout_releases_per_ip_count_only_when_work_ends(tmp_path):
             assert srv.upload_active == {serving.ip_key("198.51.100.40"): 1}  # 처리는 아직 돈다
             r2 = await c.post("/upload/plan", content=b"y", headers=h)
             assert r2.status_code == 429 and r2.json()["error_code"] == "busy_ip"
-            await wait_until(lambda: srv.upload_active == {}, timeout=3)
+            await wait_until(lambda: srv.upload_active == {})
 
     asyncio.run(go())
 

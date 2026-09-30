@@ -1,0 +1,81 @@
+{
+  "schema": "neumann.metrics/1",
+  "source": "scripts/metrics_from_e2e.py ← E5-L0e2e_live_summary.json (sha256 6b418df593db10b4af212e8bd7f11ed9938c5107f85ff39345bdae1e099e3cd3), 평가 모델 gpt-6-astra",
+  "model": "gpt-6-astra",
+  "product_model": "gpt-6.1-sol",
+  "metrics": [
+    {
+      "id": "linkage_rate",
+      "system": "Neumann 참고(검사 실행 generator 미기록, 약속 판정 제외)",
+      "value": 1.0,
+      "n": 43,
+      "detail": "43/43; plan.md 10/10 · plan_elife_neuro.md 13/13 · plan_medimaging.md 20/20; 검사 실행 카드 generator 미기록",
+      "conditions": "라이브 E2E http://127.0.0.1:8010/ 2026-09-30T10:19:48+00:00~2026-09-30T10:25:34+00:00, 1회 실행, 평가 모델 gpt-6-astra(모델은 명령행 값(요약에 기록 없음)). 데모 계획서 3건 /premortem 결과 전수, eval.linkage.check_result 원문 글자 단위 대조, 계획서별 개수 합산(계산)",
+      "limits": "연결 검사 실행의 카드 generator가 요약에 없다(plan.md, plan_elife_neuro.md, plan_medimaging.md). 그래서 약속 P2 판정에 쓰지 않는 참고값이다(PM 결정 2026-09-30: generator를 기록한 라이브 결과로 채운다). 연결 검사는 화면 실행과 별도인 같은 계획서의 /premortem 재실행 결과다(화면 실행 카드 generator {'astra': 13}, 강등 단계 0개). 전수라 구간 없음. 제품 기본 모델로는 재측정 안 함. 폐기율과 같이 읽는다(04_평가_명세 §2.2)"
+    },
+    {
+      "id": "card_pass_rate",
+      "system": "Neumann 참고(검사 실행 generator 미기록, 약속 판정 제외)",
+      "value": 1.0,
+      "n": 12,
+      "detail": "12/12; plan.md 3/3 · plan_elife_neuro.md 4/4 · plan_medimaging.md 5/5",
+      "conditions": "라이브 E2E http://127.0.0.1:8010/ 2026-09-30T10:19:48+00:00~2026-09-30T10:25:34+00:00, 1회 실행, 평가 모델 gpt-6-astra(모델은 명령행 값(요약에 기록 없음)). 데모 계획서 3건 /premortem 결과 전수, eval.linkage.check_result 원문 글자 단위 대조, 계획서별 개수 합산(계산)",
+      "limits": "연결 검사 실행의 카드 generator가 요약에 없다(plan.md, plan_elife_neuro.md, plan_medimaging.md). 그래서 약속 P2 판정에 쓰지 않는 참고값이다(PM 결정 2026-09-30: generator를 기록한 라이브 결과로 채운다). 연결 검사는 화면 실행과 별도인 같은 계획서의 /premortem 재실행 결과다(화면 실행 카드 generator {'astra': 13}, 강등 단계 0개). 전수라 구간 없음. 제품 기본 모델로는 재측정 안 함"
+    },
+    {
+      "id": "drop_rate",
+      "system": "Neumann 참고(검사 실행 generator 미기록, 약속 판정 제외)",
+      "value": 0.0034,
+      "n": 2033,
+      "detail": "7/2033; plan.md 1/643 · plan_elife_neuro.md 2/701 · plan_medimaging.md 4/689",
+      "conditions": "라이브 E2E http://127.0.0.1:8010/ 2026-09-30T10:19:48+00:00~2026-09-30T10:25:34+00:00, 1회 실행, 평가 모델 gpt-6-astra(모델은 명령행 값(요약에 기록 없음)). 데모 계획서 3건 /premortem 결과 전수, eval.linkage.check_result 원문 글자 단위 대조, 계획서별 개수 합산(계산). 폐기 출처 verification(검증 단계에서 버린 지적)",
+      "limits": "연결 검사 실행의 카드 generator가 요약에 없다(plan.md, plan_elife_neuro.md, plan_medimaging.md). 그래서 약속 P2 판정에 쓰지 않는 참고값이다(PM 결정 2026-09-30: generator를 기록한 라이브 결과로 채운다). 전수 계산"
+    },
+    {
+      "id": "e2e_cards",
+      "system": "neumann",
+      "value": 13,
+      "n": 3,
+      "detail": "plan.md 5 · plan_elife_neuro.md 3 · plan_medimaging.md 5",
+      "conditions": "라이브 E2E http://127.0.0.1:8010/ 2026-09-30T10:19:48+00:00~2026-09-30T10:25:34+00:00, 1회 실행, 평가 모델 gpt-6-astra(모델은 명령행 값(요약에 기록 없음)). 화면(/premortem/view)에 나온 LLM(astra) 위험카드 수, 데모 계획서 합. 화면 카드 generator {'astra': 13}",
+      "limits": "개수일 뿐 품질 지표가 아니다. 연결 검사 카드 수(card_pass_rate의 n)와 다른 실행이라 다를 수 있다. 규칙 카드는 세지 않는다(따로 적는다)"
+    },
+    {
+      "id": "demo_e2e",
+      "system": "Neumann 참고(검사 실행 generator 미기록, 약속 판정 제외)",
+      "value": 3,
+      "n": 3,
+      "detail": "3/3; generator 미기록 실행",
+      "conditions": "라이브 E2E http://127.0.0.1:8010/ 2026-09-30T10:19:48+00:00~2026-09-30T10:25:34+00:00, 1회 실행, 평가 모델 gpt-6-astra(모델은 명령행 값(요약에 기록 없음)). 데모 계획서가 실서버에서 붙여넣기→리포트 화면·파이프라인 연결·카드 인용·원문 링크·생성 방식 표시·브라우저 오류 0·근거 연결 1.0 검사를 실패 0으로 통과한 수. 범위 밖 입력 negative_recipe.md: 카드 0장, 실패 0건, 사유 표시",
+      "limits": "generator 미기록 실행: 통과 조건인 근거 연결 검사 실행의 카드 generator가 요약에 없어 약속 P6 판정에 쓰지 않는 참고값이다(PM 결정 2026-09-30: generator·model을 기록한 라이브 결과로 채운다). 리포트 화면까지. 결과 패키지(ZIP) 내보내기는 재지 않았다. 1회 실행"
+    },
+    {
+      "id": "macro_f1",
+      "system": "Neumann 제품 기본 모델(gpt-6.1-sol)",
+      "value": null,
+      "conditions": "측정 전. 이 모델로 다시 재지 않았다. 이 카드의 Neumann 수치는 평가 모델 gpt-6-astra로 잰 것",
+      "limits": "재측정 안 한 사유: 비용(docs/decisions.md 2026-09-30 19:38(평가 모델·제품 모델 구분)·19:42(실제 호출 동결))"
+    },
+    {
+      "id": "linkage_rate",
+      "system": "Neumann 제품 기본 모델(gpt-6.1-sol)",
+      "value": null,
+      "conditions": "측정 전. 이 모델로 다시 재지 않았다. 이 카드의 Neumann 수치는 평가 모델 gpt-6-astra로 잰 것",
+      "limits": "재측정 안 한 사유: 비용(docs/decisions.md 2026-09-30 19:38(평가 모델·제품 모델 구분)·19:42(실제 호출 동결))"
+    },
+    {
+      "id": "drop_rate",
+      "system": "Neumann 제품 기본 모델(gpt-6.1-sol)",
+      "value": null,
+      "conditions": "측정 전. 이 모델로 다시 재지 않았다. 이 카드의 Neumann 수치는 평가 모델 gpt-6-astra로 잰 것",
+      "limits": "재측정 안 한 사유: 비용(docs/decisions.md 2026-09-30 19:38(평가 모델·제품 모델 구분)·19:42(실제 호출 동결))"
+    },
+    {
+      "id": "demo_e2e",
+      "system": "Neumann 제품 기본 모델(gpt-6.1-sol)",
+      "value": null,
+      "conditions": "측정 전. 이 모델로 다시 재지 않았다. 이 카드의 Neumann 수치는 평가 모델 gpt-6-astra로 잰 것",
+      "limits": "재측정 안 한 사유: 비용(docs/decisions.md 2026-09-30 19:38(평가 모델·제품 모델 구분)·19:42(실제 호출 동결))"
+    }
+  ]
+}

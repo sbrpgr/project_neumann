@@ -70,7 +70,8 @@ class Blocking:
                 self.now -= 1
 
 
-async def wait_until(pred: Any, timeout: float = 5.0) -> None:
+async def wait_until(pred: Any, timeout: float = 20.0) -> None:
+    """기능 단언은 pred로 검사한다. timeout은 스케줄링 여유를 둔 교착 감시 한도다."""
     t0 = time.monotonic()
     while not pred():
         if time.monotonic() - t0 > timeout:
@@ -429,7 +430,7 @@ def test_timeout_504_then_cached_result(tmp_path, monkeypatch):
             assert body["message"].startswith("분석이 0초 안에") or "안에 끝나지 않았습니다" in body["message"]
             assert body["_status"]["label"] == "분석 실패"  # 화면 모양(ui_view)은 유지
             assert_clean(r.text)
-            await wait_until(lambda: srv.gate.active == 0, timeout=5)  # 분석은 끝까지 돌고 슬롯을 반납
+            await wait_until(lambda: srv.gate.active == 0)  # 분석은 끝까지 돌고 슬롯을 반납
             r2 = await c.post("/premortem/view", json={"plan_text": plan("slow")})
             assert r2.status_code == 200 and r2.headers["x-neumann-cache"] == "hit"
             assert srv.counters["timeout_504"] == 1

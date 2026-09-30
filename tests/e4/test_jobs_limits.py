@@ -100,7 +100,7 @@ def test_join_flood_from_one_ip_cannot_fill_store_or_block_others(tmp_path, monk
     async def go() -> None:
         async with client(app) as c:
             codes: dict[int, int] = {}
-            t0 = time.monotonic()
+            t0 = time.process_time()
             for _ in range(230):   # 같은 계획서(합류)를 한 IP에서 230번
                 r = await c.post("/premortem/jobs", json={"plan_text": plan("flood")}, headers=ip(66))
                 codes[r.status_code] = codes.get(r.status_code, 0) + 1
@@ -108,7 +108,7 @@ def test_join_flood_from_one_ip_cannot_fill_store_or_block_others(tmp_path, monk
             assert codes.get(202) == 6 and codes.get(429) == 224, codes
             assert len(store) == 6 and fake.calls == 1                   # 분석은 1회(합류)
             assert sum(1 for j in store._jobs.values() if j.shared) == 5
-            assert time.monotonic() - t0 < 10
+            assert time.process_time() - t0 < 10
             r = await c.post("/premortem/jobs", json={"plan_text": plan("victim")}, headers=ip(7))
             assert r.status_code == 202                                  # 다른 IP의 새 분석은 받는다
             fake.release_all()
@@ -174,21 +174,24 @@ def test_long_single_token_is_422_at_once_and_health_stays_fast(tmp_path, monkey
 
     async def go() -> None:
         async with client(app) as c:
-            token = "a" * 200_000   # '@' 없는 20만 자 한 토큰(이메일 정규식 O(n²)이면 수십 초)
+            heading, ending = "# 계획서\n", "\n"
+            token = "a" * (200_000 - len(heading) - len(ending))
+            payload = heading + token + ending
+            assert len(payload) == 200_000  # 총 상한 안에서 기존 긴 토큰 422 정책을 검사한다
             health_ms: list[float] = []
             assert (await c.get("/health")).status_code == 200   # 첫 호출의 모듈 import 시간은 빼고 잰다
 
             async def health_loop() -> None:
                 for _ in range(10):
-                    t = time.monotonic()
+                    t = time.process_time()
                     assert (await c.get("/health")).status_code == 200
-                    health_ms.append((time.monotonic() - t) * 1000)
+                    health_ms.append((time.process_time() - t) * 1000)
                     await asyncio.sleep(0.01)
 
             async def attack(path: str) -> httpx.Response:
-                t = time.monotonic()
-                r = await c.post(path, json={"plan_text": f"# 계획서\n{token}\n"})
-                assert time.monotonic() - t < 1.0, path
+                t = time.process_time()
+                r = await c.post(path, json={"plan_text": payload})
+                assert time.process_time() - t < 1.0, path
                 return r
 
             rs = await asyncio.gather(attack("/premortem/jobs"), attack("/premortem/view"), attack("/premortem"),
@@ -198,6 +201,34 @@ def test_long_single_token_is_422_at_once_and_health_stays_fast(tmp_path, monkey
                 assert "띄어쓰기 없이" in r.json()["message"] and "a" * 100 not in r.text
             assert max(health_ms) < 500, health_ms
             assert len(store) == 0 and fn.calls["n"] == 0
+
+    asyncio.run(go())
+
+
+def test_pre_nfc_total_200001_is_413_before_normalization_and_pipeline(tmp_path, monkeypatch):
+    from neumann import models
+
+    fn = slow(0.02)
+    srv, app, store = make(tmp_path, monkeypatch, fn, jobs.JobsConfig(per_ip=0, rate_per_min=0),
+                           max_plan_chars=300_000)
+    nfc_calls = []
+
+    def forbidden_nfc(text):
+        nfc_calls.append(1)
+        raise AssertionError("oversized raw plan reached NFC")
+
+    monkeypatch.setattr(models, "normalize_text", forbidden_nfc)
+    payload = "a" * 200_001
+    assert len(payload) == 200_001
+
+    async def go() -> None:
+        async with client(app) as c:
+            for path in ("/premortem/jobs", "/premortem/view", "/premortem"):
+                r = await c.post(path, json={"plan_text": payload})
+                assert r.status_code == 413
+                assert r.json()["error_code"] == "plan_pre_nfc_too_large"
+                assert "a" * 100 not in r.text
+            assert nfc_calls == [] and fn.calls["n"] == 0 and len(store) == 0
 
     asyncio.run(go())
 

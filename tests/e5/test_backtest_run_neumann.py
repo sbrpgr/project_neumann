@@ -75,3 +75,17 @@ def test_duplicate_risksets_rejected():
     rows = rn.run(sample, plans, excl, View(fx), fake, lookup, conditions=("real",))
     with pytest.raises(ValueError, match="중복"):
         build_envelopes(sample, plans, {"t:I": ["r"], "t:J": ["r"]}, rows + rows[:1])
+
+
+def test_mock_never_writes_default_runs_or_names(tmp_path):
+    base = tmp_path / "eval"
+    # mock: 기본 이름에 .mock, 실행 결과는 기본 neumann_runs가 아니다(실제 실행 결과를 덮지 않는다)
+    out, runs = rn.output_paths("mock", limit=5, out=None, runs_dir=None, base=base)
+    assert out == base / "riskset_neumann.first5.mock.jsonl" and runs == base / "neumann_runs.mock"
+    out, runs = rn.output_paths("mock", limit=5, out=tmp_path / "s" / "n.jsonl", runs_dir=None, base=base)
+    assert runs == tmp_path / "s" / "neumann_runs.mock" and runs != base / "neumann_runs"
+    # 실제 provider의 기본값은 그대로
+    out, runs = rn.output_paths("openai", limit=None, out=None, runs_dir=None, base=base)
+    assert out == base / "riskset_neumann.jsonl" and runs == base / "neumann_runs"
+    assert rn.output_paths("openai", limit=5, out=None, runs_dir=tmp_path / "r", base=base)[1] == tmp_path / "r"
+    assert rn.effective_provider("openai") == "openai"

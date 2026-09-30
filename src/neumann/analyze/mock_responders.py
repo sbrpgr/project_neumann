@@ -177,6 +177,50 @@ def semantic_validate(call: LLMCall) -> dict[str, Any]:
     return {"cards": cards}
 
 
+# ── E3-L2r 뒷단: 카드별 수정 권고 · 통합본 다듬기 ──────────────────────────────────
+
+
+def revise_card(call: LLMCall) -> dict[str, Any]:
+    """수정 권고: 해석 한 문장(카드 심사평 근거 앞 두 건), 채택 사례가 입력에 있으면 대응 한 항목,
+    카드가 인용한 계획서 줄마다(최대 두 줄) 수정안 하나, 확인 질문 하나. 숫자·따옴표는 넣지 않는다(게이트 통과용)."""
+    p = call.payload
+    card = p.get("card", {})
+    ev_ids = [e["id"] for e in p.get("evidence", [])]
+    kind = card.get("risk_type", "")
+    accepted = {w["id"] for w in p.get("works", []) if w.get("accepted")}
+    case_ids = [r["id"] for r in p.get("records", [])
+                if r.get("work") in accepted and r.get("kind") == "author_response"]
+    if case_ids:
+        case_work = next(r.get("work") for r in p.get("records", []) if r["id"] == case_ids[0])
+        case_ids = [r["id"] for r in p.get("records", [])
+                    if r.get("work") == case_work and r.get("kind") == "author_response"]
+    plan_lines = [ln["no"] for ln in p.get("plan", {}).get("lines", [])]
+    target = [n for n in card.get("plan_lines", []) if n in plan_lines][:2] or plan_lines[:1]
+    out: dict[str, Any] = {
+        "interpretation": [
+            {"text": f"mock 응답: 유사 연구 심사에서 {kind} 유형의 지적이 나왔고 결정에 영향을 주었다.",
+             "excerpt_ids": ev_ids[:2] or ev_ids},
+        ] if ev_ids else [],
+        "precedents": [
+            {"text": "mock 응답: 같은 지적을 받고 채택된 연구는 절차를 보강해 답변했다.", "excerpt_ids": case_ids[:2]},
+        ] if case_ids else [],
+        "edits": [
+            {"plan_line": n, "kind": "replace",
+             "proposed_text": f"mock 제안: 이 줄에 {kind} 위험을 막는 절차를 명시한다. [확인 필요: 절차의 세부 기준]",
+             "rationale": "mock 응답: 지적된 절차 누락을 이 줄에서 보강한다.", "rationale_excerpt_ids": ev_ids[:1]}
+            for n in target
+        ] if ev_ids else [],
+        "questions": [{"text": "mock 질문: 이 줄의 절차를 어떤 기준으로 정할 것인가?", "plan_lines": target[:1]}],
+    }
+    return out
+
+
+def polish_plan(call: LLMCall) -> dict[str, Any]:
+    """통합본 다듬기: 바꾼 줄의 앞뒤 공백만 정리해 그대로 돌려준다(새 주장·수치 없음)."""
+    lines = call.payload.get("lines", [])
+    return {"lines": [{"no": ln["no"], "text": " ".join(str(ln.get("text", "")).split())} for ln in lines]}
+
+
 def default_responders() -> dict[str, Any]:
     return {
         "fitness": fitness,
@@ -186,4 +230,6 @@ def default_responders() -> dict[str, Any]:
         "expected_review": expected_review,
         "checklist": checklist,
         "semantic_validate": semantic_validate,
+        "revise_card": revise_card,
+        "polish_plan": polish_plan,
     }

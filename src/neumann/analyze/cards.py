@@ -4,6 +4,12 @@
 코드가 id 존재를 검증하고, 근거 Excerpt(원문을 자른 인용)를 붙이고, 점수(유사도 × 빈도 × 심각도 × 신뢰도)를 계산한다.
 
 조립 불변식: 카드당 근거 3건 이상·논문 2편 이상, 카드 최대 8장, R0(서술)·R9(사후 기록 전용)는 카드로 만들지 않는다.
+
+짧은 입력(E3-L1s, 입력 단계 warn):
+- astra 호출에 `SHORT_INPUT_NOTE`를 덧붙인다: 계획서가 짧으면 주제·방법 줄에 묶인 "빠진 안전장치" 카드를 허용한다.
+- 그래도 카드가 0장이면 `field_level_cards`(규칙 합성, generator="rule")로 분야 수준 카드를 만든다. 유사 연구 2편 이상의
+  심사평에서 반복된 위험 유형만, 근거는 원문 구간 그대로(인용을 쓰지 않는다), 계획서 줄에는 묶지 않는다(plan_lines=[]).
+  파이프라인은 이 단계를 degraded로 남기고 결과·화면에 "규칙 합성"을 표시한다.
 """
 
 from __future__ import annotations
@@ -56,6 +62,15 @@ If no reviewer issue in the pool applies to this plan, return cards as [] and gi
 Otherwise no_card_reason is null.
 
 {TAXONOMY_BRIEF}"""
+
+
+SHORT_INPUT_NOTE = """
+The plan is SHORT (only a few sentences), so most safeguards are simply not stated yet. For a short plan, a risk
+applies when reviewers of 2 or more similar papers raised it AND the plan's topic or method (the lines that name them)
+would need that safeguard; tie such a card to those lines and say in why_applies that the plan does not state it yet.
+Write 1 to 3 such cards when the pool supports them; return [] only if no pool issue fits the plan's topic or method."""
+SHORT_PROMPT_VARIANT = "short_input"
+FIELD_MAX_CARDS = 3
 
 
 def build_schema(ids: list[str]) -> dict[str, Any]:
@@ -267,8 +282,13 @@ def synthesize_cards(
     n_works: int,
     llm: LLMProvider,
     settings: Any = None,
+    *,
+    short_input: bool = False,
 ) -> SynthesisResult:
-    """astra로 카드를 합성한다. 호출이 실패하면 규칙 카드로 대신한다(fallback_reason 기록)."""
+    """astra로 카드를 합성한다. 호출이 실패하면 규칙 카드로 대신한다(fallback_reason 기록).
+
+    short_input: 입력 단계 warn(E3-L1s)이면 지시문에 SHORT_INPUT_NOTE를 덧붙인다(notes에 변형 이름을 남긴다).
+    """
     pool = build_pool(issues)
     if not pool:
         return SynthesisResult(cards=[], evidence={}, tags={}, generator="none", pool_size=0,
@@ -279,7 +299,7 @@ def synthesize_cards(
     opts = task_options(TASK, settings)
     call = LLMCall(
         task=TASK,
-        instructions=INSTRUCTIONS,
+        instructions=INSTRUCTIONS + (SHORT_INPUT_NOTE if short_input else ""),
         payload={
             "plan": [f"{ln.no}: {ln.text}" for ln in plan.lines],
             "papers": [
@@ -346,7 +366,8 @@ def synthesize_cards(
                          ", ".join(f"{k} {v}" for k, v in sorted(drops.items()) if k.startswith("card_")))
         no_card = " / ".join(parts) or "카드 없음(사유 미제공)"
     return SynthesisResult(cards=cards, evidence=evidence, tags=tags, generator=res.generator, llm=res,
-                           no_card_reason=no_card, drops=drops, pool_size=len(pool))
+                           no_card_reason=no_card, drops=drops, pool_size=len(pool),
+                           notes=[f"prompt_variant:{SHORT_PROMPT_VARIANT}"] if short_input else [])
 
 
 # ── 비상 규칙 카드 ────────────────────────────────────────────────────────
@@ -380,3 +401,50 @@ def rule_cards(plan: PlanDocument, issues: list[Issue], similarity: dict[str, fl
     no_card = None if cards else "규칙 경로: 근거 3건·논문 2편 이상을 채운 위험 유형이 없다"
     return SynthesisResult(cards=cards, evidence=evidence, tags=tags, generator="rule", no_card_reason=no_card,
                            drops=+drops, pool_size=len(pool))
+
+
+# ── 분야 수준 카드(E3-L1s, 짧은 입력에서 카드 0장일 때만) ─────────────────────
+
+
+def field_level_cards(
+    plan: PlanDocument, issues: list[Issue], similarity: dict[str, float], n_works: int,
+    max_cards: int = FIELD_MAX_CARDS,
+) -> SynthesisResult:
+    """유사 연구 심사평에서 반복된 위험 유형 → 분야 수준 카드(규칙 합성, generator="rule").
+
+    - 유형마다 부정 지적이 나온 논문 수·지적 수로 순위를 매겨 상위 max_cards개. 불변식(근거 3건·논문 2편)은 그대로.
+    - 근거는 지적의 원문 구간(Issue.evidence_excerpt) 그대로다. 문장은 코드가 센 수치만 쓴다(LLM 문장 아님).
+    - 계획서 줄에 묶지 않는다(plan_lines=[]): 짧은 입력이라 어느 줄의 문제인지 말할 근거가 없다.
+    """
+    pool = build_pool(issues, max_pool=10_000)
+    by_code: dict[RiskCode, list[Issue]] = defaultdict(list)
+    for iss in pool:
+        by_code[iss.risk_code].append(iss)
+    ranked = sorted(
+        by_code.items(),
+        key=lambda kv: (-len({i.work_id for i in kv[1]}), -len(kv[1]), kv[0].value),
+    )
+    drafts: list[CardDraft] = []
+    for code, items in ranked:
+        n_w = len({i.work_id for i in items})
+        if n_w < MIN_WORKS or len(items) < MIN_EVIDENCE:
+            continue
+        per_work: dict[str, list[Issue]] = defaultdict(list)
+        for iss in sorted(items, key=lambda i: (-i.confidence, i.work_id, i.excerpt.start)):
+            per_work[iss.work_id].append(iss)
+        ev: list[Issue] = []
+        order = sorted(per_work, key=lambda w: (-similarity.get(w, 0.0), w))
+        while len(ev) < 5 and any(per_work.values()):
+            for w in order:
+                if per_work[w] and len(ev) < 5:
+                    ev.append(per_work[w].pop(0))
+        why = (f"분야 수준 위험(규칙 합성): 입력이 짧아 계획서의 어느 줄에 해당하는지는 연결하지 못했다. "
+               f"유사 연구 {n_w}편의 심사평에서 이 유형 지적이 {len(items)}건 나왔으니, 계획서에 이 부분을 어떻게 다룰지 적어 두는 것이 좋다.")
+        drafts.append(CardDraft(code, f"분야 공통 위험: {code.title_ko} (유사 연구 {n_w}편)", why, [], ev, "rule"))
+        if len(drafts) >= max_cards:
+            break
+    drops: Counter = Counter()
+    cards, evidence, tags = finalize(drafts, plan, similarity, issues, n_works, drops)
+    no_card = None if cards else "분야 수준 카드도 만들 수 없다: 근거 3건·논문 2편 이상을 채운 위험 유형이 없다"
+    return SynthesisResult(cards=cards, evidence=evidence, tags=tags, generator="rule", no_card_reason=no_card,
+                           drops=+drops, pool_size=len(pool), notes=["field_level"])
