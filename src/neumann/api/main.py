@@ -231,7 +231,31 @@ def health() -> dict[str, Any]:
             "sample" if state == "unavailable" else "error"), "label": SAMPLE_LABEL if state == "unavailable" else ""},
         "stages": stages,
         "routers": dict(ROUTER_STATE),
+        "llm": _llm_state(),
     }
+
+
+def _llm_state() -> dict[str, Any]:
+    """실제 호출이 열려 있는지(SEC-3). 키 값·설정 전체는 싣지 않는다."""
+    try:
+        from neumann.config import astra_allowed, get_settings, guard_model, live_llm_allowed
+
+        s = get_settings()
+        allowed = live_llm_allowed()
+        requested = s.llm_provider
+        key_present = s.has_openai_key
+        live = requested == "openai" and allowed
+        return {
+            "provider_requested": requested,
+            "live_llm_ok": allowed,
+            "key_present": key_present,
+            # openai_no_key: 호출마다 config_error → 비상 규칙 경로로 강등된다
+            "effective": ("openai" if key_present else "openai_no_key") if live else "mock",
+            "model": guard_model(s.llm_model, log=False) if live else "",
+            "astra_allowed": astra_allowed(),
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {"error": type(exc).__name__}
 
 
 @app.post("/premortem")

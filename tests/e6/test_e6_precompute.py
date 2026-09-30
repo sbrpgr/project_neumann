@@ -131,7 +131,9 @@ def test_pipeline_mode_calls_run_premortem_and_counts_by_generator(tmp_path):
     assert entries["plan"]["models"] == ["gpt-6-astra"]  # astra 카드의 model
     assert entries["plan_medimaging"]["cards_total"] == 0 and entries["plan_medimaging"]["models"] == []
     s = get_settings()
-    assert manifest["llm"] == {"provider": s.llm_provider, "model": s.llm_model}  # 이름만(비밀값 없음)
+    # 이름만(비밀값 없음). SEC-3: 요청값과 허용 여부, 실제로 쓴 값은 항목별 llm_actual
+    assert manifest["llm"] == {"provider_requested": s.llm_provider, "model_requested": s.llm_model, "live_llm_ok": False}
+    assert set(entries["plan"]["llm_actual"]) == {"provider", "model"}
     raw = _read(tmp_path, entries["plan"])[1]
     assert not any(n.startswith("[대체]") for n in raw["notices"])  # 실제 경로엔 대체 표시가 없다
     assert raw["session_id"] == "precomputed-plan"

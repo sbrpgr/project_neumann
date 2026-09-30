@@ -448,6 +448,9 @@ def cmd_extract(args: argparse.Namespace) -> int:
         from neumann.llm import make_llm, task_options
 
         llm = make_llm(provider="openai" if args.generator == "astra" else "mock")
+        if args.generator == "astra" and llm.name != "openai":
+            raise SystemExit("--generator astra인데 실제 호출이 잠겨 있다(NEUMANN_LIVE_LLM_OK 없음, SEC-3). "
+                             "mock 결과를 astra 이름으로 저장하지 않는다")
         fp = extractor_fingerprint()
         cache = _data_dir() / "cache" / "e5_disapere" / fp if args.generator == "astra" else None
         meta.update({"model": llm.model, "prompt_version": e3.PROMPT_VERSION, "extractor_fingerprint": fp,

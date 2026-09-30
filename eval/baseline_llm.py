@@ -97,6 +97,10 @@ class Provider(Protocol):
     def generate(self, instructions: str, plan_text: str) -> dict[str, Any]: ...
 
 
+class LiveCallLocked(RuntimeError):
+    """SEC-3: NEUMANN_LIVE_LLM_OK 없이 실제 호출을 하려 했다."""
+
+
 class OpenAIBaseline:
     """OpenAI Responses API. 실패는 예외 대신 {"ok": False, "error": ...}로 돌려준다(키·헤더는 담지 않는다)."""
 
@@ -104,12 +108,28 @@ class OpenAIBaseline:
 
     def __init__(self, model: str | None = None, effort: str = EFFORT, timeout_s: float = TIMEOUT_S, client: Any = None) -> None:
         self.model = model or os.environ.get("NEUMANN_LLM_MODEL") or DEFAULT_MODEL
+        if client is None:
+            try:  # astra 금지(대표 지시). 캐시 키가 실제 모델로 잡히도록 생성 시점에 바꾼다
+                from neumann.config import guard_model
+
+                self.model = guard_model(self.model)
+            except Exception:  # noqa: BLE001
+                if "astra" in self.model.lower():
+                    self.model = DEFAULT_MODEL
         self.effort = effort
         self.timeout_s = timeout_s
         self._client = client
 
     def _get_client(self) -> Any:
         if self._client is None:
+            try:  # SEC-3: 실제 호출은 NEUMANN_LIVE_LLM_OK가 있을 때만
+                from neumann.config import live_llm_allowed
+
+                allowed = live_llm_allowed()
+            except Exception:  # noqa: BLE001
+                allowed = False
+            if not allowed:
+                raise LiveCallLocked("실제 호출 잠김(NEUMANN_LIVE_LLM_OK 없음)")
             from openai import OpenAI
 
             key = None
@@ -129,7 +149,13 @@ class OpenAIBaseline:
     def generate(self, instructions: str, plan_text: str) -> dict[str, Any]:
         t0 = time.perf_counter()
         try:
-            resp = self._get_client().responses.create(
+            client = self._get_client()
+        except LiveCallLocked as exc:
+            return {"ok": False, "error": f"locked: {exc}", "locked": True, "latency_s": 0.0}
+        except Exception as exc:  # noqa: BLE001 — 키 없음 등. 예외 대신 실패로 돌려준다(키·헤더는 담지 않는다)
+            return {"ok": False, "error": type(exc).__name__, "latency_s": 0.0}
+        try:
+            resp = client.responses.create(
                 model=self.model,
                 instructions=instructions,
                 input=plan_text,
@@ -212,8 +238,14 @@ def generate_cached(plan: dict[str, Any], provider: Provider, cache_dir: Path, p
     attempts = []
     final: dict[str, Any] | None = None
     final_probs: list[str] = ["no attempt"]
+    locked = False
     for _ in range(MAX_ATTEMPTS):
         g = provider.generate(instructions, plan["plan_text"])
+        if g.get("locked"):
+            locked = True
+            attempts.append({"ok": False, "error": g.get("error"), "problems": [str(g.get("error"))]})
+            final_probs = [str(g.get("error"))]
+            break
         probs = output_problems(g.get("data")) if g.get("ok") else [str(g.get("error", "error"))]
         attempts.append({k: g.get(k) for k in ("ok", "error", "latency_s", "usage", "model_actual", "response_status")} | {"problems": probs})
         # 형식이 깨진 응답(위험 3개가 아님 등)은 쓰지 않는다. 설명 2문장 초과만 있는 응답은 자르고 쓸 수 있다.
@@ -240,6 +272,11 @@ def generate_cached(plan: dict[str, Any], provider: Provider, cache_dir: Path, p
         "output": (final or {}).get("data"),
         "final_problems": final_probs,
     }
+    if locked:
+        # 호출하지 못한 결과는 캐시에 쓰지 않는다(나중에 승인받아 돌릴 때 실패를 재사용하지 않게)
+        entry["locked"] = True
+        entry["cache_hit"] = False
+        return entry
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(entry, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -261,6 +298,9 @@ def riskset_from_entry(entry: dict[str, Any], *, condition: str, work_id: str) -
         notes.append("형식 문제: " + "; ".join(map(str, entry["final_problems"])))
     status = "ok" if entry.get("ok") and len(risks) == K else "error"
     generator = {"openai": "astra", "mock": "mock"}.get(entry.get("provider", ""), entry.get("provider", ""))
+    if entry.get("locked"):
+        generator = "none"  # 호출하지 못했다(SEC-3 잠금). astra로 적지 않는다
+        notes.append("실제 호출 잠김(NEUMANN_LIVE_LLM_OK 없음): 생성하지 않음")
     return make_riskset(
         system=SYSTEM, condition=condition, work_id=work_id, plan_work_id=entry["plan_work_id"], plan_id=entry["plan_id"],
         risks=risks, status=status, generator=generator, model=entry.get("model_actual") or entry.get("model_requested"),

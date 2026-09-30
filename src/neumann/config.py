@@ -4,10 +4,14 @@
 - 빈 값(`OPENAI_API_KEY=`)은 없는 것으로 본다(`env_ignore_empty`).
 - 비밀값(`openai_api_key`, `pseudonym_salt`)은 SecretStr: repr·로그에 값이 나오지 않는다.
   값이 필요하면 `.get_secret_value()`를 그 자리에서만 부른다. 설정 객체 전체를 로그에 찍지 않는다.
+- 실제 OpenAI 호출은 프로세스 환경변수 `NEUMANN_LIVE_LLM_OK=1`일 때만 열린다(`live_llm_allowed`). provider가
+  openai여도 이 값이 없으면 `llm.make_llm`이 mock으로 강등한다. `.env`의 같은 키는 읽지 않는다(main 체크아웃에서
+  도는 에이전트가 물려받지 않게). 실서비스 서버 기동 명령에만 준다(SEC-3, 대표 상시 규칙).
 """
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -17,6 +21,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ENV_FILE = REPO_ROOT / ".env"
+LIVE_LLM_FLAG = "NEUMANN_LIVE_LLM_OK"
+ASTRA_FLAG = "NEUMANN_ALLOW_ASTRA"
+SAFE_MODEL = "gpt-6.1-sol"
+_TRUE = frozenset({"1", "true", "yes", "on"})
 
 
 class Settings(BaseSettings):
@@ -63,4 +71,40 @@ def get_settings() -> Settings:
     return Settings()
 
 
-__all__ = ["ENV_FILE", "REPO_ROOT", "Settings", "get_settings"]
+def live_llm_allowed() -> bool:
+    """실제 OpenAI 호출을 해도 되는가. 프로세스 환경변수 `NEUMANN_LIVE_LLM_OK`만 본다(`.env`는 보지 않는다).
+
+    요청마다 다시 읽는다(설정 캐시와 무관). 1·true·yes·on만 참이고 나머지는 모두 닫힌 쪽이다."""
+    return os.environ.get(LIVE_LLM_FLAG, "").strip().lower() in _TRUE
+
+
+def astra_allowed() -> bool:
+    """astra 모델 사용 허용(대표 지시: 쓰지 않는다). 프로세스 환경변수 `NEUMANN_ALLOW_ASTRA`만 본다."""
+    return os.environ.get(ASTRA_FLAG, "").strip().lower() in _TRUE
+
+
+def guard_model(model: str, *, log: bool = True) -> str:
+    """모델명에 astra가 들어 있으면 `NEUMANN_ALLOW_ASTRA=1`이 없는 한 `SAFE_MODEL`(sol)로 바꾼다.
+
+    바뀐 모델은 결과 manifest·카드 model에 그대로 기록되므로(실제로 쓴 값) 표기가 거짓이 되지 않는다."""
+    if model and "astra" in model.lower() and not astra_allowed():
+        import logging
+
+        if log:
+            logging.getLogger("neumann.config").warning("astra 모델 요청을 %s로 바꾼다(NEUMANN_ALLOW_ASTRA 없음)", SAFE_MODEL)
+        return SAFE_MODEL
+    return model
+
+
+__all__ = [
+    "ASTRA_FLAG",
+    "ENV_FILE",
+    "LIVE_LLM_FLAG",
+    "REPO_ROOT",
+    "SAFE_MODEL",
+    "Settings",
+    "astra_allowed",
+    "get_settings",
+    "guard_model",
+    "live_llm_allowed",
+]

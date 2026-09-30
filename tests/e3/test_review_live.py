@@ -18,7 +18,7 @@ from neumann.analyze.review import generate_expected_review
 from tests.fixtures.loader import load_fixtures
 
 LIVE = os.getenv("NEUMANN_LIVE_TESTS") == "1"
-MODEL = os.getenv("NEUMANN_LLM_MODEL") or "gpt-6-astra"
+MODEL = os.getenv("NEUMANN_LLM_MODEL") or "gpt-6.1-sol"
 
 pytestmark = pytest.mark.skipif(not LIVE, reason="NEUMANN_LIVE_TESTS=1일 때만 실제 API를 부른다")
 
