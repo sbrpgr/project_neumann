@@ -406,7 +406,11 @@ class Gate:
             ticket_id = f"{ticket_id}-{uuid.uuid4().hex[:6]}"
         t = Ticket(id=ticket_id, plan_id=plan_id)
         self._waiting[t.id] = t
+        self._dispatch()  # 빈 슬롯이 있으면 바로 running(자리를 잡아 둔다)
         return t
+
+    def has_plan(self, plan_id: str) -> bool:
+        return any(t.plan_id == plan_id for t in (*self._waiting.values(), *self._running.values()))
 
     async def acquire(self, t: Ticket) -> None:
         """차례가 올 때까지 기다린다. 취소되면 자리를 비운다."""
@@ -417,10 +421,7 @@ class Gate:
         try:
             await t.event.wait()
         except BaseException:
-            if t.state == "running":
-                self.release(t)
-            else:
-                self.cancel(t)
+            self.cancel(t)
             raise
 
     def release(self, t: Ticket, run_s: float | None = None) -> None:
@@ -433,7 +434,8 @@ class Gate:
         self._dispatch()
 
     def cancel(self, t: Ticket) -> None:
-        if self._waiting.pop(t.id, None) is not None:
+        """쓰지 않은 자리를 돌려준다(대기 중이든, 잡아 둔 슬롯이든)."""
+        if self._waiting.pop(t.id, None) is not None or self._running.pop(t.id, None) is not None:
             t.state = "cancelled"
             self._remember(t)
         self._dispatch()
@@ -927,7 +929,7 @@ class ServingMiddleware:
         # 3) 캐시 적중·진행 중이면 속도 제한·대기열을 건너뛴다
         if ctx.plan_id:
             cached = srv.cache.has(ctx.plan_id)
-            joining = ctx.plan_id in srv.inflight
+            joining = ctx.plan_id in srv.inflight or srv.gate.has_plan(ctx.plan_id)
             if not cached:
                 ok, retry = srv.limiter.hit(ctx.ip)
                 if not ok:
