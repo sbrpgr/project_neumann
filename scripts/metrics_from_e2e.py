@@ -11,7 +11,8 @@
 - `card_pass_rate`/<연결 시스템> 모든 근거가 연결된 카드 / 검사 카드
 - `drop_rate`/<연결 시스템>      폐기율 = 버린 지적 / 전체 지적 (연결 요약 문자열의 `폐기율 a/b`에서 읽는다)
 - `e2e_cards`/neumann            화면에 나온 위험카드 수(데모 계획서 합)
-- `demo_e2e`/all                 실패 0으로 끝까지 통과한 데모 계획서 수(신청서 약속 P6)
+- `demo_e2e`/all                 실패 0으로 끝까지 통과한 데모 계획서 수(신청서 약속 P6). 통과 조건에 근거 연결
+                                 검사가 들어 있어, 연결 시스템이 미기록(참고)이면 이것도 참고 행으로 간다
 - `--product-model`을 주면, 그 모델로는 재지 않은 헤드라인 지표를 값 null(= 측정 전) 행으로 적는다.
 
 <연결 시스템>은 연결 검사 실행의 카드 generator(`plans[*].linkage.card_generators`)로 정한다.
@@ -195,6 +196,7 @@ def convert(summary: dict[str, Any], *, model: str, product_model: str | None = 
     degraded = sum(len(e.get("stages_not_ok") or []) for e in demo.values())
     miss_note = f". 연결 검사를 하지 않은 데모 {len(unmeasured)}건({', '.join(unmeasured)})은 합계에서 빠졌다" if unmeasured else ""
 
+    lsys: str | None = None
     if measured:
         lsys, lnote, lhead = linkage_system(measured)
         gen_note = (
@@ -263,14 +265,21 @@ def convert(summary: dict[str, Any], *, model: str, product_model: str | None = 
         )
     else:
         neg_txt = "범위 밖 입력 검사 없음"
+    # 시연 통과 조건에 근거 연결 검사가 들어 있으므로, 그 실행의 generator가 기록되지 않았으면 P2와 같이
+    # 참고 행으로 둔다(PM 결정 2026-09-30). 약속 표는 system "all"만 보므로 P6는 측정 전으로 남는다.
+    demo_ref = lsys == UNRECORDED_SYSTEM
     metrics.append({
-        "id": "demo_e2e", "system": "all", "value": len(passed), "n": len(demo),
-        "detail": f"{len(passed)}/{len(demo)}",
+        "id": "demo_e2e", "system": UNRECORDED_SYSTEM if demo_ref else "all", "value": len(passed), "n": len(demo),
+        "detail": f"{len(passed)}/{len(demo)}" + ("; generator 미기록 실행" if demo_ref else ""),
         "conditions": (
             f"{run}. 데모 계획서가 실서버에서 붙여넣기→리포트 화면·파이프라인 연결·카드 인용·원문 링크·생성 방식 표시·"
             f"브라우저 오류 0·근거 연결 1.0 검사를 실패 0으로 통과한 수. {neg_txt}"
         ),
-        "limits": "리포트 화면까지. 결과 패키지(ZIP) 내보내기는 재지 않았다. 1회 실행",
+        "limits": (
+            "generator 미기록 실행: 통과 조건인 근거 연결 검사 실행의 카드 generator가 요약에 없어 약속 P6 판정에 "
+            "쓰지 않는 참고값이다(PM 결정 2026-09-30: generator·model을 기록한 라이브 결과로 채운다). "
+            if demo_ref else ""
+        ) + "리포트 화면까지. 결과 패키지(ZIP) 내보내기는 재지 않았다. 1회 실행",
     })
 
     if product_model:
