@@ -11,8 +11,11 @@ import os
 _TRUE = {"1", "true", "yes", "on"}
 
 if os.getenv("NEUMANN_LIVE_TESTS") == "1" and os.getenv("NEUMANN_LIVE_LLM_OK", "").strip().lower() not in _TRUE:
-    # SEC-3: 라이브 테스트도 실제 호출 허용 플래그가 함께 있어야 돈다
-    os.environ["NEUMANN_LIVE_TESTS"] = "0"
+    # SEC-3: 라이브 테스트는 실제 호출 허용 플래그가 함께 있어야 돈다.
+    # 조용히 건너뛰면 "전부 skip, 종료 코드 0"이 통과처럼 보이므로 사용 오류로 멈춘다.
+    import pytest
+
+    raise pytest.UsageError("NEUMANN_LIVE_TESTS=1에는 NEUMANN_LIVE_LLM_OK=1이 함께 필요하다(SEC-3). 라이브 테스트를 돌리지 않았다")
 
 if os.getenv("NEUMANN_LIVE_TESTS") != "1":
     os.environ["NEUMANN_LLM_PROVIDER"] = "mock"
