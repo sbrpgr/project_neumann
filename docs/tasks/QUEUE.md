@@ -28,9 +28,9 @@
 | E3-L1x rule_fitness "neural" 오분류 | ✅ 병합(Sonnet PASS) | 남은 한계: `~인지 과제` 오탐, neuromorphic(후속 소과제, 선택) |
 | E4-L1f 화면 업로드 | ✅ 병합(cf43101, Sonnet PASS) | 8020 재기동 시 반영. 발표 9쪽 "PDF·DOCX 포함" |
 | E5-L1e2e 라이브 E2E AI4S 세트 | ⏳ 구축 세션(개발 mock, 8020 sol 라이브 정확히 1회, 재실행은 PM 승인) | v1 확인 실행 |
-| E3-L1y 카드 뒤 단계 병렬·진행 보고 | ⏳ 구축 세션(pipeline.py만) | 검증에 manifest 실제 모델·단계 impl 확인 포함 |
+| E3-L1y 카드 뒤 단계 병렬·진행 보고 | 🔍 795ec31 검증 중(구축 세션): 54.1→42.0초(mock), 결과 순차와 동일 | PM 결정: 순서 단언은 체크리스트→2차 검증만+병렬=순차 결과 동일 고정, EXTRACT_PARALLEL 24 유지, 캐시 임시 파일명 고유화. jobs.py 단계 표시는 E4-L2d 쪽 |
 | SEC-5 다중 사용자 동시성 | ⏳ PM 세션 빌더(mock) | E4-L2e 부하 시험 지적: 검색 상태 스레드별(index/search.py), OpenAI 동시 요청 프로세스 상한 `NEUMANN_LLM_MAX_INFLIGHT`(llm.py). 공개 전 필수 |
-| E4-L2e 부하 시험 | 🔍 1b0c5e6(구축 세션), 검증 요청 | 동시 24건 오류 0, 권장 `NEUMANN_MAX_CONCURRENT=6` |
+| E4-L2e 부하 시험 | ✅ 병합(Sonnet PASS), 보고서 문구 정정 | 공개 기동 `NEUMANN_MAX_CONCURRENT=6` |
 | SEC-2 재점검 | 대기 | E4-L2c·L2d 병합 뒤 → 통과하면 cloudflared 터널 공개(주소는 발표자료로) |
 | E4-L1a 업로드 | ✅ 병합(2e38839, 긴 경계 400 수정 80e024c 포함) | 공개 전 `/upload/plan` 속도 제한(E4-L2c 보호 경로), 화면 문구 "정리 뒤 50,000자 상한" |
 | E6-docs 문서·README | ✅ 병합(7049da9), 루트 README 교체(38b01e4) | 07:00 동결 때 숫자·상태 한 번 더 맞춤. SEC-3 병합 뒤 RUNNING에 LIVE_LLM_OK 두 줄 |
