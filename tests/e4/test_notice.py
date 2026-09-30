@@ -2,11 +2,11 @@
 
 index.html을 글자로 읽어 확인한다(브라우저 없이 기본 pytest에서 돈다).
 - 고지 문구(라벨·한 줄 요약·전문 두 줄)가 글자 그대로 있고, 확인할 수 없는 약속(학습 미사용 등)은 없다.
-- 고지 자리(#sendNote)가 입력 카드(#inCard) 안, 실행 버튼(#btnStart) 바로 앞에 있고, 모드별 입력 영역(area) 밖이라
+- 고지 자리(#sendNote)가 입력 카드(#inCard) 안, 실행 버튼(#btnStart) 바로 뒤에 있고, 모드별 입력 영역(area) 밖이라
   직접 입력·파일 업로드 두 모드에 같이 나온다.
 - 고지 글은 textContent로만 들어간다(innerHTML·문자열 이어 붙이기 없음). 색은 토큰, 외부 요청 없음.
 - (조건부) 결과를 파일로 캐시하는 서빙 층이 있으면, 그 저장본에서 본문을 떼는지 확인한다("본문 파일 저장 없음"의 근거).
-화면에서 실제로 보이는지(첫 화면 viewport 안)는 ``test_notice_ui.py``(Playwright)가 잰다.
+최신 디자인 규격에 따라 고지는 실행 버튼 아래에 놓고 샘플 카드를 가리지 않는다.
 """
 
 from __future__ import annotations
@@ -73,14 +73,13 @@ def test_notice_mentions_facts_only(html: str) -> None:
     assert not re.search(r"gpt-|o\d-|astra|sol\b", block, re.I), "고지에 모델명"
 
 
-def test_notice_inside_input_card_before_run_button(html: str) -> None:
+def test_notice_inside_input_card_after_run_button(html: str) -> None:
     body = _func(html, "renderInput")
     i_card, i_note, i_btn = body.find('id="inCard"'), body.find('id="sendNote"'), body.find('id="btnStart"')
     assert i_card > 0 and i_note > 0 and i_btn > 0
-    assert i_card < i_note < i_btn, "고지는 입력 카드 안, 실행 버튼 앞이어야 한다"
-    # 실행 버튼 줄 바로 앞: 고지와 버튼 사이에는 버튼 줄의 여는 div 하나뿐
-    between = body[i_note:i_btn]
-    assert between.count("<div") == 1, between  # 버튼 줄의 여는 div
+    assert i_card < i_btn < i_note, "고지는 입력 카드 안, 실행 버튼 아래여야 한다"
+    between = body[i_btn:i_note]
+    assert between.count("<div") == 0, between
     assert "fitBox" not in between and "area" not in between
     # 모드별 영역(area = ...) 안에 있지 않다 → 직접 입력·업로드 공통
     for m in re.finditer(r"area = (.*?);\n", body, re.S):
@@ -103,12 +102,12 @@ def test_notice_painted_with_textcontent(html: str) -> None:
     assert not re.search(r"SEND_NOTE[.\w\[\]]*\s*\+\s*['\"]", html)
 
 
-def test_notice_style_tokens_and_sticky(html: str) -> None:
+def test_notice_style_tokens_and_no_overlay(html: str) -> None:
     rules = re.findall(r"^\s*\.sendnote[^{]*\{([^}]*)\}", html, re.M)
     assert len(rules) >= 5
     css = " ".join(rules)
     assert not re.search(r"#[0-9a-fA-F]{3,8}\b", css), "색은 :root 토큰만"
-    assert "position: sticky" in css and "bottom: 0" in css
+    assert "position: static" in css and "position: sticky" not in css
     assert "background: var(--card)" in css
     for bad in ("letter-spacing", "uppercase", "var(--mono)", "border-left", "border-radius"):
         assert bad not in css, f"디자인 규칙 위반: {bad}"

@@ -1,4 +1,4 @@
-"""E4-S06 전송 고지 Playwright 검사(1440×900): 첫 화면에서 보이는지, 실행 버튼 가까이 있는지, 업로드 모드에서도 같은지.
+"""전송 고지 Playwright 검사(1440×900): 실행 버튼 아래에 보이는지, 업로드 모드에서도 같은지.
 
     NEUMANN_UI_TESTS=1 python -m pytest tests/e4/test_notice_ui.py -q -s
     python tests/e4/test_notice_ui.py [--port 8131] [--out docs/reports]
@@ -135,7 +135,7 @@ def shoot(base: str, out: Path) -> dict:
     requests: list[str] = []
     res: dict = {}
     with sync_playwright() as p:
-        browser = p.chromium.launch()
+        browser = p.chromium.launch(headless=True)
         ctx = browser.new_context(viewport={"width": VW, "height": VH}, device_scale_factor=1, locale="ko-KR")
         page = ctx.new_page()
         page.on("console", lambda m: console_errors.append(m.text) if m.type == "error" else None)
@@ -149,8 +149,9 @@ def shoot(base: str, out: Path) -> dict:
             page.wait_for_function("document.getElementById('hdrState').textContent !== '서버 확인 중'")
             page.evaluate("document.fonts.ready.then(() => true)")
             page.wait_for_function("document.querySelectorAll('#sendNote .snl').length === 2")
+            page.locator("#sendNote").scroll_into_view_if_needed()
 
-        # 1 첫 화면(직접 입력, 기본 모드): 스크롤 없이 고지가 viewport 안에 보인다
+        # 1 입력 단계의 실행 버튼 아래로 내려가 고지를 확인한다.
         page.goto(base + "/", wait_until="networkidle")
         ready()
         m = page.evaluate(MEASURE)
@@ -159,9 +160,10 @@ def shoot(base: str, out: Path) -> dict:
         res["text_first_button_in_viewport"] = m["btn"]["bottom"] <= VH
         page.screenshot(path=str(out / f"{PREFIX}_notice.png"))
 
-        # 1b 펼치기: 전문 두 줄이 보이고 여전히 첫 화면 안. 다시 접는다
+        # 1b 펼치기: 전문 두 줄이 보인다. 다시 접는다.
         click_summary(page)
         page.wait_for_function("document.getElementById('sendNote').open === true && document.querySelector('#sendNote .more').textContent === '접기'")
+        page.locator("#sendNote").scroll_into_view_if_needed()
         mo = page.evaluate(MEASURE)
         res["text_first_open"] = mo
         res["text_first_open_in_viewport"] = _in_viewport(mo)
@@ -170,12 +172,13 @@ def shoot(base: str, out: Path) -> dict:
         page.wait_for_function("document.getElementById('sendNote').open === false && document.querySelector('#sendNote .more').textContent === '자세히'")
         res["text_first_reclosed"] = page.evaluate(MEASURE)["open"] is False
 
-        # 2 실행 버튼이 보이게 내리면 고지는 버튼 줄 바로 위에 놓인다
+        # 2 고지는 실행 버튼 아래에 놓이고 입력 내용과 겹치지 않는다.
         page.evaluate("document.getElementById('btnStart').scrollIntoView({block: 'end'})")
+        page.locator("#sendNote").scroll_into_view_if_needed()
         page.wait_for_timeout(150)
         m2 = page.evaluate(MEASURE)
         res["text_scrolled"] = m2
-        res["text_gap_to_button_px"] = round(m2["btn"]["y"] - m2["box"]["bottom"], 1)
+        res["text_gap_to_button_px"] = round(m2["box"]["y"] - m2["btn"]["bottom"], 1)
 
         # 2b 긴 글 끝에서 타이핑(접힘)·붙여넣기(펼침): 캐럿이 있는 마지막 줄이 고지 위에 보인다(scroll-padding-bottom)
         caret_js = """() => {
@@ -194,6 +197,7 @@ def shoot(base: str, out: Path) -> dict:
         caret = {}
         for label, want_open in (("typing_collapsed", False), ("paste_open", True)):
             page.evaluate("window.scrollTo(0, 0)")
+            page.locator("#sendNote").scroll_into_view_if_needed()
             if page.evaluate("document.getElementById('sendNote').open") != want_open:
                 click_summary(page)
                 page.wait_for_function("o => document.getElementById('sendNote').open === o", arg=want_open)
@@ -209,12 +213,13 @@ def shoot(base: str, out: Path) -> dict:
             caret[label] = page.evaluate(caret_js)
         res["caret"] = caret
         page.evaluate("window.scrollTo(0, 0)")
+        page.locator("#sendNote").scroll_into_view_if_needed()
         if page.evaluate("document.getElementById('sendNote').open"):
             click_summary(page)
             page.wait_for_function("document.getElementById('sendNote').open === false")
         page.fill("#ta", "")
 
-        # 3 파일 업로드 모드: 같은 고지, 첫 화면 안
+        # 3 파일 업로드 모드: 같은 고지와 실행 버튼 아래 위치.
         page.evaluate("window.scrollTo(0, 0)")
         page.click('.seg button[data-mode="file"]')
         page.wait_for_selector("#drop")
@@ -222,15 +227,16 @@ def shoot(base: str, out: Path) -> dict:
         m3 = page.evaluate(MEASURE)
         res["file_first"] = m3
         res["file_first_in_viewport"] = _in_viewport(m3)
-        res["file_gap_to_button_px"] = round(m3["btn"]["y"] - m3["box"]["bottom"], 1)
+        res["file_gap_to_button_px"] = round(m3["box"]["y"] - m3["btn"]["bottom"], 1)
 
-        # 4 업로드 파일이 붙어 미리보기로 길어져도 첫 화면에 보인다(파일 선택 → FileReader)
+        # 4 업로드 파일 미리보기가 길어져도 아래로 내려가 고지를 볼 수 있다.
         page.set_input_files("#fileIn", files=[{"name": "plan.md", "mimeType": "text/markdown",
                                                 "buffer": ("# 가짜 계획서\n" + "\n".join(f"{i}번째 줄 [FAKE]" for i in range(1, 60))).encode("utf-8")}])
         page.wait_for_selector(".file .fn")
         ready()
         page.evaluate("window.scrollTo(0, 0)")
         page.wait_for_timeout(100)
+        page.locator("#sendNote").scroll_into_view_if_needed()
         m4 = page.evaluate(MEASURE)
         res["file_loaded_first"] = m4
         res["file_loaded_first_in_viewport"] = _in_viewport(m4)
@@ -284,9 +290,9 @@ def check(res: dict) -> list[str]:
                 "file_loaded_first_in_viewport"):
         if not res[key]:
             bad.append(f"{key}: 첫 화면(1440×900) 밖")
-    for key in ("text_first", "text_first_open", "file_first", "file_loaded_first"):  # 펼쳐도 화면이 튀지 않는다
-        if res[key]["scrollY"] != 0:
-            bad.append(f"{key}: 스크롤된 상태에서 잼")
+    for key in ("text_first", "text_first_open", "file_first", "file_loaded_first"):
+        if res[key]["box"]["y"] < res[key]["btn"]["bottom"]:
+            bad.append(f"{key}: 고지가 실행 버튼 위에 겹침")
     if not (0 <= res["text_gap_to_button_px"] <= NEAR_PX):
         bad.append(f"직접 입력: 고지~실행 버튼 거리 {res['text_gap_to_button_px']}px > {NEAR_PX}")
     if not (0 <= res["file_gap_to_button_px"] <= NEAR_PX):

@@ -422,7 +422,7 @@
   .fit.ok b { color: var(--green); }
   /* ===== E4-S06 입력 전송 고지(SEC-1 S-06). 자연 위치는 실행 버튼 바로 위, 첫 화면에서는 화면 아래에 붙어 보인다(sticky).
      입력칸을 덜 가리게 접힌 상태는 한 줄 요약, 펼치면 전문 두 줄 ===== */
-  .sendnote { position: sticky; bottom: 0; z-index: 2; margin-top: 16px; padding: 6px 0 7px 0; border-top: 3px double var(--line2); background: var(--card); font-size: 13px; line-height: 1.6; color: var(--text2); }
+  .sendnote { position: static; margin-top: 16px; padding: 6px 0 7px 0; border-top: 3px double var(--line2); background: var(--card); font-size: 13px; line-height: 1.6; color: var(--text2); }
   .sendnote summary { display: flex; align-items: baseline; gap: 12px; cursor: pointer; list-style: none; }
   .sendnote summary::-webkit-details-marker { display: none; }
   .sendnote summary b { flex-shrink: 0; font-family: var(--sans); font-weight: 700; color: var(--red); }
@@ -824,8 +824,8 @@
       '<div id="tplArea">' + tplInner() + '</div><div id="sampleArea">' + sampleInner() + '</div>' + area +
       (S.inErr ? '<div class="inerr" id="inErr">' + esc(S.inErr) + '</div>' : '') +
       '<div class="fit' + (FIT && FIT.fit === true ? ' ok' : '') + '" id="fitBox" role="status"' + (FIT ? '' : ' hidden') + '>' + fitInner() + '</div>' +
-      '<details class="sendnote" id="sendNote"></details>' +
-      '<div style="display:flex; align-items:center; justify-content:space-between; margin-top:18px; gap:14px; flex-wrap:wrap;"><span class="sm muted">최종 판단은 연구자에게</span><button class="btn dark lg" id="btnStart" type="button"' + (S.text.trim() ? '' : ' disabled') + '>Pre-mortem 실행 →</button></div></div></div>';
+      '<div style="display:flex; align-items:center; justify-content:space-between; margin-top:18px; gap:14px; flex-wrap:wrap;"><span class="sm muted">최종 판단은 연구자에게</span><button class="btn dark lg" id="btnStart" type="button"' + (S.text.trim() ? '' : ' disabled') + '>Pre-mortem 실행 →</button></div>' +
+      '<details class="sendnote" id="sendNote"></details></div></div>';
   }
 
   /* ---------- 1 입력 · 템플릿 선택기 · 예시 · 범위 안내 (GET /templates, E4-L1b) ---------- */
@@ -864,17 +864,16 @@
     if (GALLERY.err) return '<div class="tplmeta inerr" role="status">' + esc(GALLERY.err) + '</div>';
     if (!GALLERY.cat) return '<div class="tplmeta">공개 예시 목록 불러오는 중</div>';
     var cat = GALLERY.cat, rows = (cat.samples || []).filter(function (s) { return s.public_ok === true && (!GALLERY.field || s.field === GALLERY.field); });
-    return '<details id="sampleGallery" style="margin:12px 0 18px;"><summary>공개 예시 갤러리 · ' + rows.length + '건</summary>' +
-      '<p class="sm muted">' + esc(cat.notice || '공개 예시 입력과 저장 결과는 별도로 표시합니다.') + '</p>' +
-      '<label class="sm">세부 분야 <select id="sampleField" style="max-width:100%;font-size:16px;"><option value="">전체</option>' + (cat.fields || []).map(function (f) { return '<option value="' + esc(f.id) + '"' + (GALLERY.field === f.id ? ' selected' : '') + '>' + esc(f.name) + '</option>'; }).join('') + '</select></label>' +
+    return '<details id="sampleGallery" open style="margin:12px 0 16px;"><summary>연구계획서 선택 · ' + rows.length + '편</summary>' +
+      '<label class="sm">분야 <select id="sampleField" style="max-width:100%;font-size:16px;"><option value="">전체</option>' + (cat.fields || []).filter(function (f) { return (cat.samples || []).some(function (s) { return s.field === f.id; }); }).map(function (f) { return '<option value="' + esc(f.id) + '"' + (GALLERY.field === f.id ? ' selected' : '') + '>' + esc(f.name) + '</option>'; }).join('') + '</select></label>' +
       rows.map(function (s) { var id = esc(s.id), p = s.precomputed || {}; return '<article class="sampleCard" data-sample-id="' + id + '" style="padding:12px 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere;"><b>' + esc(s.title) + '</b>' +
-        '<div class="sm muted">' + esc(s.domain) + ' · 공개 승인된 예시 입력 · 분석 전' + (s.expect_gate && s.expect_gate !== 'ok' ? ' · 관문 예시: ' + esc(s.expect_gate) : '') + '</div>' +
+        '<div class="sm muted">' + esc(s.domain) + '</div>' +
         '<p class="sm">' + esc(s.summary) + '</p><div class="rvrow">' + (s.body_available ? '<button class="btn sm" type="button" data-sample="' + id + '">본문 불러오기</button>' : '<span class="sm muted">공개 본문 없음</span>') +
         Object.keys(s.documents || {}).filter(function (fmt) { return /^(pdf|docx|hwpx)$/.test(fmt); }).map(function (fmt) { return '<a class="btn sm" download href="templates/samples/' + encodeURIComponent(s.id) + '/document/' + fmt + '">' + esc(fmt.toUpperCase()) + '</a>'; }).join('') +
-        (p.available ? '<button class="btn sm" type="button" data-sample-view="' + id + '">' + esc(p.label || '사전 계산본 · 라이브 분석 아님') + '</button>' : '<span class="sm muted">사용 가능한 저장 결과 없음</span>') +
-        '</div><div class="sm muted">' + esc(s.license) + '</div></article>'; }).join('') + '</details>';
+        (p.available ? '<button class="btn sm" type="button" data-sample-view="' + id + '">' + esc(p.label || '사전 계산본 · 라이브 분석 아님') + '</button>' : '') +
+        '</div></article>'; }).join('') + '</details>';
   }
-  function paintSamples() { var area = $('sampleArea'); if (area) { var was = $('sampleGallery') && $('sampleGallery').open; area.innerHTML = sampleInner(); if ($('sampleGallery')) $('sampleGallery').open = !!was; } }
+  function paintSamples() { var area = $('sampleArea'); if (area) { var was = !$('sampleGallery') || $('sampleGallery').open; area.innerHTML = sampleInner(); if ($('sampleGallery')) $('sampleGallery').open = !!was; } }
   function loadSamples() {
     fetch('templates/samples', { cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(function (j) { if (!Array.isArray(j.samples)) throw new Error('목록 형식 오류'); GALLERY.cat = j; GALLERY.err = ''; paintSamples(); }).catch(function (e) { GALLERY.err = '공개 예시 목록을 불러오지 못함 · ' + e.message; paintSamples(); });
   }

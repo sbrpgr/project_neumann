@@ -20,7 +20,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 DATA_DIR = Path(__file__).resolve().parent / "templates"
 REGISTRY_PATH = DATA_DIR / "samples.json"
 SCHEMA_PATH = DATA_DIR / "samples.schema.json"
-DOCUMENT_DIR = REPO_ROOT / "src/neumann/webui/samples"
+DOCUMENT_DIR = DATA_DIR / "samples/docs"
 TEXT_DIRS = (DATA_DIR / "examples", DATA_DIR / "samples", REPO_ROOT / "tests/fixtures/plans")
 PRECOMPUTED_LABEL = "사전 계산본 · 라이브 분석 아님"
 router = APIRouter(tags=["samples"])

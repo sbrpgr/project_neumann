@@ -22,16 +22,16 @@
       "kind": "plan",
       "status": "featured",
       "title": "전해액 이온전도도 예측 GNN 대리모델",
-      "summary": "문헌 12,000건으로 배터리 전해액 이온전도도를 예측하는 GNN. 무작위 분할·중복 미제거·오차 막대 없음 등 흔한 약점이 들어 있다.",
+      "summary": "리튬이온 배터리 전해액의 이온전도도를 예측해 후보 조성을 선별하는 연구계획입니다.",
       "domain": "소재·화학·분자",
       "field": "battery",
       "language": "ko",
-      "path": "tests/fixtures/plans/plan.md",
+      "path": "src/neumann/api/templates/samples/electrolyte_gnn.md",
       "documents": {"pdf": "electrolyte_gnn.pdf", "docx": "electrolyte_gnn.docx", "hwpx": "electrolyte_gnn.hwpx"},
       "license": "우리 작성(Neumann 팀, E0b 데모 계획서)",
       "public_ok": true,
       "expect_gate": "ok",
-      "plan_id": null,
+      "plan_id": "3d35460def76efc4a786dce769e614f0d54d110ee2837da6b8fc1dbcf88ef33c",
       "source_test": {"name": "E5-L1e2e v1 라이브(gpt-6.1-sol, 8020)", "result_hint": "plan.result.json", "server_port": 8020, "status": "done"},
       "origin": {"work_id": null, "url": null, "arxiv": null, "decision": null, "note": "가상 연구실 계획서"},
       "intended_weaknesses": [
@@ -41,23 +41,23 @@
         {"risk_code": "R7", "text": "홀드아웃 R2·MAE만 보고, 학습 범위 밖 조성에 대한 일반화 검증 없음", "plan_lines": [21], "keywords": ["일반화", "범위 밖", "holdout", "generaliz"]},
         {"risk_code": "R5", "text": "산업 협약을 이유로 코드·데이터 비공개 → 재현 불가", "plan_lines": [23], "keywords": ["재현", "공개", "code", "release"]}
       ],
-      "curation": {"score": null, "breakdown": {}, "reason": "목업·개발용 임시 featured(대표 지시). 선별 점수는 scripts/curate_samples.py로 채운다", "checked_by_human": false, "result_file": null, "result_sha256": null, "result_generated_at": null, "generation": null, "scored_at": null}
+      "curation": {"score": null, "breakdown": {"cards": 5, "quotes_verified": 17, "quotes_total": 17, "linkage_rate": 1.0, "semantic_match": 5, "semantic_weak": 0, "semantic_mismatch": 0, "failed_stages": 0, "e2e_failures": 0}, "reason": "과거 라이브 파일 대조: 카드 인용 연결과 단계 성공. 과거 화면·체크리스트 오류와 의미 검증 약함은 SAMPLES 보고서에 기록. 전체 점수나 과학적 정확도 주장이 아님.", "checked_by_human": false, "result_file": ".claude/worktrees/s2-E5-L1e2e/docs/reports/E5-L1e2e_live/plan.result.json", "result_sha256": "a0514a844e79987fbe9682783b57b033242fe94abdffd508f3c36c11d619797f", "result_generated_at": "2026-09-30T12:58:17.924130Z", "generation": "라이브 gpt-6.1-sol", "scored_at": "2026-09-30T19:07:53.359010+00:00"}
     },
     {
       "id": "example-binding",
       "kind": "plan",
       "status": "featured",
       "title": "단백질-리간드 결합 친화도 예측 등변 GNN",
-      "summary": "PDBbind로 학습해 CASF-2016에서 pKd를 예측하는 E(3)-등변 GNN. 단백질 패밀리 분할 없음·도킹 점수를 라벨로 씀 등의 약점이 들어 있다.",
+      "summary": "단백질과 리간드의 3차원 구조로 결합 친화도를 예측하는 연구계획입니다.",
       "domain": "단백질·생물·신약",
       "field": "binding",
       "language": "ko",
-      "path": "src/neumann/api/templates/examples/protein_ligand_affinity.md",
+      "path": "src/neumann/api/templates/samples/protein_ligand_affinity.md",
       "documents": {"pdf": "protein_ligand_affinity.pdf", "docx": "protein_ligand_affinity.docx", "hwpx": "protein_ligand_affinity.hwpx"},
       "license": "우리 작성(Neumann 팀, E4-L1e 예시)",
       "public_ok": true,
       "expect_gate": "ok",
-      "plan_id": null,
+      "plan_id": "0d75d00c63abe7a120a3d1808745bac87948206361d11b417d8253a887df6451",
       "source_test": {"name": "E5-L1e2e v1 라이브(gpt-6.1-sol, 8020)", "result_hint": "protein_ligand_affinity.result.json", "server_port": 8020, "status": "done"},
       "origin": {"work_id": null, "url": null, "arxiv": null, "decision": null, "note": "가상 연구실 계획서"},
       "intended_weaknesses": [
@@ -66,23 +66,23 @@
         {"risk_code": "R2", "text": "비교 기준선이 AutoDock Vina 1종뿐, 학습 기반 기준선 없음", "plan_lines": [11], "keywords": ["기준선", "baseline", "vina", "비교"]},
         {"risk_code": "R2", "text": "시드 1개, 오차 막대·절제 실험 없음", "plan_lines": [23], "keywords": ["시드", "오차", "절제", "seed", "ablation"]}
       ],
-      "curation": {"score": null, "breakdown": {}, "reason": "목업·개발용 임시 featured(대표 지시). 선별 점수는 scripts/curate_samples.py로 채운다", "checked_by_human": false, "result_file": null, "result_sha256": null, "result_generated_at": null, "generation": null, "scored_at": null}
+      "curation": {"score": null, "breakdown": {"cards": 7, "quotes_verified": 27, "quotes_total": 27, "linkage_rate": 1.0, "semantic_match": 5, "semantic_weak": 2, "semantic_mismatch": 0, "failed_stages": 0, "e2e_failures": 2}, "reason": "과거 라이브 파일 대조: 카드 인용 연결과 단계 성공. 과거 화면·체크리스트 오류와 의미 검증 약함은 SAMPLES 보고서에 기록. 전체 점수나 과학적 정확도 주장이 아님.", "checked_by_human": false, "result_file": ".claude/worktrees/s2-E5-L1e2e/docs/reports/E5-L1e2e_live/protein_ligand_affinity.result.json", "result_sha256": "dacdcdd750fe89c80287a03bef4478ced22f504844a39bea977a8468c4aea190", "result_generated_at": "2026-09-30T13:01:05.590076Z", "generation": "라이브 gpt-6.1-sol", "scored_at": "2026-09-30T19:07:53.361024+00:00"}
     },
     {
       "id": "example-operator",
       "kind": "plan",
       "status": "featured",
       "title": "신경 연산자 기반 대기 유체 대리모델",
-      "summary": "FNO로 Navier-Stokes와 ERA5 대기 순환의 시간 전개를 학습해 10일 예측장을 만드는 계획. 시점 무작위 분할·보존 법칙 미반영·롤아웃 평가 없음 등의 약점이 들어 있다.",
+      "summary": "신경 연산자로 대기 유체의 시간 전개를 학습해 기상장을 예측하는 연구계획입니다.",
       "domain": "물리·PDE·기후",
       "field": "operator",
       "language": "ko",
-      "path": "src/neumann/api/templates/examples/neural_operator_weather.md",
+      "path": "src/neumann/api/templates/samples/neural_operator_weather.md",
       "documents": {"pdf": "neural_operator_weather.pdf", "docx": "neural_operator_weather.docx", "hwpx": "neural_operator_weather.hwpx"},
       "license": "우리 작성(Neumann 팀, E4-L1e 예시)",
       "public_ok": true,
       "expect_gate": "ok",
-      "plan_id": null,
+      "plan_id": "11a5f2e74984d5ccc4fdedba1347cb66436f4b0e372d912357f20c4547ec74a6",
       "source_test": {"name": "E5-L1e2e v1 라이브(gpt-6.1-sol, 8020)", "result_hint": "neural_operator_weather.result.json", "server_port": 8020, "status": "done"},
       "origin": {"work_id": null, "url": null, "arxiv": null, "decision": null, "note": "가상 연구실 계획서"},
       "intended_weaknesses": [
@@ -93,12 +93,12 @@
         {"risk_code": "R1", "text": "수천 배 빠르다고 주장하면서 수치 해법 대비 계산 시간을 재지 않음", "plan_lines": [24, 28], "keywords": ["계산 시간", "속도", "speed", "cost", "비용"]},
         {"risk_code": "R2", "text": "시드 1개, 오차 막대 없음", "plan_lines": [23], "keywords": ["시드", "오차", "seed", "error bar"]}
       ],
-      "curation": {"score": null, "breakdown": {}, "reason": "목업·개발용 임시 featured(대표 지시). 선별 점수는 scripts/curate_samples.py로 채운다", "checked_by_human": false, "result_file": null, "result_sha256": null, "result_generated_at": null, "generation": null, "scored_at": null}
+      "curation": {"score": null, "breakdown": {"cards": 7, "quotes_verified": 25, "quotes_total": 25, "linkage_rate": 1.0, "semantic_match": 7, "semantic_weak": 0, "semantic_mismatch": 0, "failed_stages": 0, "e2e_failures": 3}, "reason": "과거 라이브 파일 대조: 카드 인용 연결과 단계 성공. 과거 화면·체크리스트 오류와 의미 검증 약함은 SAMPLES 보고서에 기록. 전체 점수나 과학적 정확도 주장이 아님.", "checked_by_human": false, "result_file": ".claude/worktrees/s2-E5-L1e2e/docs/reports/E5-L1e2e_live/neural_operator_weather.result.json", "result_sha256": "20f8a9524a540731c8ff1bdd5823d8fd78c8fb12428b8451c46734f4427cd650", "result_generated_at": "2026-09-30T13:03:53.222119Z", "generation": "라이브 gpt-6.1-sol", "scored_at": "2026-09-30T19:07:53.362551+00:00"}
     },
     {
       "id": "reject-too-short",
       "kind": "reject",
-      "status": "featured",
+      "status": "retired",
       "title": "300자 미만 초안 — 단백질 백본 확산 모델",
       "summary": "연구 주제는 범위 안이지만 126자뿐이라 입력 관문이 분석하지 않고 무엇을 더 적을지 안내한다(거절 시연).",
       "domain": "단백질·생물·신약",
@@ -117,7 +117,7 @@
     {
       "id": "reject-off-scope",
       "kind": "reject",
-      "status": "featured",
+      "status": "retired",
       "title": "범위 밖 글 — 제주 3박 4일 여행 계획",
       "summary": "538자로 분량은 넘지만 연구계획서가 아닌 여행 일정이라 적합성 판정이 거절한다(거절 시연).",
       "domain": "물리·PDE·기후",
