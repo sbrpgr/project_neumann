@@ -1,3 +1,12 @@
+## 최신 핵심 판정 — 2026-10-01 02:20 KST (이 절이 현재 상태)
+
+- main은 아직 17c8058이며 기능 병합·push는 보류다. root 제품 디스크는 그대로 유지한다. 고정 core cfec213은 C:/Users/User/Desktop/project_neumann/out/codex/core-final에 있고, 후속 callguard 포함 후보709494a는 out/codex/integration에 분리돼 있다.
+- 전체3 cfec213: **2169 통과·48 건너뜀·1 실패,135.65초**, 보안534·계약4. 실패는 total200007자 긴 토큰 요청이 새 pre-NFC200000 상한으로413인데 기존 검사에서422/long_token을 기대한 정책 경계 충돌이다. CPU/temp 실패가 아니다. 원SEC7 owner가 <=200000 payload의 기존422 의미와 >200000의413/NFC·pipeline0를 각각 실측하는 test-only 회귀를 수정한다.
+- 날짜/README fixed1a64 독립19 PASS, fonts/raw fixed243 독립74 및 fonts404×4·adjacent4 PASS, fixedcfec 최종 결합20focused PASS를 확인했다. 이 좁은 PASS는 다음 신규 출처 결합 반례를 포함하지 않는다.
+- **별도 핵심 F4 출처 결합 FAIL:** 정상 서명된 서로 다른 result/revision/assembled를 혼합하면 누락 카드·다른 수정안·거절 결정/채택 통합본 모순·같은 발췌ID의 다른 인용이 trusted로 남는4반례. 보고서 out/codex/results/ASTRA-provenance-coupling-audit-evidence.md. 원export 단일owner가 contracts 변경 없이 export-local validator를 추가하고6-sol이 반례/양성을 검증해야한다. 전체 검사 PASS를 이 결함 해결로 간주하지 않는다.
+- 두 수정이02:25까지 stable+독립PASS면같은finalcandidate 전체4 한 번→02:28결과→02:30main운영분리/docs를목표로한다. 미충족이면 main보류/WIP와원인 그대로 인계한다. 02:25 새 기능 동결·작업자 체크포인트,02:30최종Git/문서,02:35docs/inbox/커밋 인수 종료.
+- 8020/8099 프로세스와 root 제품 파일은 변경하지 않았다. 서버 기동 코드 HEAD는 미확인이다. 실제 OpenAI 호출0. Fast는 CLI 요청값이며 actual served tier 관측은null,주간사용량은root실측52%사용·48%잔여로모두소진이아니다.
+
 # 인계 문서
 
 PM이 병합할 때마다 갱신한다. Claude 한도가 다 되면 이 문서를 Codex에 주고 PM 역할을 넘긴다.
