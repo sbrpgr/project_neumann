@@ -79,6 +79,7 @@ OPTIONAL_ROUTERS: tuple[str, ...] = (
     "neumann.api.export",
     "neumann.api.upload",
     "neumann.api.precomputed",
+    "neumann.api.samples",
     "neumann.api.templates",
     "neumann.api.meta",
 )
