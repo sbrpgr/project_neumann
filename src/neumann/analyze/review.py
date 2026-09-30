@@ -28,6 +28,7 @@ from neumann.analyze.gate import (
     Drop,
     EvidenceIndex,
     GateReport,
+    count_no_evidence,
     gate_sentences,
 )
 from neumann.models import Excerpt, Generator, PremortemResult, RiskCard, RiskCode, StageStatus
@@ -352,6 +353,7 @@ def _assemble(
             "gen": gen,
             "pass": n_pass,
             "drop": len(drops),
+            "no_evidence": count_no_evidence(drops),  # 근거 연결 실패로 뺀 문장(E3-L1e, 화면 "근거 없는 항목 k개 제외")
             "dropped": [d.pair() for d in drops],
             "dropped_detail": [d.as_dict() for d in drops],
             "reasons": reasons,
@@ -451,6 +453,8 @@ def expected_review_stage(review: Mapping[str, Any]) -> StageStatus:
         detail = f"{gen}:{review.get('model') or '-'} 통과 {audit.get('pass', 0)}/{audit.get('gen', 0)}"
     else:
         detail = review.get("reason") or status
+    if audit.get("no_evidence"):
+        detail = f"{detail} · 근거 없는 문장 {audit['no_evidence']}개 제외"
     return StageStatus(
         stage=TASK,
         state=state,
@@ -458,7 +462,7 @@ def expected_review_stage(review: Mapping[str, Any]) -> StageStatus:
         phase="analyze",
         impl="fallback:rule" if gen == Generator.rule.value else "neumann.analyze.review:generate_expected_review",
         elapsed_s=float(review.get("elapsed_s", 0.0)),
-        counts={k: int(audit.get(k, 0)) for k in ("gen", "pass", "drop")},
+        counts={k: int(audit.get(k, 0)) for k in ("gen", "pass", "drop", "no_evidence")},
     )
 
 

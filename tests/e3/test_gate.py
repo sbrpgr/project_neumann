@@ -80,6 +80,30 @@ def test_excerpt_from_other_card_is_dropped(result):
     assert reason_of(rep) == g.EXCERPT_CARD_MISMATCH
 
 
+def test_excerpt_outside_every_card_is_dropped_without_card_ids(result):
+    """E3-L1e: 카드를 달지 않아도 인용한 발췌는 어느 위험카드의 근거여야 한다(카드에서 빠진 발췌는 근거가 아니다)."""
+    orphan = result.evidence[0].model_copy(update={"excerpt_id": "ex_orphan000000000"})
+    res = result.model_copy(update={"evidence": [*result.evidence, orphan]})
+    rep = gate_sentences(
+        [{"section": "weakness", "text": "분할 방식이 문제다.", "excerpt_ids": ["ex_orphan000000000"], "card_ids": []}],
+        res,
+    )
+    assert reason_of(rep) == g.EXCERPT_CARD_MISMATCH and "어느 위험카드" in rep.dropped[0].detail
+
+
+def test_evidence_link_problem_is_the_shared_check(result):
+    """심사평 문장·체크리스트 항목·2차 검증이 같이 쓰는 근거 연결 검사."""
+    idx = g.EvidenceIndex(result)
+    assert g.evidence_link_problem([EX_LEAK], [LEAK], idx) == (None, "")
+    assert g.evidence_link_problem([], [LEAK], idx)[0] == g.MISSING_CITATION
+    assert g.evidence_link_problem(["ex_none"], [LEAK], idx)[0] == g.UNKNOWN_EXCERPT
+    assert g.evidence_link_problem([None], [LEAK], idx)[0] == g.UNKNOWN_EXCERPT  # 형식 오류도 없는 id
+    assert g.evidence_link_problem([EX_BARS], [LEAK], idx)[0] == g.EXCERPT_CARD_MISMATCH  # 다른 카드의 근거
+    assert g.evidence_link_problem([EX_LEAK], ["card-x"], idx)[0] == g.UNKNOWN_CARD
+    assert g.evidence_link_problem([EX_BARS], [], idx) == (None, "")  # 카드 없으면 어느 카드의 근거면 된다
+    assert set(g.NO_EVIDENCE_REASONS) == {g.MISSING_CITATION, g.UNKNOWN_EXCERPT, g.UNKNOWN_CARD, g.EXCERPT_CARD_MISMATCH}
+
+
 def test_unknown_plan_line_is_dropped(result):
     rep = one(result, text="분할 방식이 문제다.", plan_lines=[16, 999])
     assert reason_of(rep) == g.UNKNOWN_PLAN_LINE
@@ -257,6 +281,7 @@ def test_only_failing_sentences_are_removed_and_audit_counts(result):
     rep = gate_sentences([good, bad, same_text_other_section], result)
     audit = rep.audit()
     assert audit["gen"] == 3 and audit["pass"] == 2 and audit["drop"] == 1
+    assert audit["no_evidence"] == 1  # E3-L1e: 근거 연결 실패로 뺀 수
     assert audit["gen"] == audit["pass"] + audit["drop"]
     assert audit["dropped"] == [[g.MISSING_CITATION, "대부분의 연구가 이 문제를 겪는다."]]
     assert audit["linked_rate"] == 1.0 and audit["gate"] == g.GATE_VERSION

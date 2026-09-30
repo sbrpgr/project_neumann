@@ -301,7 +301,7 @@ def test_attach_records_stage_and_degrades_result_status(result):
     ok = attach_expected_review(result, FakeCall(mixed_response, generator="astra"))
     st = ok.stages[-1]
     assert st.stage == "expected_review" and st.state == "ok" and ok.status == "ok"
-    assert st.counts == {"gen": 7, "pass": 3, "drop": 4}
+    assert st.counts == {"gen": 7, "pass": 3, "drop": 4, "no_evidence": 2}  # E3-L1e: 근거 없음·없는 id
     assert ok.expected_review["generator"] == "astra"
     bad = attach_expected_review(result, FakeCall(None, generator="astra"))
     assert bad.stages[-1].state == "degraded" and bad.stages[-1].impl == "fallback:rule"
