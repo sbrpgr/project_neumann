@@ -108,3 +108,82 @@
 - `tests/e4/ui_shots.py`(서버+파이프라인+bge-m3 로드)와 화면 렌더는 실행하지 않았다. 문서의 "화면은 외부 요청을 하지 않는다"는 `webui/index.html`에 외부 URL이 없다는 정적 확인만 했다.
 - 새 venv 실설치, `git clone`, 실제 OpenAI 호출, 실데이터 색인 빌드는 지시대로 제외.
 - main이 검증 중에도 계속 병합돼 `304e91e` 이후 상태는 확인하지 못했다. E3-L1w(적합성·예상 심사평·체크리스트를 파이프라인에 연결)가 병합되면 "있음(모듈만)" 표기 4곳(ARCHITECTURE §1·§2·§4·§5, API.md `/health` 설명)이 다시 바뀐다.
+
+## 재검증 (02f30a5)
+
+**PASS-조건부** — 1차 "고칠 것" 6개(§6 ①~⑤와 조건 2)는 모두 해소됐고 README 초안의 숫자는 전부 출처와 글자 그대로 일치한다. 다만 검증 중에 main이 `c4679f9` → `497d3f8`(→ `8a26813`, 이후는 `.env.example`·QUEUE만 변경)로 움직였고, 그 사이 병합분(`a736efc` 기본 provider mock, `9a2471e` 검색 보정, `decisions.md` 19:46 정정) 때문에 **문서 3곳의 서술이 또 낡았다**. 문서 내용 갱신뿐이다(코드·계약·소유 경로 무관).
+
+- 대상: `task/E6-docs` 마지막 커밋 `02f30a5`(기준 `c4679f9`). 비교 대상 main은 `497d3f8`(검증 시작 뒤 도착), 마지막 확인 `8a26813`.
+- 실제 OpenAI 호출 없음: 서버·명령·verify 모두 `NEUMANN_LLM_PROVIDER=mock`, `OPENAI_API_KEY` 해제 상태. 서버는 8139에서만 두 번(`c4679f9`·`497d3f8` 사본) 띄워 끝냈고 종료 뒤 8139 리스너 없음. 8010은 건드리지 않음. 명령 산출은 전부 스크래치(공유 데이터 폴더는 서버가 읽기만 함, 내 서버 실행 시간대에 쓰인 파일 없음). 빌더 worktree 변경 0.
+
+### 1. 1차 "고칠 것" 1~6 해소 여부
+
+| # | 1차 조건 | 재검증 결과 | 판정 |
+|---|---|---|---|
+| 1 | ① "파이프라인 없음·샘플" 문장을 실제 동작으로 | 세 문서에서 "파이프라인이 없", "샘플만", "OpenAI를 부르지 않" 0건. 남은 "샘플·미연결"은 전부 "모듈이 없을 때만(지금 main에서는 일어나지 않는다)"(ARCH:71, API:59·127·145). 실서버(`497d3f8`, mock): `/health` `pipeline.state: connected`, `POST /premortem` `pipeline_version: neumann-e3-l0`, `plan_id` = 본문 sha256(실측 일치) | 해소 |
+| 2 | ② RUNNING "OpenAI를 부르지 않는다" 삭제·비용 경고 | 문장 삭제, RUNNING·API 머리에 비용 주의 추가됨. **그러나 그 경고의 전제(기본 provider `openai`)가 `a736efc`(19:43)로 거짓이 됐다**(아래 조건 1) | 해소(새 결함 발생) |
+| 3 | ③ precomputed·report_card·record_demo·build_static_site·백테스트를 "있음"으로 | 최신 main에 전부 존재: `GET /premortem/precomputed` 200(3건, `label` "사전 계산본", `source: fixture`), 단건 200+`x-neumann-precomputed: 1`, 없는 id 404 `not_found`; `eval/report_card.py`·`backtest_*.py`·`baseline_llm.py`·`judge_run.py`, `scripts/record_demo.py`·`build_static_site.py`·`precompute_demo.py`. `--help`·`--source fixture`·`build_static_site --precomputed …` "검사 통과" 재현 | 해소 |
+| 4 | ④ `/health`·`/config/weights` 예시 교체 | `/health`: 단계 10개 모듈 이름·`routers`(`upload`만 `missing`)가 API.md 예시와 줄 단위로 같음. `/config/weights`: `formula: product`, `weighted: false`, `weights: null`, `display: "곱 · 가중치 없음"`, `legacy_design_weights.used_in_product: false`, `pipeline.state: ok` 같음 | 해소 |
+| 5 | ⑤ API.md `plan_text` 설명 | "서버가 파이프라인을 돌린다(provider가 openai면 OpenAI 호출)"로 교체, SEC-1 언급 없음. 실측 `plan_text`만 → 200, ZIP 9파일, `cards_by_generator {astra 0, rule 0, mock 6}`(문서 예시 5는 `304e91e` 값) | 해소 |
+| 6 | 조건 2: `/premortem`·`/view` 예시를 실제 파이프라인 응답(mock)으로, mock임을 밝힘 | 예시 머리와 `notices`에 "mock provider(테스트용) 결과 — 실제 astra 분석이 아니다"·강등 이유 명시. 응답 키·단계 6개·`manifest`·`notices`·`_status` 모양이 최신 main과 일치, `plan_id` `3d35460d…` 같음. 수치(근거 22, 카드 5, 점수 0.0953)는 `497d3f8`에서 근거 28·카드 6·0.0789로 달라졌으나(E2-L1 검색 보정) 예시가 "`304e91e`에서 받은 값"이라고 문서가 밝히고 있어 거짓은 아님(권고 R3) | 해소 |
+| 조건 3 | 새 main 표본 재확인을 보고서에 붙임 | 빌더 보고서 "재측정" 절에 실측 붙음(`304e91e`/`588da63` 기준). 이번 재검증으로 `497d3f8`에서 다시 확인 | 해소 |
+
+1차 §4 나머지도 확인: #7(적합성·PII "있음(모듈만)") 맞음, #8(확대 코퍼스, 기본 색인은 `/api` 그대로 1,128편) 맞음, #9(정적 배포·녹화 추가) 맞음, #12(샘플→package 422 제약) 삭제됨, 기타(테스트 수는 시점 표기, `tests/e6`·`e2e` 추가, 환경변수 표 보강, 기준 커밋 "병합 직전 main") 반영. §5 권고: SEC-1 언급 뺌, README에 "화면은 목업 기반" 한 줄 들어감.
+
+### 2. "있음/있음(모듈만)/예정" 표본 — 최신 main(`497d3f8`) 대조 (40여 개)
+
+- ARCHITECTURE §1 표 26행 전부: "있음" 21행의 경로가 전부 main에 존재(파일·폴더·`scripts/`·`eval/`·`tests/e2e`·`.githooks`), "예정" 2행(업로드 파서·eLife/Europe PMC)은 main에 없음(`src/neumann/api/upload.py`·`sources/elife*` 없음, `/upload/plan` 404, `/health.routers.upload: missing`).
+- "있음(모듈만)" 3행(예상 심사평·게이트 / 체크리스트·2차검증 / 적합성·PII 강화판): `review.py`·`gate.py`·`checklist.py`·`validate.py`·`fitness.py`·`pii.py` 존재. `pipeline.py`·`view.py`·`main.py`(헬스의 모듈 이름 제외)가 부르는 곳 0건 → 표기 사실. E3-L1w 미병합.
+- API 라우트 11개 + MCP: `/openapi.json` 경로 목록이 문서와 같음. 실측: `GET /`·폰트(`/fonts/Pretendard/Pretendard-Regular.woff2`)·422 두 조건(공백·200,001자)·`/premortem/package` ZIP 9파일 이름(문서와 같음)·오류(`{}` 422, 없는 `card_id` 422, 모르는 키 422, `채택` 200)·`/templates` 5+3·`/taxonomy` v1.0 10/59·`/api` `summary_ko`(1,128편·5,366건·60.3%·133,769개) 모두 문서와 같음. `pytest tests/e4 -q -k mcp` `11 passed`.
+- 코퍼스·평가 명령(스크래치 산출): `collect_researcharcade.py` 1,128편·5,366건(4,298+1,068)·12,660·거절 0.6028·works sha256 `317e966f…`, `--check-sample 5` 전부 일치, `audit_processed` 위반 0, `eval.disapere_gold` 골드 148·dev 358, 빈도 기준선 **Macro-F1 0.3308 [95% 0.2980, 0.3623] · Micro 0.5379 [0.4871, 0.5861]**(README 수치를 그대로 재현), `eval.linkage` `8/8 = 1.000`, `build_index --source fixtures --no-embed` 44/44, `python -m neumann.pipeline … --provider mock` 정상, `precompute_demo --source fixture`·`build_static_site` 검사 통과.
+- **틀린 표기 1건(과소 표기)**: 전화번호·주민번호 마스킹을 "모듈만"이라고 쓰지만(ARCH:46·168) `pipeline.py`의 `mask_extra_pii`(최소판)가 이미 INPUT 단계에서 전화·주민번호 형태를 가린다(권고 R1).
+
+### 3. README 초안 숫자 대조 (출처와 글자 그대로)
+
+| 초안의 값 | 출처 | 결과 |
+|---|---|---|
+| Macro-F1 0.4864 [0.4276, 0.5394], Micro 0.5644 | `docs/reports/E5-L1b.md` 표 12행 | 일치 |
+| 빈도 기준선 0.3308 [0.2980, 0.3623], Micro 0.5379 | `E5-L1a.md` 84·91행, 위 재현 | 일치 |
+| 사람 상한 0.725 | `E5-L1b.md` 11행, `eval/macro_f1.py` `REFERENCE_LINES` | 일치 |
+| "Macro에서만 기준선 초과·Micro 구간 겹침·조정은 집계 규칙뿐·1회 채점·단일 실행", 목표 0.70 | `E5-L1b.md` 18·19·188행 | 일치 |
+| 1,128편·5,366건(4,298+1,068)·133,769개·오프셋 100% | `E1-L0.md` 23~29·50행, `E2-L0.md` 55~65행, `/api` 실측 | 일치 |
+| 라이브 E2E 5/5, 카드 5·3·5장·범위 밖 0장, 근거 10/10·13/13·20/20, 62~70초 | 커밋 `b671d0e` 메시지, `E5-L0e2e_live_summary.json`(`n_cards` 5·3·5, `links`, `ui_total_s` 69.6·62.0·65.1) | 일치(주의 R2) |
+| 첫 커밋 18:06, 17:00 이전 커밋 0 | `git log --all` 첫 커밋 `d011edb` 18:06:26, 전 브랜치 최소 시각 18:06 | 일치 |
+| v0 19:19 | 초안 본문에 시각은 없고 "태그 `v0`"만 있음. 태그 `v0` 시각 19:19:04(`git tag`) | 모순 없음 |
+| 평가 모델 gpt-6-astra / 제품 기본 모델 gpt-6.1-sol 구분 | `decisions.md` 19:38 두 항목, `config.py` 기본값 `gpt-6.1-sol` | 일치(주의 조건 5) |
+
+- 목표 미달을 먼저 적었는가: "지금 상태" 절 첫 문단이 "**목표 미달부터:** … 0.70에 못 미친다"이고 표보다 앞이다. 통과.
+- 과장(검증 안 된 성능 주장): 없음. 성능 문장은 전부 실측·정정 각주가 붙었고 "약 62~70초"는 화면 전체 시간(서버 왕복 아님)이라고 메모에 밝힘. L1~L3을 "진행 중"으로 적어 달성 과장 없음.
+- "개발 방식과 반입 자료" vs `decisions.md`: 17:00 이전 커밋 0·첫 커밋 18:06(19:25 ④), 목업 기반 재구성·약 55%(19:22), `contracts/`는 기획 원본(19:25 ②), 공개 자료 원본 그대로·가공물 현장 생성(19:25 ③), 사전 개발 점검(19:22)과 같은 사실이다. **결정 기록에 없는 사실 1건**: "사람 1명과 AI 코딩 에이전트"의 "사람 1명"(조건 4).
+
+### 4. 비밀·내부 정보, 소유 경로, verify
+
+- 비밀·내부: 세 문서·보고서·README 초안에서 키 형태(`sk-`·`sk_proj`·`ghp_`·`AKIA`·`BEGIN PRIVATE`)·이메일(`@gmail`·`sprbxr`)·로컬 경로(`C:\Users`·`Desktop`·`노이만_본선자료`·`.claude/worktrees`·`data` 절대경로) 0건. `OPENAI_API_KEY`·`NEUMANN_PSEUDONYM_SALT`는 이름만. 통과.
+- 폐기된 기획 문서 이름(`구조_뼈대`·`교훈_함정`·`ID-9x`): 0건. 통과.
+- `git diff main...task/E6-docs --stat`: `docs/API.md`, `ARCHITECTURE.md`, `RUNNING.md`, `reports/E6-docs.md`, `reports/E6-docs_README_draft.md`(PM 추가 배정) 5파일, +1,194. `contracts/`·`models.py`·데이터·비밀·소스 변경 없음. main에는 이 5파일 변경이 없어 병합 충돌 없음(파일 겹침 0).
+- `python scripts/verify.py`(브랜치 worktree, mock, 키 해제): `897 passed, 41 skipped`, 보안 327파일, 계약 2개, `verify 통과`, exit 0. worktree 변경 0.
+
+### 5. 병합 전 고칠 것 (조건, 문서 수정만)
+
+1. **기본 provider가 바뀌었다(main `a736efc`, 19:43): `config.py`·`llm.py`·`.env.example` 기본값 `mock`.** 다음이 이제 사실이 아니다. ARCHITECTURE.md:66("기본 openai")·143("`openai`(기본)")·144("기본 설정(`NEUMANN_LLM_PROVIDER=openai`)에서는 분석 요청마다 OpenAI API를 부른다"), RUNNING.md:6(비용 주의)·37(표 기본값 `openai`)·62·126(주석 "실제 분석(openai…)"인데 환경변수 없이 이 명령을 돌리면 mock이 돈다), API.md:9·157, README 초안:59("기본 provider는 `openai`라 …"). → "기본은 mock. 실제 OpenAI 호출은 `NEUMANN_LLM_PROVIDER=openai`(+키)로 켤 때만이고 비용이 든다. 실서비스·대표 승인 확인만 켠다(`AGENTS.md` 상시 규칙)"로. 비용 경고는 "openai로 켜면"으로 조건을 바꾼다. `precompute_demo.py` 기본 실행도 이제 mock 결과를 만든다.
+2. **README 초안 "공개 서버 방어선" 불릿이 결정 기록 19:46(대표 정정)과 어긋난다.** 초안은 "서버 쪽 일일 예산 상한·차단 스위치·동시 상한이 아직 main에 없고 그것이 켜진 것을 확인해야 터널을 연다"고 쓰지만, 19:46은 "일일 예산 상한은 걸지 않는다(`NEUMANN_DAILY_BUDGET=0`, 차단 스위치 안 켬), 동시 상한·대기열·속도 제한은 안정성 장치로 유지"라고 정정했다. 동시 상한(2건)은 이미 `main.py`에 있고 E4-L2c(대기열·속도 제한)는 아직 main에 없다. → "안정성 장치(동시 상한 있음, 대기열·속도 제한 E4-L2c 예정)와 SEC-1 수정·재점검 뒤에 터널을 연다. 일일 예산 상한은 걸지 않는다(결정 19:46)"로 다시 쓴다.
+3. **RUNNING.md:47 검색 설정 기본값이 낡았다(main `9a2471e`).** `NEUMANN_SEARCH_SCORE_FLOOR` 기본 `0.0` → 비움(임베딩 모델별 보정값, bge-m3 0.45, 어휘만 검색이면 0). 같은 커밋에서 새 키 `NEUMANN_SEARCH_FUSION`(rrf)·`_RRF_K`(60)·`_PER_QUERY_MIN`(1)·`_AXIS_WEIGHTS`·`_ADAPTIVE_ALPHA`가 생겼다(추가는 선택). `index/queries.py`도 모듈 지도에 없다(선택).
+4. **README 초안 "사람 1명과 AI 코딩 에이전트"**: "사람 1명"은 `decisions.md`·`HANDOFF.md` 어디에도 없다(항목은 "대표·PM"). 근거가 없으면 "사람(대표)과 AI 코딩 에이전트(빌더·검증자 분리)"로 줄이거나 뺀다.
+5. **README 초안 "아래 평가 수치는 모두 `gpt-6-astra`로 잰 값이다"는 범위가 넓다.** 빈도 기준선 0.3308·사람 상한 0.725는 LLM 측정이 아니고 코퍼스·색인 수치도 아니다. 결정 19:38은 "Macro-F1 0.4864, 라이브 E2E, v0, 백테스트"로 한정했다. → "LLM으로 잰 수치(Macro-F1 0.4864, 라이브 E2E)는 `gpt-6-astra`로 잰 값이다"로.
+
+1~5가 해소되면 재검증 없이 PM이 diff에서 `기본 openai`·`=openai`·`예산 상한`·`사람 1명` 검색과 `python scripts/verify.py`만 확인하고 병합해도 된다.
+
+### 6. 권고 (병합 조건 아님)
+
+- R1. ARCHITECTURE.md:46·168과 README "개인정보(이메일·ORCID)는 가린다"를 "이메일·ORCID + 전화번호·주민번호 형태(`pipeline.py` 최소판)"로. 강화판 `analyze/pii.py`만 모듈이다.
+- R2. README 표의 "5/5 통과"는 검사 5개(파이프라인 연결 확인 1 + 데모 3 + 범위 밖 1)이고 본문은 4장면만 나열해 세면 어긋난다. 근거 연결 10/10·13/13·20/20은 API를 한 번 더 호출한 실행의 값이고 카드 수 5·3·5는 화면 실행 값이라 plan.md는 카드 5장(화면)·3장(API)로 다르다(`E5-L0e2e.md` 결정 1). "연결률은 API 재호출 실행 기준" 한 줄.
+- R3. API.md 예시는 "검색 보정(E2-L1) 이전 값"임을 한 줄 더하면 최신 main과의 수치 차이(근거 22→28, 카드 5→6)가 설명된다. `/view` `_status`에 `records` 키가 새로 생겼다(예시는 "줄임"이라 무해).
+- R4. API.md:169 "manifest `status: degraded`"는 실제로 `manifest.result.status`다.
+- R5. README "의미 있는 줄 약 55%"는 19:22 측정값이고 `webui/index.html`은 그 뒤 바뀌었다 → "(19:22 측정)". 결정 19:22의 `backtest_plans.py` 정규식 3줄·F1 공식 5줄 공개와 19:25의 1,000줄 초과 병합 10개는 README에 없다. 점검 대비 절이므로 "결정 기록 19:22·19:25 참조" 한 줄 링크를 권한다.
+- R6. 빌더 보고서 `E6-docs.md` 앞부분(23행 "서버가 OpenAI를 부르지 않는다" 등 첫 제출 기록)은 낡은 서술이 남아 있다. 맨 위에 "첫 제출 기록"이라고 밝혀 뒀으나 공개 저장소 독자는 놓칠 수 있다.
+
+### 7. 못 한 것
+
+- 실서버·실제 OpenAI 경로, bge-m3 임베딩 검색(문서의 "임베딩이 있을 때 검색 강등 없음")은 금지·제외로 실행하지 않았다. 실서버 응답 예시는 mock·어휘 검색 값만 확인했다.
+- 화면 렌더(`ui_shots.py`)·`record_demo.py` 실행, `git clone`·새 venv 설치는 하지 않았다.
+- `497d3f8` 위에 브랜치를 실제로 병합해 verify를 돌리지는 않았다(git 쓰기 금지). 파일 겹침 0으로 충돌 없음만 확인했다.
