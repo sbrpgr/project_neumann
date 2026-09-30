@@ -347,7 +347,7 @@ def _new_item(
         "card_verdict": None,  # validate.py가 채운다(맞음·약함·틀림·미검증)
         "validation": None,
         "decision": None,  # 채택 · 보류 · 기각
-        "decision_note": "",
+        "note": "",  # 결정 메모(화면 '메모' 칸)
         "decided_at": None,
         "decision_log": [],
     }
@@ -500,7 +500,7 @@ def record_decision(
         raise KeyError(f"체크리스트에 없는 항목: {item_id}")
     when = (at or datetime.now(UTC)).isoformat()
     item["decision"] = decision
-    item["decision_note"] = note
+    item["note"] = note
     item["decided_at"] = when if decision is not None else None
     item.setdefault("decision_log", []).append({"decision": decision, "note": note, "at": when})
     return item
@@ -517,7 +517,7 @@ def decision_log(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "plan_lines": list(it["plan_lines"]),
             "generator": it["generator"],
             "decision": it.get("decision"),
-            "note": it.get("decision_note", ""),
+            "note": it.get("note", ""),
             "decided_at": it.get("decided_at"),
             "history": list(it.get("decision_log", [])),
         }

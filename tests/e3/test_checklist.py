@@ -316,6 +316,18 @@ def test_decision_log_records_adopt_defer_reject() -> None:
     json.dumps(log, ensure_ascii=False)  # 내보내기 가능
 
 
+def test_items_render_in_ui_view_checklist() -> None:
+    """E4 화면 계약(목업 checklist: id·t·r·s·m)으로 그대로 옮겨지는지."""
+    view_mod = pytest.importorskip("neumann.api.view")
+    res, plan = _result(), _plan()
+    out = attach_checklist(res, plan, FakeLLM(_good))
+    record_decision(out.checklist, "C1", "기각", note="과제 범위 밖")
+    rows = view_mod.build_ui_view(out)["checklist"]
+    assert [r["id"] for r in rows] == [it["item_id"] for it in out.checklist]
+    assert [r["t"] for r in rows] == [it["action"] for it in out.checklist]
+    assert rows[0]["r"] == "R3" and rows[0]["s"] == "기각" and rows[0]["m"] == "과제 범위 밖"
+
+
 def test_schema_without_excerpts_still_strict() -> None:
     schema = checklist_schema(["a"], [])
     assert _strict_problems(schema) == []
