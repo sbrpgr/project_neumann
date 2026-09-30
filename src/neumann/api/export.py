@@ -24,7 +24,6 @@ import io
 import json
 import logging
 import re
-import uuid
 import zipfile
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -857,8 +856,11 @@ def build_package(
 router = APIRouter()
 
 
+RESULT_REQUIRED_MESSAGE = "내보내기에는 분석 결과가 필요합니다. 먼저 분석을 실행한 뒤 결과 화면에서 내보내 주세요."
+
+
 class PackageRequest(BaseModel):
-    """`POST /premortem/package` 본문. result(분석 결과 JSON)나 plan_text 중 하나는 있어야 한다."""
+    """`POST /premortem/package` 본문. result(분석 결과 JSON)는 반드시 있어야 한다(plan_text만으로는 분석하지 않는다)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -874,38 +876,6 @@ def _errors(exc: ValidationError) -> list[dict[str, Any]]:
     ]
 
 
-def _pipeline_unavailable(plan_text: str, reason: str, impl: str) -> PremortemResult:
-    """파이프라인을 못 돌렸을 때: 카드 0장·status=error 결과. 가짜 카드를 만들지 않는다."""
-    session_id = "package-" + uuid.uuid4().hex[:12]
-    plan = PlanDocument.from_text(plan_text, session_id)
-    return PremortemResult(
-        session_id=session_id,
-        plan_id=plan.plan_id,
-        plan=plan,
-        status="error",
-        stages=[StageStatus(stage="pipeline", state="error", detail=reason, phase="api", impl=impl)],
-        notices=[f"{reason}: 위험카드를 만들지 않았다. 계획서 줄 번호만 담았다."],
-    )
-
-
-def _run_pipeline(plan_text: str) -> PremortemResult:
-    """E3의 `neumann.pipeline.run_premortem`을 지연 import해서 돌린다. 없거나 실패하면 강등 결과."""
-    try:
-        from neumann.pipeline import run_premortem  # type: ignore[import-not-found]
-    except ImportError as exc:
-        return _pipeline_unavailable(
-            plan_text, f"분석 파이프라인 미연결({type(exc).__name__})", "fallback:pipeline_unavailable"
-        )
-    try:
-        out = run_premortem(plan_text)
-    except Exception as exc:  # 파이프라인 내부 오류도 패키지로 정직하게 남긴다
-        logger.warning("run_premortem 실패: %s", type(exc).__name__)
-        return _pipeline_unavailable(
-            plan_text, f"분석 파이프라인 오류({type(exc).__name__})", "fallback:pipeline_error"
-        )
-    return out if isinstance(out, PremortemResult) else PremortemResult.model_validate(out)
-
-
 def _safe_filename_part(plan_id: str) -> str:
     return re.sub(r"[^0-9A-Za-z_-]", "", plan_id)[:12] or "plan"
 
@@ -916,10 +886,12 @@ def _safe_filename_part(plan_id: str) -> str:
     responses={200: {"content": {"application/zip": {}}, "description": "ZIP 9파일"}},
 )
 def premortem_package(payload: dict[str, Any] = Body(...)) -> Response:
-    """분석 결과(또는 계획서 텍스트) → 내보내기 ZIP.
+    """분석 결과 JSON → 내보내기 ZIP.
 
-    본문 형식: `{"result": {...}, "plan_text": "...", "decisions": [...]}` (result·plan_text 중 하나 이상).
-    분석 결과 JSON을 감싸지 않고 그대로 보내도 된다. plan_text만 오면 파이프라인을 돌린다(없으면 status=error 패키지).
+    본문 형식: `{"result": {...}, "plan_text": "...", "decisions": [...]}`. result는 반드시 있어야 한다.
+    분석 결과 JSON을 감싸지 않고 그대로 보내도 된다. plan_text는 result에 계획서 줄이 없을 때 줄 번호를 붙이는 데만 쓴다.
+    plan_text만 오면 파이프라인을 돌리지 않고 422 + 사용자 문구로 거절한다(SEC-1 S-02, PM 결정 2026-09-30:
+    내보내기는 결과만 받는다. 분석은 /premortem의 관문·속도 제한·예산을 거쳐야 한다).
     """
     if "result" not in payload and "plan_text" not in payload and {"session_id", "plan_id"} <= payload.keys():
         payload = {"result": payload}
@@ -928,16 +900,12 @@ def premortem_package(payload: dict[str, Any] = Body(...)) -> Response:
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=_errors(exc)) from None
     has_text = bool(req.plan_text and req.plan_text.strip())
-    if req.result is None and not has_text:
-        raise HTTPException(status_code=422, detail="result(분석 결과 JSON)나 plan_text(계획서 텍스트)가 필요하다")
-
-    if req.result is not None:
-        try:
-            result = PremortemResult.model_validate(req.result)
-        except ValidationError as exc:
-            raise HTTPException(status_code=422, detail=_errors(exc)) from None
-    else:
-        result = _run_pipeline(req.plan_text or "")
+    if req.result is None:
+        raise HTTPException(status_code=422, detail=RESULT_REQUIRED_MESSAGE)
+    try:
+        result = PremortemResult.model_validate(req.result)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=_errors(exc)) from None
 
     try:
         data = build_package(result, plan_text=req.plan_text if has_text else None, decisions=req.decisions)
