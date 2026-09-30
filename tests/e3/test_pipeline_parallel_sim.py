@@ -18,6 +18,7 @@ from typing import Any
 import neumann.pipeline as pl
 from neumann.analyze.mock_responders import default_responders
 from neumann.llm import LLMCall, LLMResult, MockProvider
+from tests._util.timing import assert_faster
 from tests.e3.corpus import PLAN_BATTERY, build_backend
 
 DELAYS_S: dict[str, float] = {
@@ -73,17 +74,35 @@ def simulate(scale: float, parallel: bool) -> dict[str, Any]:
 
 
 def test_simulated_parallel_is_faster_and_same(monkeypatch):
-    scale = 0.05  # 12초 → 0.6초(부하 때 스레드 기동 지연이 단위에 비해 작도록. 0.02에서 과부하 시 간헐 실패)
-    seq, par = simulate(scale, False), simulate(scale, True)
+    """병렬은 순차와 결과가 같고 더 빠르다. 빠르기는 벽시계 절대값이 아니라 같은 조건에서 잰 두 시간의 비율로 판정한다.
+
+    과부하 때 스레드 기동·스케줄링 지연이 시간에 얹히므로 절대 상한(par < 2.6 단위)은 흔들린다(과부하에서 3/3 실패).
+    (병렬/순차) 반복 최솟값 비율(< 0.8)로 잡음을 줄인다. 외부 부하 차이는 남을 수 있으므로
+    별도의 이벤트 기반 겹침·의존 검사와 함께 쓴다.
+    이상적인 비율: v1 병렬 24 / 순차 36 = 0.67. 한 단위 = 12초 × 배율.
+    """
+    scale = 0.05  # 12초 → 0.6초
+    unit = 12.0 * scale
+    runs: dict[bool, list[dict[str, Any]]] = {False: [], True: []}
+
+    def measure(parallel: bool) -> float:
+        out = simulate(scale, parallel)
+        runs[parallel].append(out)
+        return out["v1_wall_s"]
+
+    assert_faster(lambda: measure(True), lambda: measure(False), max_ratio=0.8, what="병렬 v1 구간 / 순차 v1 구간")
+    seq, par = runs[False][0], runs[True][0]
     assert seq["states"] == par["states"] and seq["calls"] == par["calls"]
     from tests.e3.test_pipeline_parallel import _dump
 
     assert _dump(seq["result"]) == _dump(par["result"])
-    unit = 12.0 * scale
-    # 순차 v1 = 12×3, 병렬 v1 = max(12, 12+12) = 24 → 한 단위(12초 배율)만큼 줄어든다
-    assert seq["v1_wall_s"] >= 3 * unit * 0.95
-    assert par["v1_wall_s"] < 2.6 * unit, (par["v1_wall_s"], unit)
-    assert seq["total_s"] - par["total_s"] > 0.6 * unit
+    # 하한은 부하가 늘려도 깨지지 않는다(잠자기는 더 짧아질 수 없다):
+    # 순차 v1 = 12×3 = 3단위. 병렬 v1 = max(12, 12+12) = 2단위(체크리스트 → 2차 검증 사슬이 임계 경로)
+    assert min(r["v1_wall_s"] for r in runs[False]) >= 3 * unit * 0.95
+    # 병렬이 2단위보다 짧으면 의존(체크리스트 뒤 2차 검증)이 깨진 것이다
+    assert min(r["v1_wall_s"] for r in runs[True]) >= 2 * unit * 0.95
+    # 전체 시간도 같은 방향: 병렬이 v1 구간 한 단위를 덜 쓴다(비율로, 최솟값끼리)
+    assert min(r["total_s"] for r in runs[True]) < 0.92 * min(r["total_s"] for r in runs[False])
 
 
 def _table(seq: dict[str, Any], par: dict[str, Any]) -> str:

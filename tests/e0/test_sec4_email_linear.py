@@ -59,10 +59,10 @@ def test_matches_reference_on_random_strings():
     ids=["no_at", "at_end", "many_at", "long_domain", "many_dots"],
 )
 def test_long_tokens_are_fast(text):
-    t0 = time.perf_counter()
+    t0 = time.process_time()
     contains_pii(text)
     redact_pii(text)
-    assert time.perf_counter() - t0 < 1.0
+    assert time.process_time() - t0 < 1.0
 
 
 @pytest.mark.parametrize("n", [1, 63, 64, 65, 252, 253, 254, 255, 256, 257, 300, 5000])
