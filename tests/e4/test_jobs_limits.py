@@ -174,7 +174,10 @@ def test_long_single_token_is_422_at_once_and_health_stays_fast(tmp_path, monkey
 
     async def go() -> None:
         async with client(app) as c:
-            token = "a" * 200_000   # '@' 없는 20만 자 한 토큰(이메일 정규식 O(n²)이면 수십 초)
+            heading, ending = "# 계획서\n", "\n"
+            token = "a" * (200_000 - len(heading) - len(ending))
+            payload = heading + token + ending
+            assert len(payload) == 200_000  # 총 상한 안에서 기존 긴 토큰 422 정책을 검사한다
             health_ms: list[float] = []
             assert (await c.get("/health")).status_code == 200   # 첫 호출의 모듈 import 시간은 빼고 잰다
 
@@ -187,7 +190,7 @@ def test_long_single_token_is_422_at_once_and_health_stays_fast(tmp_path, monkey
 
             async def attack(path: str) -> httpx.Response:
                 t = time.process_time()
-                r = await c.post(path, json={"plan_text": f"# 계획서\n{token}\n"})
+                r = await c.post(path, json={"plan_text": payload})
                 assert time.process_time() - t < 1.0, path
                 return r
 
@@ -198,6 +201,34 @@ def test_long_single_token_is_422_at_once_and_health_stays_fast(tmp_path, monkey
                 assert "띄어쓰기 없이" in r.json()["message"] and "a" * 100 not in r.text
             assert max(health_ms) < 500, health_ms
             assert len(store) == 0 and fn.calls["n"] == 0
+
+    asyncio.run(go())
+
+
+def test_pre_nfc_total_200001_is_413_before_normalization_and_pipeline(tmp_path, monkeypatch):
+    from neumann import models
+
+    fn = slow(0.02)
+    srv, app, store = make(tmp_path, monkeypatch, fn, jobs.JobsConfig(per_ip=0, rate_per_min=0),
+                           max_plan_chars=300_000)
+    nfc_calls = []
+
+    def forbidden_nfc(text):
+        nfc_calls.append(1)
+        raise AssertionError("oversized raw plan reached NFC")
+
+    monkeypatch.setattr(models, "normalize_text", forbidden_nfc)
+    payload = "a" * 200_001
+    assert len(payload) == 200_001
+
+    async def go() -> None:
+        async with client(app) as c:
+            for path in ("/premortem/jobs", "/premortem/view", "/premortem"):
+                r = await c.post(path, json={"plan_text": payload})
+                assert r.status_code == 413
+                assert r.json()["error_code"] == "plan_pre_nfc_too_large"
+                assert "a" * 100 not in r.text
+            assert nfc_calls == [] and fn.calls["n"] == 0 and len(store) == 0
 
     asyncio.run(go())
 
