@@ -338,7 +338,7 @@ def test_assemble_rejects_bad_revision_and_mismatch(tmp_path, monkeypatch):
     run(go())
 
 
-def test_assemble_conflict_listed_via_api(tmp_path, monkeypatch):
+def test_assemble_overlap_is_preserved_via_api(tmp_path, monkeypatch):
     _srv, app = make(tmp_path, monkeypatch)
 
     async def go() -> None:
@@ -350,7 +350,10 @@ def test_assemble_conflict_listed_via_api(tmp_path, monkeypatch):
             r = await c.post("/premortem/revise/assemble", json={"plan_text": PLAN, "revision": bundle, "decisions": decisions, "result": result_json()})
             assert r.status_code == 200
             out = r.json()
-            assert out["stats"]["conflicts"] == 1 and out["conflicts"][0]["kind"] == "same_line" and out["stats"]["applied"] == 0
+            assert out["stats"]["conflicts"] == 0 and out["stats"]["applied"] == 2
+            assert out["stats"]["converted_insert"] == 1
+            assert "다른 안" in out["revised_text"]
+            assert all(s["status"] != "not_applied" for s in out["edit_statuses"] if s["edit_id"] in {d["edit_id"] for d in decisions})
     run(go())
 
 
