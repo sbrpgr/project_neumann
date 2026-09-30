@@ -624,74 +624,11 @@ def shoot(base: str, out: Path, prefix: str = PREFIX) -> dict:
         page.evaluate("() => { try { localStorage.clear(); } catch (e) {} }")
         ctx.close()
 
-        # 11) 목업 모드(?mock=final): 새 문맥(빈 저장소), 서버 API 요청 0 · 외부 요청 0, 완성 상태 → 편집 → 새로고침 뒤 보존 → 390
-        mock_requests: list[str] = []
-        ctx2 = browser.new_context(viewport={"width": 1440, "height": 900}, device_scale_factor=1, locale="ko-KR", accept_downloads=True)
-        pg = ctx2.new_page()
-        wire(pg)
-        pg.on("request", lambda r: mock_requests.append(r.url))
-        # FIN-UI: ?mock=final은 ① 입력 화면에서 시작한다(최종 형태). 이 검사는 리포트부터 보므로 &at=report로 연다(새로고침·초기화도 같은 URL 유지)
-        pg.goto(base + "/?mock=final&at=report", wait_until="networkidle")
-        pg.wait_for_function(REPORT_READY, timeout=30_000)
-        pg.wait_for_selector("#s-cards .rc [data-rv]")
-        mock_report = pg.evaluate("() => ({bar: (document.getElementById('rvMockBar') || {}).innerText || '', status1: document.querySelector('#s-cards .rc[data-card=\"1\"] .rvst').innerText, status2: document.querySelector('#s-cards .rc[data-card=\"2\"] .rvst').innerText, notice: (document.getElementById('statusNotice') || {}).innerText || '', mock: window.NeumannRevise.mock})")
-        snap("mock_1440_report", full=True, pg=pg)
-        pg.click("#rvTop")
-        pg.wait_for_function(REVISE_READY)
-        pg.wait_for_selector("#rv-2 .rvdiff")
-        mock_revise = pg.evaluate("() => ({sections: document.querySelectorAll('.rvsec').length, sum: document.getElementById('rvSum').innerText, notice: document.getElementById('rvNotice').innerText})")
-        snap("mock_1440_revise", full=True, pg=pg)
-        pg.click("#rvOpen")
-        pg.wait_for_selector("#rvViewer.on")
-        pg.wait_for_selector("#rvConfBanner")
-        mock_viewer = pg.evaluate("() => ({cnt: document.getElementById('rvVCnt').innerText, asm: document.getElementById('rvAsmMsg').innerText, chips: document.querySelectorAll('#rvViewer .rvph:not(.filled)').length, conflict: !!document.getElementById('rvConfBanner'), me: document.querySelectorAll('#rvViewer .rvtag.me').length})")
-        snap("mock_1440_viewer", pg=pg)
-        pg.click("#rvViewer .rvpaper p[data-rvedit^='n:'] >> nth=1")
-        pg.wait_for_selector("#rvViewer textarea.rvpta")
-        pg.fill("#rvViewer textarea.rvpta", EDIT_TEXT + " (목업)")
-        pg.keyboard.press("Control+Enter")
-        pg.wait_for_function("!document.querySelector('#rvViewer textarea.rvpta')")
-        pg.click("#rvViewer .rvconf [data-rvpick] >> nth=0")
-        pg.wait_for_function("!document.getElementById('rvConfBanner')")
-        pg.click("#rvDocx")
-        mock_docx = pg.inner_text("#rvDocxMsg")
-        pg.reload(wait_until="networkidle")
-        pg.wait_for_function(REPORT_READY, timeout=30_000)
-        pg.click("#stpRevise")
-        pg.wait_for_function(REVISE_READY)
-        pg.click("#rvOpen")
-        pg.wait_for_selector("#rvViewer.on")
-        mock_after = pg.evaluate("() => ({text_in_paper: document.getElementById('rvPaper').innerText.indexOf(%s) >= 0, conflict: !!document.getElementById('rvConfBanner'), cnt: document.getElementById('rvVCnt').innerText, restored: window.NeumannRevise.state().restored})" % json.dumps(EDIT_TEXT + " (목업)"))
-        pg.set_viewport_size({"width": 390, "height": 844})
-        pg.wait_for_timeout(300)
-        mock_narrow = no_hscroll(pg)
-        snap("mock_390_viewer", pg=pg)
-        pg.keyboard.press("Escape")
-        pg.wait_for_timeout(200)
-        pg.evaluate("window.scrollTo(0, 0)")
-        mock_narrow_revise = no_hscroll(pg)
-        snap("mock_390_revise", full=True, pg=pg)
-        pg.evaluate("localStorage.setItem('unrelated-preference', 'preserve')")
-        pg.click("#rvMockReset")
-        pg.wait_for_function(REPORT_READY)
-        pg.click("#stpRevise")
-        pg.wait_for_function(REVISE_READY)
-        pg.click("#rvOpen")
-        pg.wait_for_selector("#rvViewer.on")
-        mock_reset = pg.evaluate("""() => ({restored: window.NeumannRevise.state().restored,
-          text_absent: !document.getElementById('rvPaper').innerText.includes(%s), conflict: !!document.getElementById('rvConfBanner'),
-          unrelated: localStorage.getItem('unrelated-preference'),
-          mock_key: !!localStorage.getItem('neumann.revise.mock.' + window.NeumannUI.D().plan_id),
-          normal_key: !!localStorage.getItem('neumann.revise.' + window.NeumannUI.D().plan_id),
-          conflict_original: window.NeumannRevise.assemble().paras.filter(p => p.conflict).every(p => p.t === p.orig)})""" % json.dumps(EDIT_TEXT + " (목업)"))
-        pg.evaluate("() => { try { localStorage.clear(); } catch (e) {} }")
-        ctx2.close()
+        # 11) 목업 모드(?mock=final)는 FIN-UI v2 단계 전환형 흐름으로 바뀌어 tests/e4/test_fin_ui.py가 검사한다
         trust = trust_checks(browser, base, view, resp1)
         browser.close()
 
     external = [u for u in requests if urlparse(u).scheme not in {"data", "blob", "about"} and urlparse(u).hostname not in LOCAL_HOSTS]
-    mock_api = [u for u in mock_requests if "/premortem/" in urlparse(u).path or "/upload" in urlparse(u).path]
-    mock_external = [u for u in mock_requests if urlparse(u).scheme not in {"data", "blob", "about"} and urlparse(u).hostname not in LOCAL_HOSTS]
     return {
         "shots": shots, "example_used": example_used, "console_errors": [c for c in main_console_errors if not intentional(c)],
         "console_errors_intentional": [c for c in main_console_errors if intentional(c)],
@@ -710,8 +647,6 @@ def shoot(base: str, out: Path, prefix: str = PREFIX) -> dict:
                                             "valid_xml": "<w:document" in docx_xml, "filled": "착수 후 4주 차" in docx_text, "overlay_absent": EDIT_TEXT not in docx_text},
         "polish": polish, "report_after": report_after, "err": err, "multi": multi, "conflict": conf, "picked": picked, "wait": wait_dom, "cancel": cancel,
         "narrow": narrow,
-        "mock": {"report": mock_report, "revise": mock_revise, "viewer": mock_viewer, "docx": mock_docx, "after_reload": mock_after, "reset": mock_reset,
-                 "api_requests": mock_api, "external": mock_external, "narrow_viewer": mock_narrow, "narrow_revise": mock_narrow_revise},
         "rich_ev1_quote": view["ev"]["1"]["q"], "plan_id": view["plan_id"],
         "trust": trust,
     }
@@ -840,24 +775,6 @@ def check(r: dict) -> list[str]:
             bad.append(f"{k} 가로 스크롤: {nw[k]}")
     if nw["viewer_inner"]["sw"] > nw["viewer_inner"]["cw"] or nw["sheet"]["w"] != nw["sheet"]["iw"] or nw["sheet"]["h"] != nw["sheet"]["ih"]:
         bad.append(f"390 뷰어 시트 이상: {nw}")
-    mk = r["mock"]
-    if mk["reset"] != {"restored": False, "text_absent": True, "conflict": True, "unrelated": "preserve", "mock_key": True, "normal_key": False, "conflict_original": True}:
-        bad.append(f"목업 초기화·보존 분리·미결 충돌 원문 이상: {mk['reset']}")
-    if mk["api_requests"] or mk["external"]:
-        bad.append(f"목업 모드 서버 API·외부 요청: {mk['api_requests'][:3]} {mk['external'][:3]}")
-    if "목업" not in mk["report"]["bar"] or "가짜 데이터" not in mk["report"]["bar"] or "완료" not in mk["report"]["status1"] or "완료" not in mk["report"]["status2"] or not mk["report"]["mock"]:
-        bad.append(f"목업 리포트 이상: {mk['report']}")
-    if mk["revise"]["sections"] != 2 or "충돌" not in mk["revise"]["sum"]:
-        bad.append(f"목업 수정 권고 화면 이상: {mk['revise']}")
-    if "목업" not in mk["viewer"]["asm"] or not mk["viewer"]["conflict"] or mk["viewer"]["chips"] < 1 or mk["viewer"]["me"] < 1:
-        bad.append(f"목업 뷰어 완성 상태 이상: {mk['viewer']}")
-    if "목업" not in mk["docx"]:
-        bad.append(f"목업 .docx 안내 이상: {mk['docx']!r}")
-    ar = mk["after_reload"]
-    if not ar["text_in_paper"] or ar["conflict"] or not ar["restored"] or "충돌 0" not in ar["cnt"]:
-        bad.append(f"새로고침 뒤 보존 이상: {ar}")
-    if mk["narrow_viewer"]["sw"] > mk["narrow_viewer"]["iw"] or mk["narrow_revise"]["sw"] > mk["narrow_revise"]["iw"]:
-        bad.append(f"목업 390 가로 스크롤: {mk['narrow_viewer']} {mk['narrow_revise']}")
     return bad
 
 

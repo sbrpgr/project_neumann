@@ -636,179 +636,175 @@
   @media print { .rvph { border: none !important; background: none !important; color: inherit !important; font-weight: inherit !important; padding: 0 !important; } .rvph.filled { text-decoration: none !important; } .rvconf, #rvConfBanner, #rvFillCnt { display: none !important; } }
 </style>
 <style id="finStyle">
-  /* E4-L4r(E4-L3m 값)의 revise 반응형 규칙을 final 화면에 복제 — 통합 시 selector를 합치면 된다 */
-  @media (max-width: 1180px) {
-    body[data-view="final"] .wrap { z-index: auto; }
-    .rvfab { display: inline-flex; position: fixed; right: 16px; bottom: 16px; z-index: 25; box-shadow: 0 2px 10px rgba(20,22,26,.16); }
-    body.popen .rvfab { display: none; }
-    .ptabs .rvclose { display: inline-flex; align-items: center; margin-left: auto; color: var(--text2); }
-  }
-  @media (max-width: 900px) {
-    .rvdiff { grid-template-columns: 36px minmax(0, 1fr); }
-    .rvdiff .hd.new, .rvdiff .same { display: none; }
-    .rvdiff .old { border-bottom: none; padding-bottom: 2px; }
-    .rvdiff .new { grid-column: 2; }
-    .rvdec { padding-left: 8px; }
-    .rvh { grid-template-columns: 38px minmax(0, 1fr); gap: 10px; } .rvh .rk { font-size: 30px; } .rvh h3 { font-size: 18px; }
-    .rvcard { padding: 16px 14px; }
-    .rvpick { grid-template-columns: 20px 32px minmax(0, 1fr); gap: 4px 10px; } .rvpick .st { grid-column: 3; text-align: left; justify-content: flex-start; }
-  }
-  /* 반응형 상단바·여백(E4-L3m 방식을 이 화면에만 적용. E4-L3m 병합 뒤에는 같은 값이 겹친다) */
-  @media (max-width: 900px) {
-    body[data-view="final"] .top { height: auto; min-height: 60px; flex-wrap: wrap; gap: 4px 18px; padding: 8px 16px; }
-    body[data-view="final"] .steps { order: 3; width: 100%; margin-left: 0; flex-wrap: wrap; gap: 2px 20px; }
-    body[data-view="final"] .wrap { padding: 20px 16px 72px 16px; }
-    body[data-view="final"] .doc section { scroll-margin-top: 110px; }
-    body[data-view="final"] .foot { padding: 24px 16px 36px 16px; }
-    #rvIdx { flex-wrap: wrap; row-gap: 4px; }
-  }
-  @media (max-width: 600px) {
-    body[data-view="final"] .top { position: relative; gap: 2px 12px; }
-    body[data-view="final"] .wordmark .w { font-size: 30px; }
-    body[data-view="final"] .wordmark .ws { display: none; }
-    body[data-view="final"] .top .r { margin-left: auto; gap: 10px; }
-    body[data-view="final"] .top .r > * + * { padding-left: 10px; }
-    body[data-view="final"] .steps { gap: 2px 14px; }
-    body[data-view="final"] .stp { font-size: 12.5px; letter-spacing: .03em; }
-    body[data-view="final"] .doc section { scroll-margin-top: 12px; }
-    body[data-view="final"] .wrap { padding: 16px 16px 72px 16px; }
-    body[data-view="final"] .sec { flex-wrap: wrap; gap: 2px 10px; } body[data-view="final"] .sec h2 { font-size: 20px; }
-    body[data-view="final"] .panel { width: 100%; max-width: none; border-left: none; }
-    body[data-view="final"] .pbody { padding: 14px 4px 24px 4px; }
-    #rvTitle { font-size: 23px !important; }
-    #rvIdx { gap: 0; margin: 14px 0 18px 0; } #rvIdx a { padding: 6px 8px; letter-spacing: .04em; }
-    .rvsum { gap: 10px 16px; } .rvsum .v { font-size: 22px; }
-  }
-  /* ===== FIN-UI 최종 점검·초안(VI): ④ 확정 버튼 · ⑤ 진행·도구 호출 로그 · ⑥ 최종 초안(교정 표시·도구 근거 배지) · ⑦ 전후 비교 · 목업 단계 바로가기 =====
-     한글에 자간·uppercase·모노 없음. 강조 빨강 하나, 통과·해소 파랑(--green), 확인 필요 앰버. 알약 배지는 도구 상태에만(작게) */
-  .rvmockjumps { display: inline-flex; gap: 6px; flex-wrap: wrap; margin-left: 6px; }
-  .rvmockbar .rvmockjumps .btn { margin-left: 0; }
-  .rvfinrow { border-top: 3px double var(--line2); padding-top: 16px; margin-top: 16px; }
-  .finsamples { padding: 16px 18px 14px 18px; margin-bottom: 16px; }
-  .finsamples .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 10px; }
+  /* ===== FIN-UI v2 최종 형태 흐름(단계 전환형): 스테퍼 하나 · 입력 → 분석 → 채택 → 수정 계획서 → 최종 점검 → 완성 =====
+     중성 배경, 강조색 하나(--red), 상태색은 오류(빨강)·경고(앰버)만. 글꼴 크기 4단계(13 · 15 · 19 · 28). 테두리·박스 중첩 최소, 여백으로 구분. 화면당 주 버튼 1개 */
+  /* --- 상단: 스테퍼 하나(목업에서는 로마 숫자 내비·부제·사용자·상태 알약을 숨기고 시험(mock) 칩만) --- */
+  .fstep { display: flex; align-items: center; gap: 0; margin-left: 28px; }
+  .fstep .fs { display: inline-flex; align-items: center; gap: 8px; height: 60px; padding: 0 14px; border: none; background: transparent; font-family: var(--head); font-size: 13px; font-weight: 600; letter-spacing: .02em; color: var(--faint); cursor: default; }
+  .fstep .fs .n { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--line2); font-family: var(--mono); font-size: 11px; font-weight: 600; }
+  .fstep .fs.done { color: var(--text2); cursor: pointer; }
+  .fstep .fs.done .n { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .fstep .fs.done:hover { color: var(--ink); }
+  .fstep .fs.cur { color: var(--ink); }
+  .fstep .fs.cur .n { border-color: var(--red); background: var(--red); color: #fff; }
+  .fstep .fs:focus-visible { outline: 2px solid var(--ink); outline-offset: -6px; border-radius: 4px; }
+  .finchip { display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; background: var(--amber-t); color: var(--amber); font-family: var(--head); font-size: 12px; font-weight: 700; letter-spacing: .02em; white-space: nowrap; }
+  body.rvmock .steps, body.rvmock .wordmark .ws, body.rvmock .top .r .u, body.rvmock #hdrState { display: none !important; }
+  body.rvmock .top .r > * + * { border-left: none; padding-left: 0; }
+  body.rvmock .top { top: 0; }
+  /* --- 입력(목업 정리): 인용은 푸터에 한 번만, 개발자 문구 없음, 한글 문구 --- */
+  body.rvmock .hero .title, body.rvmock .hero .by, body.rvmock .hero .rule { display: none; }
+  body.rvmock .hero { margin: 26px 0 22px 0; }
+  body.rvmock .hero h1 { font-size: 28px; }
+  body.rvmock #sendNote { display: none; }
+  .finsamples { margin-bottom: 18px; }
+  .finsamples .eyebrow { margin-bottom: 8px; }
+  .finsamples .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
   .finsamples .smp { display: block; text-align: left; padding: 12px 14px; border: 1px solid var(--line2); border-radius: 4px; background: var(--card); font: inherit; line-height: 1.5; }
-  .finsamples .smp:hover, .finsamples .smp:focus-visible { border-color: var(--ink); outline: none; box-shadow: 0 0 0 2px var(--soft); }
-  .finsamples .smp b { display: block; font-family: var(--sans); font-size: 14px; font-weight: 700; }
-  .finsamples .smp .d { display: block; font-size: 12.5px; color: var(--muted); margin-top: 3px; }
-  .finsamples .smp.na { color: var(--muted); border-style: dashed; }
-  body[data-view="final"] .wrap { z-index: auto; }
-  .fin-hero { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-top: 8px; }
-  .fin-hero h1 { font-size: 30px; outline: none; }
-  .fin-hero h1:focus-visible { text-decoration: underline; text-decoration-color: var(--red); text-underline-offset: 6px; }
-  .fin-hero .st { font-family: var(--serif); font-style: italic; font-size: 24px; font-weight: 400; color: var(--muted); }
-  .fin-hero .st.run { color: var(--red); } .fin-hero .st.done { color: var(--green); } .fin-hero .st.err { color: var(--red-d); }
-  .fin-hero .el { margin-left: auto; font-family: var(--mono); font-size: 13px; color: var(--muted); }
-  .fin-stages { padding: 14px 22px 6px 22px; }
-  .fin-stages .tn { grid-template-columns: 120px minmax(0, 1fr) 84px; }
-  .fin-stages .tn .tm { white-space: nowrap; }
-  .fin-stages .tn .tm b { color: var(--ink); font-weight: 600; }
-  .fin-stages .tn .tm .bad { color: var(--red); font-weight: 600; }
-  .finlogwrap { padding: 0 22px 18px 22px; }
-  .finloghd { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; padding: 10px 0 6px 0; }
-  .finloghd b { font-size: 14px; }
-  .finloghd .btn { margin-left: auto; }
-  .finlog { background: var(--soft); border: 1px solid var(--line2); border-radius: 3px; padding: 4px 0; max-height: 440px; overflow: auto; font-size: 13px; overscroll-behavior: contain; }
-  .finlog .row { display: grid; grid-template-columns: 52px 78px minmax(0, 1fr); gap: 0 12px; padding: 8px 16px; border-top: 1px solid var(--line); align-items: start; }
-  .finlog .row:first-child { border-top: none; }
-  .finlog .row.hl { background: var(--card); box-shadow: inset 3px 0 0 var(--red); }
-  .finlog .t { font-family: var(--mono); font-size: 12px; color: var(--faint); padding-top: 3px; }
-  .finlog .stg { font-family: var(--sans); font-size: 12.5px; font-weight: 600; color: var(--muted); padding-top: 2px; }
-  .finlog .nm { font-weight: 700; color: var(--ink); display: flex; gap: 6px 8px; align-items: center; flex-wrap: wrap; }
-  .finlog .nm .id { font-family: var(--mono); font-size: 11.5px; font-weight: 500; color: var(--muted); }
-  .finlog .io { font-family: var(--mono); font-size: 12.5px; color: var(--text2); margin-top: 3px; overflow-wrap: anywhere; }
-  .finlog .io b { font-family: var(--sans); font-weight: 600; color: var(--muted); margin-right: 6px; }
-  .finlog .msg { color: var(--text2); margin-top: 2px; font-size: 12.5px; }
-  .finlog .empty { padding: 18px 16px; color: var(--muted); }
-  .finst { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 2px; font-family: var(--head); font-size: 11.5px; font-weight: 700; letter-spacing: .02em; border: 1px solid transparent; white-space: nowrap; }
-  .finst.passed, .finst.resolved { color: var(--green); border-color: var(--green); }
-  .finst.failed, .finst.unresolved { color: #fff; background: var(--red); border-color: var(--red); }
-  .finst.unchecked, .finst.confirm { color: var(--amber); border-color: var(--amber); }
-  .finst.running { color: var(--red); border-color: var(--red-l); }
-  .finst.skip { color: var(--muted); border-color: var(--line2); }
-  .fintool { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 7px; border-radius: 2px; background: var(--card); border: 1px solid var(--line2); font-family: var(--mono); font-size: 11px; color: var(--text2); cursor: pointer; vertical-align: 2px; }
-  .fintool:hover, .fintool:focus-visible { border-color: var(--ink); outline: none; }
-  .fintool .finst { height: 16px; font-size: 10.5px; padding: 0 4px; }
-  .fin-sum { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 14px 22px; padding: 18px 22px; }
-  .fin-sum .v { font-family: var(--mono); font-size: 28px; font-weight: 600; line-height: 1; }
-  .fin-sum .v i { font-style: normal; font-family: var(--sans); font-size: 13px; font-weight: 600; margin-left: 8px; }
-  .fin-sum .l { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
-  .fin-sum .ok .v { color: var(--green); } .fin-sum .bad .v { color: var(--red); } .fin-sum .ask .v { color: var(--amber); }
-  .finpaper { background: #fff; border: 1px solid var(--line2); border-radius: 4px; padding: 44px 40px 56px 40px; }
-  .finpaper .rvpaper { max-width: 74ch; }
-  .finpaper .rvpaper p { padding: 1px 6px; }
-  .finpaper .fix { background: var(--amber-t); }
-  .finpaper .fix::before { content: ""; position: absolute; left: -18px; top: 8px; bottom: 8px; width: 2px; background: var(--amber); }
-  .finpaper .chg { background: var(--green-t); }
-  .finpaper .chg::before { content: ""; position: absolute; left: -18px; top: 8px; bottom: 8px; width: 2px; background: var(--green); }
-  .finpaper .ins { background: var(--green-t); }
-  .finpaper .ins::before { content: "+"; position: absolute; left: -22px; top: 0; font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--green); }
-  .finpaper.clean .fix, .finpaper.clean .chg, .finpaper.clean .ins { background: none; }
-  .finpaper.clean .fix::before, .finpaper.clean .chg::before, .finpaper.clean .ins::before { display: none; }
-  .finpaper.clean .finfix, .finpaper.clean .rvtag { display: none; }
-  .finpaper.clean .rvph { border: none; background: none; color: var(--amber); padding: 0; font-weight: 600; }
-  .finfix { margin: -4px 0 16px 0; padding: 10px 12px 10px 14px; border: 1px solid var(--line2); border-left: 3px solid var(--amber); border-radius: 3px; font-size: 13.5px; background: var(--card); line-height: 1.7; }
-  .finfix .hd { display: flex; align-items: baseline; gap: 8px 12px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); margin-bottom: 4px; }
-  .finfix .hd b { color: var(--ink); font-size: 13px; }
-  .finfix .o { color: var(--faint); text-decoration: line-through; text-decoration-color: var(--red-l); }
-  .finfix .n { color: var(--ink); }
-  .finfix .arrow { color: var(--muted); margin: 0 6px; font-family: var(--mono); }
-  .finfix .why { color: var(--text2); margin-top: 4px; }
-  .finfix .badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; align-items: center; }
-  .finfix.rej { border-left-color: var(--line2); }
-  .finfix.rej .n { color: var(--muted); }
-  .fincorr { padding: 4px 22px 10px 22px; }
-  .fincorr .finfix { margin: 10px 0 0 0; }
-  .fincmp { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-bottom: 16px; }
-  .fincmp .k { padding: 18px 20px; }
-  .fincmp .k .v { font-family: var(--mono); font-size: 34px; font-weight: 600; line-height: 1; color: var(--red); }
-  .fincmp .k .v small { font-family: var(--sans); font-size: 13px; color: var(--muted); font-weight: 500; margin-left: 6px; }
-  .fincmp .k .l { font-size: 13.5px; color: var(--ink); font-weight: 600; margin-top: 8px; }
-  .fincmp .k .d { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
-  .fintbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-  .fintbl th { text-align: left; font-family: var(--sans); font-size: 12.5px; font-weight: 600; color: var(--muted); padding: 8px 10px; border-bottom: 1px solid var(--line2); }
-  .fintbl td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  .fintbl td.b { color: var(--muted); }
-  .fintbl td.a { color: var(--ink); }
-  .fintbl .finst { vertical-align: 1px; margin-left: 6px; }
-  .fin-issues { padding: 4px 22px 10px 22px; }
-  .fin-issue { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 0 12px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 13.5px; align-items: start; }
-  .fin-issue:first-child { border-top: none; }
-  .fin-issue .k { font-family: var(--sans); font-weight: 600; color: var(--muted); font-size: 12.5px; padding-top: 2px; }
-  .fin-issue .badges { display: inline-flex; gap: 6px; flex-wrap: wrap; margin-left: 6px; vertical-align: 1px; }
-  .finbar { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; margin: 0 0 14px 0; }
-  .finbar .seg { display: inline-flex; border: 1px solid var(--line2); border-radius: 4px; overflow: hidden; }
-  .finbar .seg button { height: 32px; padding: 0 12px; border: none; background: var(--card); font-family: var(--head); font-size: 12.5px; font-weight: 600; letter-spacing: .02em; }
-  .finbar .seg button.on { background: var(--ink); color: #fff; }
-  .finbar .msg { font-size: 13px; color: var(--muted); }
-  .finbar .msg.inerr { color: var(--red-d); }
-  .finidle { padding: 22px 24px; }
+  .finsamples .smp:hover, .finsamples .smp:focus-visible { border-color: var(--ink); outline: none; }
+  .finsamples .smp.on { border-color: var(--red); box-shadow: inset 0 0 0 1px var(--red); }
+  .finsamples .smp b { display: block; font-family: var(--sans); font-size: 15px; font-weight: 700; }
+  .finsamples .smp .d { display: block; font-size: 13px; color: var(--muted); margin-top: 3px; }
+  .finguide { font-size: 13px; color: var(--amber); margin-top: 6px; }
+  .finguide:empty { display: none; }
+  .finnote { font-size: 13px; color: var(--muted); margin-top: 10px; }
+  /* --- 공통: 단계 화면 본문(한 컬럼, 본문 폭 720px), 하단 주 버튼 바 --- */
+  .fv { max-width: 760px; margin: 0 auto; padding-bottom: 96px; }
+  .fv .fhead { margin: 8px 0 22px 0; }
+  .fv .fhead h1 { font-size: 28px; outline: none; }
+  .fv .fhead h1:focus-visible { text-decoration: underline; text-decoration-color: var(--red); text-underline-offset: 6px; }
+  .fv .fhead .sub { font-size: 15px; color: var(--muted); margin-top: 8px; }
+  .fbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 25; display: flex; align-items: center; justify-content: center; gap: 12px 18px; padding: 12px 16px; background: rgba(246,247,245,.94); border-top: 1px solid var(--line); backdrop-filter: blur(6px); }
+  .fbar .btn.lg { min-width: 280px; }
+  .fbar .st { font-size: 13px; color: var(--muted); }
+  .fbar .st.inerr { color: var(--red-d); }
+  .fwait { padding: 24px 0; }
+  .fwait .tl { margin-top: 8px; }
+  /* --- 채택 --- */
+  .fa-card { padding: 20px 0 22px 0; border-top: 1px solid var(--line); }
+  .fa-card:first-of-type { border-top: none; padding-top: 6px; }
+  .fa-card.off { opacity: .55; }
+  .fa-head { display: flex; align-items: flex-start; gap: 14px; }
+  .fa-head h2 { font-size: 19px; font-family: var(--sans); font-weight: 700; flex: 1 1 auto; min-width: 0; }
+  .fa-head h2 small { display: block; font-size: 13px; color: var(--muted); font-weight: 500; margin-top: 3px; }
+  .fa-tgl { display: inline-flex; align-items: center; gap: 8px; font-family: var(--head); font-size: 13px; font-weight: 600; color: var(--ink); cursor: pointer; white-space: nowrap; padding-top: 3px; }
+  .fa-tgl input { appearance: none; -webkit-appearance: none; width: 38px; height: 22px; border-radius: 999px; background: var(--line2); position: relative; margin: 0; cursor: pointer; transition: background .15s; }
+  .fa-tgl input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: left .15s; }
+  .fa-tgl input:checked { background: var(--ink); }
+  .fa-tgl input:checked::after { left: 19px; }
+  .fa-tgl input:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .fa-sum { font-size: 15px; margin: 10px 0 0 0; color: var(--text); }
+  .fa-ev { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 12px; font-size: 13px; color: var(--muted); }
+  .fa-chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid var(--line2); border-radius: 999px; background: var(--card); font: inherit; font-size: 13px; color: var(--text2); cursor: pointer; max-width: 100%; }
+  .fa-chip b { font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 34ch; }
+  .fa-chip .d { color: var(--muted); } .fa-chip .d.rej { color: var(--red); }
+  .fa-chip[aria-expanded="true"] { border-color: var(--ink); }
+  .fa-chip:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .fa-evx { margin: 10px 0 0 0; padding: 12px 14px; background: var(--soft); border-radius: 4px; font-size: 13px; color: var(--text2); line-height: 1.7; }
+  .fa-evx .q { color: var(--ink); }
+  .fa-evx .m { color: var(--muted); font-size: 13px; }
+  .fa-evx a { color: var(--ink); }
+  .fa-prev { margin-top: 12px; font-size: 15px; line-height: 1.7; color: var(--text2); }
+  .fa-prev b { font-family: var(--head); font-size: 13px; font-weight: 600; color: var(--muted); margin-right: 8px; letter-spacing: .02em; }
+  .fa-prev .more { color: var(--muted); font-size: 13px; }
+  .fa-more { margin-top: 26px; border-top: 1px solid var(--line); padding-top: 12px; font-size: 13px; color: var(--text2); }
+  .fa-more summary { cursor: pointer; font-family: var(--head); font-weight: 600; color: var(--muted); letter-spacing: .02em; padding: 6px 0; }
+  .fa-more h3 { font-size: 15px; font-family: var(--sans); margin: 14px 0 6px 0; }
+  .fa-more ul { margin: 0; padding-left: 18px; line-height: 1.7; }
+  /* --- 수정 계획서(문서 한 장) --- */
+  .fd-status { display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; font-size: 13px; color: var(--muted); margin: 0 0 14px 0; }
+  .fd-status .ed { color: var(--amber); font-weight: 600; }
+  .fd-status .btn { margin-left: auto; }
+  .fd-doc { position: relative; background: #fff; border: 1px solid var(--line); border-radius: 4px; padding: 52px 56px 64px 72px; font-size: 15px; line-height: 1.95; color: var(--text); }
+  .fd-doc .t { font-family: var(--head); font-size: 28px; font-weight: 700; line-height: 1.25; margin: 0 0 8px 0; letter-spacing: -0.01em; }
+  .fd-doc .meta { font-size: 13px; color: var(--muted); padding-bottom: 14px; margin-bottom: 26px; border-bottom: 1px solid var(--line); }
+  .fd-doc h2 { font-family: var(--head); font-size: 19px; font-weight: 700; margin: 30px 0 8px 0; }
+  .fd-doc h3 { font-family: var(--head); font-size: 15px; font-weight: 700; margin: 20px 0 6px 0; }
+  .fd-p { position: relative; margin: 0 0 8px 0; }
+  .fd-p p { margin: 0; padding: 2px 8px; border-radius: 3px; cursor: text; outline: none; }
+  .fd-p p:hover { box-shadow: inset 0 0 0 1px var(--line2); }
+  .fd-p p:focus-visible { box-shadow: inset 0 0 0 2px var(--ink); }
+  .fd-p.chg p { background: var(--amber-t); }
+  .fd-p.fix p { background: var(--soft); }
+  .fd-p.ro p { cursor: default; } .fd-p.ro p:hover { box-shadow: none; }
+  .fd-mark { position: absolute; left: -40px; top: 6px; width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--line2); background: var(--card); font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--text2); display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; }
+  .fd-mark:hover, .fd-mark[aria-expanded="true"] { border-color: var(--ink); color: var(--ink); }
+  .fd-mark:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .fd-doc mark.ph { background: transparent; color: var(--amber); font-weight: 600; }
+  .fd-ta { display: block; width: 100%; box-sizing: border-box; margin: 0; padding: 2px 8px; border: none; border-radius: 3px; box-shadow: inset 0 0 0 2px var(--ink); background: #fff; font: inherit; line-height: inherit; color: inherit; resize: none; overflow: hidden; outline: none; }
+  .fd-pop { position: absolute; z-index: 6; left: 0; right: 0; margin: 4px 0 0 0; padding: 14px 16px; background: var(--card); border: 1px solid var(--ink); border-radius: 4px; box-shadow: 0 8px 28px rgba(20,22,26,.16); font-size: 13px; line-height: 1.7; color: var(--text2); }
+  .fd-pop .k { font-family: var(--head); font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: .02em; margin-top: 10px; }
+  .fd-pop .k:first-child { margin-top: 0; }
+  .fd-pop .o { color: var(--ink); }
+  .fd-pop .ev { padding-left: 10px; border-left: 2px solid var(--line2); margin-top: 6px; }
+  .fd-pop .ev .m { color: var(--muted); }
+  .fd-pop .acts { display: flex; gap: 8px; margin-top: 12px; }
+  /* --- 최종 점검 --- */
+  .fc-badges { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--text2); margin: 0 0 18px 0; }
+  .fc-badges span { white-space: nowrap; }
+  .fc-badges b { font-family: var(--head); font-weight: 600; color: var(--ink); }
+  .fc-badges .bad { color: var(--red); font-weight: 600; }
+  .fc-g { margin: 0 0 18px 0; }
+  .fc-g h2 { font-size: 15px; font-family: var(--head); font-weight: 600; color: var(--muted); letter-spacing: .02em; margin: 0 0 4px 0; }
+  .fc-g ul { list-style: none; margin: 0; padding: 0; }
+  .fc-row { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 0 10px; align-items: baseline; padding: 8px 0; border-top: 1px solid var(--line); font-size: 15px; cursor: pointer; }
+  .fc-row:first-child { border-top: none; }
+  .fc-row .ic { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--line2); font-size: 12px; color: transparent; align-self: center; }
+  .fc-row.run .ic { border-color: var(--red); border-top-color: transparent; animation: fcspin .8s linear infinite; }
+  .fc-row.pass .ic { border-color: var(--ink); background: var(--ink); color: #fff; animation: fcpop .25s ease-out; }
+  .fc-row.fail .ic { border-color: var(--red); background: var(--red); color: #fff; animation: fcpop .25s ease-out; }
+  .fc-row.skip .ic { border-color: var(--amber); color: var(--amber); }
+  .fc-row.pending { color: var(--faint); }
+  .fc-row .nm { min-width: 0; }
+  .fc-row .nm small { color: var(--muted); font-size: 13px; margin-left: 8px; }
+  .fc-row .rs { font-size: 13px; color: var(--muted); white-space: nowrap; }
+  .fc-row.fail .rs { color: var(--red); font-weight: 600; }
+  .fc-row .dt { grid-column: 2 / -1; font-family: var(--mono); font-size: 12.5px; color: var(--text2); line-height: 1.7; margin-top: 2px; overflow-wrap: anywhere; }
+  .fc-row .dt b { font-family: var(--sans); color: var(--muted); font-weight: 600; margin-right: 6px; }
+  .fc-fixes { margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--line); }
+  .fc-fixes h2 { font-size: 15px; font-family: var(--head); font-weight: 600; color: var(--muted); letter-spacing: .02em; margin: 0 0 8px 0; }
+  .fc-fix { padding: 8px 0; font-size: 15px; line-height: 1.7; border-top: 1px solid var(--line); }
+  .fc-fix:first-of-type { border-top: none; }
+  .fc-fix .ln { font-family: var(--mono); font-size: 12.5px; color: var(--muted); margin-right: 8px; }
+  .fc-fix s { color: var(--faint); text-decoration-color: var(--red-l); }
+  .fc-fix .arrow { color: var(--muted); margin: 0 6px; }
+  .fc-fix .why { display: block; font-size: 13px; color: var(--muted); }
+  .fc-fix .link { background: none; border: none; padding: 0; margin-left: 10px; font: inherit; font-size: 13px; color: var(--text2); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+  .fc-fix .link:hover { color: var(--ink); }
+  .fc-fix.rev { opacity: .6; } .fc-fix.rev s { text-decoration: none; color: var(--ink); } .fc-fix.rev b { text-decoration: line-through; color: var(--faint); font-weight: 400; }
+  .fc-fix.skip { color: var(--muted); }
+  @keyframes fcspin { to { transform: rotate(360deg); } }
+  @keyframes fcpop { from { transform: scale(.6); } to { transform: scale(1); } }
+  /* --- 완성 --- */
+  .fz-stat { font-size: 15px; color: var(--text2); margin-top: 8px; }
+  .fz-acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+  .fz-note { font-size: 13px; color: var(--muted); margin-top: 8px; }
+  /* --- 반응형 --- */
   @media (max-width: 900px) {
-    .finlog .row { grid-template-columns: 48px minmax(0, 1fr); } .finlog .stg { display: none; }
-    .finpaper { padding: 28px 22px 40px 22px; }
-    .fin-stages .tn { grid-template-columns: 96px minmax(0, 1fr) 72px; }
+    .fstep { order: 3; width: 100%; margin-left: 0; justify-content: space-between; }
+    .fstep .fs { height: 40px; padding: 0 6px; gap: 6px; }
+    .fd-doc { padding: 36px 24px 48px 48px; }
+    .fd-mark { left: -34px; }
   }
   @media (max-width: 600px) {
-    .finpaper { padding: 20px 14px 32px 14px; }
-    .finpaper .fix::before, .finpaper .chg::before { left: -9px; } .finpaper .ins::before { left: -12px; }
-    .fin-hero h1 { font-size: 24px; } .fin-hero .st { font-size: 20px; }
-    .fin-issue { grid-template-columns: minmax(0, 1fr); } .fin-issue .k { padding-top: 0; }
-    .fin-sum { grid-template-columns: repeat(2, 1fr); gap: 12px 14px; padding: 14px 16px; } .fin-sum .v { font-size: 24px; }
-    .fincmp { grid-template-columns: repeat(2, 1fr); } .fincmp .k { padding: 14px 14px; } .fincmp .k .v { font-size: 28px; }
-    .fin-stages { padding: 10px 14px 4px 14px; } .fin-stages .tn { grid-template-columns: 76px minmax(0, 1fr); } .fin-stages .tn .tm { grid-column: 2; text-align: left; padding-top: 0; }
-    .finlogwrap { padding: 0 14px 14px 14px; }
-    .fincorr, .fin-issues { padding-left: 14px; padding-right: 14px; }
-    .rvmockbar .rvmockjumps { width: 100%; margin-left: 0; }
-    .rvfinrow .btn.lg { width: 100%; }
+    .fstep .fs .l { display: none; } .fstep .fs.cur .l { display: inline; }
+    .fstep .fs { padding: 0 4px; }
+    .fv { padding-bottom: 88px; }
+    .fv .fhead h1 { font-size: 22px; }
+    .fbar { padding: 10px 12px; } .fbar .btn.lg { min-width: 0; width: 100%; } .fbar .st { display: none; }
+    .fa-head { flex-direction: column-reverse; gap: 8px; }
+    .fd-doc { padding: 26px 14px 40px 36px; font-size: 15px; }
+    .fd-doc .t { font-size: 22px; }
+    .fd-mark { left: -30px; width: 22px; height: 22px; }
+    .fd-status .btn { margin-left: 0; }
+    .fc-row { grid-template-columns: 26px minmax(0, 1fr); } .fc-row .rs { grid-column: 2; white-space: normal; }
+    .fz-acts .btn { flex: 1 1 45%; }
   }
   @media print {
-    body[data-view="final"] #fin-run, body[data-view="final"] #fin-compare, body[data-view="final"] #finIdx, body[data-view="final"] .finfix .badges, body[data-view="final"] .rvfab, body[data-view="final"] .panel, body[data-view="final"] .finbar, body[data-view="final"] .fin-hero .el { display: none !important; }
-    body[data-view="final"] .finpaper { border: none; padding: 0; }
-    body[data-view="final"] .finpaper .fix, body[data-view="final"] .finpaper .chg, body[data-view="final"] .finpaper .ins { background: none !important; }
-    body[data-view="final"] .finpaper .fix::before, body[data-view="final"] .finpaper .chg::before, body[data-view="final"] .finpaper .ins::before { display: none !important; }
+    .fstep, .fbar, .finchip, .fd-mark, .fd-pop, .fd-status, .fz-acts, .rvmockbar { display: none !important; }
+    .fd-doc { border: none; padding: 0; }
+    .fd-p.chg p, .fd-p.fix p { background: none; }
   }
-  /* ⑤ 단계 표의 오른쪽 칸(도구 n · 불일치 m)이 nowrap으로 768폭에서 넘치던 것 */
-  .fin-stages .tn { grid-template-columns: 120px minmax(0, 1fr) 112px; }
-  .fin-stages .tn .tm { white-space: normal; }
   /* 상단바·단계 표시 반응형: E4-L3m(d08640a) 전역 규칙과 같은 값(E4-L4r은 revise 화면에만 복제했고 이 브랜치·main에는 E4-L3m이 없다).
      입력·리포트·최종 초안 화면에서 768폭 단계 버튼(I~VI)이 한 줄로 넘치던 것. 통합 시 E4-L3m 규칙과 겹치면 하나만 남기면 된다 */
   @media (max-width: 1180px) {
@@ -856,6 +852,7 @@
     .finsamples .grid { grid-template-columns: 1fr; }
   }
 </style>
+<link rel="stylesheet" href="wait.css"><!-- WAIT-UX 대기 화면 모듈(없어도 기존 타임라인이 나온다) · 출처 task/WAIT-UX 06916ab -->
 </head>
 <body data-view="boot">
 <header class="top">
@@ -1141,8 +1138,9 @@
       var txt = b.status === 'queued' ? (b.position > 0 ? '대기 ' + b.position + '번째 · 약 ' + Math.max(1, Math.round(b.eta_s || 0)) + '초' : '곧 분석을 시작합니다')
         : '분석 중' + (b.stage_label && b.stage !== 'running' ? ' · ' + b.stage_label : '') + (b.eta_s != null ? ' · 약 ' + Math.max(1, Math.round(b.eta_s)) + '초 남음' : '');
       var prev = S.job.wait, changed = !prev || prev.status !== b.status || prev.stage !== b.stage;
-      S.job = { state: 'running', run: run, wait: { status: b.status, stage: b.stage, position: b.position, label: b.stage && b.stage !== 'running' ? String(b.stage_label || '') : '' }, waitText: txt };
+      S.job = { state: 'running', run: run, wait: { status: b.status, stage: b.stage, position: b.position, label: b.stage && b.stage !== 'running' ? String(b.stage_label || '') : '' }, waitText: txt, raw: b };
       if (S.step !== 1) return;
+      if (window.NeumannWait) { try { if (window.NeumannWait.update(b)) return; } catch (e) { /* WAIT-UX 모듈 오류는 기존 타임라인으로 */ } }
       if (changed) render(); else paintJob();
     }
     function poll(id, delay, fails) {
@@ -1174,7 +1172,8 @@
   function famCounts() { var n = (D.fams || []).length, s = [], r = []; for (var i = 0; i < n; i++) { s.push(0); r.push(0); } D.works.forEach(function (w) { (w.f || []).forEach(function (v, i) { if (v && i < n) { s[i]++; if (w.d === '거절') r[i]++; } }); }); return { sums: s, rej: r }; }
   function ckCounts() { var c = { '채택': 0, '보류': 0, '기각': 0 }; D.checklist.forEach(function (it) { c[it.s] = (c[it.s] || 0) + 1; }); return c; }
   function reviewCount() { var R = D.review || {}; return ['strength', 'weakness', 'request'].reduce(function (a, k) { return a + ((R[k] || []).length); }, 0); }
-  function fmtDate(s) { var m = /^(\d{4}-\d{2}-\d{2})/.exec(String(s || '')); return m ? m[1] : ''; }
+  /* 날짜는 KST로(QA-2 Q2-10): ISO 문자열(UTC)을 Asia/Seoul 기준 YYYY-MM-DD로 */
+  function fmtDate(s) { var d = new Date(String(s || '')); if (isNaN(d.getTime())) { var m = /^(\d{4}-\d{2}-\d{2})/.exec(String(s || '')); return m ? m[1] : ''; } try { var p = {}; new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(d).forEach(function (x) { p[x.type] = x.value; }); return p.year + '-' + p.month + '-' + p.day; } catch (e) { return d.toISOString().slice(0, 10); } }
   /* 평가이력 지도: 유사 연구 결정 분포(막대 + 범례), 평점 하나하나(점), 논문별 근거 번호 */
   var DORDER = ['거절', 'Oral', 'Spotlight', 'Poster', '채택', '대폭 수정', '소폭 수정', '철회', '미정'];
   function distHtml(works) {
@@ -1319,6 +1318,7 @@
     } else if (S.step === 1) {
       document.body.dataset.view = 'job';
       app.innerHTML = renderJob(); paintJob();
+      if (window.NeumannWait) { try { window.NeumannWait.mount(S.job); } catch (e) { /* WAIT-UX 모듈 오류는 기존 타임라인으로 */ } }
       var rt = $('btnRetry'); if (rt) rt.addEventListener('click', startAnalysis);
     } else if (S.step === 2 && D) {
       document.body.dataset.view = 'report';
@@ -1346,6 +1346,7 @@
   renderSteps(); render(); loadHealth(); loadTemplates();
 })();
 </script>
+<script src="wait.js"></script><!-- WAIT-UX 대기 화면 모듈: window.NeumannWait(mount·update). 뒤 블록(목업·수정 권고·FIN-UI)보다 먼저 실린다 · 출처 task/WAIT-UX 06916ab -->
 <!-- E4-L4r 목업 데이터(?mock=final) — tests/e4/revise_mock_data.py가 만든다. 손으로 고치지 않는다 -->
 <script type="application/json" id="rvMockFinal">{"note":"디자인 점검용 목업 · 공용 fixture(가짜 데이터) · 서버 호출 없음","view":{"plan_id":"3d35460def76efc4a786dce769e614f0d54d110ee2837da6b8fc1dbcf88ef33c","session_id":"fixture-session","plan":{"file":"plan.md","size":"2.1 KB","meta":"정규화 31줄","title":"연구계획서 (예시) — 전해액 이온전도도 예측 대리모델","lines":[{"n":1,"t":"# 연구계획서 (예시) — 전해액 이온전도도 예측 대리모델","h":"title"},{"n":3,"t":"## 1. 연구 목표","h":"h"},{"n":5,"t":"리튬이온 배터리 전해액의 이온전도도를 예측하는 Graph Neural Network 대리모델을 개발하여,"},{"n":6,"t":"실험 합성 없이 후보 조성을 사전 선별하는 것을 목표로 한다."},{"n":8,"t":"## 2. 방법","h":"h"},{"n":10,"t":"분자 그래프 인코더와 조성 임베딩을 결합한 GNN 을 학습한다."},{"n":11,"t":"제안 모델을 기존에 발표된 baseline 2종과 비교한다."},{"n":13,"t":"## 3. 데이터","h":"h"},{"n":15,"t":"문헌에 보고된 약 12,000건의 전해액 조성-전도도 데이터를 수집해 사용한다."},{"n":16,"t":"We randomly split the dataset into 80/10/10 train/validation/test sets.","f":true},{"n":17,"t":"조성이 거의 동일한 중복 항목에 대한 별도 제거 절차는 두지 않는다.","f":true},{"n":19,"t":"## 4. 평가","h":"h"},{"n":21,"t":"holdout test set 에서 R2 와 MAE 를 보고한다."},{"n":22,"t":"We do not report error bars, and no ablation study is planned.","f":true},{"n":23,"t":"Code and data will not be released due to an industrial collaboration agreement."},{"n":25,"t":"## 5. 기대 성과","h":"h"},{"n":27,"t":"제안 모델이 기존 baseline 대비 더 높은 예측 정확도를 달성할 것으로 기대한다."},{"n":28,"t":"## 6. 일정과 절차","h":"h"},{"n":30,"t":"1단계(1~6개월)에 데이터 수집과 정제를 마친다."},{"n":31,"t":"2단계(7~12개월)의 GNN 학습은 3단계 검증 실험의 측정값이 확보된 후 시작한다."},{"n":32,"t":"3단계(13~18개월)의 검증 실험은 2단계 학습 모델이 고른 후보 조성을 대상으로 수행한다."},{"n":33,"t":"총 연구 기간은 18개월이다."},{"n":35,"t":"## 7. 예산과 실험 규모","h":"h"},{"n":37,"t":"인건비 5,000만원, 장비비 4,000만원, 재료비 2,000만원을 합산해 총 예산은 1억 2,000만원이다."},{"n":38,"t":"전해액 시료는 1회당 250 mL 씩 총 40회 합성하여 합계 8 L를 사용한다."},{"n":39,"t":"목표 이온전도도는 상온(25 K)에서 12 mS/cm 이상이다."},{"n":40,"t":"모델 선별 지표는 예측 이온전도도(mS/cm)와 점도(mPa·s)를 더한 값으로 정의한다."},{"n":42,"t":"## 8. 참고문헌","h":"h"},{"n":44,"t":"[1] [FAKE] EquiMol: equivariant message passing for molecular property prediction. FakeConf 2099."},{"n":45,"t":"[2] [FAKE] Scaffold-aware contrastive pretraining for small-molecule GNNs. FakeConf 2099."},{"n":46,"t":"[3] [FAKE] Uncertainty-calibrated GNN ensembles for aqueous solubility prediction. FakeConf 2099."}]},"pipeline":[{"k":"SEARCH","ms":0,"log":[["ok","retrieve — 정상 · fixture"]],"m":"정상 1"},{"k":"ANALYZE","ms":0,"log":[["ok","extract — 정상 · fixture:mock"],["ok","cards — 정상 · fixture:mock"],["w","expected_review — 강등 · llm_call_not_provided: LLM 호출이 주입되지 않았다 · fallback:rule"],["w","checklist — 강등 · 카드 2/2장 규칙 문구로 대신함: llm_unavailable · fallback:rule_actions"]],"m":"정상 2 · 강등 2"}],"works":[{"n":1,"t":"[FAKE] EquiMol: equivariant message passing for molecular property prediction","s":"[FAKE] EquiMol","d":"거절","r":"–","id":"fixture:gnn-001","f":[1,1],"u":"https://example.org/fake-venue/forum?id=gnn-001","venue":"FakeConf 2099","draw":"Reject","dsrc":"fixture_records","sim":0.82},{"n":2,"t":"[FAKE] Scaffold-aware contrastive pretraining for small-molecule GNNs","s":"[FAKE] Scaffold-aware contrastive pretraining f…","d":"Poster","r":"–","id":"fixture:gnn-002","f":[1,0],"u":"https://example.org/fake-venue/forum?id=gnn-002","venue":"FakeConf 2099","draw":"FakeConf 2099 poster","dsrc":"fixture_records","sim":0.74},{"n":3,"t":"[FAKE] Uncertainty-calibrated GNN ensembles for aqueous solubility prediction","s":"[FAKE] Uncertainty-calibrated GNN ensembles for…","d":"대폭 수정","r":"–","id":"fixture:gnn-003","f":[0,1],"u":"https://example.org/fake-venue/forum?id=gnn-003","venue":"FakeConf 2099","draw":"Major Revision","dsrc":"fixture_records","sim":0.61}],"fams":[{"k":"R3","n":"Random splitting can leak near-duplicates into the test set","col":"누출"},{"k":"R2","n":"Single-seed results without error bars","col":"평가"}],"corpus":[null,null],"ev":{"1":{"fam":0,"q":"The paper reports a random 80/10/10 split of the molecules.","p":"[FAKE] EquiMol: equivariant message passing for molecular property prediction","v":"FakeConf 2099 · 심사평","d":"거절","rt":"","rv":"","id":"fixture:gnn-001","ln":16,"u":"https://example.org/fake-venue/forum?id=gnn-001&noteId=rev-gnn-001-a","eid":"ex_c5986bb2facc61b2","lns":[16,17],"cards":[1],"kind":"review","map":1,"off":[0,59],"sha":"69233c395f723472"},"2":{"fam":0,"q":"Random splits are known to leak near-duplicate scaffolds between train and test, so the reported MAE is likely optimistic.","p":"[FAKE] EquiMol: equivariant message passing for molecular property prediction","v":"FakeConf 2099 · 심사평","d":"거절","rt":"","rv":"","id":"fixture:gnn-001","ln":16,"u":"https://example.org/fake-venue/forum?id=gnn-001&noteId=rev-gnn-001-a","eid":"ex_110f92f3599151f1","lns":[16,17],"cards":[1],"kind":"review","map":1,"off":[60,182],"sha":"4aea7ef6bff915ef"},"3":{"fam":0,"q":"The pretraining corpus overlaps with the downstream test molecules.","p":"[FAKE] Scaffold-aware contrastive pretraining for small-molecule GNNs","v":"FakeConf 2099 · 심사평","d":"Poster","rt":"","rv":"","id":"fixture:gnn-002","ln":16,"u":"https://example.org/fake-venue/forum?id=gnn-002&noteId=rev-gnn-002-a","eid":"ex_845f5eb5621099f5","lns":[16,17],"cards":[1],"kind":"review","map":2,"off":[0,67],"sha":"7217f5f5452140e1"},"4":{"fam":0,"q":"the random split likely overstates performance","p":"[FAKE] EquiMol: equivariant message passing for molecular property prediction","v":"FakeConf 2099 · 결정문","d":"거절","rt":"","rv":"","id":"fixture:gnn-001","ln":16,"u":"https://example.org/fake-venue/forum?id=gnn-001&noteId=dec-gnn-001","eid":"ex_ca5fa760fdb45841","lns":[16,17],"cards":[1],"kind":"decision","map":1,"off":[25,71],"sha":"b1188787a3179b63"},"5":{"fam":1,"q":"All numbers come from a single training run with one random seed.","p":"[FAKE] EquiMol: equivariant message passing for molecular property prediction","v":"FakeConf 2099 · 심사평","d":"거절","rt":"","rv":"","id":"fixture:gnn-001","ln":22,"u":"https://example.org/fake-venue/forum?id=gnn-001&noteId=rev-gnn-001-b","eid":"ex_fc88c26e0b31af5e","lns":[22],"cards":[2],"kind":"review","map":1,"off":[0,65],"sha":"0d7b547226900908"},"6":{"fam":1,"q":"Without error bars across seeds it is impossible to tell whether the 3% improvement is real.","p":"[FAKE] EquiMol: equivariant message passing for molecular property prediction","v":"FakeConf 2099 · 심사평","d":"거절","rt":"","rv":"","id":"fixture:gnn-001","ln":22,"u":"https://example.org/fake-venue/forum?id=gnn-001&noteId=rev-gnn-001-b","eid":"ex_4b76d98627bb3f0c","lns":[22],"cards":[2],"kind":"review","map":1,"off":[66,158],"sha":"9ad7066b7817f782"},"7":{"fam":1,"q":"A single seed is used for every ensemble size.","p":"[FAKE] Uncertainty-calibrated GNN ensembles for aqueous solubility prediction","v":"FakeConf 2099 · 심사평","d":"대폭 수정","rt":"","rv":"","id":"fixture:gnn-003","ln":22,"u":"https://example.org/fake-venue/forum?id=gnn-003&noteId=rev-gnn-003-b","eid":"ex_6ec54fbcbb2ccae1","lns":[22],"cards":[2],"kind":"review","map":3,"off":[267,313],"sha":"8c8cbb924781e2a7"},"8":{"fam":1,"q":"Results are reported from one run with a fixed seed.","p":"[FAKE] Cross-site domain adaptation for brain MRI lesion segmentation","v":"FakeConf 2099 · 심사평","d":"소폭 수정","rt":"","rv":"","id":"fixture:seg-002","ln":22,"u":"https://example.org/fake-venue/forum?id=seg-002&noteId=rev-seg-002-b","eid":"ex_7686b8804b5212e3","lns":[22],"cards":[2],"kind":"review","x":true,"off":[0,52],"sha":"78310efc1e22004b"}},"cards":[{"rank":1,"fam":0,"sev":5,"score":"0.78","comp":[["유사도",0.82],["빈도",0.5],["심각도",1.0],["신뢰도",0.9]],"src":"근거 4건 · 논문 2편","desc":"The plan splits the data randomly (80/10/10) and has no step to remove near-duplicate compositions.","lines":[16,17],"freq":"유사 3편 중 2편 지적 · 그중 1편 거절","ev":[1,2,3,4],"acts":[],"gen":"mock","id":"card-fx-leak"},{"rank":2,"fam":1,"sev":3,"score":"0.65","comp":[["유사도",0.7],["빈도",0.5],["심각도",0.6],["신뢰도",0.85]],"src":"근거 4건 · 논문 3편","desc":"The plan states that no error bars and no ablation will be reported.","lines":[22],"freq":"유사 3편 중 2편 지적 · 그중 1편 거절","ev":[5,6,7,8],"acts":[],"gen":"mock","id":"card-fx-seed"}],"others":[],"review":{"strength":[],"weakness":[{"t":"데이터 누출·분할 오염 위험: Random splitting can leak near-duplicates into the test set (계획서 16–17행). 유사 연구 2편의 심사에서 같은 유형의 지적이 나왔다(예: “The paper reports a random 80/10/10 split of the molecules.”).","c":[1,2,3],"ln":[16,17],"cards":[1]},{"t":"실험 설계·평가 프로토콜 위험: Single-seed results without error bars (계획서 22행). 유사 연구 3편의 심사에서 같은 유형의 지적이 나왔다(예: “All numbers come from a single training run with one random seed.”).","c":[5,6,7],"ln":[22],"cards":[2]}],"request":[{"t":"학습·검증·평가 데이터의 분할 단위와 중복·누출 제거 절차를 계획서에 명시할 것 (계획서 16–17행).","c":[1,2,3],"ln":[16,17],"cards":[1]},{"t":"비교 대상(baseline)과 반복 실험·오차 보고 방식을 착수 전에 명시할 것 (계획서 22행).","c":[5,6,7],"ln":[22],"cards":[2]}],"audit":{"gen":4,"pass":4,"drop":0,"dropped":[],"gate":"grounding@v1"},"gen":"rule","st":"degraded","why":"llm_call_not_provided: LLM 호출이 주입되지 않았다"},"checklist":[{"id":"C1","t":"데이터를 만지기 전에 그룹 단위 분할 규칙을 문서로 고정하고, 그룹이 분할 경계를 넘지 않는지 코드로 검사한다.","r":"R3","s":"보류","m":"","set":false,"ln":[16,17],"ev":[1,2,3],"card":1,"gen":"rule","why":"llm_unavailable"},{"id":"C2","t":"중복·근사중복 제거 기준을 착수 전에 정하고, 무작위 분할과 그룹 분할 성능을 함께 보고하기로 계획에 적는다.","r":"R3","s":"보류","m":"","set":false,"ln":[16,17],"ev":[1,2,3],"card":1,"gen":"rule","why":"llm_unavailable"},{"id":"C3","t":"비교 대상(최신 방법, 강한 단순 기준선, 제안법에서 핵심 요소를 뺀 버전)을 착수 전에 고정하고 계획서에 적는다.","r":"R2","s":"보류","m":"","set":false,"ln":[22],"ev":[5,6,7],"card":2,"gen":"rule","why":"llm_unavailable"},{"id":"C4","t":"반복 실행 횟수와 보고 형식(평균·표준편차 또는 신뢰구간)을 착수 전에 정해 계획서에 명시한다.","r":"R2","s":"보류","m":"","set":false,"ln":[22],"ev":[5,6,7],"card":2,"gen":"rule","why":"llm_unavailable"}],"kpi":{"n_works":3,"n_reject":1,"n_accept":1,"n_evidence":8,"n_cards_total":2,"review_count":4,"model_id":null,"model_provider":null,"elapsed_s":0},"_status":{"source":"sample","pipeline":"unavailable","label":"분석 파이프라인 미연결(샘플 데이터)","result_status":"degraded","degraded":true,"notices":["[FAKE] fixture result for UI/API development"],"input":{},"stages_not_ok":[{"name":"expected_review","phase":"ANALYZE","status":"degraded","reason":"llm_call_not_provided: LLM 호출이 주입되지 않았다"},{"name":"checklist","phase":"ANALYZE","status":"degraded","reason":"카드 2/2장 규칙 문구로 대신함: llm_unavailable"}],"generators":{"mock":2},"empty_reason":null,"dropped":{},"section_errors":{},"contract_ok":true,"contract_errors":[],"generated_at":"2026-09-30T09:00:00Z","pipeline_version":"neumann-1","records":{"source":"fixture_records","filled":{"works_decision":3,"evidence_decision":1}},"verification":null,"server_elapsed_s":0}},"plan_text":"# 연구계획서 (예시) — 전해액 이온전도도 예측 대리모델\n\n## 1. 연구 목표\n\n리튬이온 배터리 전해액의 이온전도도를 예측하는 Graph Neural Network 대리모델을 개발하여,\n실험 합성 없이 후보 조성을 사전 선별하는 것을 목표로 한다.\n\n## 2. 방법\n\n분자 그래프 인코더와 조성 임베딩을 결합한 GNN 을 학습한다.\n제안 모델을 기존에 발표된 baseline 2종과 비교한다.\n\n## 3. 데이터\n\n문헌에 보고된 약 12,000건의 전해액 조성-전도도 데이터를 수집해 사용한다.\nWe randomly split the dataset into 80/10/10 train/validation/test sets.\n조성이 거의 동일한 중복 항목에 대한 별도 제거 절차는 두지 않는다.\n\n## 4. 평가\n\nholdout test set 에서 R2 와 MAE 를 보고한다.\nWe do not report error bars, and no ablation study is planned.\nCode and data will not be released due to an industrial collaboration agreement.\n\n## 5. 기대 성과\n\n제안 모델이 기존 baseline 대비 더 높은 예측 정확도를 달성할 것으로 기대한다.\n## 6. 일정과 절차\n\n1단계(1~6개월)에 데이터 수집과 정제를 마친다.\n2단계(7~12개월)의 GNN 학습은 3단계 검증 실험의 측정값이 확보된 후 시작한다.\n3단계(13~18개월)의 검증 실험은 2단계 학습 모델이 고른 후보 조성을 대상으로 수행한다.\n총 연구 기간은 18개월이다.\n\n## 7. 예산과 실험 규모\n\n인건비 5,000만원, 장비비 4,000만원, 재료비 2,000만원을 합산해 총 예산은 1억 2,000만원이다.\n전해액 시료는 1회당 250 mL 씩 총 40회 합성하여 합계 8 L를 사용한다.\n목표 이온전도도는 상온(25 K)에서 12 mS/cm 이상이다.\n모델 선별 지표는 예측 이온전도도(mS/cm)와 점도(mPa·s)를 더한 값으로 정의한다.\n\n## 8. 참고문헌\n\n[1] [FAKE] EquiMol: equivariant message passing for molecular property prediction. FakeConf 2099.\n[2] [FAKE] Scaffold-aware contrastive pretraining for small-molecule GNNs. FakeConf 2099.\n[3] [FAKE] Uncertainty-calibrated GNN ensembles for aqueous solubility prediction. FakeConf 2099.\n","revisions":{"card-fx-leak":{"version":"revision@v1","plan_id":"3d35460def76efc4a786dce769e614f0d54d110ee2837da6b8fc1dbcf88ef33c","session_id":"fixture-session","generated_at":"2026-09-30T14:00:00+00:00","generator":"mock","model":"mock-deterministic-v1","effort":"medium","prompt_version":"revise_card@v1","status":"ok","reason":null,"cards_requested":["card-fx-leak"],"cards_skipped":[],"revisions":[{"card_id":"card-fx-leak","risk_code":"R3","title":"Random splitting can leak near-duplicates into the test set","generator":"mock","model":"mock-deterministic-v1","effort":"medium","status":"ok","reason":null,"interpretation":[{"text":"테스트 해석 1: 심사자는 1번 카드의 지적을 거절 사유로 들었다.","excerpt_ids":["ex_c5986bb2facc61b2"],"plan_lines":[16],"quotes":[]},{"text":"테스트 해석 2: 같은 지적이 다른 심사평에도 반복된다.","excerpt_ids":["ex_110f92f3599151f1"],"plan_lines":[16],"quotes":[]},{"text":"테스트 해석 3(근거 없음): 화면 게이트가 빼야 한다.","excerpt_ids":[],"plan_lines":[],"quotes":[]}],"precedents":{"status":"found","note":null,"items":[{"text":"테스트 대응: 같은 지적을 받은 채택 연구는 그룹 단위 분할로 다시 실험하고 답변했다.","excerpt_ids":["ex_test_resp_1","ex_c5986bb2facc61b2"],"work_id":"fixture:gnn-002","outcome":"accept_poster","outcome_label":"Poster","quotes":[]}]},"edits":[{"edit_id":"card-fx-leak/e1","plan_line":16,"kind":"replace","current_text":"We randomly split the dataset into 80/10/10 train/validation/test sets.","proposed_text":"테스트 제안 1: We randomly split the dataset into 80/10/10 train/validation/test sets. 그리고 분할을 그룹 단위로 바꾼다.","proposed_label":"제안(근거 아님)","rationale":{"text":"테스트 이유 1: 근사 중복 누출을 막는다.","excerpt_ids":["ex_c5986bb2facc61b2"],"plan_lines":[16],"quotes":[]}},{"edit_id":"card-fx-leak/e2","plan_line":17,"kind":"replace","current_text":"조성이 거의 동일한 중복 항목에 대한 별도 제거 절차는 두지 않는다.","proposed_text":"테스트 제안 2: 중복 제거 기준을 착수 전에 정하고 제거 건수를 [확인 필요: 보고 시점]에 보고한다.","proposed_label":"제안(근거 아님)","rationale":{"text":"테스트 이유 2: 절차가 없다는 것이 지적의 핵심이다.","excerpt_ids":["ex_110f92f3599151f1"],"plan_lines":[17],"quotes":[]}},{"edit_id":"card-fx-leak/e3","plan_line":17,"kind":"insert_after","current_text":"조성이 거의 동일한 중복 항목에 대한 별도 제거 절차는 두지 않는다.","proposed_text":"테스트 추가 문단: 카드 1 위험의 사전 점검 결과를 부록에 첨부한다.","proposed_label":"제안(근거 아님)","rationale":{"text":"테스트 이유 3: 확인 절차를 계획서에 적는다.","excerpt_ids":["ex_c5986bb2facc61b2"],"plan_lines":[17],"quotes":[]}}],"questions":[{"text":"테스트 질문: 16행의 기준을 실제로 바꿀 수 있는가?","plan_lines":[16]}],"audit":{"generated":8,"passed":7,"dropped":1,"no_evidence":1,"reasons":{"no_evidence":1},"dropped_detail":[{"section":"interpretation","reason":"no_evidence","text":"서버 게이트가 뺀 문장(테스트)"}],"gate":"revision-grounding@v1"},"elapsed_s":0.5,"llm_calls":1,"fallback_reason":null,"evidence_pool":["ex_c5986bb2facc61b2","ex_110f92f3599151f1","ex_845f5eb5621099f5","ex_ca5fa760fdb45841","ex_test_resp_1"]}],"records":[{"excerpt_id":"ex_test_resp_1","source_kind":"author_response","source_id":"resp-test-1","start":0,"end":71,"text":"We re-ran all experiments with a scaffold split and report the numbers.","text_sha256":"71a88300f7a9056c719d89208caf603840f327fc30aa64ed8a70b224cd0013b8","source_url":"https://example.org/fake-venue/forum?id=gnn-002&noteId=resp","source_sha256":null,"work_id":"fixture:gnn-002","record_kind":"author_response","outcome":"accept_poster"}],"works":[{"work_id":"fixture:gnn-002","title":"[FAKE] 채택 논문(테스트)","url":"https://example.org/fake-venue/forum?id=gnn-002","outcome":"accept_poster","outcome_raw":"FakeConf 2099 poster","outcome_label":"Poster","n_responses":1,"n_meta_reviews":0}],"audit":{"generated":8,"passed":7,"dropped":1,"no_evidence":1,"reasons":{"no_evidence":1},"dropped_detail":[],"gate":"revision-grounding@v1"},"cost":{"llm_calls":1,"llm_calls_failed":0,"prompt_chars":4200,"usage":{},"estimated_input_tokens":1400,"estimated_output_tokens":900,"estimated_usd":null,"note":"mock provider: 실제 호출 없음"},"coverage":{"works_considered":2,"works_with_decision":2,"works_accepted":1,"works_rejected":1,"works_with_responses":1,"works_with_meta_review":0,"record_source":"fixture"},"notices":["mock provider(테스트용) 결과 — 실제 LLM 분석이 아니다"],"elapsed_s":0.5,"revision_sig":null},"card-fx-seed":{"version":"revision@v1","plan_id":"3d35460def76efc4a786dce769e614f0d54d110ee2837da6b8fc1dbcf88ef33c","session_id":"fixture-session","generated_at":"2026-09-30T14:00:00+00:00","generator":"mock","model":"mock-deterministic-v1","effort":"medium","prompt_version":"revise_card@v1","status":"ok","reason":null,"cards_requested":["card-fx-seed"],"cards_skipped":[],"revisions":[{"card_id":"card-fx-seed","risk_code":"R2","title":"Single-seed results without error bars","generator":"mock","model":"mock-deterministic-v1","effort":"medium","status":"ok","reason":null,"interpretation":[{"text":"테스트 해석 1: 심사자는 2번 카드의 지적을 거절 사유로 들었다.","excerpt_ids":["ex_fc88c26e0b31af5e"],"plan_lines":[22],"quotes":[]},{"text":"테스트 해석 2: 같은 지적이 다른 심사평에도 반복된다.","excerpt_ids":["ex_4b76d98627bb3f0c"],"plan_lines":[22],"quotes":[]},{"text":"테스트 해석 3(근거 없음): 화면 게이트가 빼야 한다.","excerpt_ids":[],"plan_lines":[],"quotes":[]}],"precedents":{"status":"found","note":null,"items":[{"text":"테스트 대응: 같은 지적을 받은 채택 연구는 그룹 단위 분할로 다시 실험하고 답변했다.","excerpt_ids":["ex_test_resp_2","ex_fc88c26e0b31af5e"],"work_id":"fixture:gnn-003","outcome":"accept_poster","outcome_label":"Poster","quotes":[]}]},"edits":[{"edit_id":"card-fx-seed/e1","plan_line":22,"kind":"replace","current_text":"We do not report error bars, and no ablation study is planned.","proposed_text":"테스트 제안 1: We do not report error bars, and no ablation study is planned. 그리고 분할을 그룹 단위로 바꾼다.","proposed_label":"제안(근거 아님)","rationale":{"text":"테스트 이유 1: 근사 중복 누출을 막는다.","excerpt_ids":["ex_fc88c26e0b31af5e"],"plan_lines":[22],"quotes":[]}},{"edit_id":"card-fx-seed/e2","plan_line":22,"kind":"replace","current_text":"We do not report error bars, and no ablation study is planned.","proposed_text":"테스트 제안 2: 시드 [확인 필요: 개수]개로 반복해 평균과 표준편차를 보고한다.","proposed_label":"제안(근거 아님)","rationale":{"text":"테스트 이유 2: 반복 없는 단일 수치가 지적됐다.","excerpt_ids":["ex_4b76d98627bb3f0c"],"plan_lines":[22],"quotes":[]}},{"edit_id":"card-fx-seed/e3","plan_line":22,"kind":"insert_after","current_text":"We do not report error bars, and no ablation study is planned.","proposed_text":"테스트 추가 문단: 카드 2 위험의 사전 점검 결과를 부록에 첨부한다.","proposed_label":"제안(근거 아님)","rationale":{"text":"테스트 이유 3: 확인 절차를 계획서에 적는다.","excerpt_ids":["ex_fc88c26e0b31af5e"],"plan_lines":[22],"quotes":[]}},{"edit_id":"card-fx-seed/e4","plan_line":16,"kind":"replace","current_text":"We randomly split the dataset into 80/10/10 train/validation/test sets.","proposed_text":"테스트 교차 제안(카드 2): We randomly split the dataset into 80/10/10 train/validation/test sets. — 다른 관점의 수정.","proposed_label":"제안(근거 아님)","rationale":{"text":"테스트 이유 4: 다른 카드와 같은 줄(충돌 확인용).","excerpt_ids":["ex_fc88c26e0b31af5e"],"plan_lines":[16],"quotes":[]}}],"questions":[{"text":"테스트 질문: 22행의 기준을 실제로 바꿀 수 있는가?","plan_lines":[22]}],"audit":{"generated":8,"passed":7,"dropped":1,"no_evidence":1,"reasons":{"no_evidence":1},"dropped_detail":[{"section":"interpretation","reason":"no_evidence","text":"서버 게이트가 뺀 문장(테스트)"}],"gate":"revision-grounding@v1"},"elapsed_s":0.5,"llm_calls":1,"fallback_reason":null,"evidence_pool":["ex_fc88c26e0b31af5e","ex_4b76d98627bb3f0c","ex_6ec54fbcbb2ccae1","ex_7686b8804b5212e3","ex_test_resp_2"]}],"records":[{"excerpt_id":"ex_test_resp_2","source_kind":"author_response","source_id":"resp-test-2","start":0,"end":71,"text":"We re-ran all experiments with a scaffold split and report the numbers.","text_sha256":"71a88300f7a9056c719d89208caf603840f327fc30aa64ed8a70b224cd0013b8","source_url":"https://example.org/fake-venue/forum?id=gnn-002&noteId=resp","source_sha256":null,"work_id":"fixture:gnn-003","record_kind":"author_response","outcome":"accept_poster"}],"works":[{"work_id":"fixture:gnn-003","title":"[FAKE] 채택 논문(테스트)","url":"https://example.org/fake-venue/forum?id=gnn-002","outcome":"accept_poster","outcome_raw":"FakeConf 2099 poster","outcome_label":"Poster","n_responses":1,"n_meta_reviews":0}],"audit":{"generated":8,"passed":7,"dropped":1,"no_evidence":1,"reasons":{"no_evidence":1},"dropped_detail":[],"gate":"revision-grounding@v1"},"cost":{"llm_calls":1,"llm_calls_failed":0,"prompt_chars":4200,"usage":{},"estimated_input_tokens":1400,"estimated_output_tokens":900,"estimated_usd":null,"note":"mock provider: 실제 호출 없음"},"coverage":{"works_considered":2,"works_with_decision":2,"works_accepted":1,"works_rejected":1,"works_with_responses":1,"works_with_meta_review":0,"record_source":"fixture"},"notices":["mock provider(테스트용) 결과 — 실제 LLM 분석이 아니다"],"elapsed_s":0.5,"revision_sig":null}},"preset":[{"rank":1,"edit_id":"card-fx-leak/e1","d":"adopt"},{"rank":1,"edit_id":"card-fx-leak/e2","d":"edit","text":"연구자가 직접 고친 문장: 조성 그룹 단위로 분할하고 근사 중복 조성은 분할 전에 제거하며, 제거 건수를 [확인 필요: 보고 시점]에 보고한다."},{"rank":1,"edit_id":"card-fx-leak/e3","d":"reject"},{"rank":2,"edit_id":"card-fx-seed/e2","d":"adopt"},{"rank":2,"edit_id":"card-fx-seed/e4","d":"adopt"}]}</script>
 <script>
@@ -2165,14 +2166,8 @@
     var node = $('rvMockFinal'); if (!node) return;
     try { MOCK_DATA = JSON.parse(node.textContent); } catch (e) { MOCK_DATA = null; }
     if (!MOCK_DATA || !MOCK_DATA.view) return;
-    var bar = el('div', 'rvmockbar'); bar.id = 'rvMockBar'; bar.setAttribute('role', 'note');
-    add(bar, el('b', null, '디자인 점검용 목업 · 가짜 데이터'), el('span', 'sm', '서버 호출 없음 · 최종 형태 흐름'));
-    /* FIN-UI: 단계 바로가기 ①~⑦ (각 단계는 그 앞 단계가 끝난 상태로 연다) */
-    var jumps = el('span', 'rvmockjumps'); jumps.setAttribute('role', 'group'); jumps.setAttribute('aria-label', '목업 단계 바로가기');
-    [['input', '① 입력'], ['job', '② 분석'], ['report', '② 위험카드'], ['revise', '③ 재탄생'], ['final', '④~⑦ 확정·검증·최종 초안']].forEach(function (j) { var b = btn('btn sm', j[1]); b.dataset.mockat = j[0]; add(jumps, b); });
-    add(bar, jumps);
-    var off = btn('btn sm', '보존값 지우고 다시'); off.id = 'rvMockReset'; add(bar, off);
-    document.body.insertBefore(bar, document.body.firstChild); document.body.classList.add('rvmock');
+    /* FIN-UI v2: 띠·바로가기 없음(헤더의 시험(mock) 칩과 스테퍼 하나만). 단계 이동은 ?at= 과 스테퍼(NeumannFinal.jump) */
+    document.body.classList.add('rvmock');
     U.setD(MOCK_DATA.view); S.text = String(MOCK_DATA.plan_text || ''); S.filename = (MOCK_DATA.view.plan && MOCK_DATA.view.plan.file) || ''; S.job = { state: 'done', view: MOCK_DATA.view }; S.maxStep = Math.max(S.maxStep, 3);
     var st = state();
     if (!st.restored) {
@@ -2180,24 +2175,11 @@
       L(MOCK_DATA.preset).forEach(function (pd) { var it = st.items[pd.rank]; if (!it || !it.rev || !findEdit(it, pd.edit_id)) return; it.dec[pd.edit_id] = { d: pd.d, text: pd.d === 'edit' ? String(pd.text || '') : (pd.d === 'adopt' ? findEdit(it, pd.edit_id).after : ''), at: new Date().toISOString() }; });
       persist();
     }
-    var at = (/[?&]at=([a-z]+)/.exec(location.search) || [])[1] || 'input';
-    mockJump(at);
-  }
-  /* 목업 단계 이동: input(①, 계획서 미리 채움) · job(② 가짜 분석 진행) · report(② 위험카드) · revise(③) · final(④~⑦, FIN-UI 블록이 이어받음) */
-  function mockJump(at) {
-    if (!MOCK || !MOCK_DATA) return;
-    closeViewer();
-    if (at === 'input') { S.text = String(MOCK_DATA.plan_text || ''); U.go(0); return; }
-    if (at === 'job') { if (window.NeumannFinal) window.NeumannFinal.mockAnalysis(); else U.go(2); return; }
-    if (at === 'revise') { goRevise(cards().map(function (c) { return c.rank; }), false); return; }
-    if (at === 'final') { if (window.NeumannFinal) window.NeumannFinal.start(); else U.go(2); return; }
-    U.go(2);
+    U.go(0);  /* 첫 화면은 ① 연구계획 입력(대표 지시). 단계 바로가기(?at=)는 FIN-UI 블록이 처리한다 */
   }
   /* ---------- 이벤트 ---------- */
   document.addEventListener('click', function (ev) {
     var t;
-    if (MOCK && ev.target.closest('#rvMockReset')) { forget(); if (window.NeumannFinal) window.NeumannFinal.forget(); location.reload(); return; }
-    if (MOCK && (t = ev.target.closest('[data-mockat]'))) { mockJump(t.dataset.mockat); return; }
     if ((t = ev.target.closest('[data-rv]'))) { var r = +t.dataset.rv; goRevise([r], item(r).status !== 'done'); return; }
     if (ev.target.closest('#rvTop')) { goRevise(adoptedRanks(), true); return; }
     if ((t = ev.target.closest('[data-rstep]'))) { if (!t.disabled) goRevise(null, false); return; }
@@ -2248,41 +2230,42 @@
   function exportPayload() { var st = state(), rev = mergedRevision(); if (!rev) return {}; return { revision: rev, revision_decisions: serverDecisions(), revised_plan: st.asm && st.asm.source === 'server' ? st.asm.raw : null, revision_sig: rev.revision_sig || null }; }
   /* FIN-UI ④: 연구자가 확정하는 문안 = 현재 조립(채택·직접 수정·충돌 선택·자리표시 입력 반영, 삭제 문단 제외) */
   function confirmed() { var asm = currentAsm(); return asm.paras.filter(function (p) { return p.kind !== 'deleted'; }).map(function (p) { return { n: p.n, t: finalText(p), kind: p.kind, h: p.h || null, me: !!p.me, orig: p.orig != null ? p.orig : (p.kind === 'same' ? p.t : ''), src: p.src ? { rank: p.src.rank, edit: p.src.edit ? p.src.edit.id : '', dec: p.src.dec ? p.src.dec.d : '', why: p.src.edit ? p.src.edit.why : '', c: p.src.edit ? p.src.edit.c.slice() : [] } : null }; }); }
-  window.NeumannRevise = { open: goRevise, decisions: decisionsLog, serverDecisions: serverDecisions, undo: undoLast, forget: forget, mock: MOCK, mockData: function () { return MOCK_DATA; }, assemble: currentAsm, assembleLocal: assembleLocal, assembleBody: assembleBody, confirmed: confirmed, markdown: function () { return mdText(currentAsm()); }, exportPayload: exportPayload, openViewer: openViewer, closeViewer: closeViewer, config: REV, state: state, originText: originText, genText: genText };
+  window.NeumannRevise = { open: goRevise, decisions: decisionsLog, serverDecisions: serverDecisions, undo: undoLast, forget: forget, mock: MOCK, mockData: function () { return MOCK_DATA; }, assemble: currentAsm, assembleLocal: assembleLocal, assembleBody: assembleBody, confirmed: confirmed, markdown: function () { return mdText(currentAsm()); }, exportPayload: exportPayload, openViewer: openViewer, closeViewer: closeViewer, config: REV, state: state, originText: originText, genText: genText,
+    /* FIN-UI v2(단계 전환형 목업 흐름)가 결정·직접 편집을 같은 상태에 쓰기 위한 내부 훅 */
+    item: item, persist: persist, findEdit: findEdit, lineText: lineText, cards: cards, cardOf: cardOf, PH: PH };
   paintSteps();
   if (MOCK) bootMock();
 })();
 </script>
 <!-- FIN-UI 목업 최종 점검 데이터(?mock=final) — tests/e4/fin_mock_data.py가 만든다. 손으로 고치지 않는다 -->
-<script type="application/json" id="finMockFinal">{"note":"디자인 점검용 목업 · 가짜 데이터 · 서버 호출 없음 · 도구 실행 기록도 가짜(실제 Z3·Pint·NetworkX 실행 아님)","stages":[{"id":"logic","name":"논리 점검","desc":"합계·곱·비율 같은 수치 제약을 계산기·Z3·제한 실행으로 확인"},{"id":"physics","name":"물리 점검","desc":"단위·차원·물리 범위를 Pint로 확인"},{"id":"structure","name":"구조 점검","desc":"절 번호 연속성과 선행관계 그래프(순환)를 NetworkX로 확인"},{"id":"evidence","name":"근거 점검","desc":"참고문헌·근거의 철회·거절 기록 조회(로컬 기록) · 채택 수정안의 근거 연결"},{"id":"correct","name":"교정 적용","desc":"원문 앵커가 맞는 줄만 고치고, 모르는 값은 [확인 필요]로 남김 · 새 내용은 게이트가 제외"},{"id":"recheck","name":"대상 재검사","desc":"고친 줄에 연결된 검사만 다시 실행"}],"tools":{"calc":"계산기","z3":"합계·제약 (Z3)","pint":"단위·차원 (Pint)","networkx":"구조·선행관계 (NetworkX)","outline":"구조 (절 번호)","records":"인용·철회 조회 (로컬 기록)","sandbox":"제한 실행 (계산만 · 네트워크·파일 없음)","grounding":"근거 대조","llm":"교정 제안 (mock LLM · 1묶음)"},"trace":[{"t":0.3,"stage":"logic","tool":"sandbox","name":"제한 실행 (계산만 · 네트워크·파일 없음)","check_id":"split-sizes","kind":"execution","plan_lines":[15,16],"input":"n = 12000; ratios = (0.8, 0.1, 0.1); [round(n * r) for r in ratios]","result":"[9600, 1200, 1200] · 합 12000","status":"passed","message":"분할 비율 합 1.0 · 건수 합 12,000 일치","ms":41},{"t":0.7,"stage":"logic","tool":"z3","name":"합계·제약 (Z3)","check_id":"split-ratio-sum","kind":"constraint","plan_lines":[16],"input":"80 + 10 + 10 == 100","result":"sat","status":"passed","message":"분할 비율 합계 일치","ms":12},{"t":1.2,"stage":"logic","tool":"z3","name":"합계·제약 (Z3)","check_id":"budget-sum","kind":"constraint","plan_lines":[37],"input":"5000 + 4000 + 2000 == 12000  (만원)","result":"unsat · 좌변 11000","status":"failed","message":"예산 항목 합 1억 1,000만원 ≠ 기재 총액 1억 2,000만원","ms":15},{"t":1.7,"stage":"logic","tool":"calc","name":"계산기","check_id":"sample-volume","kind":"constraint","plan_lines":[38],"input":"250 mL × 40회","result":"10,000 mL = 10 L  (기재 8 L)","status":"failed","message":"시료 합계가 회당 부피 × 횟수와 다름","ms":3},{"t":2.1,"stage":"logic","tool":"calc","name":"계산기","check_id":"schedule-months","kind":"constraint","plan_lines":[30,31,32,33],"input":"6 + 6 + 6 == 18","result":"18 = 18","status":"passed","message":"단계 기간 합이 총 기간과 일치","ms":2},{"t":2.7,"stage":"physics","tool":"pint","name":"단위·차원 (Pint)","check_id":"room-temp","kind":"units","plan_lines":[39],"input":"25 K → °C","result":"-248.15 °C · 상온 범위(293–298 K) 밖","status":"failed","message":"‘상온(25 K)’ — 25 °C(298 K)의 단위 오기로 보임","ms":18},{"t":3.1,"stage":"physics","tool":"pint","name":"단위·차원 (Pint)","check_id":"conductivity-unit","kind":"units","plan_lines":[39,21],"input":"12 mS/cm → S/m","result":"1.2 S/m · 차원 [conductance/length] 정상","status":"passed","message":"이온전도도 단위 차원 정상","ms":9},{"t":3.6,"stage":"physics","tool":"pint","name":"단위·차원 (Pint)","check_id":"metric-dimension","kind":"units","plan_lines":[40],"input":"1 mS/cm + 1 mPa·s","result":"DimensionalityError: [conductivity] ≠ [viscosity]","status":"failed","message":"전도도와 점도는 차원이 달라 더할 수 없음","ms":11},{"t":4.2,"stage":"structure","tool":"networkx","name":"구조·선행관계 (NetworkX)","check_id":"stage-order","kind":"dependency","plan_lines":[31,32],"input":"nodes: 1단계·2단계·3단계 · edges: 3단계→2단계(측정값 확보 후 시작), 2단계→3단계(학습 모델 후보 대상)","result":"cycle: 2단계 → 3단계 → 2단계 (is_directed_acyclic_graph = False)","status":"failed","message":"2단계와 3단계가 서로를 선행 조건으로 요구","ms":7},{"t":4.6,"stage":"structure","tool":"outline","name":"구조 (절 번호)","check_id":"section-numbering","kind":"structure","plan_lines":[3,8,13,19,25,28,35,42],"input":"## 1 … ## 8","result":"1→8 연속 · 중복 없음 · 빈 절 없음","status":"passed","message":"절 번호 연속","ms":1},{"t":5.2,"stage":"evidence","tool":"records","name":"인용·철회 조회 (로컬 기록)","check_id":"ref-3-retraction","kind":"citation","plan_lines":[46],"input":"fixture:gnn-003 (참고문헌 [3])","result":"철회 기록 있음 · post_status: retracted · FakeConf 2099","status":"failed","message":"철회된 문헌을 인용","ms":22},{"t":5.5,"stage":"evidence","tool":"records","name":"인용·철회 조회 (로컬 기록)","check_id":"ref-1-status","kind":"citation","plan_lines":[44],"input":"fixture:gnn-001 (참고문헌 [1])","result":"결정: 거절 · 철회 아님","status":"failed","message":"거절된 논문을 주요 근거로 인용 — 근거로 삼을 때 주의(교정 제안 없음, 연구자 판단)","ms":20},{"t":5.8,"stage":"evidence","tool":"records","name":"인용·철회 조회 (로컬 기록)","check_id":"ref-2-status","kind":"citation","plan_lines":[45],"input":"fixture:gnn-002 (참고문헌 [2])","result":"Poster 채택 · 철회 없음","status":"passed","message":"인용 가능","ms":19},{"t":6.2,"stage":"evidence","tool":"grounding","name":"근거 대조","check_id":"adopted-edits-grounding","kind":"evidence","plan_lines":[16,17,22],"input":"③에서 채택·수정한 문안 3건의 근거 번호","result":"근거 연결 3/3 · 자리표시 [확인 필요: 개수] 1곳 미입력","status":"unchecked","message":"채택 문안의 근거는 연결됨 · 자리표시는 연구자 확인 필요","ms":6},{"t":6.9,"stage":"correct","tool":"llm","name":"교정 제안 (mock LLM · 1묶음)","check_id":"correction-batch","kind":"correction","plan_lines":[31,32,37,38,39,40,46],"input":"issues 7 · tool_checks 14 · edits ≤ 8 · 앵커 = 원문 줄 그대로","result":"edits 7 · 앵커 일치 7 · 게이트 통과 6 · 제외 1 (unsupported_content: 32행 ‘논문으로 발표’ 새 내용)","status":"passed","message":"새 사실은 만들지 않고 [확인 필요]로 남김","ms":1840},{"t":7.6,"stage":"recheck","tool":"networkx","name":"구조·선행관계 (NetworkX)","check_id":"stage-order","kind":"dependency","plan_lines":[31,32],"input":"edges: 1단계→2단계, 2단계→3단계","result":"acyclic (is_directed_acyclic_graph = True)","status":"passed","message":"순환 해소","ms":6},{"t":7.9,"stage":"recheck","tool":"z3","name":"합계·제약 (Z3)","check_id":"budget-sum","kind":"constraint","plan_lines":[37],"input":"총액이 [확인 필요]로 바뀜","result":"수치 없음 → 재검사 불가","status":"unchecked","message":"연구자가 값을 확정하면 다시 검사","ms":1},{"t":8.1,"stage":"recheck","tool":"pint","name":"단위·차원 (Pint)","check_id":"room-temp","kind":"units","plan_lines":[39],"input":"온도가 [확인 필요]로 바뀜","result":"수치 없음 → 재검사 불가","status":"unchecked","message":"연구자가 값을 확정하면 다시 검사","ms":1},{"t":8.3,"stage":"recheck","tool":"pint","name":"단위·차원 (Pint)","check_id":"metric-dimension","kind":"units","plan_lines":[40],"input":"결합 방식이 [확인 필요]로 바뀜","result":"수식 없음 → 재검사 불가","status":"unchecked","message":"연구자가 결합 방식을 확정하면 다시 검사","ms":1}],"finalization":{"version":"finalization@v1","status":"partial","issues":[{"issue_id":"budget-sum","kind":"logical","plan_lines":[37],"message":"예산 항목 합(1억 1,000만원)과 총액(1억 2,000만원)이 다르다.","check_ids":["budget-sum"],"status":"unchecked"},{"issue_id":"sample-volume","kind":"logical","plan_lines":[38],"message":"250 mL × 40회 = 10 L인데 합계를 8 L로 적었다.","check_ids":["sample-volume"],"status":"unchecked"},{"issue_id":"room-temp","kind":"physical","plan_lines":[39],"message":"상온을 25 K로 적었다(−248 °C). 25 °C(298 K)인지 확인이 필요하다.","check_ids":["room-temp"],"status":"unchecked"},{"issue_id":"metric-dimension","kind":"physical","plan_lines":[40],"message":"이온전도도(mS/cm)와 점도(mPa·s)는 차원이 달라 더할 수 없다.","check_ids":["metric-dimension"],"status":"unchecked"},{"issue_id":"stage-order","kind":"structural","plan_lines":[31,32],"message":"2단계가 3단계 결과를, 3단계가 2단계 결과를 요구해 선행관계가 순환한다.","check_ids":["stage-order"],"status":"resolved"},{"issue_id":"ref-3-retraction","kind":"evidence","plan_lines":[46],"message":"참고문헌 [3]은 철회 기록이 있는 문헌이다.","check_ids":["ref-3-retraction"],"status":"unchecked"},{"issue_id":"ref-1-status","kind":"evidence","plan_lines":[44],"message":"참고문헌 [1]은 거절된 논문이다. 근거로 삼을지는 연구자 판단이며 교정을 제안하지 않았다.","check_ids":["ref-1-status"],"status":"unresolved"},{"issue_id":"seed-placeholder","kind":"logical","plan_lines":[22],"message":"③에서 채택한 반복 실험 문안의 시드 개수가 [확인 필요]로 남아 있다.","check_ids":["adopted-edits-grounding"],"status":"unchecked"}],"tool_checks_before":[{"check_id":"split-sizes","kind":"execution","tool":"sandbox","status":"passed","plan_lines":[15,16],"message":"분할 비율 합 1.0 · 건수 합 12,000 일치","details":{"input":"n = 12000; ratios = (0.8, 0.1, 0.1); [round(n * r) for r in ratios]","result":"[9600, 1200, 1200] · 합 12000","ms":41}},{"check_id":"split-ratio-sum","kind":"constraint","tool":"z3","status":"passed","plan_lines":[16],"message":"분할 비율 합계 일치","details":{"input":"80 + 10 + 10 == 100","result":"sat","ms":12}},{"check_id":"budget-sum","kind":"constraint","tool":"z3","status":"failed","plan_lines":[37],"message":"예산 항목 합 1억 1,000만원 ≠ 기재 총액 1억 2,000만원","details":{"input":"5000 + 4000 + 2000 == 12000  (만원)","result":"unsat · 좌변 11000","ms":15}},{"check_id":"sample-volume","kind":"constraint","tool":"calc","status":"failed","plan_lines":[38],"message":"시료 합계가 회당 부피 × 횟수와 다름","details":{"input":"250 mL × 40회","result":"10,000 mL = 10 L  (기재 8 L)","ms":3}},{"check_id":"schedule-months","kind":"constraint","tool":"calc","status":"passed","plan_lines":[30,31,32,33],"message":"단계 기간 합이 총 기간과 일치","details":{"input":"6 + 6 + 6 == 18","result":"18 = 18","ms":2}},{"check_id":"room-temp","kind":"units","tool":"pint","status":"failed","plan_lines":[39],"message":"‘상온(25 K)’ — 25 °C(298 K)의 단위 오기로 보임","details":{"input":"25 K → °C","result":"-248.15 °C · 상온 범위(293–298 K) 밖","ms":18}},{"check_id":"conductivity-unit","kind":"units","tool":"pint","status":"passed","plan_lines":[39,21],"message":"이온전도도 단위 차원 정상","details":{"input":"12 mS/cm → S/m","result":"1.2 S/m · 차원 [conductance/length] 정상","ms":9}},{"check_id":"metric-dimension","kind":"units","tool":"pint","status":"failed","plan_lines":[40],"message":"전도도와 점도는 차원이 달라 더할 수 없음","details":{"input":"1 mS/cm + 1 mPa·s","result":"DimensionalityError: [conductivity] ≠ [viscosity]","ms":11}},{"check_id":"stage-order","kind":"dependency","tool":"networkx","status":"failed","plan_lines":[31,32],"message":"2단계와 3단계가 서로를 선행 조건으로 요구","details":{"input":"nodes: 1단계·2단계·3단계 · edges: 3단계→2단계(측정값 확보 후 시작), 2단계→3단계(학습 모델 후보 대상)","result":"cycle: 2단계 → 3단계 → 2단계 (is_directed_acyclic_graph = False)","ms":7}},{"check_id":"section-numbering","kind":"structure","tool":"outline","status":"passed","plan_lines":[3,8,13,19,25,28,35,42],"message":"절 번호 연속","details":{"input":"## 1 … ## 8","result":"1→8 연속 · 중복 없음 · 빈 절 없음","ms":1}},{"check_id":"ref-3-retraction","kind":"citation","tool":"records","status":"failed","plan_lines":[46],"message":"철회된 문헌을 인용","details":{"input":"fixture:gnn-003 (참고문헌 [3])","result":"철회 기록 있음 · post_status: retracted · FakeConf 2099","ms":22}},{"check_id":"ref-1-status","kind":"citation","tool":"records","status":"failed","plan_lines":[44],"message":"거절된 논문을 주요 근거로 인용 — 근거로 삼을 때 주의(교정 제안 없음, 연구자 판단)","details":{"input":"fixture:gnn-001 (참고문헌 [1])","result":"결정: 거절 · 철회 아님","ms":20}},{"check_id":"ref-2-status","kind":"citation","tool":"records","status":"passed","plan_lines":[45],"message":"인용 가능","details":{"input":"fixture:gnn-002 (참고문헌 [2])","result":"Poster 채택 · 철회 없음","ms":19}},{"check_id":"adopted-edits-grounding","kind":"evidence","tool":"grounding","status":"unchecked","plan_lines":[16,17,22],"message":"채택 문안의 근거는 연결됨 · 자리표시는 연구자 확인 필요","details":{"input":"③에서 채택·수정한 문안 3건의 근거 번호","result":"근거 연결 3/3 · 자리표시 [확인 필요: 개수] 1곳 미입력","ms":6}}],"tool_checks_after":[{"check_id":"stage-order","kind":"dependency","tool":"networkx","status":"passed","plan_lines":[31,32],"message":"순환 해소","details":{"input":"edges: 1단계→2단계, 2단계→3단계","result":"acyclic (is_directed_acyclic_graph = True)","ms":6}},{"check_id":"budget-sum","kind":"constraint","tool":"z3","status":"unchecked","plan_lines":[37],"message":"연구자가 값을 확정하면 다시 검사","details":{"input":"총액이 [확인 필요]로 바뀜","result":"수치 없음 → 재검사 불가","ms":1}},{"check_id":"room-temp","kind":"units","tool":"pint","status":"unchecked","plan_lines":[39],"message":"연구자가 값을 확정하면 다시 검사","details":{"input":"온도가 [확인 필요]로 바뀜","result":"수치 없음 → 재검사 불가","ms":1}},{"check_id":"metric-dimension","kind":"units","tool":"pint","status":"unchecked","plan_lines":[40],"message":"연구자가 결합 방식을 확정하면 다시 검사","details":{"input":"결합 방식이 [확인 필요]로 바뀜","result":"수식 없음 → 재검사 불가","ms":1}}],"corrections":[{"line":37,"before":"인건비 5,000만원, 장비비 4,000만원, 재료비 2,000만원을 합산해 총 예산은 1억 2,000만원이다.","after":"인건비 5,000만원, 장비비 4,000만원, 재료비 2,000만원을 합산해 총 예산은 [확인 필요: 항목 합 1억 1,000만원 ≠ 기재 1억 2,000만원 — 총액 또는 항목 수정]이다.","proposed":"인건비 5,000만원, 장비비 4,000만원, 재료비 2,000만원을 합산해 총 예산은 [확인 필요: 항목 합 1억 1,000만원 ≠ 기재 1억 2,000만원 — 총액 또는 항목 수정]이다.","applied":true,"reason":"applied","issue_ids":["budget-sum"],"check_ids":["budget-sum"]},{"line":38,"before":"전해액 시료는 1회당 250 mL 씩 총 40회 합성하여 합계 8 L를 사용한다.","after":"전해액 시료는 1회당 250 mL 씩 총 40회 합성하여 합계 [확인 필요: 250 mL × 40회 = 10 L, 기재 8 L]를 사용한다.","proposed":"전해액 시료는 1회당 250 mL 씩 총 40회 합성하여 합계 [확인 필요: 250 mL × 40회 = 10 L, 기재 8 L]를 사용한다.","applied":true,"reason":"applied","issue_ids":["sample-volume"],"check_ids":["sample-volume"]},{"line":39,"before":"목표 이온전도도는 상온(25 K)에서 12 mS/cm 이상이다.","after":"목표 이온전도도는 상온([확인 필요: 25 K는 −248 °C — 25 °C(298 K)인지 확인])에서 12 mS/cm 이상이다.","proposed":"목표 이온전도도는 상온([확인 필요: 25 K는 −248 °C — 25 °C(298 K)인지 확인])에서 12 mS/cm 이상이다.","applied":true,"reason":"applied","issue_ids":["room-temp"],"check_ids":["room-temp"]},{"line":40,"before":"모델 선별 지표는 예측 이온전도도(mS/cm)와 점도(mPa·s)를 더한 값으로 정의한다.","after":"모델 선별 지표는 예측 이온전도도(mS/cm)와 점도(mPa·s)를 [확인 필요: 차원이 달라 단순 합산 불가 — 정규화·가중 결합 방식]으로 결합한 값으로 정의한다.","proposed":"모델 선별 지표는 예측 이온전도도(mS/cm)와 점도(mPa·s)를 [확인 필요: 차원이 달라 단순 합산 불가 — 정규화·가중 결합 방식]으로 결합한 값으로 정의한다.","applied":true,"reason":"applied","issue_ids":["metric-dimension"],"check_ids":["metric-dimension"]},{"line":31,"before":"2단계(7~12개월)의 GNN 학습은 3단계 검증 실험의 측정값이 확보된 후 시작한다.","after":"2단계(7~12개월)의 GNN 학습은 1단계 데이터로 시작하고, 3단계 검증 실험의 측정값은 [확인 필요: 재학습 반영 시점]에 반영한다.","proposed":"2단계(7~12개월)의 GNN 학습은 1단계 데이터로 시작하고, 3단계 검증 실험의 측정값은 [확인 필요: 재학습 반영 시점]에 반영한다.","applied":true,"reason":"applied","issue_ids":["stage-order"],"check_ids":["stage-order"]},{"line":32,"before":"3단계(13~18개월)의 검증 실험은 2단계 학습 모델이 고른 후보 조성을 대상으로 수행한다.","after":"[검사에서 제외된 수정안]","proposed":"3단계(13~18개월)의 검증 실험은 2단계 학습 모델이 고른 후보 조성을 대상으로 수행하며, 결과는 논문으로 발표한다.","applied":false,"reason":"unsupported_content","issue_ids":["stage-order"],"check_ids":["stage-order"]},{"line":46,"before":"[3] [FAKE] Uncertainty-calibrated GNN ensembles for aqueous solubility prediction. FakeConf 2099.","after":"[3] [FAKE] Uncertainty-calibrated GNN ensembles for aqueous solubility prediction. FakeConf 2099. [확인 필요: 철회 기록 있음 — 대체 문헌 또는 인용 제거]","proposed":"[3] [FAKE] Uncertainty-calibrated GNN ensembles for aqueous solubility prediction. FakeConf 2099. [확인 필요: 철회 기록 있음 — 대체 문헌 또는 인용 제거]","applied":true,"reason":"applied","issue_ids":["ref-3-retraction"],"check_ids":["ref-3-retraction"]}],"counters":{"assessment_calls":1,"correction_calls":1,"correction_batches":1,"recheck_runs":1},"generator":"mock","model":"mock-deterministic-v1","notices":["최종 초안입니다. 제한된 검사 범위이며 모든 오류의 부재를 보장하지 않습니다.","mock 테스트 결과이며 실제 LLM의 과학적 검토가 아닙니다.","도구는 명시된 수치·단위·선행관계만 검사한다 · 연구 전체의 타당성을 보증하지 않는다"]},"origin":"client_submitted_unverified","finalization_sig":null}</script>
+<script type="application/json" id="finMockFinal">{"note":"디자인 점검용 목업 · 가짜 데이터 · 서버 호출 없음 · 도구 실행 기록도 가짜(실제 Z3·Pint·NetworkX 실행 아님)","stages":[{"id":"logic","name":"논리 점검","desc":"합계·곱·비율 같은 수치 제약을 계산기·Z3·제한 실행으로 확인"},{"id":"physics","name":"물리 점검","desc":"단위·차원·물리 범위를 Pint로 확인"},{"id":"structure","name":"구조 점검","desc":"절 번호 연속성과 선행관계 그래프(순환)를 NetworkX로 확인"},{"id":"evidence","name":"근거 점검","desc":"참고문헌·근거의 철회·거절 기록 조회(로컬 기록) · 채택 수정안의 근거 연결"},{"id":"correct","name":"교정 적용","desc":"원문 앵커가 맞는 줄만 고치고, 모르는 값은 [확인 필요]로 남김 · 새 내용은 게이트가 제외"},{"id":"recheck","name":"대상 재검사","desc":"고친 줄에 연결된 검사만 다시 실행"}],"tools":{"calc":"계산기","z3":"합계·제약 (Z3)","pint":"단위·차원 (Pint)","networkx":"구조·선행관계 (NetworkX)","outline":"구조 (절 번호)","records":"인용·철회 조회 (로컬 기록)","sandbox":"제한 실행 (계산만 · 네트워크·파일 없음)","grounding":"근거 대조","llm":"교정 제안 (mock LLM · 1묶음)"},"trace":[{"t":0.3,"stage":"logic","tool":"sandbox","name":"제한 실행 (계산만 · 네트워크·파일 없음)","check_id":"split-sizes","label":"분할 건수 계산","kind":"execution","plan_lines":[15,16],"input":"n = 12000; ratios = (0.8, 0.1, 0.1); [round(n * r) for r in ratios]","result":"[9600, 1200, 1200] · 합 12000","status":"passed","message":"분할 비율 합 1.0 · 건수 합 12,000 일치","ms":41},{"t":0.7,"stage":"logic","tool":"z3","name":"합계·제약 (Z3)","check_id":"split-ratio-sum","label":"분할 비율 합계","kind":"constraint","plan_lines":[16],"input":"80 + 10 + 10 == 100","result":"sat","status":"passed","message":"분할 비율 합계 일치","ms":12},{"t":1.2,"stage":"logic","tool":"z3","name":"합계·제약 (Z3)","check_id":"budget-sum","label":"예산 항목 합계","kind":"constraint","plan_lines":[37],"input":"5000 + 4000 + 2000 == 12000  (만원)","result":"unsat · 좌변 11000","status":"failed","message":"예산 항목 합 1억 1,000만원 ≠ 기재 총액 1억 2,000만원","ms":15},{"t":1.7,"stage":"logic","tool":"calc","name":"계산기","check_id":"sample-volume","label":"시료 부피 합계","kind":"constraint","plan_lines":[38],"input":"250 mL × 40회","result":"10,000 mL = 10 L  (기재 8 L)","status":"failed","message":"시료 합계가 회당 부피 × 횟수와 다름","ms":3},{"t":2.1,"stage":"logic","tool":"calc","name":"계산기","check_id":"schedule-months","label":"단계 기간 합계","kind":"constraint","plan_lines":[30,31,32,33],"input":"6 + 6 + 6 == 18","result":"18 = 18","status":"passed","message":"단계 기간 합이 총 기간과 일치","ms":2},{"t":2.7,"stage":"physics","tool":"pint","name":"단위·차원 (Pint)","check_id":"room-temp","label":"상온 온도 단위","kind":"units","plan_lines":[39],"input":"25 K → °C","result":"-248.15 °C · 상온 범위(293–298 K) 밖","status":"failed","message":"‘상온(25 K)’ — 25 °C(298 K)의 단위 오기로 보임","ms":18},{"t":3.1,"stage":"physics","tool":"pint","name":"단위·차원 (Pint)","check_id":"conductivity-unit","label":"이온전도도 단위 차원","kind":"units","plan_lines":[39,21],"input":"12 mS/cm → S/m","result":"1.2 S/m · 차원 [conductance/length] 정상","status":"passed","message":"이온전도도 단위 차원 정상","ms":9},{"t":3.6,"stage":"physics","tool":"pint","name":"단위·차원 (Pint)","check_id":"metric-dimension","label":"선별 지표 차원 합산","kind":"units","plan_lines":[40],"input":"1 mS/cm + 1 mPa·s","result":"DimensionalityError: [conductivity] ≠ [viscosity]","status":"failed","message":"전도도와 점도는 차원이 달라 더할 수 없음","ms":11},{"t":4.2,"stage":"structure","tool":"networkx","name":"구조·선행관계 (NetworkX)","check_id":"stage-order","label":"단계 선행관계 순환","kind":"dependency","plan_lines":[31,32],"input":"nodes: 1단계·2단계·3단계 · edges: 3단계→2단계(측정값 확보 후 시작), 2단계→3단계(학습 모델 후보 대상)","result":"cycle: 2단계 → 3단계 → 2단계 (is_directed_acyclic_graph = False)","status":"failed","message":"2단계와 3단계가 서로를 선행 조건으로 요구","ms":7},{"t":4.6,"stage":"structure","tool":"outline","name":"구조 (절 번호)","check_id":"section-numbering","label":"절 번호 연속","kind":"structure","plan_lines":[3,8,13,19,25,28,35,42],"input":"## 1 … ## 8","result":"1→8 연속 · 중복 없음 · 빈 절 없음","status":"passed","message":"절 번호 연속","ms":1},{"t":5.2,"stage":"evidence","tool":"records","name":"인용·철회 조회 (로컬 기록)","check_id":"ref-3-retraction","label":"참고문헌 [3] 철회 조회","kind":"citation","plan_lines":[46],"input":"fixture:gnn-003 (참고문헌 [3])","result":"철회 기록 있음 · post_status: retracted · FakeConf 2099","status":"failed","message":"철회된 문헌을 인용","ms":22},{"t":5.5,"stage":"evidence","tool":"records","name":"인용·철회 조회 (로컬 기록)","check_id":"ref-1-status","label":"참고문헌 [1] 결정 조회","kind":"citation","plan_lines":[44],"input":"fixture:gnn-001 (참고문헌 [1])","result":"결정: 거절 · 철회 아님","status":"failed","message":"거절된 논문을 주요 근거로 인용 — 근거로 삼을 때 주의(교정 제안 없음, 연구자 판단)","ms":20},{"t":5.8,"stage":"evidence","tool":"records","name":"인용·철회 조회 (로컬 기록)","check_id":"ref-2-status","label":"참고문헌 [2] 결정 조회","kind":"citation","plan_lines":[45],"input":"fixture:gnn-002 (참고문헌 [2])","result":"Poster 채택 · 철회 없음","status":"passed","message":"인용 가능","ms":19},{"t":6.2,"stage":"evidence","tool":"grounding","name":"근거 대조","check_id":"adopted-edits-grounding","label":"채택 문안 근거 연결","kind":"evidence","plan_lines":[16,17,22],"input":"③에서 채택·수정한 문안 3건의 근거 번호","result":"근거 연결 3/3 · 자리표시 [확인 필요: 개수] 1곳 미입력","status":"unchecked","message":"채택 문안의 근거는 연결됨 · 자리표시는 연구자 확인 필요","ms":6},{"t":6.9,"stage":"correct","tool":"llm","name":"교정 제안 (mock LLM · 1묶음)","check_id":"correction-batch","label":"자동 수정 1묶음","kind":"correction","plan_lines":[31,32,37,38,39,40,46],"input":"issues 7 · tool_checks 14 · edits ≤ 8 · 앵커 = 원문 줄 그대로","result":"edits 7 · 앵커 일치 7 · 게이트 통과 6 · 제외 1 (unsupported_content: 32행 ‘논문으로 발표’ 새 내용)","status":"passed","message":"새 사실은 만들지 않고 [확인 필요]로 남김","ms":1840},{"t":7.6,"stage":"recheck","tool":"networkx","name":"구조·선행관계 (NetworkX)","check_id":"stage-order","label":"단계 선행관계 순환","kind":"dependency","plan_lines":[31,32],"input":"edges: 1단계→2단계, 2단계→3단계","result":"acyclic (is_directed_acyclic_graph = True)","status":"passed","message":"순환 해소","ms":6},{"t":7.9,"stage":"recheck","tool":"z3","name":"합계·제약 (Z3)","check_id":"budget-sum","label":"예산 항목 합계","kind":"constraint","plan_lines":[37],"input":"총액이 [확인 필요]로 바뀜","result":"수치 없음 → 재검사 불가","status":"unchecked","message":"연구자가 값을 확정하면 다시 검사","ms":1},{"t":8.1,"stage":"recheck","tool":"pint","name":"단위·차원 (Pint)","check_id":"room-temp","label":"상온 온도 단위","kind":"units","plan_lines":[39],"input":"온도가 [확인 필요]로 바뀜","result":"수치 없음 → 재검사 불가","status":"unchecked","message":"연구자가 값을 확정하면 다시 검사","ms":1},{"t":8.3,"stage":"recheck","tool":"pint","name":"단위·차원 (Pint)","check_id":"metric-dimension","label":"선별 지표 차원 합산","kind":"units","plan_lines":[40],"input":"결합 방식이 [확인 필요]로 바뀜","result":"수식 없음 → 재검사 불가","status":"unchecked","message":"연구자가 결합 방식을 확정하면 다시 검사","ms":1}],"finalization":{"version":"finalization@v1","status":"partial","issues":[{"issue_id":"budget-sum","kind":"logical","plan_lines":[37],"message":"예산 항목 합(1억 1,000만원)과 총액(1억 2,000만원)이 다르다.","check_ids":["budget-sum"],"status":"unchecked"},{"issue_id":"sample-volume","kind":"logical","plan_lines":[38],"message":"250 mL × 40회 = 10 L인데 합계를 8 L로 적었다.","check_ids":["sample-volume"],"status":"unchecked"},{"issue_id":"room-temp","kind":"physical","plan_lines":[39],"message":"상온을 25 K로 적었다(−248 °C). 25 °C(298 K)인지 확인이 필요하다.","check_ids":["room-temp"],"status":"unchecked"},{"issue_id":"metric-dimension","kind":"physical","plan_lines":[40],"message":"이온전도도(mS/cm)와 점도(mPa·s)는 차원이 달라 더할 수 없다.","check_ids":["metric-dimension"],"status":"unchecked"},{"issue_id":"stage-order","kind":"structural","plan_lines":[31,32],"message":"2단계가 3단계 결과를, 3단계가 2단계 결과를 요구해 선행관계가 순환한다.","check_ids":["stage-order"],"status":"resolved"},{"issue_id":"ref-3-retraction","kind":"evidence","plan_lines":[46],"message":"참고문헌 [3]은 철회 기록이 있는 문헌이다.","check_ids":["ref-3-retraction"],"status":"unchecked"},{"issue_id":"ref-1-status","kind":"evidence","plan_lines":[44],"message":"참고문헌 [1]은 거절된 논문이다. 근거로 삼을지는 연구자 판단이며 교정을 제안하지 않았다.","check_ids":["ref-1-status"],"status":"unresolved"},{"issue_id":"seed-placeholder","kind":"logical","plan_lines":[22],"message":"③에서 채택한 반복 실험 문안의 시드 개수가 [확인 필요]로 남아 있다.","check_ids":["adopted-edits-grounding"],"status":"unchecked"}],"tool_checks_before":[{"check_id":"split-sizes","kind":"execution","tool":"sandbox","status":"passed","plan_lines":[15,16],"message":"분할 비율 합 1.0 · 건수 합 12,000 일치","details":{"input":"n = 12000; ratios = (0.8, 0.1, 0.1); [round(n * r) for r in ratios]","result":"[9600, 1200, 1200] · 합 12000","ms":41}},{"check_id":"split-ratio-sum","kind":"constraint","tool":"z3","status":"passed","plan_lines":[16],"message":"분할 비율 합계 일치","details":{"input":"80 + 10 + 10 == 100","result":"sat","ms":12}},{"check_id":"budget-sum","kind":"constraint","tool":"z3","status":"failed","plan_lines":[37],"message":"예산 항목 합 1억 1,000만원 ≠ 기재 총액 1억 2,000만원","details":{"input":"5000 + 4000 + 2000 == 12000  (만원)","result":"unsat · 좌변 11000","ms":15}},{"check_id":"sample-volume","kind":"constraint","tool":"calc","status":"failed","plan_lines":[38],"message":"시료 합계가 회당 부피 × 횟수와 다름","details":{"input":"250 mL × 40회","result":"10,000 mL = 10 L  (기재 8 L)","ms":3}},{"check_id":"schedule-months","kind":"constraint","tool":"calc","status":"passed","plan_lines":[30,31,32,33],"message":"단계 기간 합이 총 기간과 일치","details":{"input":"6 + 6 + 6 == 18","result":"18 = 18","ms":2}},{"check_id":"room-temp","kind":"units","tool":"pint","status":"failed","plan_lines":[39],"message":"‘상온(25 K)’ — 25 °C(298 K)의 단위 오기로 보임","details":{"input":"25 K → °C","result":"-248.15 °C · 상온 범위(293–298 K) 밖","ms":18}},{"check_id":"conductivity-unit","kind":"units","tool":"pint","status":"passed","plan_lines":[39,21],"message":"이온전도도 단위 차원 정상","details":{"input":"12 mS/cm → S/m","result":"1.2 S/m · 차원 [conductance/length] 정상","ms":9}},{"check_id":"metric-dimension","kind":"units","tool":"pint","status":"failed","plan_lines":[40],"message":"전도도와 점도는 차원이 달라 더할 수 없음","details":{"input":"1 mS/cm + 1 mPa·s","result":"DimensionalityError: [conductivity] ≠ [viscosity]","ms":11}},{"check_id":"stage-order","kind":"dependency","tool":"networkx","status":"failed","plan_lines":[31,32],"message":"2단계와 3단계가 서로를 선행 조건으로 요구","details":{"input":"nodes: 1단계·2단계·3단계 · edges: 3단계→2단계(측정값 확보 후 시작), 2단계→3단계(학습 모델 후보 대상)","result":"cycle: 2단계 → 3단계 → 2단계 (is_directed_acyclic_graph = False)","ms":7}},{"check_id":"section-numbering","kind":"structure","tool":"outline","status":"passed","plan_lines":[3,8,13,19,25,28,35,42],"message":"절 번호 연속","details":{"input":"## 1 … ## 8","result":"1→8 연속 · 중복 없음 · 빈 절 없음","ms":1}},{"check_id":"ref-3-retraction","kind":"citation","tool":"records","status":"failed","plan_lines":[46],"message":"철회된 문헌을 인용","details":{"input":"fixture:gnn-003 (참고문헌 [3])","result":"철회 기록 있음 · post_status: retracted · FakeConf 2099","ms":22}},{"check_id":"ref-1-status","kind":"citation","tool":"records","status":"failed","plan_lines":[44],"message":"거절된 논문을 주요 근거로 인용 — 근거로 삼을 때 주의(교정 제안 없음, 연구자 판단)","details":{"input":"fixture:gnn-001 (참고문헌 [1])","result":"결정: 거절 · 철회 아님","ms":20}},{"check_id":"ref-2-status","kind":"citation","tool":"records","status":"passed","plan_lines":[45],"message":"인용 가능","details":{"input":"fixture:gnn-002 (참고문헌 [2])","result":"Poster 채택 · 철회 없음","ms":19}},{"check_id":"adopted-edits-grounding","kind":"evidence","tool":"grounding","status":"unchecked","plan_lines":[16,17,22],"message":"채택 문안의 근거는 연결됨 · 자리표시는 연구자 확인 필요","details":{"input":"③에서 채택·수정한 문안 3건의 근거 번호","result":"근거 연결 3/3 · 자리표시 [확인 필요: 개수] 1곳 미입력","ms":6}}],"tool_checks_after":[{"check_id":"stage-order","kind":"dependency","tool":"networkx","status":"passed","plan_lines":[31,32],"message":"순환 해소","details":{"input":"edges: 1단계→2단계, 2단계→3단계","result":"acyclic (is_directed_acyclic_graph = True)","ms":6}},{"check_id":"budget-sum","kind":"constraint","tool":"z3","status":"unchecked","plan_lines":[37],"message":"연구자가 값을 확정하면 다시 검사","details":{"input":"총액이 [확인 필요]로 바뀜","result":"수치 없음 → 재검사 불가","ms":1}},{"check_id":"room-temp","kind":"units","tool":"pint","status":"unchecked","plan_lines":[39],"message":"연구자가 값을 확정하면 다시 검사","details":{"input":"온도가 [확인 필요]로 바뀜","result":"수치 없음 → 재검사 불가","ms":1}},{"check_id":"metric-dimension","kind":"units","tool":"pint","status":"unchecked","plan_lines":[40],"message":"연구자가 결합 방식을 확정하면 다시 검사","details":{"input":"결합 방식이 [확인 필요]로 바뀜","result":"수식 없음 → 재검사 불가","ms":1}}],"corrections":[{"line":37,"before":"인건비 5,000만원, 장비비 4,000만원, 재료비 2,000만원을 합산해 총 예산은 1억 2,000만원이다.","after":"인건비 5,000만원, 장비비 4,000만원, 재료비 2,000만원을 합산해 총 예산은 [확인 필요: 항목 합 1억 1,000만원 ≠ 기재 1억 2,000만원 — 총액 또는 항목 수정]이다.","proposed":"인건비 5,000만원, 장비비 4,000만원, 재료비 2,000만원을 합산해 총 예산은 [확인 필요: 항목 합 1억 1,000만원 ≠ 기재 1억 2,000만원 — 총액 또는 항목 수정]이다.","applied":true,"reason":"applied","issue_ids":["budget-sum"],"check_ids":["budget-sum"]},{"line":38,"before":"전해액 시료는 1회당 250 mL 씩 총 40회 합성하여 합계 8 L를 사용한다.","after":"전해액 시료는 1회당 250 mL 씩 총 40회 합성하여 합계 [확인 필요: 250 mL × 40회 = 10 L, 기재 8 L]를 사용한다.","proposed":"전해액 시료는 1회당 250 mL 씩 총 40회 합성하여 합계 [확인 필요: 250 mL × 40회 = 10 L, 기재 8 L]를 사용한다.","applied":true,"reason":"applied","issue_ids":["sample-volume"],"check_ids":["sample-volume"]},{"line":39,"before":"목표 이온전도도는 상온(25 K)에서 12 mS/cm 이상이다.","after":"목표 이온전도도는 상온([확인 필요: 25 K는 −248 °C — 25 °C(298 K)인지 확인])에서 12 mS/cm 이상이다.","proposed":"목표 이온전도도는 상온([확인 필요: 25 K는 −248 °C — 25 °C(298 K)인지 확인])에서 12 mS/cm 이상이다.","applied":true,"reason":"applied","issue_ids":["room-temp"],"check_ids":["room-temp"]},{"line":40,"before":"모델 선별 지표는 예측 이온전도도(mS/cm)와 점도(mPa·s)를 더한 값으로 정의한다.","after":"모델 선별 지표는 예측 이온전도도(mS/cm)와 점도(mPa·s)를 [확인 필요: 차원이 달라 단순 합산 불가 — 정규화·가중 결합 방식]으로 결합한 값으로 정의한다.","proposed":"모델 선별 지표는 예측 이온전도도(mS/cm)와 점도(mPa·s)를 [확인 필요: 차원이 달라 단순 합산 불가 — 정규화·가중 결합 방식]으로 결합한 값으로 정의한다.","applied":true,"reason":"applied","issue_ids":["metric-dimension"],"check_ids":["metric-dimension"]},{"line":31,"before":"2단계(7~12개월)의 GNN 학습은 3단계 검증 실험의 측정값이 확보된 후 시작한다.","after":"2단계(7~12개월)의 GNN 학습은 1단계 데이터로 시작하고, 3단계 검증 실험의 측정값은 [확인 필요: 재학습 반영 시점]에 반영한다.","proposed":"2단계(7~12개월)의 GNN 학습은 1단계 데이터로 시작하고, 3단계 검증 실험의 측정값은 [확인 필요: 재학습 반영 시점]에 반영한다.","applied":true,"reason":"applied","issue_ids":["stage-order"],"check_ids":["stage-order"]},{"line":32,"before":"3단계(13~18개월)의 검증 실험은 2단계 학습 모델이 고른 후보 조성을 대상으로 수행한다.","after":"[검사에서 제외된 수정안]","proposed":"3단계(13~18개월)의 검증 실험은 2단계 학습 모델이 고른 후보 조성을 대상으로 수행하며, 결과는 논문으로 발표한다.","applied":false,"reason":"unsupported_content","issue_ids":["stage-order"],"check_ids":["stage-order"]},{"line":46,"before":"[3] [FAKE] Uncertainty-calibrated GNN ensembles for aqueous solubility prediction. FakeConf 2099.","after":"[3] [FAKE] Uncertainty-calibrated GNN ensembles for aqueous solubility prediction. FakeConf 2099. [확인 필요: 철회 기록 있음 — 대체 문헌 또는 인용 제거]","proposed":"[3] [FAKE] Uncertainty-calibrated GNN ensembles for aqueous solubility prediction. FakeConf 2099. [확인 필요: 철회 기록 있음 — 대체 문헌 또는 인용 제거]","applied":true,"reason":"applied","issue_ids":["ref-3-retraction"],"check_ids":["ref-3-retraction"]}],"counters":{"assessment_calls":1,"correction_calls":1,"correction_batches":1,"recheck_runs":1},"generator":"mock","model":"mock-deterministic-v1","notices":["최종 초안입니다. 제한된 검사 범위이며 모든 오류의 부재를 보장하지 않습니다.","mock 테스트 결과이며 실제 LLM의 과학적 검토가 아닙니다.","도구는 명시된 수치·단위·선행관계만 검사한다 · 연구 전체의 타당성을 보증하지 않는다"]},"origin":"client_submitted_unverified","finalization_sig":null}</script>
 <script>
-/* ===== FIN-UI 최종 점검·초안(VI) =====
-   ④ "수정 확정·검증" 한 번 → ⑤ 최종 점검 진행 화면(논리·물리·구조·근거 점검이 단계별로 돌고, 각 단계의 도구 호출이 이름·입력·결과와 함께 실시간 로그로)
-   → ⑥ 최종 초안 뷰어(완성된 계획서 + 원문→수정 · 이유 · 도구 근거 배지 + 해결·미해결·확인 필요 요약 + .md/.docx/인쇄) → ⑦ 전후 비교.
-   서버: POST premortem/revise/finalize (contracts/finalization.schema.json · Codex codex/final-ui-20261001 2ac62f8과 같은 경로·본문:
-         assembleBody('json') + submission_id + confirmed_text + confirmed_base_id). 도구 결과(tool_checks_before/after)를 로그로 옮긴다.
-   목업(?mock=final): <script id="finMockFinal"> fixture의 trace를 타이머로 재생하고, 교정은 원문 줄 문자열 앵커로 현재 확정 문안에 적용한다(앵커가 안 맞으면 "적용 못 함").
-   서버·fixture 문자열은 전부 textContent. 외부 요청 0. 결정·편집이 바뀌면 이전 결과는 무효(NeumannRevise.persist → invalidate). */
+/* ===== FIN-UI 최종 점검·초안(VI) — v2 단계 전환형 흐름 =====
+   상단 스테퍼 하나: 입력 → 분석 → 채택 → 수정 계획서 → 최종 점검 → 완성. 현재 단계만 본문에, 단계를 바꿀 때 scrollTo(0). 지난 단계는 클릭해 되돌아간다.
+   채택(결과의 시작): 위험·권고 카드(한 줄 요약 · 근거 논문 칩 → 발췌 · 제안 수정 미리보기 · 기본 '채택' 토글) + 주 버튼 "채택 N건으로 수정 계획서 받기".
+   수정 계획서: 문서 한 장(720px). 바뀐 문장은 옅은 하이라이트 + 여백 번호(팝오버: 원문·근거·되돌리기). 문단 클릭 → 그 자리 편집(textarea 자동 높이) · 편집 중 표시 · 되돌리기. 충돌은 자동 해소. 주 버튼 "확정하고 최종 점검".
+   최종 점검: 논리·물리·구조·근거 항목이 하나씩 켜지고(도구 배지 Z3 ✓ n …), 발견한 오류는 자동으로 고쳐 보고만(항목마다 되돌리기). 주 버튼 "완성된 초안 보기".
+   완성: 최종 초안 문서 뷰 + 한 줄 통계 + 내려받기(.md/.docx) + 처음부터 다시.
+   서버: POST premortem/revise/finalize(contracts/finalization.schema.json, Codex codex/final-ui-20261001 2ac62f8과 같은 경로·본문 키). 목업(?mock=final): <script id="finMockFinal"> trace 재생, 교정은 원문 줄 문자열 앵커.
+   결정·직접 편집은 수정 권고 블록(NeumannRevise)의 같은 상태에 쓴다(localStorage 보존 공유). 서버·fixture 문자열은 전부 textContent. 외부 요청 0. */
 (function () {
   'use strict';
   var U = window.NeumannUI, R = window.NeumannRevise; if (!U || !R) return;
   var $ = function (id) { return document.getElementById(id); };
   var S = U.S, D = function () { return U.D(); }, MOCK = !!R.mock;
   var FIN = { api: 'premortem/revise/finalize', mockSpeed: 1 };
-  var KIND_KO = { logical: '논리', physical: '물리', structural: '구조', evidence: '근거', constraint: '논리', units: '물리', dependency: '구조', citation: '근거', execution: '실행', structure: '구조', correction: '교정', unknown: '기타' };
-  var ST_KO = { passed: '통과', failed: '불일치', unchecked: '미검사', running: '실행 중', resolved: '해결', unresolved: '미해결', confirm: '확인 필요', skip: '제외' };
-  var TOOL_KO = { z3: '합계·제약 (Z3)', pint: '단위·차원 (Pint)', networkx: '구조·선행관계 (NetworkX)', calc: '계산기', sandbox: '제한 실행', records: '인용·철회 조회', outline: '구조 (절 번호)', grounding: '근거 대조', llm: '교정 제안 (LLM)', none: '도구 없음', unknown: '도구 미상' };
-  var REASON_KO = { applied: '적용', no_change: '변경 없음', anchor_mismatch: '적용 못 함 · 원문이 달라짐', unknown_issue: '제외 · 연결된 쟁점 없음', duplicate_line: '제외 · 같은 줄 중복', invalid_line: '제외 · 줄 형식', unsupported_content: '제외 · 새 내용(게이트)', unsupported_number: '제외 · 새 수치(게이트)', unsupported_fact: '제외 · 새 사실(게이트)', pii_or_identity: '제외 · 개인정보', unsafe_markup: '제외 · 마크업' };
-  var DEFAULT_STAGES = [{ id: 'assemble', name: '확정 문안 조립', desc: '채택·직접 수정 문안을 통합' }, { id: 'assess', name: '의미 검토', desc: '논리·물리·구조 쟁점과 실행할 검사 추출(LLM 1회)' }, { id: 'tools', name: '도구 검사', desc: 'Z3 · Pint · NetworkX' }, { id: 'correct', name: '교정 적용', desc: '앵커가 맞는 줄만 · 최대 8줄' }, { id: 'recheck', name: '대상 재검사', desc: '고친 줄의 검사만 다시' }];
-  var PH = /\[확인 필요:\s*([^\]]*)\]/g;
-  var F = fresh();
-  function fresh() { return { d: null, status: 'idle', stages: DEFAULT_STAGES, stage: '', done: {}, log: [], t0: 0, elapsed: 0, timers: [], tick: null, res: null, input: null, err: '', ctrl: null, submission: '', logOpen: true, view: 'marks' }; }
-  function state() { var d = D(); if (F.d !== d) { stopTimers(); F = fresh(); F.d = d; } return F; }
-  function stopTimers() { F.timers.forEach(clearTimeout); F.timers = []; if (F.tick) clearInterval(F.tick); F.tick = null; if (F.ctrl) { try { F.ctrl.abort(); } catch (e) { /* 없음 */ } } F.ctrl = null; }
-  function invalidate() { var st = state(); if (st.status === 'idle') return; stopTimers(); var keep = st.d; F = fresh(); F.d = keep; if (S.step === 5) { U.toast('수정본이 바뀌어 이전 최종 점검 결과는 무효 · 다시 확정·검증'); renderFinal(); } else paintSteps(); }
-  function forget() { stopTimers(); F = fresh(); }
+  var STEPS = [['input', '입력'], ['job', '분석'], ['adopt', '채택'], ['draft', '수정 계획서'], ['check', '최종 점검'], ['done', '완성']];
+  var TOOL_KO = { z3: 'Z3', pint: 'Pint', networkx: 'NetworkX', calc: '계산기', sandbox: '제한 실행', records: '인용 조회', outline: '절 번호', grounding: '근거 대조', llm: '자동 수정', none: '도구 없음', unknown: '도구' };
+  var STAGE_KO = { logic: '논리', physics: '물리', structure: '구조', evidence: '근거', correct: '자동 수정', recheck: '재검사', tools: '도구 검사', assess: '의미 검토', assemble: '조립' };
+  var STAGE_ORDER = ['logic', 'physics', 'structure', 'evidence', 'tools'];
+  var REASON_KO = { applied: '적용', no_change: '변경 없음', anchor_mismatch: '적용 못 함 · 원문이 달라짐', unknown_issue: '제외 · 연결된 쟁점 없음', duplicate_line: '제외 · 같은 줄 중복', invalid_line: '제외 · 줄 형식', unsupported_content: '제외 · 새 내용은 넣지 않음', unsupported_number: '제외 · 새 수치는 넣지 않음', unsupported_fact: '제외 · 새 사실은 넣지 않음', pii_or_identity: '제외 · 개인정보', unsafe_markup: '제외 · 마크업', reverted: '연구자가 되돌림' };
+  var PH = R.PH;
+  var V = { step: 'input', max: 0, undo: [], editing: null, pop: null, draftReady: false, C: freshCheck() };
+  function freshCheck() { return { d: null, status: 'idle', log: [], t0: 0, elapsed: 0, timers: [], tick: null, res: null, input: null, err: '', ctrl: null, submission: '', rows: [], fixes: [], stage: '' }; }
+  function now() { return new Date().toISOString(); }
+  function kst(d) { d = d ? new Date(d) : new Date(); try { var p = {}; new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(d).forEach(function (x) { p[x.type] = x.value; }); return p.year + '-' + p.month + '-' + p.day + ' ' + p.hour + ':' + p.minute + ' KST'; } catch (e) { return d.toISOString().slice(0, 16).replace('T', ' ') + ' UTC'; } }
 
-  /* ---------- DOM 도구(서버 문자열은 textContent) ---------- */
+  /* ---------- DOM 도구(서버·fixture 문자열은 textContent) ---------- */
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = String(text); return e; }
   function add(parent) { for (var i = 1; i < arguments.length; i++) { var c = arguments[i]; if (c == null || c === '' || c === false) continue; parent.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); } return parent; }
   function clear(e) { while (e && e.firstChild) e.removeChild(e.firstChild); return e; }
@@ -2292,338 +2275,446 @@
   function L(v) { return Array.isArray(v) ? v : (v == null || v === '' ? [] : [v]); }
   function N(v) { var f = Number(v); return isFinite(f) ? f : 0; }
   function pad2(n) { return ('0' + n).slice(-2); }
-  function stEl(s, label) { return el('span', 'finst ' + s, label || ST_KO[s] || s); }
-  function lrefEl(n) { var s = el('span', 'lref', n + '행'); s.dataset.line = String(n); return s; }
-  function lines(ns) { var sp = el('span'); L(ns).forEach(function (n) { if (U.lineOf(n)) add(sp, ' ', lrefEl(n)); }); return sp; }
-  function toolBadge(c) { var b = btn('fintool', ''); b.dataset.fincheck = c.id; b.title = (TOOL_KO[c.tool] || c.tool) + ' · 입력: ' + c.input + ' · 결과: ' + c.result; add(b, (TOOL_KO[c.tool] || c.tool || '도구'), stEl(c.status)); b.setAttribute('aria-label', '도구 근거 ' + (TOOL_KO[c.tool] || c.tool) + ' ' + (ST_KO[c.status] || c.status) + ' — 점검 기록으로'); return b; }
-  function phSegs(text) { var out = [], last = 0, m; PH.lastIndex = 0; while ((m = PH.exec(text))) { if (m.index > last) out.push({ t: text.slice(last, m.index) }); out.push({ ph: true, label: m[1].trim() }); last = m.index + m[0].length; } if (last < text.length) out.push({ t: text.slice(last) }); return out; }
-  function phCount(text) { var n = 0; PH.lastIndex = 0; while (PH.exec(text)) n++; return n; }
-  function textEl(tag, cls, text) { var e = el(tag, cls); phSegs(text).forEach(function (s) { if (s.ph) { var c = el('span', 'rvph', '확인 필요: ' + s.label); c.title = '연구자 확인 필요 · 최종 초안에는 이대로 남음'; add(e, c); } else add(e, s.t); }); return e; }
   function headingOf(t) { var m = /^\s{0,3}(#{1,6})\s+(.*)$/.exec(t); return m ? { level: m[1].length, text: m[2] } : null; }
+  function phCount(text) { var n = 0; PH.lastIndex = 0; while (PH.exec(text)) n++; return n; }
+  function textEl(tag, cls, text) { var e = el(tag, cls), last = 0, m; PH.lastIndex = 0; while ((m = PH.exec(text))) { if (m.index > last) add(e, text.slice(last, m.index)); add(e, el('mark', 'ph', m[0])); last = m.index + m[0].length; } if (last < text.length) add(e, text.slice(last)); return e; }
+  function extLink(u, text) { u = U.safeUrl(u); if (!u) return el('span', 'm', '원문 링크 없음'); var a = el('a', null, text || '원문'); a.href = u; a.target = '_blank'; a.rel = 'noopener noreferrer'; return a; }
+  function view(id, ready) { document.body.dataset.view = id; document.body.dataset.ready = ready ? '1' : '0'; }
+  function shell(id) { var app = $('app'); clear(app); var sec = el('section', 'fv'); sec.id = id; add(app, sec); return sec; }
+  function head(sec, eyebrow, title, sub, titleId) { var h = el('div', 'fhead'); add(h, el('div', 'eyebrow', eyebrow)); var h1 = el('h1', null, title); h1.id = titleId; h1.tabIndex = -1; add(h, h1); if (sub) add(h, el('p', 'sub', sub)); add(sec, h); return h1; }
+  function bar(sec, button, status) { var b = el('div', 'fbar'); add(b, button); var st = el('span', 'st', status || ''); st.id = sec.id + 'State'; add(b, st); add(sec, b); return st; }
 
-  /* ---------- 확정 문안(④): 현재 조립(채택·직접 수정·충돌 선택·자리표시 입력 반영) ---------- */
-  function confirmedParas() { return R.confirmed().map(function (p) { return { n: p.n, t: p.t, kind: p.kind, h: p.h, me: p.me, orig: p.orig, src: p.src }; }); }
-  function textOf(paras) { return paras.map(function (p) { return p.t; }).join('\n') + '\n'; }
-
-  /* ---------- 시작: 한 번의 버튼 ---------- */
-  function start() {
-    if (!D()) return;
-    var paras = confirmedParas(); if (!paras.length) { U.toast('확정할 문안이 없음'); return; }
-    R.closeViewer();
-    var st = state(); stopTimers();
-    st.status = 'running'; st.log = []; st.done = {}; st.stage = ''; st.res = null; st.err = ''; st.input = paras; st.t0 = Date.now(); st.elapsed = 0; st.logOpen = true;
-    st.submission = 'fin-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
-    goFinalView();
-    if (MOCK) runMock(st); else runServer(st);
+  /* ---------- 스테퍼(상단, 하나) ---------- */
+  function idx(id) { for (var i = 0; i < STEPS.length; i++) if (STEPS[i][0] === id) return i; return 0; }
+  function paintStepper() {
+    if (!MOCK) return;
+    var top = document.querySelector('.top'); if (!top) return;
+    var nav = $('finStepper'); if (!nav) { nav = el('nav', 'fstep'); nav.id = 'finStepper'; nav.setAttribute('aria-label', '진행 단계'); var steps = $('steps'); top.insertBefore(nav, steps || null); }
+    var r = top.querySelector('.r'); if (r && !$('finMockChip')) { var chip = el('span', 'finchip', '시험(mock) · 가짜 데이터'); chip.id = 'finMockChip'; chip.title = '디자인 점검용 목업 · 서버 호출 없음'; r.insertBefore(chip, r.firstChild); }
+    clear(nav); var cur = idx(V.step);
+    STEPS.forEach(function (s, i) { var ok = i < cur || i <= V.max, b = btn('fs' + (i === cur ? ' cur' : (ok ? ' done' : '')), ''); b.dataset.finstep = s[0]; b.disabled = !ok || i === cur; if (i === cur) b.setAttribute('aria-current', 'step'); b.title = s[1] + (ok && i !== cur ? ' 단계로 돌아가기' : ''); add(b, el('span', 'n', String(i + 1)), el('span', 'l', s[1])); add(nav, b); });
   }
-  function goFinalView() { S.step = 5; S.maxStep = Math.max(S.maxStep, 6); U.closeAll(); U.renderSteps(); window.scrollTo(0, 0); renderFinal(); var h = $('finTitle'); if (h) h.focus({ preventScroll: true }); }
-  function startTick(st) { if (st.tick) return; st.tick = setInterval(function () { if (st.status !== 'running') { clearInterval(st.tick); st.tick = null; return; } st.elapsed = (Date.now() - st.t0) / 1000; var e = $('finEl'); if (e) e.textContent = st.elapsed.toFixed(1) + 's'; }, 100); }
-  function finish(st, res) { stopTimers(); st.status = 'done'; st.res = res; st.stage = ''; st.stages.forEach(function (s) { st.done[s.id] = true; }); st.elapsed = (Date.now() - st.t0) / 1000; st.logOpen = false; renderFinal(); var sec = $('fin-draft'); if (sec) { sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); } var h = $('finDraftTitle'); if (h) h.focus({ preventScroll: true }); }
-  function fail(st, msg) { stopTimers(); st.status = 'error'; st.err = msg; st.stage = ''; renderFinal(); }
+  function goStep(id) {
+    var i = idx(id); closePop(); if (V.editing) cancelEdit();
+    V.step = id; V.max = Math.max(V.max, i);
+    if (id === 'input') U.go(0);
+    else if (id === 'job') { if (S.job && S.job.state === 'done' && D()) U.go(1); else mockAnalysis(); }
+    else if (id === 'adopt') renderAdopt();
+    else if (id === 'draft') renderDraft();
+    else if (id === 'check') renderCheck();
+    else if (id === 'done') renderDone();
+    window.scrollTo(0, 0); paintStepper();
+  }
+  new MutationObserver(function () {
+    if (document.body.dataset.ready !== '1') return;
+    var v = document.body.dataset.view;
+    if (MOCK && (v === 'input' || v === 'job')) { V.step = v; V.max = Math.max(V.max, idx(v)); paintStepper(); if (v === 'input') paintMockInput(); }
+    paintSteps();
+  }).observe(document.body, { attributes: true, attributeFilter: ['data-ready'] });
 
-  /* ---------- 목업: fixture trace를 타이머로 재생 ---------- */
+  /* ---------- 목업 ①: 예시 계획서 · 한글 문구 · 300자 안내 · 고지 한 줄(시험 mock) ---------- */
+  function paintMockInput() {
+    var card = $('inCard'), md = R.mockData(); if (!card || !md) return;
+    var tpl = $('tplArea'); if (tpl) tpl.hidden = true;
+    var b = $('btnStart'); if (b) b.textContent = '분석 시작';
+    paintCount();
+    if (!$('finSamples')) {
+      var g = el('div', 'finsamples'); g.id = 'finSamples';
+      add(g, el('div', 'eyebrow', '예시 계획서'));
+      var grid = el('div', 'grid');
+      [['battery', '전해액 이온전도도 예측 대리모델', '소재·화학 · 조성으로 이온전도도를 예측하는 GNN 대리모델'], ['protein', '단백질–리간드 결합 친화도 예측', '단백질·생물·신약 · 구조 기반 결합 친화도 예측 모델'], ['climate', '기후 PDE 대리모델', '물리·PDE·기후 · 수치 해석을 대신하는 학습 기반 대리모델']].forEach(function (s) { var x = btn('smp' + (s[0] === 'battery' && S.text === String(md.plan_text || '') ? ' on' : ''), ''); x.dataset.finsample = s[0]; x.setAttribute('aria-pressed', x.classList.contains('on') ? 'true' : 'false'); add(x, el('b', null, s[1]), el('span', 'd', s[2])); add(grid, x); });
+      add(g, grid); card.insertBefore(g, card.firstChild);
+    }
+    var drop = $('drop'); if (drop) { var hint = drop.querySelector('.sm'); if (hint) hint.textContent = 'PDF · DOCX · HWPX · TXT · MD · 최대 10 MB'; }
+    var fi = $('fileIn'); if (fi && fi.accept.indexOf('.hwpx') < 0) fi.accept = fi.accept + ',.hwpx';
+    var run = b && b.parentNode; if (run && !$('finNote')) { var nt = el('div', 'finnote', '시험(mock) · 입력한 계획서는 외부로 전송하지 않습니다 · 최종 판단은 연구자에게'); nt.id = 'finNote'; run.parentNode.insertBefore(nt, run.nextSibling); var lab = run.querySelector('.sm.muted'); if (lab) lab.textContent = ''; }
+  }
+  function paintCount() {
+    var ta = $('ta'), cnt = $('cnt'); var n = ta ? ta.value.length : (S.text || '').length;
+    if (cnt) cnt.textContent = n.toLocaleString('ko-KR') + '자';
+    var g = $('finGuide'); if (!g && cnt) { g = el('div', 'finguide'); g.id = 'finGuide'; g.setAttribute('role', 'status'); g.setAttribute('aria-live', 'polite'); cnt.parentNode.parentNode.insertBefore(g, cnt.parentNode.nextSibling); }
+    if (!g) return;
+    var fit = $('fitBox'), outOfScope = !!(fit && !fit.hidden && !fit.classList.contains('ok') && fit.textContent.trim());  /* QA-2 Q2-4: 범위 밖 판정이 있으면 '짧음'보다 그 사유가 먼저 */
+    g.textContent = n > 0 && n < 300 && !outOfScope ? '300자 이상 입력해 주세요 (현재 ' + n + '자)' : '';
+  }
+  document.addEventListener('input', function (ev) { if (MOCK && ev.target && ev.target.id === 'ta') paintCount(); });
+  /* WAIT-UX 연결 자리(.claude/worktrees/s3-WAIT-UX의 분리 모듈 wait.js·wait.css): window.NeumannWait.update({mock,state,stage,label,index,total,elapsed}). 없으면 기존 타임라인. 모듈 오류는 흐름을 막지 않는다 */
+  function waitHook(info) { var W = window.NeumannWait; if (W && typeof W.update === 'function') { try { W.update(info); } catch (e) { /* 대기 모듈 오류 무시 */ } } }
+  function mockAnalysis() {
+    var md = R.mockData(); if (!md) return;
+    var run = {}; S.job = { state: 'running', run: run, waitText: '작업 등록' }; S.elapsed = 0; V.step = 'job'; V.max = Math.max(V.max, 1); U.go(1); paintStepper();
+    var t0 = Date.now(), tick = setInterval(function () { if (S.job && S.job.run === run && S.step === 1) { S.elapsed = (Date.now() - t0) / 1000; var e = $('elapsed'); if (e) e.textContent = S.elapsed.toFixed(1); } else clearInterval(tick); }, 100);
+    var stages = [['plan_normalize', '계획서 정리'], ['query_axes', '검색 질의 만들기'], ['search', '유사 연구 검색 · 거절 기록 조회'], ['extract_issues', '지적 추출'], ['synthesize_cards', '위험카드 합성'], ['verify_evidence', '원문 대조']];
+    waitHook({ mock: true, state: 'queued', stage: '', label: '작업 등록', index: -1, total: stages.length, elapsed: 0 });
+    stages.forEach(function (s, i) { setTimeout(function () { if (!S.job || S.job.run !== run) return; S.job = { state: 'running', run: run, wait: { status: 'running', stage: s[0], label: s[1] }, waitText: '분석 중 · ' + s[1] }; if (S.step === 1) U.render(); waitHook({ mock: true, state: 'running', stage: s[0], label: s[1], index: i, total: stages.length, elapsed: S.elapsed }); }, 450 + i * 520 / FIN.mockSpeed); });
+    setTimeout(function () { if (!S.job || S.job.run !== run) return; clearInterval(tick); var v = D() || md.view; U.setD(v); S.job = { state: 'done', run: run, view: v }; waitHook({ mock: true, state: 'done', stage: '', label: '완료', index: stages.length, total: stages.length, elapsed: S.elapsed }); if (S.step === 1) { U.render(); setTimeout(function () { if (S.step === 1) goStep('adopt'); }, 600); } }, 450 + stages.length * 520 / FIN.mockSpeed + 250);
+  }
+
+  /* ---------- 채택(결과의 시작 화면) ---------- */
+  function ensureDecisions() {
+    var rs = R.state(); if (rs.restored) return;  /* 새로고침 뒤에는 연구자의 결정을 그대로 */
+    R.cards().forEach(function (cd) { var it = R.item(cd.rank); if (!it.rev || it.v2init) return; it.v2init = true; it.rev.edits.forEach(function (e) { it.dec[e.id] = { d: 'adopt', text: e.after, at: now() }; }); });
+    R.persist();
+  }
+  function cardOn(it) { if (!it.rev || !it.rev.edits.length) return false; return it.rev.edits.some(function (e) { var dc = it.dec[e.id]; return dc && dc.d !== 'reject'; }); }
+  function setCard(rank, on) { var it = R.item(rank); if (!it.rev) return; it.rev.edits.forEach(function (e) { var dc = it.dec[e.id]; if (on) { if (!dc || dc.d === 'reject') it.dec[e.id] = { d: 'adopt', text: e.after, at: now() }; } else it.dec[e.id] = { d: 'reject', text: '', at: now() }; }); R.persist(); V.draftReady = false; }
+  function adoptedCount() { return R.cards().filter(function (cd) { return cardOn(R.item(cd.rank)); }).length; }
+  function summaryOf(cd) { var d = D(), R0 = d.review || {}, hit = null; ['weakness', 'request'].forEach(function (k) { (R0[k] || []).forEach(function (w) { if (!hit && (w.cards || []).indexOf(cd.rank) >= 0) hit = w.t; }); }); return hit || cd.desc || ''; }
+  function papersOf(cd) { var d = D(), by = {}, order = []; cd.ev.forEach(function (k) { var e = d.ev[String(k)]; if (!e) return; var key = e.id || e.p; if (!by[key]) { by[key] = { p: e.p, s: '', d: e.d, u: e.u, ex: [] }; order.push(key); d.works.forEach(function (w) { if (w.id === e.id) by[key].s = w.s; }); } by[key].ex.push({ k: k, q: e.q, v: e.v, u: e.u }); }); return order.map(function (k) { return by[k]; }); }
+  function renderAdopt() {
+    var d = D(); if (!d) { U.go(0); return; }
+    view('adopt', false); ensureDecisions();
+    var sec = shell('fin-adopt'), cards = R.cards(), nEv = Object.keys(d.ev || {}).length;
+    head(sec, '거절 위험과 권고', '이 계획서가 거절될 수 있는 이유 ' + cards.length + '건', '유사 연구 ' + (d.kpi && d.kpi.n_works || d.works.length) + '편의 심사 기록에서 근거 ' + nEv + '건을 찾았습니다. 채택한 위험은 다음 단계에서 수정 계획서로 반영됩니다. 뺄 것만 끄세요.', 'faTitle');
+    var list = el('div'); list.id = 'faList';
+    cards.forEach(function (cd) { add(list, cardEl(cd)); });
+    add(sec, list);
+    var more = el('details', 'fa-more'); var sm = el('summary', null, '참고 · 예상 심사평 · 착수 전 체크리스트 · 유사 연구'); add(more, sm);
+    var R0 = d.review || {}; if ((R0.weakness || []).length || (R0.request || []).length) { add(more, el('h3', null, '예상 심사평')); var ul = el('ul'); (R0.weakness || []).concat(R0.request || []).forEach(function (w) { add(ul, el('li', null, w.t)); }); add(more, ul); }
+    if ((d.checklist || []).length) { add(more, el('h3', null, '착수 전 체크리스트')); var ul2 = el('ul'); d.checklist.forEach(function (c) { add(ul2, el('li', null, c.t)); }); add(more, ul2); }
+    if ((d.works || []).length) { add(more, el('h3', null, '유사 연구')); var ul3 = el('ul'); d.works.forEach(function (w) { var li = el('li'); add(li, w.t + ' · ' + (w.venue || '') + ' · ' + (w.d || '미정') + ' ', extLink(w.u, '원문')); add(ul3, li); }); add(more, ul3); }
+    add(sec, more);
+    var nb = btn('btn dark lg', '', 'faNext'); bar(sec, nb, '');
+    paintAdoptBar(); view('adopt', true);
+    var h = $('faTitle'); if (h) h.focus({ preventScroll: true });
+  }
+  function cardEl(cd) {
+    var it = R.item(cd.rank), on = cardOn(it), f = U.fam(cd.fam), art = el('article', 'fa-card' + (on ? '' : ' off')); art.id = 'fa-' + cd.rank;
+    var hd = el('div', 'fa-head'); var h2 = el('h2'); add(h2, pad2(cd.rank) + ' · ' + f.n, el('small', null, '심각도 S' + cd.sev + ' · ' + (cd.freq || '') + (cd.lines.length ? ' · 계획서 ' + cd.lines.map(function (n) { return n + '행'; }).join(', ') : '')));
+    var tg = el('label', 'fa-tgl'); var cb = el('input'); cb.type = 'checkbox'; cb.checked = on; cb.dataset.fatoggle = String(cd.rank); cb.disabled = !it.rev; cb.setAttribute('aria-label', f.n + ' 채택'); add(tg, cb, el('span', null, on ? '채택' : '제외')); add(hd, h2, tg); add(art, hd);
+    add(art, el('p', 'fa-sum', summaryOf(cd)));
+    var evs = el('div', 'fa-ev'); add(evs, '근거 ');
+    papersOf(cd).forEach(function (p, i) { var c = btn('fa-chip', ''); c.dataset.faev = cd.rank + ':' + i; c.setAttribute('aria-expanded', 'false'); c.setAttribute('aria-controls', 'faevx-' + cd.rank + '-' + i); add(c, el('b', null, p.s || p.p), el('span', 'd' + (p.d === '거절' ? ' rej' : ''), (p.d || '미정') + ' · 발췌 ' + p.ex.length)); add(evs, c); });
+    add(art, evs);
+    papersOf(cd).forEach(function (p, i) { var x = el('div', 'fa-evx'); x.id = 'faevx-' + cd.rank + '-' + i; x.hidden = true; add(x, el('div', 'm', p.p + ' · ' + (p.d || '미정'))); p.ex.forEach(function (e) { var q = el('div'); add(q, el('span', 'q', '“' + e.q + '”'), ' ', el('span', 'm', e.v || ''), ' ', extLink(e.u, '원문')); add(x, q); }); add(art, x); });
+    var pv = el('div', 'fa-prev');
+    if (it.rev && it.rev.edits.length) { var e0 = it.rev.edits[0]; add(pv, el('b', null, '제안 수정'), e0.line + '행 · ' + (e0.after.length > 110 ? e0.after.slice(0, 110) + '…' : e0.after)); if (it.rev.edits.length > 1) add(pv, ' ', el('span', 'more', '외 ' + (it.rev.edits.length - 1) + '건')); }
+    else add(pv, el('b', null, '제안 수정'), el('span', 'more', '수정 계획서 단계에서 만듭니다'));
+    add(art, pv);
+    return art;
+  }
+  function paintAdoptBar() { var n = adoptedCount(), b = $('faNext'); if (!b) return; b.textContent = '채택 ' + n + '건으로 수정 계획서 받기'; b.disabled = !n; var st = $('fin-adoptState'); if (st) st.textContent = n ? '' : '채택한 위험이 없습니다'; }
+
+  /* ---------- 수정 계획서(문서 한 장) ---------- */
+  function autoResolve() { var rs = R.state(), asm = R.assembleLocal(), changed = false; asm.conflicts.forEach(function (c) { if (!rs.conf[c.n] && c.options && c.options.length) { rs.conf[c.n] = { key: c.options[0].key, at: now(), auto: true }; changed = true; } }); if (changed) R.persist(); }
+  function paras() { return R.confirmed(); }
+  function keyOf(p) { return p.src && p.src.rank && p.src.edit ? 'e:' + p.src.rank + ':' + p.src.edit : 'n:' + p.n; }
+  function renderDraft() {
+    var d = D(); if (!d) { U.go(0); return; }
+    if (!adoptedCount()) { goStep('adopt'); return; }
+    if (MOCK && !V.draftReady) { renderDraftWait(); return; }
+    view('draft', false); autoResolve(); closePop(); V.editing = null;
+    var sec = shell('fin-draft'), ps = paras(), title = null; ps.forEach(function (p) { if (!title && p.h === 'title') title = p; });
+    head(sec, '수정 계획서', '채택한 권고를 반영한 계획서', '바뀐 문장은 옅게 표시되고 여백의 번호를 누르면 원문·근거·되돌리기가 보입니다. 문단을 누르면 그 자리에서 고칠 수 있습니다.', 'fdTitle');
+    var st = el('div', 'fd-status'); st.id = 'fdStatus'; add(sec, st);
+    var doc = el('article', 'fd-doc'); doc.id = 'fdDoc'; doc.setAttribute('aria-label', '수정 계획서 본문');
+    add(doc, el('div', 't', title ? (headingOf(title.t) || { text: title.t }).text : (d.plan.title || '연구계획서')), el('div', 'meta', (d.plan.file || '직접 입력') + ' · 수정 계획서 · ' + kst()));
+    var n = 0;
+    ps.forEach(function (p) {
+      if (p === title) return;
+      var h = headingOf(p.t);
+      if (h && p.kind === 'same' && !p.me) { add(doc, el(h.level <= 2 ? 'h2' : 'h3', null, h.text)); return; }
+      var changed = p.kind !== 'same' || p.me, wrap = el('div', 'fd-p' + (changed ? ' chg' : '')); wrap.dataset.n = String(p.n); var key = keyOf(p); wrap.dataset.key = key;
+      if (changed) { n++; var mk = btn('fd-mark', String(n)); mk.dataset.fdmark = key; mk.setAttribute('aria-label', '변경 ' + n + ' · 원문·근거·되돌리기'); mk.setAttribute('aria-expanded', 'false'); add(wrap, mk); }
+      var pe = textEl('p', null, h ? h.text : p.t); pe.dataset.fdedit = key; pe.tabIndex = 0; pe.setAttribute('role', 'textbox'); pe.setAttribute('aria-label', p.n + '행 문단 · 누르면 편집'); pe._para = p; add(wrap, pe); add(doc, wrap);
+    });
+    var pop = el('div', 'fd-pop'); pop.id = 'fdPop'; pop.hidden = true; pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', '변경 상세'); add(doc, pop);
+    add(sec, doc);
+    var nb = btn('btn dark lg', '확정하고 최종 점검', 'fdNext'); bar(sec, nb, '');
+    paintDraftStatus(); view('draft', true);
+    var h1 = $('fdTitle'); if (h1) h1.focus({ preventScroll: true });
+  }
+  function renderDraftWait() {
+    view('draft', false); var sec = shell('fin-draft');
+    head(sec, '수정 계획서', '수정 계획서를 만드는 중', '채택한 위험마다 거절 사유를 해석하고, 같은 지적을 받고도 채택된 연구의 대응을 찾아 수정안을 씁니다.', 'fdTitle');
+    var w = el('div', 'fwait'); var tl = el('div', 'tl'); tl.id = 'fdWait'; var stages = [['거절 사유 해석', '심사평·결정문의 지적을 계획서 줄에 연결'], ['채택 연구의 대응', '같은 지적을 받고도 채택된 연구의 저자 답변'], ['수정안 작성 · 근거 대조', '근거 없는 문장은 제외']];
+    stages.forEach(function (s) { var tn = el('div', 'tn'); add(tn, el('div', 'nm', s[0]), el('div', 'msg', s[1]), el('div', 'tm', '')); add(tl, tn); }); add(w, tl); add(sec, w); view('draft', true);
+    var t0 = Date.now();
+    stages.forEach(function (s, i) { setTimeout(function () { if (V.step !== 'draft' || V.draftReady) return; var tns = tl.querySelectorAll('.tn'); tns.forEach(function (x, j) { x.className = 'tn' + (j < i ? ' done' : (j === i ? ' run' : '')); if (j < i) x.querySelector('.tm').textContent = ((Date.now() - t0) / 1000).toFixed(1) + 's'; }); }, i * 520 / FIN.mockSpeed); });
+    setTimeout(function () { if (V.step !== 'draft') return; V.draftReady = true; renderDraft(); }, stages.length * 520 / FIN.mockSpeed + 200);
+  }
+  function paintDraftStatus() {
+    var st = $('fdStatus'); if (!st) return; clear(st);
+    var ps = paras(), changed = 0, me = 0; ps.forEach(function (p) { if (p.kind !== 'same' || p.me) changed++; if (p.me || (p.src && p.src.dec === 'edit')) me++; });
+    add(st, el('span', null, '채택 ' + adoptedCount() + '건 · 바뀐 문장 ' + changed + ' · 직접 수정 ' + me));
+    if (V.editing) add(st, el('span', 'ed', '편집 중 · ' + V.editing.p.n + '행 · Ctrl+Enter 저장 · Esc 취소'));
+    var u = btn('btn sm', '되돌리기' + (V.undo.length ? ' (' + V.undo.length + ')' : ''), 'fdUndo'); u.disabled = !V.undo.length; u.title = 'Ctrl+Z'; add(st, u);
+  }
+  function repaintDoc(focusKey) { var y = window.scrollY; renderDraft(); window.scrollTo(0, y); if (focusKey) { var e = document.querySelector('#fdDoc [data-fdedit="' + focusKey + '"]'); if (e) e.focus({ preventScroll: true }); } }
+  function pushUndo(u) { V.undo.push(u); if (V.undo.length > 50) V.undo.shift(); }
+  function applyText(p, text) {
+    var rs = R.state();
+    if (p.src && p.src.rank && p.src.edit) { var it = R.item(p.src.rank), eid = p.src.edit, e = R.findEdit(it, eid); if (!e) return; pushUndo({ k: 'dec', rank: p.src.rank, eid: eid, prev: it.dec[eid] ? JSON.parse(JSON.stringify(it.dec[eid])) : null }); it.dec[eid] = text.trim() === e.after.trim() ? { d: 'adopt', text: e.after, at: now() } : { d: 'edit', text: text, at: now() }; }
+    else { var k = String(p.n); pushUndo({ k: 'pedit', key: k, prev: rs.pedit[k] || null }); if (text.trim() === R.lineText(p.n).trim()) delete rs.pedit[k]; else rs.pedit[k] = { text: text, at: now() }; }
+    R.persist();
+  }
+  function revert(p) {
+    var rs = R.state();
+    if (p.src && p.src.rank && p.src.edit) { var it = R.item(p.src.rank), eid = p.src.edit; pushUndo({ k: 'dec', rank: p.src.rank, eid: eid, prev: it.dec[eid] ? JSON.parse(JSON.stringify(it.dec[eid])) : null }); it.dec[eid] = { d: 'reject', text: '', at: now() }; }
+    else { var k = String(p.n); pushUndo({ k: 'pedit', key: k, prev: rs.pedit[k] || null }); delete rs.pedit[k]; }
+    R.persist(); closePop(); repaintDoc('n:' + p.n); U.toast('원문으로 되돌림');
+  }
+  function undoLast() {
+    var u = V.undo.pop(); if (!u) { U.toast('되돌릴 편집 없음'); return; }
+    var rs = R.state();
+    if (u.k === 'dec') { var it = R.item(u.rank); if (u.prev) it.dec[u.eid] = u.prev; else delete it.dec[u.eid]; }
+    else { if (u.prev) rs.pedit[u.key] = u.prev; else delete rs.pedit[u.key]; }
+    R.persist(); closePop(); repaintDoc(null); U.toast('되돌림');
+  }
+  function startEdit(pe) {
+    var p = pe._para; if (!p || V.editing) return; closePop();
+    var ta = el('textarea', 'fd-ta'); ta.value = p.t; ta.setAttribute('aria-label', p.n + '행 문단 편집'); ta.spellcheck = false; ta.rows = 1;
+    var fit = function () { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; };
+    ta.addEventListener('input', fit);
+    ta.addEventListener('keydown', function (ev) { if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); saveEdit(); } else if (ev.key === 'Escape') { ev.stopPropagation(); cancelEdit(); } });
+    ta.addEventListener('blur', function () { setTimeout(function () { if (V.editing && V.editing.ta === ta && document.activeElement !== ta) saveEdit(); }, 0); });
+    pe.replaceWith(ta); V.editing = { p: p, ta: ta, key: pe.dataset.fdedit }; fit(); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); paintDraftStatus();
+  }
+  function saveEdit() { var ed = V.editing; if (!ed) return; var text = ed.ta.value.replace(/\r\n?/g, '\n').replace(/\n+/g, ' ').trim(); V.editing = null; if (!text) { U.toast('빈 문단은 저장하지 않음'); repaintDoc(ed.key); return; } if (text === ed.p.t.trim()) { repaintDoc(ed.key); return; } applyText(ed.p, text); repaintDoc(ed.key); U.toast('저장됨 · ' + ed.p.n + '행'); }
+  function cancelEdit() { var ed = V.editing; if (!ed) return; V.editing = null; if (V.step === 'draft' && $('fdDoc')) repaintDoc(ed.key); }
+  function openPop(mk) {
+    var wrap = mk.parentNode, pe = wrap.querySelector('p'), p = pe && pe._para, pop = $('fdPop'); if (!p || !pop) return;
+    if (V.pop === mk) { closePop(); return; } closePop(); V.pop = mk; mk.setAttribute('aria-expanded', 'true');
+    clear(pop); var d = D();
+    add(pop, el('div', 'k', '원문 ' + p.n + '행'), el('div', 'o', p.kind === 'inserted' ? '(새로 추가한 문단)' : (p.orig || R.lineText(p.n))));
+    if (p.src) { var it = R.item(p.src.rank), gen = it && it.rev ? R.genText(it.rev.gen, it.rev.model, it.rev.genl) : ''; add(pop, el('div', 'k', '왜 바꾸나'), el('div', null, '카드 ' + pad2(p.src.rank) + ' · ' + (p.src.dec === 'edit' ? '연구자가 직접 고침' : '제안 채택') + (p.src.why ? ' · ' + p.src.why : '') + (gen ? ' · ' + gen : '')));
+      if (p.src.c && p.src.c.length) { add(pop, el('div', 'k', '근거')); p.src.c.forEach(function (k) { var e = d.ev[k]; if (!e) return; var q = el('div', 'ev'); add(q, '“' + (e.q.length > 160 ? e.q.slice(0, 160) + '…' : e.q) + '” ', el('span', 'm', e.p + ' · ' + (e.d || '미정') + ' '), extLink(e.u, '원문')); add(pop, q); }); } }
+    else add(pop, el('div', 'k', '연구자가 직접 고친 문단'));
+    var acts = el('div', 'acts'); var rv = btn('btn sm', '원문으로 되돌리기'); rv.dataset.fdrevert = wrap.dataset.key; var cl = btn('btn sm', '닫기'); cl.dataset.fdpopclose = '1'; add(acts, rv, cl); add(pop, acts);
+    var dr = wrap.getBoundingClientRect(), docr = $('fdDoc').getBoundingClientRect(); pop.style.top = (dr.bottom - docr.top + 2) + 'px'; pop.style.left = '40px'; pop.style.right = '24px'; pop.hidden = false; rv.focus();
+  }
+  function closePop() { var pop = $('fdPop'); if (pop) pop.hidden = true; if (V.pop) { var mk = V.pop; V.pop = null; mk.setAttribute('aria-expanded', 'false'); if (document.contains(mk) && !document.activeElement.closest('.fd-ta')) mk.focus({ preventScroll: true }); } }
+  function paraByKey(key) { var e = document.querySelector('#fdDoc [data-fdedit="' + key + '"]'); return e ? e._para : null; }
+
+  /* ---------- 최종 점검(항목이 하나씩 켜지고, 오류는 자동으로 고쳐 보고만) ---------- */
+  function stopTimers(C) { C.timers.forEach(clearTimeout); C.timers = []; if (C.tick) clearInterval(C.tick); C.tick = null; if (C.ctrl) { try { C.ctrl.abort(); } catch (e) { /* 없음 */ } } C.ctrl = null; }
+  function invalidate() { var C = V.C; if (C.status === 'idle') return; stopTimers(C); V.C = freshCheck(); if (V.step === 'check' || V.step === 'done') { U.toast('수정본이 바뀌어 최종 점검을 다시 합니다'); goStep('draft'); } else paintSteps(); }
+  function forget() { stopTimers(V.C); V.C = freshCheck(); V.undo = []; V.draftReady = false; V.max = 0; }
   function mockData() { var node = $('finMockFinal'); if (!node) return null; try { return JSON.parse(node.textContent); } catch (e) { return null; } }
-  function runMock(st) {
-    var md = mockData(); if (!md) { fail(st, '목업 최종 점검 데이터(finMockFinal) 없음'); return; }
-    st.stages = L(md.stages).length ? md.stages : DEFAULT_STAGES; startTick(st);
-    var trace = L(md.trace);
-    trace.forEach(function (e) { st.timers.push(setTimeout(function () { if (state() !== st || st.status !== 'running') return; pushLog(st, e); }, Math.round(N(e.t) * 1000 / FIN.mockSpeed))); });
+  function rowOf(e) { return { id: T(e.check_id), label: T(e.label) || T(e.message) || T(e.check_id), stage: T(e.stage) || 'tools', tool: T(e.tool), lines: L(e.plan_lines).map(Number).filter(function (n) { return isFinite(n); }), status: 'pending', msg: '', input: str(e.input), result: str(e.result), phase: '' }; }
+  function renderCheck() {
+    var d = D(); if (!d) { U.go(0); return; }
+    var C = V.C;
+    if (C.status === 'idle') startCheck();
+    else paintCheck();
+  }
+  function startCheck() {
+    var C = V.C; stopTimers(C); V.C = C = freshCheck(); C.d = D(); C.input = paras(); C.status = 'running'; C.t0 = Date.now(); C.submission = 'fin-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+    if (MOCK) { var md = mockData(); if (!md) { C.status = 'error'; C.err = '목업 최종 점검 데이터(finMockFinal) 없음'; paintCheck(); return; } C.md = md; var seen = {}; L(md.trace).forEach(function (e) { if (e.stage === 'correct' || e.stage === 'recheck' || seen[e.check_id]) return; seen[e.check_id] = 1; C.rows.push(rowOf(e)); }); }
+    paintCheck(); startTick(C);
+    if (MOCK) runMock(C); else runServer(C);
+  }
+  function startTick(C) { C.tick = setInterval(function () { if (C.status !== 'running') { clearInterval(C.tick); C.tick = null; return; } C.elapsed = (Date.now() - C.t0) / 1000; var s = $('fin-checkState'); if (s) s.textContent = '점검 중 · ' + C.elapsed.toFixed(1) + 's'; }, 100); }
+  function runMock(C) {
+    var trace = L(C.md.trace);
+    trace.forEach(function (e) { C.timers.push(setTimeout(function () { if (V.C !== C || C.status !== 'running') return; onEvent(C, e); }, Math.round(N(e.t) * 1000 / FIN.mockSpeed))); });
     var last = trace.length ? N(trace[trace.length - 1].t) : 0;
-    st.timers.push(setTimeout(function () { if (state() !== st || st.status !== 'running') return; finish(st, normFinal(md, st.input, st.log)); }, Math.round((last + 0.7) * 1000 / FIN.mockSpeed)));
+    C.timers.push(setTimeout(function () { if (V.C !== C || C.status !== 'running') return; finish(C, normFinal(C.md, C.input, C.log)); }, Math.round((last + 0.6) * 1000 / FIN.mockSpeed)));
+    /* 다음 항목을 '검사 중'으로 미리 켜서 진행감을 준다 */
+    trace.forEach(function (e, i) { if (e.stage === 'correct' || e.stage === 'recheck') return; var prev = i ? N(trace[i - 1].t) : 0; C.timers.push(setTimeout(function () { if (V.C !== C || C.status !== 'running') return; var r = findRow(C, e.check_id); if (r && r.status === 'pending') { r.status = 'running'; paintRow(r); } }, Math.round((prev + 0.05) * 1000 / FIN.mockSpeed))); });
   }
-  function pushLog(st, e) {
-    var row = { t: (Date.now() - st.t0) / 1000, stage: T(e.stage), name: T(e.name) || TOOL_KO[T(e.tool)] || T(e.tool) || '도구', tool: T(e.tool), id: T(e.check_id), kind: T(e.kind), lines: L(e.plan_lines).map(Number).filter(function (n) { return isFinite(n); }), input: str(e.input), result: str(e.result), status: T(e.status) || 'unchecked', msg: T(e.message), ms: e.ms != null ? N(e.ms) : null };
-    if (st.stage && st.stage !== row.stage) st.done[st.stage] = true;
-    st.stage = row.stage; st.log.push(row); paintRun(st); appendLogRow(row, true);
+  function findRow(C, id) { for (var i = 0; i < C.rows.length; i++) if (C.rows[i].id === id) return C.rows[i]; return null; }
+  function onEvent(C, e) {
+    var row = { t: (Date.now() - C.t0) / 1000, stage: T(e.stage), name: T(e.name) || TOOL_KO[T(e.tool)] || T(e.tool), tool: T(e.tool), id: T(e.check_id), label: T(e.label), kind: T(e.kind), lines: L(e.plan_lines).map(Number).filter(function (n) { return isFinite(n); }), input: str(e.input), result: str(e.result), status: T(e.status) || 'unchecked', msg: T(e.message), ms: e.ms != null ? N(e.ms) : null };
+    C.log.push(row); C.stage = row.stage;
+    if (row.stage === 'correct') { C.res = normFinal(C.md, C.input, C.log); C.fixes = C.res.corrections; paintFixes(C); }
+    else if (row.stage === 'recheck') { var r0 = findRow(C, row.id); if (r0) { r0.phase = 'after'; r0.after = row.status; r0.msg = row.msg; r0.result = row.result; paintRow(r0); } }
+    else { var r = findRow(C, row.id); if (!r) { r = rowOf(e); C.rows.push(r); } r.status = row.status; r.msg = row.msg; r.input = row.input; r.result = row.result; paintRow(r); }
+    paintBadges(C);
   }
+  function finish(C, res) { stopTimers(C); C.status = 'done'; C.res = res; C.fixes = res.corrections; C.elapsed = (Date.now() - C.t0) / 1000; C.rows.forEach(function (r) { if (r.status === 'pending' || r.status === 'running') r.status = 'unchecked'; }); paintCheck(); if (C.autoDone) { C.autoDone = false; goStep('done'); } }
+  function fail(C, msg) { stopTimers(C); C.status = 'error'; C.err = msg; paintCheck(); }
+  function paintCheck() {
+    var C = V.C, d = D(); view('check', false); closePop();
+    var sec = shell('fin-check');
+    head(sec, '최종 점검', C.status === 'done' ? '점검을 마쳤습니다' : (C.status === 'error' ? '점검하지 못했습니다' : '논리 · 물리 · 구조 · 근거를 점검하는 중'), C.status === 'done' ? '발견한 오류는 자동으로 고쳤고, 값을 모르는 곳은 [확인 필요]로 남겼습니다. 되돌리고 싶은 수정은 항목 옆에서 되돌릴 수 있습니다.' : (C.status === 'error' ? C.err : '수치 합계·단위·선행관계·인용 기록을 도구로 확인하고, 발견한 오류는 자동으로 고쳐 보고합니다.'), 'fcTitle');
+    var bd = el('div', 'fc-badges'); bd.id = 'fcBadges'; add(sec, bd);
+    var groups = {}; C.rows.forEach(function (r) { (groups[r.stage] = groups[r.stage] || []).push(r); });
+    STAGE_ORDER.concat(Object.keys(groups).filter(function (k) { return STAGE_ORDER.indexOf(k) < 0; })).forEach(function (k) { if (!groups[k]) return; var g = el('div', 'fc-g'); add(g, el('h2', null, STAGE_KO[k] || k)); var ul = el('ul'); groups[k].forEach(function (r) { add(ul, rowEl(r)); }); add(g, ul); add(sec, g); });
+    if (!C.rows.length) add(sec, el('p', 'sub muted', C.status === 'running' ? '서버 응답 대기' : '검사 항목 없음'));
+    var fx = el('div', 'fc-fixes'); fx.id = 'fcFixes'; fx.hidden = true; add(sec, fx);
+    var nb = btn('btn dark lg', C.status === 'error' ? '다시 점검' : '완성된 초안 보기', 'fcNext'); nb.disabled = C.status === 'running';
+    bar(sec, nb, C.status === 'done' ? '완료 · ' + C.elapsed.toFixed(1) + 's' : (C.status === 'error' ? '' : '점검 중'));
+    paintBadges(C); if (C.fixes.length) paintFixes(C); view('check', true);
+    var h = $('fcTitle'); if (h && C.status !== 'running') h.focus({ preventScroll: true }); else if (h && !C.log.length) h.focus({ preventScroll: true });
+  }
+  function rowEl(r) {
+    var li = el('li', 'fc-row'); li.id = 'fcr-' + r.id; li.dataset.fcrow = r.id; li.tabIndex = 0; li.setAttribute('aria-expanded', 'false');
+    add(li, el('span', 'ic', ''), el('span', 'nm'), el('span', 'rs')); var dt = el('div', 'dt'); dt.hidden = true; add(li, dt); paintRow(r, li); return li;
+  }
+  function paintRow(r, li) {
+    li = li || $('fcr-' + r.id); if (!li) return;
+    var s = r.status === 'passed' ? 'pass' : (r.status === 'failed' ? 'fail' : (r.status === 'unchecked' ? 'skip' : (r.status === 'running' ? 'run' : 'pending')));
+    var fixed = r.phase === 'after' && (r.after === 'passed');
+    li.className = 'fc-row ' + (fixed ? 'pass' : s); var ic = li.querySelector('.ic'); ic.textContent = fixed || s === 'pass' ? '✓' : (s === 'fail' ? '✕' : (s === 'skip' ? '–' : ''));
+    var nm = li.querySelector('.nm'); clear(nm); add(nm, r.label, el('small', null, TOOL_KO[r.tool] || r.tool + (r.lines.length ? ' · ' + r.lines.map(function (n) { return n + '행'; }).join(', ') : '')));
+    var rs = li.querySelector('.rs'); rs.textContent = r.phase === 'after' ? (r.after === 'passed' ? '수정 뒤 통과' : (r.after === 'unchecked' ? '불일치 → 수정 · 값 확정 뒤 재검사' : '불일치')) : (s === 'pass' ? '통과' : (s === 'fail' ? '불일치' : (s === 'skip' ? '미검사' : (s === 'run' ? '검사 중' : ''))));
+    var dt = li.querySelector('.dt'); clear(dt); if (r.input) { var a = el('div'); add(a, el('b', null, '입력'), r.input); add(dt, a); } if (r.result) { var b = el('div'); add(b, el('b', null, '결과'), r.result); add(dt, b); } if (r.msg) add(dt, el('div', null, r.msg));
+  }
+  function paintBadges(C) {
+    var bd = $('fcBadges'); if (!bd) return; clear(bd);
+    var per = {}, order = []; C.log.forEach(function (r) { if (r.stage === 'correct') return; if (!per[r.tool]) { per[r.tool] = { p: 0, f: 0 }; order.push(r.tool); } if (r.status === 'passed') per[r.tool].p++; if (r.status === 'failed') per[r.tool].f++; });
+    if (!order.length) { add(bd, el('span', null, C.status === 'running' ? '도구를 부르는 중' : '')); return; }
+    order.forEach(function (t) { var s = el('span'); add(s, el('b', null, TOOL_KO[t] || t), ' ✓ ' + per[t].p + '건'); if (per[t].f) add(s, ' ', el('span', 'bad', '✕ ' + per[t].f + '건')); add(bd, s); });
+  }
+  function paintFixes(C) {
+    var fx = $('fcFixes'); if (!fx) return; clear(fx); fx.hidden = false;
+    var applied = C.fixes.filter(function (x) { return x.applied; }).length;
+    add(fx, el('h2', null, '자동 수정 ' + applied + '건' + (C.fixes.length - applied ? ' · 넣지 않은 제안 ' + (C.fixes.length - applied) + '건' : '')));
+    C.fixes.forEach(function (x) {
+      var row = el('div', 'fc-fix' + (x.reverted ? ' rev' : (x.applied ? '' : ' skip'))); row.id = 'fcfix-' + x.i;
+      add(row, el('span', 'ln', (x.n || x.line) + '행'));
+      if (x.applied || x.reverted) { add(row, el('s', null, x.before), el('span', 'arrow', '→'), textEl('b', null, x.after)); var u = btn('link', x.reverted ? '다시 적용' : '되돌리기'); u.dataset.fcundo = String(x.i); add(row, u); }
+      else add(row, el('span', null, x.before), el('span', 'why', REASON_KO[x.reason] || x.reason));
+      var why = []; if (C.res) C.res.issues.forEach(function (i) { if (x.issues.indexOf(i.id) >= 0) why.push(i.msg); }); if (why.length && x.applied) add(row, el('span', 'why', why.join(' / ')));
+      add(fx, row);
+    });
+  }
+  function toggleFix(i) { var C = V.C; if (!C.res) return; var x = null; C.res.corrections.forEach(function (c) { if (String(c.i) === String(i)) x = c; }); if (!x) return; if (x.reverted) { x.reverted = false; x.applied = true; x.reason = 'applied'; } else if (x.applied) { x.reverted = true; x.applied = false; x.reason = 'reverted'; } else return; C.res = rebuild(C.res, C.input); C.fixes = C.res.corrections; paintFixes(C); var b = document.querySelector('[data-fcundo="' + i + '"]'); if (b) b.focus(); }
 
-  /* ---------- 서버: POST premortem/revise/finalize ---------- */
+  /* ---------- 서버(비목업): POST premortem/revise/finalize ---------- */
   function serverMsg(j, code) { j = j || {}; if (typeof j.message === 'string' && j.message) return j.message; if (typeof j.detail === 'string' && j.detail) return j.detail; if (Array.isArray(j.detail) && j.detail.length) return j.detail.map(function (x) { return x && x.msg ? String(x.msg) : String(x); }).join(' · '); return 'HTTP ' + code; }
-  function runServer(st) {
-    st.stages = DEFAULT_STAGES; startTick(st); st.stage = 'assemble'; paintRun(st);
+  function runServer(C) {
     var body = null; try { body = R.assembleBody('json'); } catch (e) { body = null; }
-    if (!body || !body.revision) { fail(st, '서버 권고 응답이 없어(샘플·개발용 어댑터) 최종 점검을 요청할 수 없음 — 흐름 확인은 ?mock=final'); return; }
-    body.polish = false; body.submission_id = st.submission;
-    var asm = R.state().asm; if (asm && asm.source === 'server' && asm.raw && asm.raw.revised_plan_id) { body.confirmed_text = textOf(st.input); body.confirmed_base_id = String(asm.raw.revised_plan_id); }
-    st.ctrl = new AbortController(); st.done.assemble = true; st.stage = 'assess'; paintRun(st);
-    fetch(FIN.api, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: st.ctrl.signal })
+    if (!body || !body.revision) { fail(C, '서버 권고 응답이 없어(샘플·개발용 어댑터) 최종 점검을 요청할 수 없음 — 흐름 확인은 ?mock=final'); return; }
+    body.polish = false; body.submission_id = C.submission;
+    var asm = R.state().asm; if (asm && asm.source === 'server' && asm.raw && asm.raw.revised_plan_id) { body.confirmed_text = C.input.map(function (p) { return p.t; }).join('\n') + '\n'; body.confirmed_base_id = String(asm.raw.revised_plan_id); }
+    C.ctrl = new AbortController();
+    fetch(FIN.api, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: C.ctrl.signal })
       .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, code: r.status, body: j }; }); })
       .then(function (x) {
-        if (state() !== st || st.status !== 'running') return;
+        if (V.C !== C || C.status !== 'running') return;
         if (x.code === 404 || x.code === 405 || x.code === 501) throw new Error('서버 최종 점검 API 없음(HTTP ' + x.code + ') — FIN-ENGINE 연결 전');
         if (!x.ok) throw new Error(serverMsg(x.body, x.code));
-        var res = normFinal(x.body, st.input, []);
-        res.checks.forEach(function (c) { pushLog(st, { stage: c.phase === 'after' ? 'recheck' : 'tools', tool: c.tool, check_id: c.id, kind: c.kind, plan_lines: c.lines, input: c.input, result: c.result, status: c.status, message: c.msg }); });
-        finish(st, res);
+        var res = normFinal(x.body, C.input, []);
+        res.checks.forEach(function (c) { onEvent(C, { stage: c.phase === 'after' ? 'recheck' : 'tools', tool: c.tool, check_id: c.id, label: c.msg || c.id, kind: c.kind, plan_lines: c.lines, input: c.input, result: c.result, status: c.status, message: c.msg }); });
+        finish(C, res);
       })
-      .catch(function (e) { if (state() !== st || st.status !== 'running') return; fail(st, e && e.name === 'AbortError' ? '취소됨' : (e && e.message ? String(e.message) : '서버 연결 실패')); });
+      .catch(function (e) { if (V.C !== C || C.status !== 'running') return; fail(C, e && e.name === 'AbortError' ? '취소됨' : (e && e.message ? String(e.message) : '서버 연결 실패')); });
   }
 
   /* ---------- 응답 정규화(finalization@v1 + 화면용 trace) → 최종 초안 모델. 교정은 원문 줄 문자열 앵커로 적용 ---------- */
   function normCheck(c, phase) { var det = (c && typeof c.details === 'object' && c.details) || {}; return { id: T(c.check_id) || 'check', kind: T(c.kind) || 'unknown', tool: T(c.tool) || 'unknown', status: T(c.status) || 'unchecked', lines: L(c.plan_lines).map(Number).filter(function (n) { return isFinite(n); }), msg: T(c.message), input: str(det.input != null ? det.input : (Object.keys(det).length ? det : '')), result: str(det.result != null ? det.result : ''), phase: phase }; }
+  function applyFixes(input, corrections) {
+    var ps = input.map(function (p) { return { n: p.n, t: p.t, kind: p.kind, h: p.h, me: p.me, orig: p.orig, src: p.src, fix: null }; });
+    corrections.forEach(function (cc) { cc.n = 0; if (!cc.applied) return; var idx = -1; ps.forEach(function (p, j) { if (idx < 0 && !p.fix && p.t.trim() === cc.before.trim()) idx = j; }); if (idx < 0) { cc.applied = false; cc.reason = 'anchor_mismatch'; return; } ps[idx].orig2 = ps[idx].t; ps[idx].t = cc.after; ps[idx].fix = cc; cc.n = ps[idx].n; });
+    return ps;
+  }
+  function rebuild(res, input) { res.paras = applyFixes(input, res.corrections); res.final_text = res.paras.map(function (p) { return p.t; }).join('\n') + '\n'; res.counts = countsOf(res, res.log || []); return res; }
+  function countsOf(res, log) {
+    var c = { resolved: 0, unresolved: 0, confirm: 0, unchecked: 0, applied: 0, rejected: 0, calls: log.length || res.checks.length, failed: 0, passed: 0, fills: 0, checks: 0 };
+    res.issues.forEach(function (i) { c[i.status]++; }); res.corrections.forEach(function (x) { if (x.applied) c.applied++; else c.rejected++; });
+    (log.length ? log : res.checks).forEach(function (x) { if (x.stage === 'correct') return; c.checks++; if (x.status === 'failed') c.failed++; if (x.status === 'passed') c.passed++; });
+    res.paras.forEach(function (p) { c.fills += phCount(p.t); }); return c;
+  }
   function normFinal(raw, input, log) {
     raw = raw && typeof raw === 'object' ? raw : {};
-    var fz = (raw.finalization && typeof raw.finalization === 'object') ? raw.finalization : raw;
-    var byId = {}, checks = [];
+    var fz = (raw.finalization && typeof raw.finalization === 'object') ? raw.finalization : raw, byId = {}, checks = [];
     L(fz.tool_checks_before).forEach(function (c) { if (c && typeof c === 'object') { var x = normCheck(c, 'before'); byId[x.id] = x; checks.push(x); } });
-    L(fz.tool_checks_after).forEach(function (c) { if (c && typeof c === 'object') { var x = normCheck(c, 'after'); var prev = byId[x.id]; if (prev) { x.before = prev.status; prev.after = x.status; } byId[x.id] = x; checks.push(x); } });
-    var paras = input.map(function (p) { return { n: p.n, t: p.t, kind: p.kind, h: p.h, me: p.me, orig: p.orig, src: p.src, fix: null }; });
-    var corrections = L(fz.corrections).map(function (c, i) {
-      c = c && typeof c === 'object' ? c : {};
-      var before = T(c.before), after = T(c.after), applied = !!c.applied, reason = T(c.reason) || (applied ? 'applied' : 'no_change');
-      var idx = -1; if (before) paras.forEach(function (p, j) { if (idx < 0 && !p.fix && p.t.trim() === before.trim()) idx = j; });
-      if (applied && idx < 0) { applied = false; reason = 'anchor_mismatch'; }
-      var cc = { i: i + 1, line: N(c.line) || (idx >= 0 ? paras[idx].n : 0), before: before, after: applied ? after : (T(c.proposed) || after), applied: applied, reason: reason, issues: L(c.issue_ids).map(T), checks: L(c.check_ids).map(T).map(function (id) { return byId[id]; }).filter(Boolean), n: idx >= 0 ? paras[idx].n : N(c.line) };
-      if (applied) { paras[idx].orig2 = paras[idx].t; paras[idx].t = after; paras[idx].fix = cc; }
-      return cc;
-    });
-    var issues = L(fz.issues).map(function (x) {
-      x = x && typeof x === 'object' ? x : {};
-      var id = T(x.issue_id) || T(x.id), s = T(x.status) || 'unchecked';
-      var cs = L(x.check_ids).map(T).map(function (k) { return byId[k]; }).filter(Boolean);
-      var fixed = corrections.filter(function (c) { return c.applied && c.issues.indexOf(id) >= 0; });
-      var ui = s === 'resolved' ? 'resolved' : (s === 'unresolved' ? 'unresolved' : (fixed.some(function (c) { return phCount(c.after) > 0; }) || cs.some(function (c) { return c.status === 'unchecked' && c.phase === 'after'; }) ? 'confirm' : 'unchecked'));
-      return { id: id, kind: T(x.kind) || 'logical', lines: L(x.plan_lines).map(Number).filter(function (n) { return isFinite(n); }), msg: T(x.message), status: ui, raw: s, checks: cs, fixes: fixed };
-    });
-    var counts = { resolved: 0, unresolved: 0, confirm: 0, unchecked: 0, applied: 0, rejected: 0, calls: log.length || checks.length, failed: 0, passed: 0, fills: 0 };
-    issues.forEach(function (i) { counts[i.status]++; });
-    corrections.forEach(function (c) { if (c.applied) counts.applied++; else counts.rejected++; });
-    (log.length ? log : checks).forEach(function (c) { if (c.status === 'failed') counts.failed++; if (c.status === 'passed') counts.passed++; });
-    paras.forEach(function (p) { counts.fills += phCount(p.t); });
-    return { status: T(fz.status) || (raw.finalization ? 'partial' : 'incomplete'), gen: T(fz.generator), model: T(fz.model), notices: L(fz.notices).map(T).filter(Boolean), checks: checks, byId: byId, corrections: corrections, paras: paras, issues: issues, counts: counts, origin: T(raw.origin), sig: raw.finalization_sig || null, note: T(raw.note), final_text: textOf(paras), input_text: textOf(input), counters: (fz.counters && typeof fz.counters === 'object') ? fz.counters : {} };
+    L(fz.tool_checks_after).forEach(function (c) { if (c && typeof c === 'object') { var x = normCheck(c, 'after'); byId[x.id] = x; checks.push(x); } });
+    var corrections = L(fz.corrections).map(function (c, i) { c = c && typeof c === 'object' ? c : {}; var applied = !!c.applied; return { i: i + 1, line: N(c.line), before: T(c.before), after: applied ? T(c.after) : (T(c.proposed) || T(c.after)), applied: applied, reason: T(c.reason) || (applied ? 'applied' : 'no_change'), issues: L(c.issue_ids).map(T), checks: L(c.check_ids).map(T).map(function (id) { return byId[id]; }).filter(Boolean), n: 0, reverted: false }; });
+    var res = { status: T(fz.status) || (raw.finalization ? 'partial' : 'incomplete'), gen: T(fz.generator), model: T(fz.model), notices: L(fz.notices).map(T).filter(Boolean), checks: checks, corrections: corrections, origin: T(raw.origin), sig: raw.finalization_sig || null, log: log, input_text: input.map(function (p) { return p.t; }).join('\n') + '\n' };
+    res.issues = L(fz.issues).map(function (x) { x = x && typeof x === 'object' ? x : {}; var id = T(x.issue_id) || T(x.id), s = T(x.status) || 'unchecked', cs = L(x.check_ids).map(T).map(function (k) { return byId[k]; }).filter(Boolean), fixed = corrections.filter(function (c) { return c.applied && c.issues.indexOf(id) >= 0; }); var ui = s === 'resolved' ? 'resolved' : (s === 'unresolved' ? 'unresolved' : (fixed.some(function (c) { return phCount(c.after) > 0; }) || cs.some(function (c) { return c.status === 'unchecked' && c.phase === 'after'; }) ? 'confirm' : 'unchecked')); return { id: id, kind: T(x.kind) || 'logical', lines: L(x.plan_lines).map(Number).filter(function (n) { return isFinite(n); }), msg: T(x.message), status: ui, checks: cs }; });
+    return rebuild(res, input);
   }
 
-  /* ---------- 화면 ---------- */
-  function renderFinal() {
-    var app = $('app'), d = D(), st = state(); if (!d) return;
-    document.body.dataset.ready = '0'; document.body.dataset.view = 'final';
-    clear(app);
-    var rep = el('div', 'rep'), doc = el('article', 'doc'); add(rep, doc);
-    var top = el('section'); top.id = 'fin-top';
-    add(top, el('div', 'eyebrow en', 'Final inspection · VI'));
-    var hero = el('div', 'fin-hero'); var h1 = el('h1', null, st.status === 'done' ? '최종 초안' : '최종 점검·교정'); h1.id = 'finTitle'; h1.tabIndex = -1;
-    var stt = el('span', 'st ' + (st.status === 'running' ? 'run' : st.status === 'done' ? 'done' : st.status === 'error' ? 'err' : ''), st.status === 'running' ? 'running' : st.status === 'done' ? 'complete' : st.status === 'error' ? 'failed' : 'ready'); stt.id = 'finState';
-    var elp = el('span', 'el', st.elapsed ? st.elapsed.toFixed(1) + 's' : ''); elp.id = 'finEl';
-    add(hero, h1, stt, elp); add(top, hero);
-    add(top, el('p', 'sm muted', '연구자가 확정한 수정본을 논리·물리·구조·근거로 점검하고, 원문 앵커가 맞는 줄만 고쳐 최종 초안을 만든다 · 모르는 값은 [확인 필요]로 남기고 새 사실은 만들지 않는다 · 제한된 검사이며 연구 전체의 타당성을 보증하지 않는다'));
-    var idx = el('div', 'idx'); idx.id = 'finIdx';
-    [['fin-run', '⑤', '점검 진행 · 도구 기록'], ['fin-draft', '⑥', '최종 초안'], ['fin-compare', '⑦', '전후 비교']].forEach(function (x, i) { var a = el('a', i === 0 && st.status !== 'done' ? 'on' : (i === 1 && st.status === 'done' ? 'on' : '')); a.href = '#' + x[0]; a.dataset.jump = x[0]; add(a, el('b', null, x[1]), x[2]); if (i > 0 && st.status !== 'done') { a.setAttribute('aria-disabled', 'true'); a.style.opacity = '.5'; } add(idx, a); });
-    var sp = el('span'); sp.style.cssText = 'margin-left:auto; display:flex; gap:6px; flex-wrap:wrap;';
-    var back = btn('btn sm', '수정 권고로', 'finBack'); var md = btn('btn sm', '최종 초안 내려받기(.md)', 'finMd'); md.disabled = st.status !== 'done'; var dx = btn('btn sm', '.docx', 'finDocx'); dx.disabled = st.status !== 'done'; dx.title = '서버(FIN-ENGINE)가 만드는 Word 문서'; var pr = btn('btn sm', '인쇄/PDF 저장', 'finPrint'); pr.disabled = st.status !== 'done';
-    var again = btn('btn sm dark', st.status === 'error' ? '다시 시도' : '다시 확정·검증', 'finAgain'); again.disabled = st.status === 'running';
-    add(sp, back, md, dx, pr, again); add(idx, sp); add(top, idx);
-    var nt = el('div', 'notice'); nt.id = 'finNotice'; paintNotice(nt, st); add(top, nt);
-    add(doc, top);
-    add(doc, runSection(st));
-    if (st.status === 'done') { add(doc, draftSection(st)); add(doc, compareSection(st)); }
-    else if (st.status === 'idle') add(doc, idleSection());
-    var panel = el('aside', 'panel card'); panel.style.padding = '12px';
-    var tabs = el('div', 'ptabs'); var b1 = btn(S.ptab === 'ev' ? 'on' : '', '근거'); b1.dataset.ptab = 'ev'; var b2 = btn(S.ptab === 'plan' ? 'on' : '', '계획서'); b2.dataset.ptab = 'plan'; var bc = btn('rvclose', '닫기 ✕'); bc.dataset.rvclose = '1'; bc.setAttribute('aria-label', '패널 닫기'); add(tabs, b1, b2, bc);
-    var pb = el('div', 'pbody'); pb.id = 'pbody'; add(panel, tabs, pb); add(rep, panel);
-    var fab = btn('btn sm rvfab', '근거 · 계획서'); fab.dataset.rvopen = '1'; add(rep, fab);
-    add(app, rep);
-    U.renderPanel();
-    document.body.dataset.ready = '1';
+  /* ---------- 완성 ---------- */
+  function renderDone() {
+    var C = V.C, d = D(); if (!C.res) { goStep('check'); return; }
+    view('done', false); closePop(); var res = C.res, c = res.counts, sec = shell('fin-done'), ps = paras(), changed = 0; ps.forEach(function (p) { if (p.kind !== 'same' || p.me) changed++; });
+    head(sec, '완성', '최종 연구계획서 초안', null, 'fzTitle');
+    add(sec, el('p', 'fz-stat', '채택 ' + adoptedCount() + '건 · 바뀐 문장 ' + changed + ' · 자동 수정 ' + c.applied + '건 · 확인 필요 ' + c.fills + '곳 · 도구 검사 ' + c.checks + '건(불일치 ' + c.failed + ' → 수정 ' + c.applied + ')'));
+    add(sec, el('p', 'fz-note', kst() + ' · ' + R.genText(res.gen, res.model) + ' · ' + (res.sig ? '서버 서명 확인됨' : (MOCK ? '시험(mock) 결과 · 서명 없음' : '서명 확인 안 됨')) + ' · 제한된 검사 · [확인 필요]는 연구자가 채워야 합니다'));
+    var acts = el('div', 'fz-acts'); add(acts, btn('btn dark', '내려받기 (.md)', 'fzMd'), btn('btn', '.docx', 'fzDocx'), btn('btn', '인쇄', 'fzPrint'), btn('btn', '처음부터 다시', 'fzRestart')); add(sec, acts);
+    var doc = el('article', 'fd-doc'); doc.id = 'fzDoc'; doc.setAttribute('aria-label', '최종 초안 본문'); var title = null; res.paras.forEach(function (p) { if (!title && p.h === 'title') title = p; });
+    add(doc, el('div', 't', title ? (headingOf(title.t) || { text: title.t }).text : (d.plan.title || '연구계획서')), el('div', 'meta', (d.plan.file || '직접 입력') + ' · 최종 초안 · ' + kst()));
+    res.paras.forEach(function (p) { if (p === title) return; var h = headingOf(p.t); if (h && !p.fix && p.kind === 'same' && !p.me) { add(doc, el(h.level <= 2 ? 'h2' : 'h3', null, h.text)); return; } var wrap = el('div', 'fd-p ro' + (p.fix ? ' fix' : '')); var pe = textEl('p', null, h ? h.text : p.t); if (h) { pe.textContent = ''; add(pe, el('strong', null, h.text)); } add(wrap, pe); add(doc, wrap); });
+    add(sec, doc); view('done', true);
+    var h1 = $('fzTitle'); if (h1) h1.focus({ preventScroll: true });
   }
-  function paintNotice(nt, st) {
-    clear(nt); var d = D(), parts = [];
-    if (MOCK) parts.push(['목업', '가짜 fixture · 도구 실행 기록도 가짜(실제 Z3·Pint·NetworkX 실행 아님) · 서버 호출 없음']);
-    if (d._status && d._status.source === 'sample') parts.push(['샘플 데이터', '분석 결과가 아닌 공용 fixture로 만든 예시']);
-    if (st.status === 'error') parts.push(['최종 점검 실패', st.err]);
-    if (st.res) { parts.push(['생성 주체', R.genText(st.res.gen, st.res.model) + (st.res.model ? ' · ' + st.res.model : '') + ' · 교정 문안은 근거가 아니며 최종 판단은 연구자에게']); parts.push(['출처', st.res.sig ? '서버 서명 확인됨' : (st.res.origin === 'server_signed' ? '서버 응답' : (MOCK ? '목업 fixture · 서명 없음' : '서버 서명 확인 안 됨'))]); st.res.notices.forEach(function (n) { parts.push(['', n]); }); }
-    if (!parts.length) { nt.hidden = true; return; }
-    nt.hidden = false; parts.forEach(function (p, i) { if (i === 0) add(nt, p[0] ? el('b', null, p[0]) : '', p[1]); else { var s = el('span', 'sm'); add(s, p[0] ? el('b', null, p[0]) : '', p[1]); add(nt, s); } });
-  }
-  function idleSection() { var sec = el('section'); var c = el('div', 'card finidle'); add(c, el('b', null, '아직 확정하지 않음'), el('p', 'sm muted', '수정 권고(V)에서 채택·직접 수정한 뒤 “수정 확정·검증”을 누르면 여기서 점검이 시작된다.')); var b = btn('btn dark', '수정 확정·검증 →', 'finStartIdle'); b.style.marginTop = '12px'; add(c, b); add(sec, c); return sec; }
-  function stageCounts(st, id) { var c = { n: 0, failed: 0, unchecked: 0, last: 0 }; st.log.forEach(function (r) { if (r.stage !== id) return; c.n++; if (r.status === 'failed') c.failed++; if (r.status === 'unchecked') c.unchecked++; c.last = r.t; }); return c; }
-  function runSection(st) {
-    var sec = el('section'); sec.id = 'fin-run';
-    var sh = el('div', 'sec'); add(sh, el('span', 'num', '⑤'), el('h2', null, '최종 점검 진행'), el('span', 'd', '논리 → 물리 → 구조 → 근거 → 교정 → 재검사 · 단계마다 부른 도구의 이름·입력·결과')); add(sec, sh);
-    var card = el('div', 'card'); var stg = el('div', 'fin-stages'); stg.id = 'finStages'; add(card, stg);
-    var pb = el('div', 'pbar'); pb.style.margin = '0 22px 6px 22px'; var pbi = el('div'); pbi.id = 'finPbar'; add(pb, pbi); add(card, pb);
-    var lw = el('div', 'finlogwrap'); var hd = el('div', 'finloghd'); add(hd, el('b', null, '도구 호출 기록'), el('span', 'sm muted', '')); hd.lastChild.id = 'finLogCnt';
-    var tg = btn('btn sm', st.logOpen ? '기록 접기' : '기록 펼치기', 'finLogToggle'); tg.setAttribute('aria-expanded', st.logOpen ? 'true' : 'false'); tg.setAttribute('aria-controls', 'finLog'); add(hd, tg); add(lw, hd);
-    var log = el('div', 'finlog'); log.id = 'finLog'; log.setAttribute('role', 'log'); log.setAttribute('aria-live', 'polite'); log.setAttribute('aria-label', '도구 호출 기록'); log.hidden = !st.logOpen; add(lw, log); add(card, lw); add(sec, card);
-    paintRun(st, stg, pbi); st.log.forEach(function (r) { appendLogRow(r, false, log); });
-    if (!st.log.length) add(log, el('div', 'empty', st.status === 'running' ? '도구 호출 대기' : (st.status === 'error' ? '기록 없음 · ' + st.err : '기록 없음')));
-    return sec;
-  }
-  function paintRun(st, stg, pbi) {
-    stg = stg || $('finStages'); pbi = pbi || $('finPbar'); if (!stg) return; clear(stg);
-    var tl = el('div', 'tl'), total = st.stages.length, doneN = 0;
-    st.stages.forEach(function (s) { var isDone = !!st.done[s.id] || st.status === 'done', run = st.status === 'running' && st.stage === s.id && !isDone; if (isDone) doneN++; var c = stageCounts(st, s.id);
-      var tn = el('div', 'tn' + (isDone ? ' done' : (run ? ' run' : ''))); add(tn, el('div', 'nm', s.name)); var msg = el('div', 'msg'); add(msg, s.desc || ''); if (run) add(msg, ' ', el('strong', null, '· 실행 중')); add(tn, msg);
-      var tm = el('div', 'tm'); if (c.n) { add(tm, el('b', null, '도구 ' + c.n)); if (c.failed) add(tm, ' ', el('span', 'bad', '불일치 ' + c.failed)); if (c.unchecked) add(tm, ' · 미검사 ' + c.unchecked); } else if (isDone) add(tm, '—'); add(tn, tm); add(tl, tn); });
-    add(stg, tl);
-    if (pbi) pbi.style.width = (st.status === 'done' ? 100 : Math.min(96, 4 + Math.round(92 * (doneN + (st.stage ? 0.5 : 0)) / Math.max(1, total)))) + '%';
-    var cnt = $('finLogCnt'); if (cnt) { var f = st.log.filter(function (r) { return r.status === 'failed'; }).length; cnt.textContent = st.log.length ? st.log.length + '건 · 불일치 ' + f + ' · 통과 ' + st.log.filter(function (r) { return r.status === 'passed'; }).length + ' · 미검사 ' + st.log.filter(function (r) { return r.status === 'unchecked'; }).length : ''; }
-    var s0 = $('finState'); if (s0) { s0.textContent = st.status === 'running' ? 'running' : st.status === 'done' ? 'complete' : st.status === 'error' ? 'failed' : 'ready'; s0.className = 'st ' + (st.status === 'running' ? 'run' : st.status === 'done' ? 'done' : st.status === 'error' ? 'err' : ''); }
-  }
-  function stageName(st, id) { var n = id; st.stages.forEach(function (s) { if (s.id === id) n = s.name; }); return n; }
-  function appendLogRow(r, scroll, log) {
-    log = log || $('finLog'); if (!log) return; var st = state();
-    var empty = log.querySelector('.empty'); if (empty) empty.remove();
-    var row = el('div', 'row'); row.id = 'finRow-' + (log.children.length + 1); row.dataset.check = r.id; row.tabIndex = -1;
-    add(row, el('div', 't', r.t.toFixed(1) + 's'), el('div', 'stg', stageName(st, r.stage)));
-    var body = el('div'); var nm = el('div', 'nm'); add(nm, r.name, stEl(r.status), r.id ? el('span', 'id', r.id) : '', r.kind ? el('span', 'id', KIND_KO[r.kind] || r.kind) : '', lines(r.lines), r.ms != null ? el('span', 'id', r.ms + ' ms') : ''); add(body, nm);
-    if (r.input) { var i1 = el('div', 'io'); add(i1, el('b', null, '입력'), r.input); add(body, i1); }
-    if (r.result) { var i2 = el('div', 'io'); add(i2, el('b', null, '결과'), r.result); add(body, i2); }
-    if (r.msg) add(body, el('div', 'msg', r.msg));
-    add(row, body); add(log, row);
-    if (scroll && !log.hidden) log.scrollTop = log.scrollHeight;
-  }
-  function draftSection(st) {
-    var res = st.res, c = res.counts, d = D(), sec = el('section'); sec.id = 'fin-draft';
-    var sh = el('div', 'sec'); add(sh, el('span', 'num', '⑥'), el('h2', null, '최종 초안'), el('span', 'd', '완성된 연구계획서 · 교정 표시(원문 → 수정 · 이유 · 도구 근거) · 해결·미해결·확인 필요')); sh.querySelector('h2').id = 'finDraftTitle'; sh.querySelector('h2').tabIndex = -1; add(sec, sh);
-    var sum = el('div', 'card'); var grid = el('div', 'fin-sum'); grid.id = 'finSum';
-    [[c.resolved, '해결', '도구 재검사 통과', 'ok'], [c.unresolved, '미해결', '교정 없음 · 연구자 판단', 'bad'], [c.confirm, '확인 필요', '[확인 필요]로 남김 · 값 확정 뒤 재검사', 'ask'], [c.unchecked, '미검사', '도구가 검사하지 못함', ''], [c.applied, '교정 적용', '제외 ' + c.rejected + ' (게이트·앵커)', 'ok'], [c.calls, '도구 호출', '불일치 ' + c.failed + ' · 통과 ' + c.passed, '']].forEach(function (x) { var k = el('div', x[3]); var v = el('div', 'v', String(x[0])); add(v, el('i', null, x[1])); add(k, v, el('div', 'l', x[2])); add(grid, k); });
-    add(sum, grid); add(sec, sum);
-    var bar = el('div', 'finbar'); bar.style.marginTop = '16px'; var seg = el('div', 'seg'); seg.setAttribute('role', 'group'); seg.setAttribute('aria-label', '보기 전환');
-    [['marks', '교정 표시'], ['clean', '깨끗한 원고']].forEach(function (v) { var b = btn(st.view === v[0] ? 'on' : '', v[1]); b.dataset.finview = v[0]; b.setAttribute('aria-pressed', st.view === v[0] ? 'true' : 'false'); add(seg, b); });
-    add(bar, seg, el('span', 'msg', '상태 ' + res.status + ' · ' + (res.sig ? '서버 서명 확인됨' : (MOCK ? '목업 · 서명 없음' : '서명 확인 안 됨')) + ' · 교정 ' + c.applied + '줄 · 확인 필요 ' + c.fills + '곳 · 교정 문단을 누르면 점검 기록으로')); add(sec, bar);
-    var paper = el('div', 'finpaper' + (st.view === 'clean' ? ' clean' : '')); paper.id = 'finPaper'; var rp = el('div', 'rvpaper');
-    var title = null; res.paras.forEach(function (p) { if (!title && p.h === 'title') title = p; });
-    add(rp, el('div', 't', title ? (headingOf(title.t) || { text: title.t }).text : (d.plan.title || '연구계획서')));
-    add(rp, el('div', 'meta', (d.plan.file || '직접 입력') + ' · 최종 초안 · ' + new Date().toISOString().slice(0, 10) + ' · 교정 ' + c.applied + '줄 · 확인 필요 ' + c.fills + '곳 · 상태 ' + res.status + ' · 제한된 검사 · 최종 판단은 연구자에게'));
-    res.paras.forEach(function (p) {
-      if (p === title) return;
-      var h = headingOf(p.t);
-      if (h && !p.fix && p.kind === 'same') { add(rp, el(h.level <= 2 ? 'h2' : 'h3', null, h.text)); return; }
-      var cls = p.fix ? 'fix' : (p.kind === 'inserted' ? 'ins' : (p.kind === 'changed' ? 'chg' : ''));
-      var e = textEl('p', cls, h ? h.text : p.t); e.dataset.n = String(p.n);
-      if (h) { e.textContent = ''; add(e, el('strong', null, h.text)); }
-      if (p.fix) { e.dataset.finfix = String(p.fix.i); e.tabIndex = 0; e.title = '최종 점검에서 고친 문단 · 누르면 점검 기록으로'; add(e, el('span', 'rvtag', '교정 ' + p.fix.i)); }
-      else if (p.kind === 'changed' || p.kind === 'inserted') add(e, el('span', 'rvtag' + (p.me || (p.src && p.src.dec === 'edit') ? ' me' : ''), p.me ? '직접 수정' : (p.src && p.src.dec === 'edit' ? '직접 수정' : '③ 채택')));
-      add(rp, e);
-      if (p.fix) add(rp, fixEl(p.fix, res));
-    });
-    add(paper, rp); add(sec, paper);
-    var cc = el('div', 'card'); cc.style.marginTop = '18px'; var chd = el('div', 'finloghd'); chd.style.padding = '12px 22px 4px 22px'; add(chd, el('b', null, '교정 목록 ' + res.corrections.length + '건'), el('span', 'sm muted', '적용 ' + c.applied + ' · 제외 ' + c.rejected + ' — 제외된 제안은 본문에 반영하지 않고 사유만 남긴다')); add(cc, chd);
-    var cl = el('div', 'fincorr'); res.corrections.forEach(function (x) { add(cl, fixEl(x, res, true)); }); if (!res.corrections.length) add(cl, el('div', 'sm muted', '교정 제안 없음')); add(cc, cl); add(sec, cc);
-    var ic = el('div', 'card'); ic.style.marginTop = '18px'; var ihd = el('div', 'finloghd'); ihd.style.padding = '12px 22px 4px 22px'; add(ihd, el('b', null, '쟁점 ' + res.issues.length + '건'), el('span', 'sm muted', '해결 ' + c.resolved + ' · 미해결 ' + c.unresolved + ' · 확인 필요 ' + c.confirm + ' · 미검사 ' + c.unchecked)); add(ic, ihd);
-    var il = el('div', 'fin-issues'); res.issues.forEach(function (x) { var row = el('div', 'fin-issue'); add(row, el('div', 'k', KIND_KO[x.kind] || x.kind)); var b = el('div'); add(b, x.msg, lines(x.lines)); var bd = el('span', 'badges'); x.checks.forEach(function (ck) { add(bd, toolBadge(ck)); }); add(b, bd); add(row, b, stEl(x.status)); add(il, row); }); if (!res.issues.length) add(il, el('div', 'sm muted', '쟁점 없음 — 검사 범위 안에서'));
-    add(ic, il); add(sec, ic);
-    return sec;
-  }
-  function fixEl(x, res, listing) {
-    var box = el('div', 'finfix' + (x.applied ? '' : ' rej')); if (!listing) box.dataset.finfixbox = String(x.i);
-    var hd = el('div', 'hd'); add(hd, el('b', null, '교정 ' + x.i + (x.applied ? '' : ' · 제외')), x.n ? lines([x.n]) : '', el('span', null, REASON_KO[x.reason] || x.reason)); add(box, hd);
-    var line = el('div'); add(line, el('span', 'o', x.before), el('span', 'arrow', '→'), textEl('span', 'n', x.after)); add(box, line);
-    var why = []; res.issues.forEach(function (i) { if (x.issues.indexOf(i.id) >= 0) why.push(i.msg); }); if (why.length) add(box, el('div', 'why', '이유: ' + why.join(' / ')));
-    var bd = el('div', 'badges'); add(bd, el('span', 'sm muted', '도구 근거')); x.checks.forEach(function (ck) { add(bd, toolBadge(ck)); }); if (!x.checks.length) add(bd, el('span', 'sm muted', '연결된 도구 검사 없음')); add(box, bd);
-    return box;
-  }
-  function compareSection(st) {
-    var res = st.res, c = res.counts, d = D(), sec = el('section'); sec.id = 'fin-compare';
-    var sh = el('div', 'sec'); add(sh, el('span', 'num', '⑦'), el('h2', null, '전후 비교'), el('span', 'd', '처음 계획서 대비 무엇이 좋아졌는지')); add(sec, sh);
-    var cards = (d.cards || []), asm = R.assemble(), ac = asm.counts, rs = R.state();
-    var solved = cards.filter(function (cd) { var it = rs.items[cd.rank]; if (!it || !it.rev) return false; return it.rev.edits.some(function (e) { var dc = it.dec[e.id]; return dc && dc.d !== 'reject'; }); });
-    var before0 = (d.plan.lines || []).length, after0 = res.paras.length, fillsBefore = 0; st.input.forEach(function (p) { fillsBefore += phCount(p.t); });
-    var grid = el('div', 'fincmp'); grid.id = 'finCmp';
-    [[solved.length, '/ ' + cards.length, '위험 해소', '위험카드 중 수정안을 채택·직접 수정한 카드'], [ac.changed + ac.inserted, '줄', '수정', '③ 재탄생에서 채택·직접 수정한 줄(추가 ' + ac.inserted + ')'], [c.applied, '/ ' + res.corrections.length, '오류 수정', '⑤ 최종 점검이 고친 줄(논리·물리·구조·근거)'], [c.resolved, '/ ' + res.issues.length, '쟁점 해결', '재검사 통과 · 확인 필요 ' + c.confirm + ' · 미해결 ' + c.unresolved], [c.calls, '회', '도구 호출', '불일치 ' + c.failed + ' → 교정 ' + c.applied + ' · 재검사 통과 ' + res.checks.filter(function (k) { return k.phase === 'after' && k.status === 'passed'; }).length]].forEach(function (x) { var k = el('div', 'card k'); var v = el('div', 'v', String(x[0])); add(v, el('small', null, x[1])); add(k, v, el('div', 'l', x[2]), el('div', 'd', x[3])); add(grid, k); });
-    add(sec, grid);
-    var tc = el('div', 'card'); tc.style.padding = '8px 22px 14px 22px'; var tbl = el('table', 'fintbl'); var thead = el('thead'); var trh = el('tr'); ['항목', '처음 계획서', '최종 초안'].forEach(function (h) { add(trh, el('th', null, h)); }); add(thead, trh); add(tbl, thead);
-    var tb = el('tbody');
-    function row(k, b, a) { var tr = el('tr'); add(tr, el('td', null, k)); var t1 = el('td', 'b'); add(t1, b); var t2 = el('td', 'a'); add(t2, a); add(tr, t1, t2); add(tb, tr); }
-    row('위험카드', cards.length + '장 · ' + cards.map(function (cd) { return U.fam(cd.fam).n + ' S' + cd.sev; }).join(' · '), (function () { var s = el('span'); add(s, '해소 ' + solved.length + ' · 미해소 ' + (cards.length - solved.length)); cards.forEach(function (cd) { var it = rs.items[cd.rank], n = 0; if (it && it.rev) it.rev.edits.forEach(function (e) { var dc = it.dec[e.id]; if (dc && dc.d !== 'reject') n++; }); add(s, el('div', 'sm muted', pad2(cd.rank) + ' ' + U.fam(cd.fam).n + ' → 채택·수정 ' + n + '건')); }); return s; })());
-    row('논리·물리·구조·근거 오류', res.issues.length + '건 발견 (도구 불일치 ' + c.failed + ')', (function () { var s = el('span'); add(s, '해결 ' + c.resolved, stEl('resolved'), ' 확인 필요 ' + c.confirm, stEl('confirm'), ' 미해결 ' + c.unresolved, stEl('unresolved')); return s; })());
-    row('줄 수', before0 + '줄', after0 + '줄 (수정 ' + (ac.changed + ac.inserted) + ' · 교정 ' + c.applied + ')');
-    row('[확인 필요] 자리표시', fillsBefore + '곳 (③ 뒤)', c.fills + '곳 — 연구자가 값을 확정하면 재검사');
-    row('근거', '심사평·결정문 발췌 ' + Object.keys(d.ev || {}).length + '건', '채택 문안마다 근거 번호 · 교정마다 도구 근거 배지');
-    row('생성 주체', '위험카드 ' + (d._status && d._status.source === 'sample' ? '샘플' : '분석'), R.genText(res.gen, res.model) + ' · 제안·교정은 근거가 아니며 최종 판단은 연구자에게');
-    add(tbl, tb); add(tc, tbl); add(sec, tc);
-    return sec;
-  }
-
-  /* ---------- 내려받기: .md(최종 초안 + 점검 요약 + 교정 목록 + 도구 기록) · .docx(서버) · 인쇄 ---------- */
   function mdName() { var d = D(), base = String((d && d.plan && d.plan.file) || 'plan').replace(/\.[^.]+$/, '').replace(/[^0-9A-Za-z가-힣_.-]+/g, '_') || 'plan'; return base + '_final.md'; }
-  function finalMd(st) {
-    var res = st.res, c = res.counts, d = D();
-    var out = ['<!-- Neumann 최종 초안 · 원본 ' + (d.plan.file || '직접 입력') + ' · ' + new Date().toISOString().slice(0, 19) + ' · 상태 ' + res.status + ' · 교정 ' + c.applied + '줄(제외 ' + c.rejected + ') · 해결 ' + c.resolved + ' · 미해결 ' + c.unresolved + ' · 확인 필요 ' + c.confirm + ' · 도구 호출 ' + c.calls + ' · 생성: ' + R.genText(res.gen, res.model) + ' · ' + (res.sig ? '서버 서명 확인됨' : (MOCK ? '목업 fixture · 서명 없음' : '서명 확인 안 됨')) + ' · 제한된 검사 · 최종 판단은 연구자에게 -->', ''];
+  function finalMd() {
+    var C = V.C, res = C.res, c = res.counts, d = D();
+    var out = ['<!-- Neumann 최종 초안 · 원본 ' + (d.plan.file || '직접 입력') + ' · ' + kst() + ' · 상태 ' + res.status + ' · 자동 수정 ' + c.applied + '건 · 확인 필요 ' + c.fills + '곳 · 도구 검사 ' + c.checks + '건(불일치 ' + c.failed + ') · 생성: ' + R.genText(res.gen, res.model) + ' · ' + (res.sig ? '서버 서명 확인됨' : (MOCK ? '시험(mock) · 서명 없음' : '서명 확인 안 됨')) + ' · 제한된 검사 · 최종 판단은 연구자에게 -->', ''];
     res.notices.forEach(function (n) { out.push('> ' + n); }); out.push('');
     res.paras.forEach(function (p) { if (/^\s{0,3}#{1,6}\s/.test(p.t) && out.length) out.push(''); out.push(p.t); });
-    out.push('', '---', '', '## 최종 점검 요약 (Neumann · 교정은 근거가 아님)', '', '| 쟁점 | 종류 | 줄 | 상태 | 도구 |', '|---|---|---|---|---|');
-    res.issues.forEach(function (i) { out.push('| ' + [i.msg.replace(/\|/g, '\\|'), KIND_KO[i.kind] || i.kind, i.lines.join(', '), ST_KO[i.status] || i.status, i.checks.map(function (k) { return (TOOL_KO[k.tool] || k.tool) + ' ' + (ST_KO[k.status] || k.status); }).join(', ')].join(' | ') + ' |'); });
-    out.push('', '## 교정 목록', '', '| # | 줄 | 원문 | 수정 | 결과 | 도구 |', '|---|---|---|---|---|---|');
-    res.corrections.forEach(function (x) { out.push('| ' + [x.i, x.n || x.line, x.before.replace(/\|/g, '\\|'), x.after.replace(/\|/g, '\\|'), REASON_KO[x.reason] || x.reason, x.checks.map(function (k) { return k.id; }).join(', ')].join(' | ') + ' |'); });
+    out.push('', '---', '', '## 최종 점검 요약 (Neumann · 수정 문안은 근거가 아님)', '', '| 항목 | 도구 | 줄 | 결과 |', '|---|---|---|---|');
+    C.rows.forEach(function (r) { out.push('| ' + [r.label, TOOL_KO[r.tool] || r.tool, r.lines.join(', '), (r.phase === 'after' ? '수정 뒤 ' + (r.after === 'passed' ? '통과' : '재검사 필요') : (r.status === 'passed' ? '통과' : (r.status === 'failed' ? '불일치' : '미검사')))].join(' | ') + ' |'); });
+    out.push('', '## 자동 수정', '', '| # | 줄 | 원문 | 수정 | 결과 |', '|---|---|---|---|---|');
+    res.corrections.forEach(function (x) { out.push('| ' + [x.i, x.n || x.line, x.before.replace(/\|/g, '\\|'), x.after.replace(/\|/g, '\\|'), REASON_KO[x.reason] || x.reason].join(' | ') + ' |'); });
     out.push('', '## 도구 호출 기록', '', '| 시각 | 단계 | 도구 | 입력 | 결과 | 상태 |', '|---|---|---|---|---|---|');
-    st.log.forEach(function (r) { out.push('| ' + [r.t.toFixed(1) + 's', stageName(st, r.stage), r.name + (r.id ? ' (' + r.id + ')' : ''), r.input.replace(/\|/g, '\\|'), r.result.replace(/\|/g, '\\|'), ST_KO[r.status] || r.status].join(' | ') + ' |'); });
+    C.log.forEach(function (r) { out.push('| ' + [r.t.toFixed(1) + 's', STAGE_KO[r.stage] || r.stage, r.name + (r.id ? ' (' + r.id + ')' : ''), r.input.replace(/\|/g, '\\|'), r.result.replace(/\|/g, '\\|'), r.status].join(' | ') + ' |'); });
     return out.join('\n') + '\n';
   }
   function saveBlob(blob, name) { var u = URL.createObjectURL(blob), a = document.createElement('a'); a.href = u; a.download = name; a.style.display = 'none'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(u); }, 5000); }
-  function downloadMd() { var st = state(); if (!st.res) return; var name = mdName(); saveBlob(new Blob([finalMd(st)], { type: 'text/markdown;charset=utf-8' }), name); U.toast('최종 초안 내려받음 · ' + name); }
-  function downloadDocx() { U.toast(MOCK ? '목업 · .docx는 서버(FIN-ENGINE)가 만듭니다 — 여기서는 .md 또는 인쇄/PDF' : '최종 초안 .docx는 서버 연결(FIN-ENGINE) 뒤 — .md 또는 인쇄/PDF'); }
-  function jumpToCheck(id) { var st = state(); if (!st.logOpen) { st.logOpen = true; var lg = $('finLog'); if (lg) lg.hidden = false; var tg = $('finLogToggle'); if (tg) { tg.textContent = '기록 접기'; tg.setAttribute('aria-expanded', 'true'); } } var rows = document.querySelectorAll('#finLog .row'); var hit = null; rows.forEach(function (r) { r.classList.remove('hl'); if (!hit && r.dataset.check === id) hit = r; }); if (!hit) { U.toast('이 검사의 기록이 없음'); return; } hit.classList.add('hl'); hit.scrollIntoView({ behavior: 'smooth', block: 'center' }); hit.focus({ preventScroll: true }); }
+  function downloadMd() { if (!V.C.res) return; var name = mdName(); saveBlob(new Blob([finalMd()], { type: 'text/markdown;charset=utf-8' }), name); U.toast('내려받음 · ' + name); }
+  function downloadDocx() { U.toast(MOCK ? '시험(mock)에서는 .md와 인쇄만 됩니다 · .docx는 서버가 만듭니다' : '최종 초안 .docx는 서버 연결 뒤 — .md 또는 인쇄'); }
+  function restart() { try { R.forget(); } catch (e) { /* 없음 */ } forget(); var u = location.pathname + '?mock=final'; if (MOCK) location.href = u; else { U.go(0); } }
 
-  /* ---------- 단계 표시 VI · 진입 ---------- */
+  /* ---------- 비목업(기존 화면)용 단계 버튼 VI · 목업 단계 바로가기(?at=) ---------- */
   function paintSteps() {
-    var steps = $('steps'); if (!steps || !$('stpRevise') || $('stpFinal')) return;
-    var st = state(), d = D(), ok = !!(d && (st.status === 'done' || (R.assemble().counts.adopted > 0))), cur = S.step === 5;
-    var b = btn('stp' + (cur ? ' cur' : (st.status === 'done' ? ' done' : '')), '', 'stpFinal'); b.disabled = !ok; b.title = ok ? '최종 점검·초안 · 논리·물리·구조·근거 점검과 교정 · 전후 비교' : '최종 초안 · 수정 권고에서 채택한 뒤 확정';
-    var n = el('span', 'n'); if (st.status === 'done' && !cur) n.innerHTML = U.CHECK; else n.textContent = 'VI';
-    add(b, n, '최종 초안'); steps.appendChild(b);
+    if (MOCK) return; var steps = $('steps'); if (!steps || !$('stpRevise') || $('stpFinal')) return;
+    var C = V.C, d = D(), ok = !!(d && (C.status === 'done' || R.assemble().counts.adopted > 0)), cur = S.step === 5;
+    var b = btn('stp' + (cur ? ' cur' : (C.status === 'done' ? ' done' : '')), '', 'stpFinal'); b.disabled = !ok; b.title = ok ? '최종 점검 · 완성' : '수정 권고에서 채택한 뒤 확정';
+    var n = el('span', 'n'); if (C.status === 'done' && !cur) n.innerHTML = U.CHECK; else n.textContent = 'VI'; add(b, n, '최종 점검'); steps.appendChild(b);
   }
   new MutationObserver(paintSteps).observe($('steps'), { childList: true });
-  new MutationObserver(function () { if (document.body.dataset.ready === '1') { paintSteps(); if (MOCK) paintMockSamples(); } }).observe(document.body, { attributes: true, attributeFilter: ['data-ready'] });
-
-  /* ---------- 목업 ①·②: 샘플 갤러리(가짜) · 가짜 분석 진행(서버 호출 없이 fixture 뷰로) ---------- */
-  function paintMockSamples() {
-    if (document.body.dataset.view !== 'input' || $('finSamples')) return;
-    var card = $('inCard'), tpl = $('tplArea'), md = R.mockData(); if (!card || !md) return;
-    if (tpl) tpl.hidden = true;
-    var g = el('div', 'card finsamples'); g.id = 'finSamples';
-    add(g, el('div', 'eyebrow', '샘플 갤러리 · 목업(가짜 계획서) — 또는 아래에 붙여넣기 · 파일 업로드'));
-    var grid = el('div', 'grid');
-    var s1 = btn('smp', ''); s1.dataset.finsample = 'battery'; add(s1, el('b', null, '전해액 이온전도도 GNN 대리모델 (예시 · 오류 포함)'), el('span', 'd', '소재·화학 · ' + (md.view.plan.lines || []).length + '줄 · 무작위 분할 누출 · 단일 시드 · 예산 합계 불일치 · 단위(25 K) · 일정 순환 · 철회 문헌 인용'));
-    var s2 = btn('smp na', ''); s2.dataset.finsample = 'protein'; add(s2, el('b', null, '단백질–리간드 결합 친화도 예측 (예시)'), el('span', 'd', '단백질·생물·신약 · 목업에는 fixture 없음(실제 서비스는 서버 /templates에서 불러옴)'));
-    var s3 = btn('smp na', ''); s3.dataset.finsample = 'climate'; add(s3, el('b', null, '기후 PDE 대리모델 (예시)'), el('span', 'd', '물리·PDE·기후 · 목업에는 fixture 없음'));
-    add(grid, s1, s2, s3); add(g, grid);
-    /* 입력 기준 안내(최종 형태): 붙여넣기 300자 이상 · 파일 PDF·DOCX·HWPX. 목업에서는 파일 내용 대신 fixture로 분석한다 */
-    var guide = el('div', 'sm muted finguide'); guide.id = 'finGuide'; guide.style.marginTop = '10px'; guide.setAttribute('role', 'status'); guide.setAttribute('aria-live', 'polite');
-    add(g, guide);
-    card.insertBefore(g, card.firstChild); paintGuide();
-    var drop = $('drop'); if (drop) { var hint = drop.querySelector('.sm'); if (hint) hint.textContent = 'PDF · DOCX · HWPX · TXT · MD · 최대 10 MB · 정리 뒤 50,000자 · 목업에서는 파일 대신 fixture로 분석'; }
-    var fi = $('fileIn'); if (fi && fi.accept.indexOf('.hwpx') < 0) fi.accept = fi.accept + ',.hwpx';
+  function startFromRevise() { R.closeViewer(); S.step = 5; S.maxStep = Math.max(S.maxStep, 6); U.closeAll(); U.renderSteps(); V.max = Math.max(V.max, 3); V.C = freshCheck(); goStep('check'); }
+  function jump(at) {
+    var map = { report: 'adopt', revise: 'draft', final: 'check' }; at = map[at] || at;
+    if (!D()) { goStep('input'); return; }
+    if (at === 'job') { mockAnalysis(); return; }
+    if (at === 'adopt') { V.max = 2; goStep('adopt'); return; }
+    if (at === 'draft') { ensureDecisions(); V.draftReady = true; V.max = 3; goStep('draft'); return; }
+    if (at === 'check' || at === 'done') { ensureDecisions(); V.draftReady = true; V.max = 3; if (at === 'done') { FIN.mockSpeed = 30; V.C = freshCheck(); V.C.autoDone = true; } goStep('check'); if (at === 'done') FIN.mockSpeed = 1; return; }
+    goStep('input');
   }
-  function paintGuide() { var g = $('finGuide'); if (!g) return; var n = (S.text || '').length, ok = n >= 300; g.textContent = (ok ? '입력 ' + n + '자 · 300자 기준 충족' : '입력 ' + n + '자 · 300자 이상 붙여넣기(제목·목표·방법·데이터·평가 포함)') + ' · 파일 업로드: PDF · DOCX · HWPX · 샘플 선택 뒤 “Pre-mortem 실행 →”'; g.classList.toggle('inerr', !ok && n > 0); }
-  document.addEventListener('input', function (ev) { if (MOCK && ev.target && ev.target.id === 'ta') paintGuide(); });
-  /* WAIT-UX 연결 자리(.claude/worktrees/s3-WAIT-UX의 분리 모듈 wait.js·wait.css): 인터랙티브 대기 화면이 window.NeumannWait로 실리면
-     ② 분석 대기 단계마다 {mock, state, stage, label, index, total, elapsed}를 넘긴다. 모듈이 없으면 기존 renderJob 타임라인 그대로. 모듈 오류는 흐름을 막지 않는다 */
-  function waitHook(info) { var W = window.NeumannWait; if (W && typeof W.update === 'function') { try { W.update(info); } catch (e) { /* 대기 모듈 오류 무시 */ } } }
-  function mockAnalysis() {
-    var md = R.mockData(); if (!md) return;
-    var run = {}; S.job = { state: 'running', run: run, waitText: '목업 · 작업 등록' }; S.elapsed = 0; U.go(1);
-    var t0 = Date.now(), tick = setInterval(function () { if (S.job && S.job.run === run && S.step === 1) { S.elapsed = (Date.now() - t0) / 1000; var e = $('elapsed'); if (e) e.textContent = S.elapsed.toFixed(1); } else clearInterval(tick); }, 100);
-    var stages = [['plan_normalize', '계획서 정리'], ['query_axes', '검색 질의 만들기'], ['search', '유사 연구 검색 · 거절 기록 조회'], ['extract_issues', '지적 추출'], ['synthesize_cards', '위험카드 합성'], ['verify_evidence', '원문 대조']];
-    waitHook({ mock: true, state: 'queued', stage: '', label: '작업 등록', index: -1, total: stages.length, elapsed: 0 });
-    stages.forEach(function (s, i) { setTimeout(function () { if (!S.job || S.job.run !== run) return; S.job = { state: 'running', run: run, wait: { status: 'running', stage: s[0], label: s[1] }, waitText: '목업 분석 중 · ' + s[1] + ' · 서버 호출 없음' }; if (S.step === 1) U.render(); waitHook({ mock: true, state: 'running', stage: s[0], label: s[1], index: i, total: stages.length, elapsed: S.elapsed }); }, 450 + i * 520 / FIN.mockSpeed); });
-    setTimeout(function () { if (!S.job || S.job.run !== run) return; clearInterval(tick); var v = D() || md.view; U.setD(v); S.job = { state: 'done', run: run, view: v }; waitHook({ mock: true, state: 'done', stage: '', label: '완료', index: stages.length, total: stages.length, elapsed: S.elapsed }); if (S.step === 1) { U.render(); setTimeout(function () { if (S.step === 1) U.go(2); }, 700); } }, 450 + stages.length * 520 / FIN.mockSpeed + 250);
-  }
-  document.addEventListener('click', function (ev) {
-    if (!MOCK) return; var t;
-    if (ev.target.closest('#btnStart')) { ev.stopPropagation(); ev.preventDefault(); var ta = $('ta'); if (ta) S.text = ta.value; if (!S.text.trim()) return; mockAnalysis(); return; }
-    if ((t = ev.target.closest('[data-finsample]'))) { var md = R.mockData(); if (t.dataset.finsample === 'battery' && md) { S.text = String(md.plan_text || ''); S.mode = 'text'; S.inErr = ''; U.render(); var ta2 = $('ta'); if (ta2) { ta2.focus(); ta2.setSelectionRange(0, 0); ta2.scrollTop = 0; } U.toast('예시 계획서 불러옴 · 오류 포함(목업)'); } else U.toast('목업에는 이 샘플의 fixture가 없음 — 실제 서비스는 서버에서 불러옴'); return; }
-  }, true);
 
   /* ---------- 이벤트 ---------- */
   document.addEventListener('click', function (ev) {
+    if (!MOCK) return; var t;
+    if (ev.target.closest('#btnStart')) { ev.stopPropagation(); ev.preventDefault(); var ta = $('ta'); if (ta) S.text = ta.value; if (!S.text.trim()) return; mockAnalysis(); return; }
+    if ((t = ev.target.closest('[data-finsample]'))) { var md = R.mockData(); if (t.dataset.finsample === 'battery' && md) { S.text = String(md.plan_text || ''); S.mode = 'text'; S.inErr = ''; U.render(); var ta2 = $('ta'); if (ta2) { ta2.focus({ preventScroll: true }); ta2.setSelectionRange(0, 0); ta2.scrollTop = 0; } U.toast('예시 계획서를 불러왔습니다'); } else U.toast('이 예시는 시연 판에 아직 없습니다'); return; }
+    if ((t = ev.target.closest('[data-step]')) && t.closest('#steps')) { ev.stopPropagation(); ev.preventDefault(); return; }
+  }, true);
+  document.addEventListener('click', function (ev) {
     var t;
-    if (ev.target.closest('#rvFinalize') || ev.target.closest('#rvFinalize2') || ev.target.closest('#finStartIdle') || ev.target.closest('#finAgain')) { start(); return; }
-    if ((t = ev.target.closest('#stpFinal'))) { if (t.disabled) return; if (state().status === 'idle') start(); else goFinalView(); return; }
-    if (ev.target.closest('#finBack')) { R.open(null, false); return; }
-    if (ev.target.closest('#finMd')) { downloadMd(); return; }
-    if (ev.target.closest('#finDocx')) { downloadDocx(); return; }
-    if (ev.target.closest('#finPrint')) { window.print(); return; }
-    if ((t = ev.target.closest('#finLogToggle'))) { var st = state(); st.logOpen = !st.logOpen; var lg = $('finLog'); if (lg) lg.hidden = !st.logOpen; t.textContent = st.logOpen ? '기록 접기' : '기록 펼치기'; t.setAttribute('aria-expanded', st.logOpen ? 'true' : 'false'); if (st.logOpen && lg) lg.scrollTop = lg.scrollHeight; return; }
-    if ((t = ev.target.closest('[data-finview]'))) { state().view = t.dataset.finview; var p = $('finPaper'); if (p) p.classList.toggle('clean', t.dataset.finview === 'clean'); document.querySelectorAll('[data-finview]').forEach(function (b) { var on = b.dataset.finview === t.dataset.finview; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }); return; }
-    if ((t = ev.target.closest('[data-fincheck]'))) { jumpToCheck(t.dataset.fincheck); return; }
-    if ((t = ev.target.closest('[data-finfix]')) && !ev.target.closest('.lref')) { var st2 = state(), fx = null; if (st2.res) st2.res.corrections.forEach(function (x) { if (String(x.i) === t.dataset.finfix) fx = x; }); if (fx && fx.checks.length) jumpToCheck(fx.checks[0].id); else U.toast('연결된 도구 검사 없음'); return; }
+    if ((t = ev.target.closest('[data-finstep]')) && !t.disabled) { goStep(t.dataset.finstep); return; }
+    if (ev.target.closest('#rvFinalize') || ev.target.closest('#rvFinalize2')) { startFromRevise(); return; }
+    if ((t = ev.target.closest('#stpFinal'))) { if (!t.disabled) { if (V.C.status === 'done') { S.step = 5; U.renderSteps(); goStep('done'); } else startFromRevise(); } return; }
+    if ((t = ev.target.closest('[data-fatoggle]'))) { setCard(+t.dataset.fatoggle, t.checked); var art = $('fa-' + t.dataset.fatoggle); if (art) { art.classList.toggle('off', !t.checked); var lb = t.parentNode.querySelector('span'); if (lb) lb.textContent = t.checked ? '채택' : '제외'; } paintAdoptBar(); return; }
+    if ((t = ev.target.closest('[data-faev]'))) { var x = $(t.getAttribute('aria-controls')); if (x) { x.hidden = !x.hidden; t.setAttribute('aria-expanded', x.hidden ? 'false' : 'true'); } return; }
+    if (ev.target.closest('#faNext')) { if (adoptedCount()) { V.draftReady = false; goStep('draft'); } return; }
+    if ((t = ev.target.closest('[data-fdmark]'))) { openPop(t); return; }
+    if (ev.target.closest('[data-fdpopclose]')) { closePop(); return; }
+    if ((t = ev.target.closest('[data-fdrevert]'))) { var p = paraByKey(t.dataset.fdrevert); if (p) revert(p); return; }
+    if (ev.target.closest('#fdUndo')) { undoLast(); return; }
+    if ((t = ev.target.closest('#fdDoc [data-fdedit]'))) { if (!ev.target.closest('.fd-pop')) startEdit(t); return; }
+    if (ev.target.closest('#fdPop')) return;
+    if (V.pop && !ev.target.closest('.fd-mark')) closePop();
+    if (ev.target.closest('#fdNext')) { if (V.editing) saveEdit(); V.C = freshCheck(); goStep('check'); return; }
+    if ((t = ev.target.closest('[data-fcrow]'))) { var dt = t.querySelector('.dt'); if (dt) { dt.hidden = !dt.hidden; t.setAttribute('aria-expanded', dt.hidden ? 'false' : 'true'); } return; }
+    if ((t = ev.target.closest('[data-fcundo]'))) { toggleFix(t.dataset.fcundo); return; }
+    if (ev.target.closest('#fcNext')) { if (V.C.status === 'error') { V.C = freshCheck(); goStep('check'); } else if (V.C.status === 'done') goStep('done'); return; }
+    if (ev.target.closest('#fzMd')) { downloadMd(); return; }
+    if (ev.target.closest('#fzDocx')) { downloadDocx(); return; }
+    if (ev.target.closest('#fzPrint')) { window.print(); return; }
+    if (ev.target.closest('#fzRestart')) { restart(); return; }
   });
-  document.addEventListener('keydown', function (ev) { var t = ev.target; if (S.step === 5 && t && t.dataset && t.dataset.finfix && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); t.click(); } });
+  document.addEventListener('keydown', function (ev) {
+    var t = ev.target;
+    if (V.step === 'draft') {
+      if (ev.key === 'Escape' && V.pop && !V.editing) { ev.stopPropagation(); closePop(); return; }
+      if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && (ev.key === 'z' || ev.key === 'Z') && !V.editing && !(t && /^(INPUT|TEXTAREA)$/.test(t.tagName))) { ev.preventDefault(); undoLast(); return; }
+      if (t && t.dataset && t.dataset.fdedit && ev.key === 'Enter') { ev.preventDefault(); startEdit(t); return; }
+    }
+    if (V.step === 'check' && t && t.dataset && t.dataset.fcrow && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); t.click(); }
+  });
+  document.addEventListener('paste', function (ev) { var t = ev.target; if (!t || !t.classList || !t.classList.contains('fd-ta')) return; var cb = ev.clipboardData; if (!cb) return; ev.preventDefault(); var txt = String(cb.getData('text/plain') || ''), a = t.selectionStart, b = t.selectionEnd; t.value = t.value.slice(0, a) + txt + t.value.slice(b); t.selectionStart = t.selectionEnd = a + txt.length; t.dispatchEvent(new Event('input')); });
 
-  window.NeumannFinal = { start: start, invalidate: invalidate, forget: forget, state: state, render: renderFinal, mockAnalysis: mockAnalysis, config: FIN, markdown: function () { return state().res ? finalMd(state()) : ''; }, norm: normFinal };
+  window.NeumannFinal = { start: startFromRevise, go: goStep, jump: jump, invalidate: invalidate, forget: forget, state: function () { return V; }, check: function () { return V.C; }, mockAnalysis: mockAnalysis, config: FIN, markdown: function () { return V.C.res ? finalMd() : ''; }, norm: normFinal, paras: paras };
   paintSteps();
-  if (MOCK) { var at0 = (/[?&]at=([a-z]+)/.exec(location.search) || [])[1]; if (at0 === 'final' && D()) start(); else if (at0 === 'job' && D()) mockAnalysis(); else if (document.body.dataset.view === 'input') paintMockSamples(); }
+  if (MOCK) { paintStepper(); var at0 = (/[?&]at=([a-z]+)/.exec(location.search) || [])[1]; if (at0 && at0 !== 'input') jump(at0); else if (document.body.dataset.view === 'input') paintMockInput(); }
 })();
 </script>
 </body>

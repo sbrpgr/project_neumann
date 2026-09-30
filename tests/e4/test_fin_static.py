@@ -12,7 +12,7 @@ from tests.e4.revise_mock_data import EXTRA_PLAN, build_mock_final
 
 ROOT = Path(__file__).resolve().parents[2]
 INDEX = ROOT / "src" / "neumann" / "webui" / "index.html"
-MARK = "/* ===== FIN-UI 최종 점검·초안(VI) ====="
+MARK = "/* ===== FIN-UI 최종 점검·초안(VI) — v2 단계 전환형 흐름 ====="
 
 
 def html() -> str:
@@ -33,10 +33,14 @@ def test_fin_block_and_hooks_present():
     assert "'수정 확정·검증 →', 'rvFinalize'" in h and "'rvFinalize2'" in h
     assert "if (window.NeumannFinal) window.NeumannFinal.invalidate();" in h
     assert "confirmed: confirmed" in h and "assembleBody: assembleBody" in h
-    for marker in ("dataset.view = 'final'", "'premortem/revise/finalize'", "submission_id", "confirmed_text", "confirmed_base_id", "finMockFinal",
-                   "논리 → 물리 → 구조 → 근거 → 교정 → 재검사", "도구 호출 기록", "최종 초안", "전후 비교", "anchor_mismatch", "unsupported_content",
-                   "waitHook", "window.NeumannWait", "data-mockat", "finSamples", "300자", "HWPX", "stpFinal", "role', 'log'"):
+    for marker in ("'premortem/revise/finalize'", "submission_id", "confirmed_text", "confirmed_base_id", "finMockFinal", "finStepper", "finMockChip",
+                   "['input', '입력'], ['job', '분석'], ['adopt', '채택'], ['draft', '수정 계획서'], ['check', '최종 점검'], ['done', '완성']",
+                   "채택 ' + n + '건으로 수정 계획서 받기", "'확정하고 최종 점검'", "'완성된 초안 보기'", "autoResolve", "fd-mark", "fd-ta", "data-fcundo", "anchor_mismatch", "unsupported_content",
+                   "waitHook", "window.NeumannWait", "finSamples", "300자 이상 입력해 주세요", "HWPX", "'분석 시작'", "시험(mock)", "KST", "stpFinal", "window.scrollTo(0, 0); paintStepper();"):
         assert marker in h, marker
+    assert 'src="wait.js"' in h and 'href="wait.css"' in h and "window.NeumannWait.mount(S.job)" in h and "window.NeumannWait.update(b)" in h, "WAIT-UX 모듈 연결(06916ab) 4줄"
+    assert (ROOT / "src" / "neumann" / "webui" / "wait.js").is_file() and (ROOT / "src" / "neumann" / "webui" / "wait.css").is_file()
+    assert "rvMockBar" not in h.split(MARK)[0].split("bootMock")[-1][:3000], "목업 띠 없음(헤더 칩 하나)"
 
 
 def test_fin_script_uses_textcontent_only_and_no_external():
@@ -73,6 +77,7 @@ def test_fin_mock_block_is_fresh_and_contract_shaped():
     assert stages == ["logic", "physics", "structure", "evidence", "correct", "recheck"]
     tools = {e["tool"] for e in data["trace"]}
     assert {"calc", "z3", "pint", "networkx", "records", "sandbox"} <= tools, "계산기·합계·단위·구조·인용·철회·제한 실행이 기록에 있어야 한다"
+    assert all(e.get("label") for e in data["trace"]), "항목 이름(label)"
     assert all(e["stage"] in stages for e in data["trace"]) and [e["t"] for e in data["trace"]] == sorted(e["t"] for e in data["trace"])
 
 

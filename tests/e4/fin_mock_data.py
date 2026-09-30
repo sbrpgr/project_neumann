@@ -50,8 +50,16 @@ def line_map() -> dict[int, str]:
     return {row["n"]: row["t"] for row in build_mock_final()["view"]["plan"]["lines"]}
 
 
+LABELS = {
+    "split-sizes": "분할 건수 계산", "split-ratio-sum": "분할 비율 합계", "budget-sum": "예산 항목 합계", "sample-volume": "시료 부피 합계",
+    "schedule-months": "단계 기간 합계", "room-temp": "상온 온도 단위", "conductivity-unit": "이온전도도 단위 차원", "metric-dimension": "선별 지표 차원 합산",
+    "stage-order": "단계 선행관계 순환", "section-numbering": "절 번호 연속", "ref-3-retraction": "참고문헌 [3] 철회 조회", "ref-1-status": "참고문헌 [1] 결정 조회",
+    "ref-2-status": "참고문헌 [2] 결정 조회", "adopted-edits-grounding": "채택 문안 근거 연결", "correction-batch": "자동 수정 1묶음",
+}
+
+
 def ev(t: float, stage: str, tool: str, check_id: str, kind: str, lines: list[int], inp: str, res: str, status: str, msg: str, ms: int) -> dict:
-    return {"t": t, "stage": stage, "tool": tool, "name": TOOLS[tool], "check_id": check_id, "kind": kind, "plan_lines": lines,
+    return {"t": t, "stage": stage, "tool": tool, "name": TOOLS[tool], "check_id": check_id, "label": LABELS[check_id], "kind": kind, "plan_lines": lines,
             "input": inp, "result": res, "status": status, "message": msg, "ms": ms}
 
 
