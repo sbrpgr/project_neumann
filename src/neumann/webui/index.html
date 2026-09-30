@@ -385,6 +385,10 @@
   .fit .by { display: block; color: var(--muted); font-size: 12.5px; margin-top: 4px; }
   .fit.ok { border-top-color: var(--green-t); border-bottom-color: var(--green-t); color: var(--green); }
   .fit.ok b { color: var(--green); }
+  /* ===== E4-S06 입력 전송 고지(SEC-1 S-06). 자연 위치는 실행 버튼 바로 위, 첫 화면에서는 화면 아래에 붙어 보인다(sticky) ===== */
+  .sendnote { position: sticky; bottom: 0; z-index: 2; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0 12px; align-items: baseline; margin-top: 16px; padding: 9px 0 10px 0; border-top: 3px double var(--line2); background: var(--card); font-size: 13px; line-height: 1.6; color: var(--text2); }
+  .sendnote b { grid-row: 1 / span 2; font-family: var(--sans); font-weight: 700; color: var(--red); }
+  .sendnote .snl { grid-column: 2; }
 </style>
 </head>
 <body data-view="boot">
@@ -451,6 +455,7 @@
       '<div id="tplArea">' + tplInner() + '</div>' + area +
       (S.inErr ? '<div class="inerr" id="inErr">' + esc(S.inErr) + '</div>' : '') +
       '<div class="fit' + (FIT && FIT.fit === true ? ' ok' : '') + '" id="fitBox" role="status"' + (FIT ? '' : ' hidden') + '>' + fitInner() + '</div>' +
+      '<div class="sendnote" id="sendNote" role="note"></div>' +
       '<div style="display:flex; align-items:center; justify-content:space-between; margin-top:18px; gap:14px; flex-wrap:wrap;"><span class="sm muted">최종 판단은 연구자에게</span><button class="btn dark lg" id="btnStart" type="button"' + (S.text.trim() ? '' : ' disabled') + '>Pre-mortem 실행 →</button></div></div></div>';
   }
 
@@ -520,6 +525,19 @@
   }
   function showFitness(f) { FIT = normFit(f); var b = $('fitBox'); if (b) { b.innerHTML = fitInner(); b.hidden = !FIT; b.classList.toggle('ok', !!(FIT && FIT.fit === true)); } return FIT; }
   window.NeumannInput = { showFitness: showFitness, clearFitness: function () { return showFitness(null); }, reloadTemplates: loadTemplates };
+  /* 전송 고지(E4-S06, SEC-1 S-06). 직접 입력·파일 업로드 공통. 글은 textContent로만 넣는다. 확인할 수 없는 약속(학습 미사용 등)은 쓰지 않는다 */
+  var SEND_NOTE = {
+    label: '외부 전송',
+    lines: ['입력한 계획서는 분석을 위해 OpenAI API(gpt-6-astra)로 전송됩니다. 개인정보·미공개 기밀은 넣지 마세요.',
+            '이 서버는 계획서 본문을 파일로 저장하지 않습니다(분석 결과는 메모리에 잠시 보관).']
+  };
+  function paintSendNote() {
+    var box = $('sendNote'); if (!box) return;
+    while (box.firstChild) box.removeChild(box.firstChild);
+    box.setAttribute('aria-label', SEND_NOTE.label);
+    var b =document.createElement('b'); b.textContent = SEND_NOTE.label; box.appendChild(b);
+    SEND_NOTE.lines.forEach(function (t) { var s = document.createElement('span'); s.className = 'snl'; s.textContent = t; box.appendChild(s); });
+  }
   function readFile(file) {
     S.inErr = '';
     if (!file) return;
@@ -654,7 +672,7 @@
     document.body.dataset.ready = '0';
     if (S.step === 0) {
       document.body.dataset.view = 'input';
-      app.innerHTML = renderInput();
+      app.innerHTML = renderInput(); paintSendNote();
       $('btnStart').addEventListener('click', function () { var ta = $('ta'); if (ta) S.text = ta.value; if (!S.text.trim()) return; S.job = { state: 'running' }; go(1); startAnalysis(); });
       var ta = $('ta'); if (ta) ta.addEventListener('input', function () { S.text = ta.value; $('cnt').textContent = ta.value.length + ' chars'; $('btnStart').disabled = !ta.value.trim(); });
       var dz = $('drop'), fi = $('fileIn');
