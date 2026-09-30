@@ -119,6 +119,22 @@ def answer_template(envelope_id: str, risk_ids: list[str]) -> dict[str, Any]:
     }
 
 
+# 위험 설명 앞머리에 붙은 조사(예: "제목 — 은 기존 연구가…"). Neumann 카드 합성에서 줄 번호 "L1은"의 번호만
+# 지운 버그의 흔적이라, 두 시스템을 구분하는 단서가 된다(E5-L2d 진단). 봉투를 만들 때 **두 시스템 모두에**
+# 같은 규칙으로 지우고(원 위험 묶음 파일은 그대로), blind_violations가 남은 것을 잡는다.
+RISK_SEP = " — "
+LEADING_PARTICLE = re.compile(r"^(?:은|는|이|가|을|를|의|에서|에게|에|과|와|도|으로|로)\s+")
+
+
+def normalize_risk_text(text: str) -> str:
+    """"제목 — 설명"에서 설명 앞머리의 조사 하나를 지운다. 구분자가 없으면 그대로."""
+    title, sep, body = text.partition(RISK_SEP)
+    if not sep:
+        return text
+    body2 = LEADING_PARTICLE.sub("", body, count=1)
+    return f"{title}{sep}{body2}" if body2 else title
+
+
 def build_envelopes(
     sample: dict[str, Any],
     plans: dict[str, dict[str, Any]],
@@ -149,7 +165,7 @@ def build_envelopes(
                 "n_risks": len(rs["risks"]), "evidence_ok": [bool(r.get("evidence_ok")) for r in rs["risks"]],
             })
             for r in rs["risks"]:
-                items.append((r["text"], {"system": rs["system"], "condition": rs["condition"], "rank": r["rank"],
+                items.append((normalize_risk_text(r["text"]), {"system": rs["system"], "condition": rs["condition"], "rank": r["rank"],
                                           "plan_work_id": rs["plan_work_id"], "evidence_ok": bool(r.get("evidence_ok"))}))
         if not items:
             # 모든 시스템이 위험 0개(실패)인 논문: 판정할 것이 없어 봉투를 만들지 않는다. 지표에서는 적중 0으로 센다
@@ -209,6 +225,9 @@ def blind_violations(env: dict[str, Any]) -> list[str]:
         res = blind_residue(text)
         if res:
             p.append(f"{r.get('risk_id')}: 흔적 {res}")
+        _t, _sep, _body = text.partition(RISK_SEP)
+        if _sep and LEADING_PARTICLE.match(_body):
+            p.append(f"{r.get('risk_id')}: 설명 앞머리 조사(시스템 구분 단서)")
     return p
 
 
