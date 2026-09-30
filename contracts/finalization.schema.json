@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Neumann final draft inspection and correction",
+  "type": "object",
+  "required": ["version", "assembled", "finalization", "final_text", "origin", "finalization_sig"],
+  "properties": {
+    "version": {"const": "finalization@v1"},
+    "assembled": {"type": "object"},
+    "final_text": {"type": "string"},
+    "origin": {"enum": ["server_signed", "client_submitted_unverified"]},
+    "finalization_sig": {"type": ["string", "null"]},
+    "finalization": {
+      "type": "object",
+      "required": ["version", "status", "input_plan_id", "output_plan_id", "input_text", "final_text", "issues", "tool_checks_before", "tool_checks_after", "corrections", "counters", "generator", "model", "notices"],
+      "properties": {
+        "version": {"const": "finalization@v1"},
+        "status": {"enum": ["completed", "partial", "incomplete"]},
+        "input_plan_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "output_plan_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "input_text": {"type": "string"},
+        "final_text": {"type": "string"},
+        "issues": {"type": "array", "maxItems": 64, "items": {"type": "object"}},
+        "tool_checks_before": {"type": "array", "maxItems": 16, "items": {"$ref": "#/$defs/toolResult"}},
+        "tool_checks_after": {"type": "array", "maxItems": 16, "items": {"$ref": "#/$defs/toolResult"}},
+        "corrections": {"type": "array", "maxItems": 8, "items": {"type": "object"}},
+        "counters": {
+          "type": "object",
+          "required": ["assessment_calls", "correction_calls", "correction_batches", "recheck_runs"],
+          "properties": {
+            "assessment_calls": {"type": "integer", "minimum": 0, "maximum": 1},
+            "correction_calls": {"type": "integer", "minimum": 0, "maximum": 1},
+            "correction_batches": {"type": "integer", "minimum": 0, "maximum": 1},
+            "recheck_runs": {"type": "integer", "minimum": 0, "maximum": 1}
+          },
+          "additionalProperties": false
+        },
+        "generator": {"enum": ["astra", "mock", "rule"]},
+        "model": {"type": ["string", "null"]},
+        "notices": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  },
+  "$defs": {
+    "toolResult": {
+      "type": "object",
+      "required": ["check_id", "kind", "tool", "status", "plan_lines", "message", "details"],
+      "properties": {
+        "check_id": {"type": "string"},
+        "kind": {"enum": ["constraint", "units", "dependency"]},
+        "tool": {"type": "string"},
+        "status": {"enum": ["passed", "failed", "unchecked"]},
+        "plan_lines": {"type": "array", "items": {"type": "integer", "minimum": 1}},
+        "message": {"type": "string"},
+        "details": {"type": "object"}
+      }
+    }
+  }
+}
