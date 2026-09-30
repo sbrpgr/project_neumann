@@ -1,120 +1,122 @@
 [+  0.00s] 감시 스크립트 시작: serve.py --app scripts.serve_fake_app:app --port 8122 (동시 2, 대기열 8, 분당 6건, 가짜 분석 2.0s)
-[+  1.25s] health 정상까지 1.2s
-[+  1.25s] == A 동시 10건(서로 다른 계획서·IP): 동시 10건
-[+  2.16s]   queue active=1 waiting=0 eta_new=0.0s | 00:실행
-[+  2.67s]   queue active=2 waiting=8 eta_new=9.4s | 00:실행 01:실행 02:1번째/1.4s 03:4번째/3.6s 04:7번째/7.4s 05:2번째/1.6s 06:3번째/3.4s 07:5번째/5.4s 08:6번째/5.6s 09:8번째/7.6s
-[+  3.20s]   queue active=2 waiting=8 eta_new=9.0s | 00:실행 01:실행 02:1번째/1.0s 03:4번째/3.1s 04:7번째/7.0s 05:2번째/1.1s 06:3번째/3.0s 07:5번째/5.0s 08:6번째/5.1s 09:8번째/7.1s
-[+  3.72s]   queue active=2 waiting=8 eta_new=9.0s | 00:실행 01:실행 02:1번째/1.0s 03:4번째/3.0s 04:7번째/7.0s 05:2번째/1.0s 06:3번째/3.0s 07:5번째/5.0s 08:6번째/5.0s 09:8번째/7.0s
-[+  4.23s]   queue active=2 waiting=7 eta_new=7.9s | 01:실행 02:실행 03:3번째/3.0s 04:6번째/5.9s 05:1번째/1.0s 06:2번째/1.9s 07:4번째/3.9s 08:5번째/5.0s 09:7번째/7.0s
-[+  4.77s]   queue active=2 waiting=6 eta_new=7.4s | 02:실행 03:2번째/1.5s 04:5번째/5.3s 05:실행 06:1번째/1.3s 07:3번째/3.3s 08:4번째/3.5s 09:6번째/5.5s
-[+  5.28s]   queue active=2 waiting=6 eta_new=7.0s | 02:실행 03:2번째/1.0s 04:5번째/5.0s 05:실행 06:1번째/1.0s 07:3번째/3.0s 08:4번째/3.0s 09:6번째/5.0s
-[+  6.33s]   queue active=2 waiting=4 eta_new=5.8s | 03:실행 04:3번째/3.8s 06:실행 07:1번째/1.8s 08:2번째/2.0s 09:4번째/4.0s
-[+  6.86s]   queue active=2 waiting=4 eta_new=5.3s | 03:실행 04:3번째/3.3s 06:실행 07:1번째/1.2s 08:2번째/1.4s 09:4번째/3.4s
-[+  7.38s]   queue active=2 waiting=4 eta_new=5.0s | 03:실행 04:3번째/3.0s 06:실행 07:1번째/1.0s 08:2번째/1.0s 09:4번째/3.0s
-[+  8.41s]   queue active=2 waiting=2 eta_new=3.7s | 04:1번째/1.7s 07:실행 08:실행 09:2번째/1.9s
-[+  8.92s]   queue active=2 waiting=2 eta_new=3.2s | 04:1번째/1.2s 07:실행 08:실행 09:2번째/1.4s
-[+  9.45s]   queue active=2 waiting=2 eta_new=3.0s | 04:1번째/1.0s 07:실행 08:실행 09:2번째/1.0s
-[+ 10.48s]   queue active=2 waiting=0 eta_new=1.7s | 04:실행 09:실행
-[+ 12.31s]   tk_A_00 code=200 cache=miss 도착순번=0 대기=0.0s 총=2.92s
-[+ 12.31s]   tk_A_01 code=200 cache=miss 도착순번=0 대기=0.0s 총=3.0s
-[+ 12.31s]   tk_A_02 code=200 cache=miss 도착순번=1 대기=1.6s 총=4.77s
-[+ 12.31s]   tk_A_03 code=200 cache=miss 도착순번=4 대기=3.7s 총=6.91s
-[+ 12.31s]   tk_A_04 code=200 cache=miss 도착순번=7 대기=7.5s 총=10.67s
-[+ 12.31s]   tk_A_05 code=200 cache=miss 도착순번=2 대기=1.8s 총=4.8s
-[+ 12.31s]   tk_A_06 code=200 cache=miss 도착순번=3 대기=3.5s 총=6.56s
-[+ 12.31s]   tk_A_07 code=200 cache=miss 도착순번=5 대기=5.5s 총=8.5s
-[+ 12.31s]   tk_A_08 code=200 cache=miss 도착순번=6 대기=5.7s 총=8.64s
-[+ 12.31s]   tk_A_09 code=200 cache=miss 도착순번=8 대기=7.7s 총=10.59s
-[+ 12.31s]   요약 A 동시 10건(서로 다른 계획서·IP): {"200": 10} 최장=10.67s
-[+ 12.31s] == B 같은 10건 다시(캐시): 동시 10건
-[+ 13.27s]   tk_B_00 code=200 cache=hit 도착순번=0 대기=0.0s 총=0.3s
-[+ 13.27s]   tk_B_01 code=200 cache=hit 도착순번=0 대기=0.0s 총=0.41s
-[+ 13.27s]   tk_B_02 code=200 cache=hit 도착순번=0 대기=0.0s 총=0.44s
-[+ 13.27s]   tk_B_03 code=200 cache=hit 도착순번=0 대기=0.0s 총=0.48s
-[+ 13.27s]   tk_B_04 code=200 cache=hit 도착순번=0 대기=0.0s 총=0.5s
-[+ 13.27s]   tk_B_05 code=200 cache=hit 도착순번=0 대기=0.0s 총=0.48s
-[+ 13.27s]   tk_B_06 code=200 cache=hit 도착순번=0 대기=0.0s 총=0.5s
-[+ 13.27s]   tk_B_07 code=200 cache=hit 도착순번=0 대기=0.0s 총=0.52s
-[+ 13.27s]   tk_B_08 code=200 cache=hit 도착순번=0 대기=0.0s 총=0.48s
-[+ 13.27s]   tk_B_09 code=200 cache=hit 도착순번=0 대기=0.0s 총=0.45s
-[+ 13.27s]   요약 B 같은 10건 다시(캐시): {"200": 10} 최장=0.52s
-[+ 13.27s] == C 동시 12건(대기열 상한 8): 동시 12건
-[+ 13.75s]   queue active=1 waiting=0 eta_new=0.0s | 00:실행
-[+ 14.28s]   queue active=2 waiting=5 eta_new=5.6s | 00:실행 01:실행 02:1번째/1.5s 03:2번째/1.6s 04:3번째/3.5s 05:4번째/3.6s 06:5번째/5.4s 07:6번째/5.6s
-[+ 14.83s]   queue active=2 waiting=8 eta_new=9.0s | 00:실행 01:실행 02:1번째/1.0s 03:2번째/1.0s 04:3번째/3.0s 05:4번째/3.0s 06:5번째/5.0s 07:6번째/5.0s 08:7번째/7.0s 09:8번째/7.0s
-[+ 15.89s]   queue active=2 waiting=6 eta_new=7.9s | 02:실행 03:실행 04:1번째/1.8s 05:2번째/2.0s 06:3번째/3.8s 07:4번째/4.0s 08:5번째/5.8s 09:6번째/6.0s
-[+ 16.41s]   queue active=2 waiting=6 eta_new=7.3s | 02:실행 03:실행 04:1번째/1.3s 05:2번째/1.5s 06:3번째/3.3s 07:4번째/3.5s 08:5번째/5.3s 09:6번째/5.4s
-[+ 16.92s]   queue active=2 waiting=6 eta_new=7.0s | 02:실행 03:실행 04:1번째/1.0s 05:2번째/1.0s 06:3번째/3.0s 07:4번째/3.0s 08:5번째/5.0s 09:6번째/5.0s
-[+ 17.97s]   queue active=2 waiting=4 eta_new=5.8s | 04:실행 05:실행 06:1번째/1.8s 07:2번째/1.9s 08:3번째/3.8s 09:4번째/3.9s
-[+ 18.48s]   queue active=2 waiting=4 eta_new=5.3s | 04:실행 05:실행 06:1번째/1.3s 07:2번째/1.4s 08:3번째/3.3s 09:4번째/3.4s
-[+ 19.02s]   queue active=2 waiting=4 eta_new=5.0s | 04:실행 05:실행 06:1번째/1.0s 07:2번째/1.0s 08:3번째/3.0s 09:4번째/3.0s
-[+ 20.06s]   queue active=2 waiting=2 eta_new=3.7s | 06:실행 07:실행 08:1번째/1.7s 09:2번째/1.8s
-[+ 20.59s]   queue active=2 waiting=2 eta_new=3.2s | 06:실행 07:실행 08:1번째/1.2s 09:2번째/1.3s
-[+ 21.11s]   queue active=2 waiting=2 eta_new=3.0s | 06:실행 07:실행 08:1번째/1.0s 09:2번째/1.0s
-[+ 22.17s]   queue active=2 waiting=0 eta_new=1.6s | 08:실행 09:실행
-[+ 23.75s]   queue active=2 waiting=0 eta_new=1.0s | 09:실행
-[+ 23.86s]   tk_C_00 code=200 cache=miss 도착순번=0 대기=0.0s 총=2.45s
-[+ 23.86s]   tk_C_01 code=200 cache=miss 도착순번=0 대기=0.0s 총=2.53s
-[+ 23.86s]   tk_C_02 code=200 cache=miss 도착순번=1 대기=1.8s 총=4.38s
-[+ 23.86s]   tk_C_03 code=200 cache=miss 도착순번=2 대기=1.8s 총=4.44s
-[+ 23.86s]   tk_C_04 code=200 cache=miss 도착순번=3 대기=3.6s 총=6.27s
-[+ 23.86s]   tk_C_05 code=200 cache=miss 도착순번=4 대기=3.7s 총=6.34s
-[+ 23.86s]   tk_C_06 code=200 cache=miss 도착순번=5 대기=5.5s 총=8.17s
-[+ 23.86s]   tk_C_07 code=200 cache=miss 도착순번=6 대기=5.6s 총=8.23s
-[+ 23.86s]   tk_C_08 code=200 cache=miss 도착순번=7 대기=7.4s 총=10.06s
-[+ 23.86s]   tk_C_09 code=200 cache=miss 도착순번=8 대기=7.5s 총=10.14s
-[+ 23.86s]   tk_C_10 code=503 cache=miss 도착순번=0 대기=Nones 총=0.56s retry_after=10 msg="지금 분석 요청이 많아 대기열이 가득 찼습니다. 약 10초 뒤에 다시 시도해 주세요."
-[+ 23.86s]   tk_C_11 code=503 cache=miss 도착순번=0 대기=Nones 총=0.55s retry_after=10 msg="지금 분석 요청이 많아 대기열이 가득 찼습니다. 약 10초 뒤에 다시 시도해 주세요."
-[+ 23.86s]   요약 C 동시 12건(대기열 상한 8): {"200": 10, "503": 2} 최장=10.14s
-[+ 23.86s] == D 한 IP에서 7건(분당 6건): 동시 7건
-[+ 30.23s]   tk_D_00 code=200 cache=miss 도착순번=0 대기=0.0s 총=2.23s
-[+ 30.23s]   tk_D_01 code=200 cache=miss 도착순번=0 대기=0.0s 총=2.3s
-[+ 30.23s]   tk_D_02 code=200 cache=miss 도착순번=1 대기=1.8s 총=4.12s
-[+ 30.23s]   tk_D_03 code=200 cache=miss 도착순번=2 대기=1.9s 총=4.2s
-[+ 30.23s]   tk_D_04 code=200 cache=miss 도착순번=3 대기=3.7s 총=6.03s
-[+ 30.23s]   tk_D_05 code=200 cache=miss 도착순번=4 대기=3.8s 총=6.11s
-[+ 30.23s]   tk_D_06 code=429 cache=miss 도착순번=0 대기=Nones 총=0.31s retry_after=60 msg="요청이 너무 잦습니다. 60초 뒤에 다시 시도해 주세요(분당 6건)."
-[+ 30.23s]   요약 D 한 IP에서 7건(분당 6건): {"200": 6, "429": 1} 최장=6.11s
-[+ 30.39s] 카운터: {"requests": 39, "cache_hits": 10, "joined": 0, "busy_503": 2, "rate_429": 1, "too_large_413": 0, "budget_503": 0, "blocked_503": 0, "timeout_504": 0, "error_5xx": 0, "completed": 26}
-[+ 30.39s] == E 데모 계획서(공개 입력) 1건 → 디스크 캐시
-[+ 32.56s]   데모: code=200 cache=miss | 결과 캐시 폴더 파일 1개 (사용자 입력 29건 요청 뒤): ['3d35460def76']
-[+ 32.56s]   디스크 파일 중 사용자 입력 본문 조각이 든 파일: 0개
-[+ 32.56s] == F 서버 강제 종료 → 감시 스크립트 재시작
-[+ 35.00s] 다시 health 정상까지 1.7s
-[+ 35.23s]   재시작 뒤 데모 다시: code=200 cache=hit 총=0.23s (디스크 캐시)
-[+ 37.41s]   재시작 뒤 사용자 입력 A03 다시: code=200 cache=miss 총=2.17s (메모리 캐시는 재시작으로 비워짐 → 다시 분석)
+[+  1.27s] health 정상까지 1.2s
+[+  1.27s] == A 동시 10건(서로 다른 계획서·IP): 동시 10건
+[+  1.62s]   queue active=0 waiting=0 eta_new=0.0s | 
+[+  2.14s]   queue active=2 waiting=8 eta_new=9.5s | 00:실행 01:실행 02:1번째/1.5s 03:2번째/1.6s 04:3번째/3.5s 05:4번째/3.6s 06:5번째/5.5s 07:6번째/5.6s 08:7번째/7.5s 09:8번째/7.6s
+[+  2.66s]   queue active=2 waiting=8 eta_new=9.0s | 00:실행 01:실행 02:1번째/1.0s 03:2번째/1.1s 04:3번째/3.0s 05:4번째/3.1s 06:5번째/5.0s 07:6번째/5.1s 08:7번째/7.0s 09:8번째/7.1s
+[+  3.19s]   queue active=2 waiting=8 eta_new=9.0s | 00:실행 01:실행 02:1번째/1.0s 03:2번째/1.0s 04:3번째/3.0s 05:4번째/3.0s 06:5번째/5.0s 07:6번째/5.0s 08:7번째/7.0s 09:8번째/7.0s
+[+  3.69s]   queue active=2 waiting=7 eta_new=7.9s | 01:실행 02:실행 03:1번째/1.0s 04:2번째/1.9s 05:3번째/3.0s 06:4번째/3.9s 07:5번째/5.0s 08:6번째/5.9s 09:7번째/7.0s
+[+  4.22s]   queue active=2 waiting=6 eta_new=7.4s | 02:실행 03:실행 04:1번째/1.4s 05:2번째/1.5s 06:3번째/3.4s 07:4번째/3.5s 08:5번째/5.4s 09:6번째/5.5s
+[+  4.73s]   queue active=2 waiting=6 eta_new=7.0s | 02:실행 03:실행 04:1번째/1.0s 05:2번째/1.0s 06:3번째/3.0s 07:4번째/3.0s 08:5번째/5.0s 09:6번째/5.0s
+[+  5.78s]   queue active=2 waiting=4 eta_new=5.9s | 04:실행 05:실행 06:1번째/1.9s 07:2번째/2.0s 08:3번째/3.9s 09:4번째/4.0s
+[+  6.30s]   queue active=2 waiting=4 eta_new=5.4s | 04:실행 05:실행 06:1번째/1.3s 07:2번째/1.4s 08:3번째/3.3s 09:4번째/3.4s
+[+  6.81s]   queue active=2 waiting=4 eta_new=5.0s | 04:실행 05:실행 06:1번째/1.0s 07:2번째/1.0s 08:3번째/3.0s 09:4번째/3.0s
+[+  7.86s]   queue active=2 waiting=2 eta_new=3.8s | 06:실행 07:실행 08:1번째/1.8s 09:2번째/1.9s
+[+  8.38s]   queue active=2 waiting=2 eta_new=3.3s | 06:실행 07:실행 08:1번째/1.3s 09:2번째/1.4s
+[+  8.91s]   queue active=2 waiting=2 eta_new=3.0s | 06:실행 07:실행 08:1번째/1.0s 09:2번째/1.0s
+[+  9.94s]   queue active=2 waiting=0 eta_new=1.7s | 08:실행 09:실행
+[+ 11.75s]   tk_A_00 code=200 cache=miss 도착순번=0 대기=0.0s 총=2.41s
+[+ 11.75s]   tk_A_01 code=200 cache=miss 도착순번=0 대기=0.0s 총=2.39s
+[+ 11.75s]   tk_A_02 code=200 cache=miss 도착순번=1 대기=1.8s 총=4.25s
+[+ 11.75s]   tk_A_03 code=200 cache=miss 도착순번=2 대기=1.8s 총=4.31s
+[+ 11.75s]   tk_A_04 code=200 cache=miss 도착순번=3 대기=3.7s 총=6.16s
+[+ 11.75s]   tk_A_05 code=200 cache=miss 도착순번=4 대기=3.8s 총=6.2s
+[+ 11.75s]   tk_A_06 code=200 cache=miss 도착순번=5 대기=5.6s 총=8.06s
+[+ 11.75s]   tk_A_07 code=200 cache=miss 도착순번=6 대기=5.7s 총=8.11s
+[+ 11.75s]   tk_A_08 code=200 cache=miss 도착순번=7 대기=7.5s 총=9.95s
+[+ 11.75s]   tk_A_09 code=200 cache=miss 도착순번=8 대기=7.6s 총=10.02s
+[+ 11.75s]   요약 A 동시 10건(서로 다른 계획서·IP): {"200": 10} 최장=10.02s
+[+ 11.75s] == B 같은 10건 다시(캐시): 동시 10건
+[+ 12.77s]   tk_B_00 code=200 cache=hit 도착순번=0 대기=0.0s 총=0.42s
+[+ 12.77s]   tk_B_01 code=200 cache=hit 도착순번=0 대기=0.0s 총=0.53s
+[+ 12.77s]   tk_B_02 code=200 cache=hit 도착순번=0 대기=0.0s 총=0.53s
+[+ 12.77s]   tk_B_03 code=200 cache=hit 도착순번=0 대기=0.0s 총=0.64s
+[+ 12.77s]   tk_B_04 code=200 cache=hit 도착순번=0 대기=0.0s 총=0.67s
+[+ 12.77s]   tk_B_05 code=200 cache=hit 도착순번=0 대기=0.0s 총=0.67s
+[+ 12.77s]   tk_B_06 code=200 cache=hit 도착순번=0 대기=0.0s 총=0.62s
+[+ 12.77s]   tk_B_07 code=200 cache=hit 도착순번=0 대기=0.0s 총=0.61s
+[+ 12.77s]   tk_B_08 code=200 cache=hit 도착순번=0 대기=0.0s 총=0.52s
+[+ 12.77s]   tk_B_09 code=200 cache=hit 도착순번=0 대기=0.0s 총=0.5s
+[+ 12.77s]   요약 B 같은 10건 다시(캐시): {"200": 10} 최장=0.67s
+[+ 12.77s] == C 동시 12건(대기열 상한 8): 동시 12건
+[+ 13.31s]   queue active=1 waiting=0 eta_new=0.0s | 00:실행
+[+ 13.83s]   queue active=2 waiting=7 eta_new=7.6s | 00:실행 01:실행 02:1번째/1.5s 03:2번째/1.6s 04:3번째/3.5s 05:4번째/3.6s 06:5번째/5.5s 07:6번째/5.6s 08:7번째/7.5s 09:8번째/7.6s
+[+ 14.36s]   queue active=2 waiting=8 eta_new=9.0s | 00:실행 01:실행 02:1번째/1.0s 03:2번째/1.1s 04:3번째/3.0s 05:4번째/3.1s 06:5번째/5.0s 07:6번째/5.1s 08:7번째/7.0s 09:8번째/7.1s
+[+ 14.89s]   queue active=2 waiting=8 eta_new=9.0s | 00:실행 01:실행 02:1번째/1.0s 03:2번째/1.0s 04:3번째/3.0s 05:4번째/3.0s 06:5번째/5.0s 07:6번째/5.0s 08:7번째/7.0s 09:8번째/7.0s
+[+ 15.41s]   queue active=2 waiting=6 eta_new=7.9s | 02:실행 03:실행 04:1번째/1.9s 05:2번째/2.0s 06:3번째/3.9s 07:4번째/4.0s 08:5번째/5.9s 09:6번째/6.0s
+[+ 15.94s]   queue active=2 waiting=6 eta_new=7.4s | 02:실행 03:실행 04:1번째/1.4s 05:2번째/1.5s 06:3번째/3.4s 07:4번째/3.5s 08:5번째/5.4s 09:6번째/5.5s
+[+ 16.45s]   queue active=2 waiting=6 eta_new=7.0s | 02:실행 03:실행 04:1번째/1.0s 05:2번째/1.0s 06:3번째/3.0s 07:4번째/3.0s 08:5번째/5.0s 09:6번째/5.0s
+[+ 17.48s]   queue active=2 waiting=4 eta_new=5.8s | 04:실행 05:실행 06:1번째/1.8s 07:2번째/1.9s 08:3번째/3.8s 09:4번째/3.9s
+[+ 18.02s]   queue active=2 waiting=4 eta_new=5.3s | 04:실행 05:실행 06:1번째/1.3s 07:2번째/1.4s 08:3번째/3.3s 09:4번째/3.4s
+[+ 18.53s]   queue active=2 waiting=4 eta_new=5.0s | 04:실행 05:실행 06:1번째/1.0s 07:2번째/1.0s 08:3번째/3.0s 09:4번째/3.0s
+[+ 19.58s]   queue active=2 waiting=2 eta_new=3.7s | 06:실행 07:실행 08:1번째/1.7s 09:2번째/1.8s
+[+ 20.11s]   queue active=2 waiting=2 eta_new=3.2s | 06:실행 07:실행 08:1번째/1.2s 09:2번째/1.3s
+[+ 20.62s]   queue active=2 waiting=2 eta_new=3.0s | 06:실행 07:실행 08:1번째/1.0s 09:2번째/1.0s
+[+ 21.67s]   queue active=2 waiting=0 eta_new=1.6s | 08:실행 09:실행
+[+ 23.41s]   tk_C_00 code=200 cache=miss 도착순번=0 대기=0.0s 총=2.52s
+[+ 23.41s]   tk_C_01 code=200 cache=miss 도착순번=0 대기=0.0s 총=2.56s
+[+ 23.41s]   tk_C_02 code=200 cache=miss 도착순번=1 대기=1.8s 총=4.41s
+[+ 23.41s]   tk_C_03 code=200 cache=miss 도착순번=2 대기=1.9s 총=4.47s
+[+ 23.41s]   tk_C_04 code=200 cache=miss 도착순번=3 대기=3.7s 총=6.31s
+[+ 23.41s]   tk_C_05 code=200 cache=miss 도착순번=4 대기=3.7s 총=6.36s
+[+ 23.41s]   tk_C_06 code=200 cache=miss 도착순번=5 대기=5.6s 총=8.2s
+[+ 23.41s]   tk_C_07 code=200 cache=miss 도착순번=6 대기=5.6s 총=8.27s
+[+ 23.41s]   tk_C_08 code=200 cache=miss 도착순번=7 대기=7.5s 총=10.09s
+[+ 23.41s]   tk_C_09 code=200 cache=miss 도착순번=8 대기=7.6s 총=10.16s
+[+ 23.41s]   tk_C_10 code=503 cache=miss 도착순번=0 대기=Nones 총=0.53s retry_after=10 msg="지금 분석 요청이 많아 대기열이 가득 찼습니다. 약 10초 뒤에 다시 시도해 주세요."
+[+ 23.41s]   tk_C_11 code=503 cache=miss 도착순번=0 대기=Nones 총=0.48s retry_after=10 msg="지금 분석 요청이 많아 대기열이 가득 찼습니다. 약 10초 뒤에 다시 시도해 주세요."
+[+ 23.41s]   요약 C 동시 12건(대기열 상한 8): {"200": 10, "503": 2} 최장=10.16s
+[+ 23.41s] == D 한 IP에서 7건(분당 6건): 동시 7건
+[+ 29.92s]   tk_D_00 code=200 cache=miss 도착순번=0 대기=0.0s 총=2.36s
+[+ 29.92s]   tk_D_01 code=200 cache=miss 도착순번=0 대기=0.0s 총=2.45s
+[+ 29.92s]   tk_D_02 code=200 cache=miss 도착순번=1 대기=1.8s 총=4.25s
+[+ 29.92s]   tk_D_03 code=200 cache=miss 도착순번=2 대기=1.9s 총=4.36s
+[+ 29.92s]   tk_D_04 code=200 cache=miss 도착순번=3 대기=3.7s 총=6.16s
+[+ 29.92s]   tk_D_05 code=200 cache=miss 도착순번=4 대기=3.8s 총=6.25s
+[+ 29.92s]   tk_D_06 code=429 cache=miss 도착순번=0 대기=Nones 총=0.44s retry_after=60 msg="요청이 너무 잦습니다. 60초 뒤에 다시 시도해 주세요(분당 6건)."
+[+ 29.92s]   요약 D 한 IP에서 7건(분당 6건): {"200": 6, "429": 1} 최장=6.25s
+[+ 30.11s] /queue/status(공개 프로필): 키=['accepting', 'active', 'aux', 'avg_run_s', 'blocked', 'eta_new_s', 'limits', 'max_active', 'max_waiting', 'waiting'] — 예산·카운터 수치 없음
+[+ 30.11s] == E 데모 계획서(공개 입력) 1건 → 디스크 캐시
+[+ 32.31s]   데모: code=200 cache=miss | 결과 캐시 폴더 파일 1개 (사용자 입력 29건 요청 뒤): ['3d35460def76']
+[+ 32.31s]   디스크 파일 중 사용자 입력 본문 조각이 든 파일: 0개
+[+ 32.31s] == G 차단 스위치 켠 상태에서 BOM·UTF-16·UTF-32 본문으로 우회 시도
+[+ 33.02s]   결과: {'utf-8': (503, 'blocked'), 'utf-8+BOM': (503, 'blocked'), 'utf-16': (503, 'blocked'), 'utf-32': (503, 'blocked')}
+[+ 33.02s] == F 서버 강제 종료 → 감시 스크립트 재시작
+[+ 34.95s] 다시 health 정상까지 1.2s
+[+ 35.22s]   재시작 뒤 데모 다시: code=200 cache=hit 총=0.27s (디스크 캐시)
+[+ 37.41s]   재시작 뒤 사용자 입력 A03 다시: code=200 cache=miss 총=2.19s (메모리 캐시는 재시작으로 비워짐 → 다시 분석)
 [+ 37.41s] 판정: PASS
-[+ 41.05s] 서버 종료 확인(포트 8122 닫힘)
-[+ 41.05s] -- 감시 스크립트 로그(serve.log)
-   [serve] 2026-09-30T19:21:17 감시 시작 health=http://127.0.0.1:8122/health 주기=1.0s 연속실패=2회 시작유예=60.0s 공개=아니오 로그=<임시폴더>\serve.log
-   [serve] 2026-09-30T19:21:17 시작 pid=28320 app=scripts.serve_fake_app:app host=127.0.0.1 port=8122 재시작 누적=0
-   [serve] 2026-09-30T19:21:18 health 정상 (뜨는 데 1.1s)
-   [serve] 2026-09-30T19:21:50 재시작 #1 이유: 프로세스 종료(code=3)
-   [serve] 2026-09-30T19:21:51 시작 pid=30356 app=scripts.serve_fake_app:app host=127.0.0.1 port=8122 재시작 누적=1
-   [serve] 2026-09-30T19:21:52 health 정상 (뜨는 데 1.0s)
-   [serve] 2026-09-30T19:21:55 중단 신호
-   [serve] 2026-09-30T19:21:55 중지 pid=30356 (감시 종료)
-   [serve] 2026-09-30T19:21:55 끝 재시작 누적=1
-[+ 41.06s] -- 서버 요청 로그(neumann.serving, 일부)
-   2026-09-30 19:21:21,053 INFO neumann.serving req ticket=tk_A_00 ip_9b7f6c90e4 path=/premortem/view mode=analysis plan_id=8c25d90edec3 chars=665 status=200 cache=miss queue=queued pos=0 waited_s=0.0 run_s=2.0 total_s=2.08
-   2026-09-30 19:21:21,184 INFO neumann.serving req ticket=tk_A_01 ip_a9e3394a69 path=/premortem/view mode=analysis plan_id=f58afad0657c chars=665 status=200 cache=miss queue=queued pos=0 waited_s=0.0 run_s=2.0 total_s=2.00
-   2026-09-30 19:21:22,997 INFO neumann.serving req ticket=tk_A_02 ip_aa4133edd4 path=/premortem/view mode=analysis plan_id=4873609baa5d chars=665 status=200 cache=miss queue=queued pos=1 waited_s=1.6 run_s=2.0 total_s=3.61
-   2026-09-30 19:21:23,186 INFO neumann.serving req ticket=tk_A_05 ip_3b5c9bf1eb path=/premortem/view mode=analysis plan_id=ff8d6e4f89ba chars=665 status=200 cache=miss queue=queued pos=2 waited_s=1.8 run_s=2.0 total_s=3.75
-   2026-09-30 19:21:25,004 INFO neumann.serving req ticket=tk_A_06 ip_52b6217508 path=/premortem/view mode=analysis plan_id=64e99021944e chars=665 status=200 cache=miss queue=queued pos=3 waited_s=3.5 run_s=2.0 total_s=5.55
-   2026-09-30 19:21:25,192 INFO neumann.serving req ticket=tk_A_03 ip_3e06c14627 path=/premortem/view mode=analysis plan_id=97ece0aed630 chars=665 status=200 cache=miss queue=queued pos=4 waited_s=3.7 run_s=2.0 total_s=5.73
-   2026-09-30 19:21:27,008 INFO neumann.serving req ticket=tk_A_07 ip_c25566613b path=/premortem/view mode=analysis plan_id=06b2c2dcfdc3 chars=665 status=200 cache=miss queue=queued pos=5 waited_s=5.5 run_s=2.0 total_s=7.52
-   2026-09-30 19:21:27,195 INFO neumann.serving req ticket=tk_A_08 ip_a707f46615 path=/premortem/view mode=analysis plan_id=ff684f98bdc0 chars=665 status=200 cache=miss queue=queued pos=6 waited_s=5.7 run_s=2.0 total_s=7.70
-   2026-09-30 19:21:29,012 INFO neumann.serving req ticket=tk_A_04 ip_ea6228a272 path=/premortem/view mode=analysis plan_id=7cfd99b41a7c chars=665 status=200 cache=miss queue=queued pos=7 waited_s=7.5 run_s=2.0 total_s=9.50
-   2026-09-30 19:21:29,199 INFO neumann.serving req ticket=tk_A_09 ip_fd0166cc9f path=/premortem/view mode=analysis plan_id=cff47224ea1a chars=665 status=200 cache=miss queue=queued pos=8 waited_s=7.7 run_s=2.0 total_s=9.67
-   2026-09-30 19:21:29,499 INFO neumann.serving req ticket=tk_B_00 ip_9b7f6c90e4 path=/premortem/view mode=analysis plan_id=8c25d90edec3 chars=665 status=200 cache=hit queue=none pos=0 waited_s=0.0 run_s=0.0 total_s=0.00
-   2026-09-30 19:21:29,701 INFO neumann.serving req ticket=tk_B_01 ip_a9e3394a69 path=/premortem/view mode=analysis plan_id=f58afad0657c chars=665 status=200 cache=hit queue=none pos=0 waited_s=0.0 run_s=0.0 total_s=0.00
-   2026-09-30 19:21:29,775 INFO neumann.serving req ticket=tk_B_02 ip_aa4133edd4 path=/premortem/view mode=analysis plan_id=4873609baa5d chars=665 status=200 cache=hit queue=none pos=0 waited_s=0.0 run_s=0.0 total_s=0.00
-   2026-09-30 19:21:29,865 INFO neumann.serving req ticket=tk_B_03 ip_3e06c14627 path=/premortem/view mode=analysis plan_id=97ece0aed630 chars=665 status=200 cache=hit queue=none pos=0 waited_s=0.0 run_s=0.0 total_s=0.00
+[+ 40.91s] 서버 종료 확인(포트 8122 닫힘)
+[+ 40.91s] -- 감시 스크립트 로그(serve.log)
+   [serve] 2026-09-30T19:57:37 감시 시작 health=http://127.0.0.1:8122/health 주기=1.0s 연속실패=2회 시작유예=60.0s 공개=아니오 로그=C:\Users\User\AppData\Local\Temp\neumann_e4l2c_c1puihjm\serve.log
+   [serve] 2026-09-30T19:57:37 시작 pid=20084 app=scripts.serve_fake_app:app host=127.0.0.1 port=8122 재시작 누적=0
+   [serve] 2026-09-30T19:57:38 health 정상 (뜨는 데 1.0s)
+   [serve] 2026-09-30T19:58:11 재시작 #1 이유: 프로세스 종료(code=3)
+   [serve] 2026-09-30T19:58:11 시작 pid=18728 app=scripts.serve_fake_app:app host=127.0.0.1 port=8122 재시작 누적=1
+   [serve] 2026-09-30T19:58:12 health 정상 (뜨는 데 1.0s)
+   [serve] 2026-09-30T19:58:15 중단 신호
+   [serve] 2026-09-30T19:58:15 중지 pid=18728 (감시 종료)
+   [serve] 2026-09-30T19:58:15 끝 재시작 누적=1
+[+ 40.92s] -- 서버 요청 로그(neumann.serving, 일부)
+   2026-09-30 19:57:41,439 INFO neumann.serving req ticket=tk_A_00 ip_b51e8a747b path=/premortem/view mode=analysis plan_id=8c25d90edec3 chars=665 status=200 cache=miss queue=queued pos=0 waited_s=0.0 run_s=2.0 total_s=2.05
+   2026-09-30 19:57:41,485 INFO neumann.serving req ticket=tk_A_01 ip_4b6b5e171c path=/premortem/view mode=analysis plan_id=f58afad0657c chars=665 status=200 cache=miss queue=queued pos=0 waited_s=0.0 run_s=2.0 total_s=2.00
+   2026-09-30 19:57:43,389 INFO neumann.serving req ticket=tk_A_02 ip_542a99968f path=/premortem/view mode=analysis plan_id=4873609baa5d chars=665 status=200 cache=miss queue=queued pos=1 waited_s=1.8 run_s=2.0 total_s=3.83
+   2026-09-30 19:57:43,492 INFO neumann.serving req ticket=tk_A_03 ip_b6bc7faed9 path=/premortem/view mode=analysis plan_id=97ece0aed630 chars=665 status=200 cache=miss queue=queued pos=2 waited_s=1.8 run_s=2.0 total_s=3.84
+   2026-09-30 19:57:45,394 INFO neumann.serving req ticket=tk_A_04 ip_ea1da11acd path=/premortem/view mode=analysis plan_id=7cfd99b41a7c chars=665 status=200 cache=miss queue=queued pos=3 waited_s=3.7 run_s=2.0 total_s=5.69
+   2026-09-30 19:57:45,493 INFO neumann.serving req ticket=tk_A_05 ip_f492ecdf20 path=/premortem/view mode=analysis plan_id=ff8d6e4f89ba chars=665 status=200 cache=miss queue=queued pos=4 waited_s=3.8 run_s=2.0 total_s=5.75
+   2026-09-30 19:57:47,396 INFO neumann.serving req ticket=tk_A_06 ip_8ddc658fe9 path=/premortem/view mode=analysis plan_id=64e99021944e chars=665 status=200 cache=miss queue=queued pos=5 waited_s=5.6 run_s=2.0 total_s=7.61
+   2026-09-30 19:57:47,501 INFO neumann.serving req ticket=tk_A_07 ip_b43248147e path=/premortem/view mode=analysis plan_id=06b2c2dcfdc3 chars=665 status=200 cache=miss queue=queued pos=6 waited_s=5.7 run_s=2.0 total_s=7.67
+   2026-09-30 19:57:49,405 INFO neumann.serving req ticket=tk_A_08 ip_181a99c1c2 path=/premortem/view mode=analysis plan_id=ff684f98bdc0 chars=665 status=200 cache=miss queue=queued pos=7 waited_s=7.5 run_s=2.0 total_s=9.55
+   2026-09-30 19:57:49,506 INFO neumann.serving req ticket=tk_A_09 ip_01d4feb9f6 path=/premortem/view mode=analysis plan_id=cff47224ea1a chars=665 status=200 cache=miss queue=queued pos=8 waited_s=7.6 run_s=2.0 total_s=9.66
+   2026-09-30 19:57:49,931 INFO neumann.serving req ticket=tk_B_00 ip_b51e8a747b path=/premortem/view mode=analysis plan_id=8c25d90edec3 chars=665 status=200 cache=hit queue=none pos=0 waited_s=0.0 run_s=0.0 total_s=0.00
+   2026-09-30 19:57:50,080 INFO neumann.serving req ticket=tk_B_01 ip_4b6b5e171c path=/premortem/view mode=analysis plan_id=f58afad0657c chars=665 status=200 cache=hit queue=none pos=0 waited_s=0.0 run_s=0.0 total_s=0.00
+   2026-09-30 19:57:50,130 INFO neumann.serving req ticket=tk_B_02 ip_542a99968f path=/premortem/view mode=analysis plan_id=4873609baa5d chars=665 status=200 cache=hit queue=none pos=0 waited_s=0.0 run_s=0.0 total_s=0.02
+   2026-09-30 19:57:50,298 INFO neumann.serving req ticket=tk_B_03 ip_b6bc7faed9 path=/premortem/view mode=analysis plan_id=97ece0aed630 chars=665 status=200 cache=hit queue=none pos=0 waited_s=0.0 run_s=0.0 total_s=0.00
       ...
-   2026-09-30 19:21:45,108 INFO neumann.serving req ticket=tk_D_03 ip_bae9cba39a path=/premortem/view mode=analysis plan_id=40b0604105cc chars=665 status=200 cache=miss queue=queued pos=2 waited_s=1.9 run_s=2.0 total_s=3.86
-   2026-09-30 19:21:46,983 INFO neumann.serving req ticket=tk_D_04 ip_bae9cba39a path=/premortem/view mode=analysis plan_id=b524b7ad2149 chars=665 status=200 cache=miss queue=queued pos=3 waited_s=3.7 run_s=2.0 total_s=5.67
-   2026-09-30 19:21:47,112 INFO neumann.serving req ticket=tk_D_05 ip_bae9cba39a path=/premortem/view mode=analysis plan_id=bb7c220ff14c chars=665 status=200 cache=miss queue=queued pos=4 waited_s=3.8 run_s=2.0 total_s=5.78
-   2026-09-30 19:21:49,443 INFO neumann.serving req ticket=tk_E_demo ip_cf2ea47b67 path=/premortem/view mode=analysis plan_id=3d35460def76 chars=645 status=200 cache=miss queue=queued pos=0 waited_s=0.0 run_s=2.0 total_s=2.02
-   2026-09-30 19:21:52,111 INFO neumann.serving req ticket=tk_F_demo ip_198fe473fb path=/premortem/view mode=analysis plan_id=3d35460def76 chars=645 status=200 cache=hit queue=none pos=0 waited_s=0.0 run_s=0.0 total_s=0.06
-   2026-09-30 19:21:54,293 INFO neumann.serving req ticket=tk_F_A03 ip_3f63d4f1ee path=/premortem/view mode=analysis plan_id=97ece0aed630 chars=665 status=200 cache=miss queue=queued pos=0 waited_s=0.0 run_s=2.0 total_s=2.00
-[+ 41.08s] 서버 로그 623줄 중 계획서 본문·트레이스가 든 줄: 0
+   2026-09-30 19:58:10,227 INFO neumann.serving req ticket=b524e8328a0448ff ip_ac21de5146 path=/premortem/view mode=analysis plan_id=34ef9ecddc1d chars=669 status=503 cache=miss queue=none pos=0 waited_s=0.0 run_s=0.0 total_s=0.00
+   2026-09-30 19:58:10,402 INFO neumann.serving req ticket=a8c3b790dd744a0f ip_ac21de5146 path=/premortem/view mode=analysis plan_id=f47af9ec98d2 chars=673 status=503 cache=miss queue=none pos=0 waited_s=0.0 run_s=0.0 total_s=0.00
+   2026-09-30 19:58:10,589 INFO neumann.serving req ticket=0c86ef896e894234 ip_ac21de5146 path=/premortem/view mode=analysis plan_id=cd1191125ed3 chars=670 status=503 cache=miss queue=none pos=0 waited_s=0.0 run_s=0.0 total_s=0.00
+   2026-09-30 19:58:10,776 INFO neumann.serving req ticket=3a357f0d7fd74a35 ip_ac21de5146 path=/premortem/view mode=analysis plan_id=bfd1ecda6b8b chars=670 status=503 cache=miss queue=none pos=0 waited_s=0.0 run_s=0.0 total_s=0.00
+   2026-09-30 19:58:12,977 INFO neumann.serving req ticket=tk_F_demo ip_780cab9e62 path=/premortem/view mode=analysis plan_id=3d35460def76 chars=645 status=200 cache=hit queue=none pos=0 waited_s=0.0 run_s=0.0 total_s=0.06
+   2026-09-30 19:58:15,164 INFO neumann.serving req ticket=tk_F_A03 ip_b842771eba path=/premortem/view mode=analysis plan_id=97ece0aed630 chars=665 status=200 cache=miss queue=queued pos=0 waited_s=0.0 run_s=2.0 total_s=2.02
+[+ 40.92s] 서버 로그 631줄 중 계획서 본문·트레이스가 든 줄: 0

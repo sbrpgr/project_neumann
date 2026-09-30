@@ -10,6 +10,7 @@
   C 동시 12건(대기열 상한 8): 2 실행 + 8 대기 + 2건 503(사용자 문구)
   D 한 IP에서 7건: 분당 6건 넘는 1건 429(사용자 문구)
   E 데모 계획서 1건 → 디스크 캐시(허용 목록). 사용자 입력 결과는 디스크에 0개(메모리만)
+  G 차단 스위치 켠 채 BOM·UTF-16·UTF-32 본문 → 전부 503 blocked(FAIL 대응 1)
   F 서버 강제 종료(/__crash) → 감시 스크립트가 다시 띄움 → 데모는 디스크 캐시로 즉시, 사용자 입력은 다시 분석
 """
 
@@ -51,7 +52,7 @@ def post(base: str, tag: str, ticket: str, ip: str) -> dict[str, Any]:
     t = time.monotonic()
     with httpx.Client(base_url=base, timeout=120) as c:
         r = c.post("/premortem/view", json={"plan_text": plan_text(tag)},
-                   headers={"X-Neumann-Ticket": ticket, "X-Forwarded-For": ip})
+                   headers={"X-Neumann-Ticket": ticket, "CF-Connecting-IP": ip})
     body = r.json()
     sv = (body.get("_status") or {}).get("serving") or {}
     return {"ticket": ticket, "code": r.status_code, "cache": r.headers.get("x-neumann-cache"),
@@ -162,7 +163,7 @@ def main() -> int:
         res_d = burst(base, "D 한 IP에서 7건(분당 6건)",
                       [(f"D{i:02d}", f"tk_D_{i:02d}", "192.0.2.77") for i in range(7)], poll=False)
         st = httpx.get(base + "/queue/status").json()
-        say(f"카운터: {json.dumps(st['counters'], ensure_ascii=False)}")
+        say(f"/queue/status(공개 프로필): 키={sorted(st)} — 예산·카운터 수치 없음")
         # E
         say("== E 데모 계획서(공개 입력) 1건 → 디스크 캐시")
         demo = post(base, "DEMO", "tk_E_demo", "198.51.100.200")
@@ -173,6 +174,18 @@ def main() -> int:
             f"(사용자 입력 {n_user}건 요청 뒤): {[f[:12] for f in files]}")
         body_hits = [f for f in rdir.glob("*.json") if "부하 시험 계획서 변형" in f.read_text(encoding="utf-8")]
         say(f"  디스크 파일 중 사용자 입력 본문 조각이 든 파일: {len(body_hits)}개")
+        # G (FAIL 대응 1): 차단 스위치를 켠 채 본문 인코딩을 바꿔 우회를 시도한다
+        say("== G 차단 스위치 켠 상태에서 BOM·UTF-16·UTF-32 본문으로 우회 시도")
+        (tmp / "block.flag").write_text("", encoding="utf-8")
+        enc_codes = {}
+        for name, raw in {"utf-8": None, "utf-8+BOM": "bom", "utf-16": "utf-16", "utf-32": "utf-32"}.items():
+            text = json.dumps({"plan_text": plan_text(f"G-{name}")}, ensure_ascii=False)
+            data = (chr(0xFEFF) + text).encode("utf-8") if raw == "bom" else text.encode(raw or "utf-8")
+            r = httpx.post(base + "/premortem/view", content=data, timeout=30,
+                           headers={"content-type": "application/json", "CF-Connecting-IP": "192.0.2.200"})
+            enc_codes[name] = (r.status_code, r.json().get("error_code"))
+        (tmp / "block.flag").unlink()
+        say(f"  결과: {enc_codes}")
         # F
         say("== F 서버 강제 종료 → 감시 스크립트 재시작")
         try:
@@ -189,7 +202,8 @@ def main() -> int:
         ok = (all(x["code"] == 200 for x in res_a) and all(x["cache"] == "hit" for x in res_b)
               and sorted(x["code"] for x in res_c).count(503) == 2 and [x["code"] for x in res_d].count(429) == 1
               and max(x["pos"] or 0 for x in res_a) == 8 and len(files) == 1 and not body_hits
-              and r["cache"] == "hit" and u["cache"] == "miss" and u["code"] == 200)
+              and r["cache"] == "hit" and u["cache"] == "miss" and u["code"] == 200
+              and all(v == (503, "blocked") for v in enc_codes.values()))
         say(f"판정: {'PASS' if ok else 'FAIL'}")
         rc = 0 if ok else 1
     finally:
