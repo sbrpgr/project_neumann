@@ -206,13 +206,15 @@ def test_rate_limit_per_ip_with_user_message(tmp_path, monkeypatch):
 
 
 def test_proxy_headers_trusted_only_from_loopback():
-    scope = {"client": ("198.51.100.5", 1), "headers": [(b"x-forwarded-for", b"1.2.3.4")]}
+    scope = {"client": ("198.51.100.5", 1), "headers": [(b"x-forwarded-for", b"1.2.3.4, 10.0.0.9")]}
     assert serving.client_ip(scope, "loopback") == "198.51.100.5"  # 외부 peer가 보낸 XFF는 믿지 않는다
-    scope["client"] = ("127.0.0.1", 1)
-    assert serving.client_ip(scope, "loopback") == "1.2.3.4"
+    assert serving.client_ip(scope, "always") == "1.2.3.4"  # 신뢰를 켜면 peer와 무관
+    scope["client"] = ("127.0.0.1", 1)  # 터널(cloudflared)은 로컬에서 들어온다
+    assert serving.client_ip(scope, "loopback") == "1.2.3.4"  # XFF 첫 값(기본)
+    assert serving.client_ip(scope, "loopback", "last") == "10.0.0.9"
     scope["headers"].append((b"cf-connecting-ip", b"9.9.9.9"))
-    assert serving.client_ip(scope, "loopback") == "9.9.9.9"
-    assert serving.client_ip(scope, "never") == "127.0.0.1"
+    assert serving.client_ip(scope, "loopback") == "9.9.9.9"  # CF-Connecting-IP가 먼저
+    assert serving.client_ip(scope, "never") == "127.0.0.1"  # 신뢰를 끄면 client.host
     lim = serving.RateLimiter(2, 60, clock=lambda: 100.0)
     assert lim.hit("x")[0] and lim.hit("x")[0]
     ok, retry = lim.hit("x")
@@ -248,7 +250,8 @@ def test_input_size_limit_413(tmp_path, monkeypatch):
 # ───────────────────────── 결과 캐시 ─────────────────────────
 
 
-def test_result_cache_memory_then_disk_without_plan_body(tmp_path, monkeypatch):
+def test_user_input_is_cached_in_memory_only_never_on_disk(tmp_path, monkeypatch):
+    """S-06: 사용자 입력 결과는 메모리 캐시만. 디스크(공유 data/cache/results)에는 파일도 본문 조각도 남지 않는다."""
     calls = []
 
     def quick(plan_text: str) -> dict[str, Any]:
@@ -271,28 +274,117 @@ def test_result_cache_memory_then_disk_without_plan_body(tmp_path, monkeypatch):
     assert r2.json()["plan_id"] == pid
     # 적중 결과에도 계획서 줄이 다시 붙는다(요청 본문으로 복원)
     assert any(BODY_MARK in ln["text"] for ln in r2.json()["plan"]["lines"])
-    # 디스크 저장본에는 본문이 없다
+    # 메모리 저장본에도 줄 텍스트는 없다
+    assert BODY_MARK not in json.dumps(srv.cache.get(pid), ensure_ascii=False)
+    # 디스크: 파일이 하나도 없고, tmp 전체 어디에도 본문 조각이 없다
+    assert not (tmp_path / "results").exists() or list((tmp_path / "results").iterdir()) == []
+    for f in tmp_path.rglob("*"):
+        if f.is_file():
+            assert BODY_MARK.encode() not in f.read_bytes(), f
+    assert srv.cache.disk_stores == 0
+    # 새 프로세스를 흉내(메모리 비어 있음) → 디스크에 없으므로 다시 돌린다
+    srv2, app2 = make(tmp_path, monkeypatch, quick, cache_enabled=True)
+    r3, _ = asyncio.run(go(app2))
+    assert r3.headers["x-neumann-cache"] == "miss" and len(calls) == 2
+
+
+def test_public_demo_input_goes_to_disk_without_plan_body(tmp_path, monkeypatch):
+    """디스크 캐시는 허용 목록(데모·템플릿 plan_id)만. 저장본에는 줄 텍스트가 없고, 재시작 뒤에도 적중한다."""
+    calls = []
+
+    def quick(plan_text: str) -> dict[str, Any]:
+        calls.append(1)
+        return fake_result(plan_text)
+
+    demo = plan("public-demo")
+    allow = frozenset({serving.plan_key(demo)})
+    srv, app = make(tmp_path, monkeypatch, quick, cache_enabled=True, disk_allow=allow)
+
+    async def go(app: Any) -> httpx.Response:
+        async with client(app) as c:
+            return await c.post("/premortem/view", json={"plan_text": demo})
+
+    assert asyncio.run(go(app)).headers["x-neumann-cache"] == "miss"
+    pid = serving.plan_key(demo)
     f = tmp_path / "results" / f"{pid}.json"
-    assert f.is_file()
+    assert f.is_file() and srv.cache.disk_stores == 1
     stored = f.read_text(encoding="utf-8")
     assert BODY_MARK not in stored
     assert json.loads(stored)["result"]["plan"]["n_lines"] >= 3
+    srv2, app2 = make(tmp_path, monkeypatch, quick, cache_enabled=True, disk_allow=allow)
+    r = asyncio.run(go(app2))
+    assert r.status_code == 200 and r.headers["x-neumann-cache"] == "hit" and len(calls) == 1
+    assert r.json()["_status"]["serving"]["cache"] == "hit"
+    assert any(BODY_MARK in ln["t"] for ln in r.json()["plan"]["lines"])
 
-    # 새 프로세스를 흉내: 새 Serving(메모리 비어 있음) + 같은 디스크 폴더 → 파이프라인 안 부르고 적중
-    srv2, app2 = make(tmp_path, monkeypatch, quick, cache_enabled=True)
-    r3, _ = asyncio.run(go(app2))
-    assert r3.status_code == 200 and r3.headers["x-neumann-cache"] == "hit"
-    assert r3.json()["_status"]["serving"]["cache"] == "hit"
-    assert any(BODY_MARK in ln["t"] for ln in r3.json()["plan"]["lines"])
-    assert len(calls) == 1
+
+def test_disk_allowlist_is_exactly_three_demo_plans(monkeypatch):
+    monkeypatch.delenv("NEUMANN_WARMUP_PLANS", raising=False)
+    monkeypatch.delenv("NEUMANN_DISK_CACHE_ALLOW", raising=False)
+    root = Path(serving.__file__).resolve().parents[3]
+    demos = sorted((root / "tests" / "fixtures" / "plans").glob("plan*.md"))
+    assert [p.name for p in demos] == ["plan.md", "plan_elife_neuro.md", "plan_medimaging.md"]
+    c = serving.ServingConfig.from_env()
+    assert set(c.warmup_plans) == set(demos)
+    assert c.disk_allow == {serving.plan_key(p.read_text(encoding="utf-8")) for p in demos}
+    assert len(c.disk_allow) == 3
+    templates = sorted((root / "src" / "neumann" / "api" / "templates").glob("*.md"))
+    assert templates and not {serving.plan_key(p.read_text(encoding="utf-8")) for p in templates} & c.disk_allow
+    assert serving.plan_key(plan("user")) not in c.disk_allow
+
+
+def test_public_profile_user_input_leaves_no_file_in_data_cache_results(tmp_path, monkeypatch):
+    """화면 고지 "이 서버는 계획서 본문을 파일로 저장하지 않습니다"의 근거: 공개 프로필 기본 설정 그대로
+    사용자 입력을 분석해도 <data_dir>/cache/results/에 새 파일이 0개다. 데모 계획서만 파일로 남는다."""
+    from neumann.config import get_settings
+
+    for k in ("NEUMANN_RESULT_CACHE_DIR", "NEUMANN_RESULT_CACHE", "NEUMANN_DISK_CACHE_ALLOW", "NEUMANN_BUDGET_FILE",
+              "NEUMANN_BLOCK_FILE", "NEUMANN_WARMUP_PLANS"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("NEUMANN_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NEUMANN_PUBLIC", "1")
+    get_settings.cache_clear()
+    try:
+        cfg = serving.ServingConfig.from_env()
+    finally:
+        get_settings.cache_clear()
+    results = tmp_path / "cache" / "results"
+    assert cfg.cache_enabled and cfg.cache_dir == results
+    srv, app = make(tmp_path, monkeypatch, lambda t: fake_result(t), **{
+        k: getattr(cfg, k) for k in ("cache_enabled", "cache_dir", "disk_allow", "cache_ttl_s", "cache_mem_items")})
+    demo = (Path(serving.__file__).resolve().parents[3] / "tests" / "fixtures" / "plans" / "plan.md").read_text(
+        encoding="utf-8")
+
+    async def go() -> None:
+        async with client(app) as c:
+            for i in range(3):
+                assert (await c.post("/premortem/view", json={"plan_text": plan(f"user{i}")})).status_code == 200
+            assert not results.exists() or list(results.iterdir()) == []  # 사용자 입력 3건 → 새 파일 0개
+            assert (await c.post("/premortem/view", json={"plan_text": demo})).status_code == 200
+
+    asyncio.run(go())
+    files = list(results.iterdir())
+    assert [f.name for f in files] == [f"{serving.plan_key(demo)}.json"]  # 데모만
+    assert BODY_MARK not in files[0].read_text(encoding="utf-8")
+
+
+def test_memory_cache_ttl_and_size_cap():
+    now = [0.0]
+    c = serving.ResultCache(None, enabled=True, mem_items=2, ttl_s=10, clock=lambda: now[0])
+    for ch in "abc":
+        assert c.put(ch * 64, {"status": "ok", "plan_id": ch * 64})
+    assert c.get("a" * 64) is None and c.memory_items == 2  # 개수 상한(LRU)
+    now[0] = 11.0
+    assert c.get("b" * 64) is None and c.get("c" * 64) is None  # TTL 지남
 
 
 def test_cache_skips_degraded_and_other_variant(tmp_path):
-    c = serving.ResultCache(tmp_path, enabled=True, variant="openai:gpt-6-astra:1")
+    allow = {"c" * 64}
+    c = serving.ResultCache(tmp_path, enabled=True, variant="openai:gpt-6-astra:1", disk_allow=allow)
     assert not c.put("a" * 64, {"status": "degraded", "plan_id": "a" * 64})
     assert not c.put("b" * 64, {"status": "ok", "sample": True})
     assert c.put("c" * 64, {"status": "ok", "plan_id": "c" * 64})
-    other = serving.ResultCache(tmp_path, enabled=True, variant="mock:gpt-6-astra:1")
+    other = serving.ResultCache(tmp_path, enabled=True, variant="mock:gpt-6-astra:1", disk_allow=allow)
     assert other.get("c" * 64) is None and c.get("c" * 64) is not None
     assert not serving.ResultCache(tmp_path, enabled=False).put("d" * 64, {"status": "ok"})
 
@@ -308,7 +400,8 @@ def test_warmup_fills_cache_from_demo_plans(tmp_path):
         return fake_result(plan_text)
 
     cfg = serving.ServingConfig(cache_enabled=True, cache_dir=tmp_path / "results", warmup=True,
-                                warmup_plans=(p1, p2, tmp_path / "missing.md"))
+                                warmup_plans=(p1, p2, tmp_path / "missing.md"),
+                                disk_allow=frozenset(serving.public_plan_ids([p1, p2])))
     srv = serving.Serving(cfg)
     ws = asyncio.run(srv.warmup(quick))
     assert ws["state"] == "done" and ws["cached"] == 2 and ws["failed"] == 1 and len(calls) == 2
@@ -357,7 +450,7 @@ def test_pipeline_error_is_user_message_without_internals(tmp_path, monkeypatch)
                 assert r.status_code == 500
                 body = r.json()
                 assert body["error_code"] == "internal" and body["ticket"] == "tk_err_0001"
-                assert body["message"].startswith("분석 중 문제가 생겼습니다") and "tk_err_0001" in body["message"]
+                assert body["message"].startswith("처리 중 문제가 생겼습니다") and "tk_err_0001" in body["message"]
                 assert "@ " not in r.text  # main의 "RuntimeError @ 파일:줄" 위치가 지워졌다
                 assert_clean(r.text)
             view = r.json()
@@ -442,15 +535,20 @@ def test_redacting_filter_hides_real_env_secret(monkeypatch):
 
 def test_config_defaults_and_public_profile(monkeypatch):
     for k in ("NEUMANN_PUBLIC", "NEUMANN_RATE_PER_MIN", "NEUMANN_RESULT_CACHE", "NEUMANN_WARMUP",
-              "NEUMANN_MAX_CONCURRENT", "NEUMANN_QUEUE_MAX", "NEUMANN_MAX_PLAN_CHARS"):
+              "NEUMANN_MAX_CONCURRENT", "NEUMANN_QUEUE_MAX", "NEUMANN_MAX_PLAN_CHARS", "NEUMANN_DAILY_BUDGET",
+              "NEUMANN_HIDE_DOCS", "NEUMANN_AUX_RATE_PER_MIN", "NEUMANN_PROTECTED_PATHS"):
         monkeypatch.delenv(k, raising=False)
     c = serving.ServingConfig.from_env()
     assert (c.max_concurrent, c.queue_max, c.max_plan_chars) == (2, 20, 50_000)
     assert (c.rate_per_min, c.cache_enabled, c.warmup) == (0, False, False)  # 테스트·개발: 꺼짐
+    assert c.daily_budget == 0 and not c.hide_docs
+    assert c.protected == {"/premortem": "analysis", "/premortem/view": "analysis",
+                           "/premortem/package": "export", "/upload/plan": "upload"}
     assert c.cache_dir is not None and c.cache_dir.parts[-2:] == ("cache", "results")
     monkeypatch.setenv("NEUMANN_PUBLIC", "1")
     c = serving.ServingConfig.from_env()
     assert (c.rate_per_min, c.cache_enabled, c.warmup) == (6, True, True)
+    assert c.daily_budget == 200 and c.hide_docs and c.aux_rate_per_min == 30
     monkeypatch.setenv("NEUMANN_RATE_PER_MIN", "10")
     monkeypatch.setenv("NEUMANN_MAX_CONCURRENT", "abc")
     c = serving.ServingConfig.from_env()
