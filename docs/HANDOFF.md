@@ -9,6 +9,18 @@
 
 # 인계 문서
 
+## 후속 기능 인수 안내 — 2026-10-01
+
+최종 검사·교정 후보의 인수 위치, 재검증 명령, 기존 core 차단 사항과 통합 순서는 [FINALIZATION_HANDOFF.md](FINALIZATION_HANDOFF.md)에 정리했다. 이 브랜치의 PASS와 root 최신 core의 미해결 출처 결합/export 오류를 구분한다. 서비스 연결 전 최신 core 수정과 동일 결합 후보 검증이 필요하다.
+
+## 최종 검사·교정 후속 후보 — 2026-10-01 (이 채팅의 별도 개발 브랜치)
+
+- `codex/finalization-20261001`은 기존 UI/core `ff7e474`에서 분리한 후속 후보다. 기존 main/8020/8099와 다른 PM의 core 통합 작업은 변경하지 않았다.
+- 구현: 수정 확정 한 번 → 조립 → 의미 검사·실제 Z3/Pint/NetworkX 제한 검사 → 근거 게이트를 통과한 교정 1묶음 → 대상 도구 재검사 → 최종 초안/미해결/변경 이력 반환. 추가 응답 계약과 선택 `finalization` 의존성을 등록했다.
+- 검증: 통합 집중 68 PASS, 독립 다른 모델 집중 68 PASS, 실제 HTTP/브라우저 1 PASS. 전체 `scripts/verify.py`는 2175 PASS·56 skipped / 보안592·계약5 PASS (mock/offline, OpenAI 실제 호출0).
+- 한계: 실 LLM 품질·범용 실험 실행·최종 Word·보강 효과 평가는 미확인/후속. 기존 Word는 통합본, 최종 초안은 Markdown이다. main 병합·push·서비스 반영 없음.
+- 상세 보고서 `docs/reports/FINAL-PM.md`, 독립 결과 `FINAL-INDEPENDENT.md`·`FINAL-UI-INDEPENDENT.md`. 실제 제품 내용 `e121eef`, 독립 보고 커밋 `59bc248`; 이후 문서 커밋은 코드 변경이 아니다. 다른 PM이 기존 core/UI와 결합할 때 중복 변경을 보존하고 결합 검증한다.
+
 PM이 병합할 때마다 갱신한다. Claude 한도가 다 되면 이 문서를 Codex에 주고 PM 역할을 넘긴다.
 
 ## ★ Codex 핵심 후보 — 2026-10-01, 전체 PASS·최종 독립 결함 수정 중

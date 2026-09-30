@@ -119,6 +119,7 @@ OPTIONAL_ROUTERS: tuple[str, ...] = (
     "neumann.api.export",
     "neumann.api.upload",
     "neumann.api.precomputed",
+    "neumann.api.samples",
     "neumann.api.templates",
     "neumann.api.meta",
 )
@@ -406,3 +407,6 @@ jobs.install(app, load_pipeline=lambda: _load_pipeline(), sample_result=lambda r
 from neumann.api import revise as revise_api  # noqa: E402
 
 revise_api.install(app)
+from neumann.api import finalize as finalize_api  # noqa: E402
+
+finalize_api.install(app)

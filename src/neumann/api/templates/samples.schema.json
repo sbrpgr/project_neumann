@@ -1,0 +1,107 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "neumann/api/templates/samples.schema.json",
+  "title": "첫 화면 샘플 갤러리 선별 목록(E4-L1g)",
+  "description": "샘플은 새로 돌린 라이브 결과가 아니라 실제 테스트(v1 라이브·원문 복원 백테스트·분야 테스트)의 입력과 결과를 가리킨다. 갤러리는 status=featured만 보여 준다. public_ok=false인 본문은 화면·API에 싣지 않는다(저작권).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "label", "notice", "domains", "fields", "samples"],
+  "definitions": {
+    "id": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "maxLength": 64},
+    "label": {"type": "string", "minLength": 1, "maxLength": 120},
+    "relpath": {"type": "string", "pattern": "^(src/neumann/api/templates/(examples|samples)|tests/fixtures/plans)/[A-Za-z0-9_-]+[.]md$"},
+    "docfile": {"type": "string", "pattern": "^[a-z0-9_]+[.](pdf|docx|hwpx)$"}
+  },
+  "properties": {
+    "version": {"type": "integer", "minimum": 1},
+    "label": {"$ref": "#/definitions/label", "description": "갤러리 제목. 시연 예시(선별)임을 드러낸다"},
+    "notice": {"type": "string", "minLength": 1, "maxLength": 300, "description": "성능 주장에 쓰지 않는다는 문구(화면에 그대로 나간다)"},
+    "domains": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/definitions/label"}},
+    "fields": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["id", "name", "domain"],
+        "properties": {
+          "id": {"$ref": "#/definitions/id"},
+          "name": {"$ref": "#/definitions/label"},
+          "domain": {"$ref": "#/definitions/label"},
+          "keywords": {"type": "array", "items": {"type": "string", "minLength": 1}, "description": "결과의 domain·field 문자열과 대조할 낱말(소문자)"}
+        }
+      }
+    },
+    "samples": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "kind", "status", "title", "summary", "domain", "field", "language", "license", "public_ok", "expect_gate", "source_test", "origin", "intended_weaknesses", "curation"],
+        "properties": {
+          "id": {"$ref": "#/definitions/id"},
+          "kind": {"type": "string", "enum": ["plan", "reject", "case"], "description": "plan=본문 공개 샘플(분석 대상), reject=관문 거절 시연, case=본문 비공개 백테스트 사례(요약·원문 링크만)"},
+          "status": {"type": "string", "enum": ["featured", "candidate", "retired"], "description": "갤러리는 featured만 보여 준다. 처음에는 전부 candidate(기존 예시 3편·거절 시연 2편만 임시 featured)"},
+          "title": {"$ref": "#/definitions/label"},
+          "summary": {"type": "string", "minLength": 1, "maxLength": 200},
+          "domain": {"$ref": "#/definitions/label"},
+          "field": {"$ref": "#/definitions/id"},
+          "language": {"type": "string", "enum": ["ko", "en"]},
+          "path": {"anyOf": [{"$ref": "#/definitions/relpath"}, {"type": "null"}], "description": "본문 파일(저장소 기준 상대 경로). public_ok=true일 때만 API가 본문을 낸다. case는 null"},
+          "documents": {
+            "type": "object", "additionalProperties": false,
+            "properties": {"pdf": {"$ref": "#/definitions/docfile"}, "docx": {"$ref": "#/definitions/docfile"}, "hwpx": {"$ref": "#/definitions/docfile"}},
+            "description": "정적 문서 샘플 파일 이름(src/neumann/webui/samples/ 안). 요청 경로로 파일을 고르지 않고 이 이름으로만 찾는다"
+          },
+          "license": {"type": "string", "minLength": 1, "maxLength": 200, "description": "본문 저작권·라이선스. 우리 작성 / arXiv CC BY 4.0(출처 표기) / arXiv 기본 라이선스(비공개) / 미확인"},
+          "public_ok": {"type": "boolean", "description": "공개 갤러리에 본문 전문을 실어도 되는가(우리 작성 또는 CC BY만 true)"},
+          "expect_gate": {"type": "string", "enum": ["ok", "reject"], "description": "입력 관문 기대 판정(테스트가 잰다)"},
+          "plan_id": {"anyOf": [{"type": "string", "pattern": "^[0-9a-f]{64}$"}, {"type": "null"}], "description": "결과와 짝짓는 계획서 sha256. 본문이 있으면 코드가 계산하므로 비워 둔다. case는 선별 스크립트가 채운다"},
+          "source_test": {
+            "type": "object", "additionalProperties": false, "required": ["name"],
+            "properties": {
+              "name": {"$ref": "#/definitions/label", "description": "결과가 나온 실제 테스트(과제 ID·서버)"},
+              "result_hint": {"type": "string", "maxLength": 120, "description": "결과 파일 이름 패턴(glob). plan_id 짝짓기가 우선이고 이건 보조다"},
+              "server_port": {"type": ["integer", "null"]},
+              "status": {"type": "string", "enum": ["done", "planned", "running"]}
+            }
+          },
+          "origin": {
+            "type": "object", "additionalProperties": false,
+            "properties": {
+              "work_id": {"type": ["string", "null"]},
+              "url": {"type": ["string", "null"], "pattern": "^https://"},
+              "arxiv": {"type": ["string", "null"]},
+              "decision": {"type": ["string", "null"]},
+              "note": {"type": "string", "maxLength": 300}
+            }
+          },
+          "intended_weaknesses": {
+            "type": "array",
+            "description": "일부러 넣은 약점(평가·시연 대조용, 화면·API에는 내지 않는다). 실제 논문 사례는 빈 목록",
+            "items": {
+              "type": "object", "additionalProperties": false, "required": ["risk_code", "text"],
+              "properties": {
+                "risk_code": {"type": "string", "pattern": "^R[0-9]$"},
+                "text": {"type": "string", "minLength": 1, "maxLength": 300},
+                "plan_lines": {"type": "array", "items": {"type": "integer", "minimum": 1}},
+                "keywords": {"type": "array", "items": {"type": "string", "minLength": 1}, "description": "카드 제목·설명과 대조할 낱말(소문자)"}
+              }
+            }
+          },
+          "curation": {
+            "type": "object", "additionalProperties": false,
+            "properties": {
+              "score": {"type": ["number", "null"], "minimum": 0, "maximum": 100},
+              "breakdown": {"type": "object", "additionalProperties": {"type": ["number", "string", "null"]}},
+              "reason": {"type": "string", "maxLength": 600},
+              "checked_by_human": {"type": "boolean"},
+              "result_file": {"type": ["string", "null"]},
+              "result_sha256": {"type": ["string", "null"]},
+              "result_generated_at": {"type": ["string", "null"]},
+              "generation": {"type": ["string", "null"], "description": "결과 생성 방식(라이브 sol / mock 대체 등). mock이면 선별하지 않는다"},
+              "scored_at": {"type": ["string", "null"]}
+            }
+          }
+        }
+      }
+    }
+  }
+}

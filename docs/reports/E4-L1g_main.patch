@@ -1,0 +1,11 @@
+diff --git a/src/neumann/api/main.py b/src/neumann/api/main.py
+--- a/src/neumann/api/main.py
++++ b/src/neumann/api/main.py
+@@ -79,6 +79,7 @@ OPTIONAL_ROUTERS: tuple[str, ...] = (
+     "neumann.api.export",
+     "neumann.api.upload",
+     "neumann.api.precomputed",
++    "neumann.api.samples",
+     "neumann.api.templates",
+     "neumann.api.meta",
+ )

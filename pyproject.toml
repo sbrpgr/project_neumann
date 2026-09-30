@@ -24,6 +24,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+finalization = [
+    "networkx>=3.4,<4",
+    "pint>=0.24,<1",
+    "z3-solver>=4.13,<5",
+]
 dev = [
     "pytest>=9.1",
     "playwright>=1.63",
