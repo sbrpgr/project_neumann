@@ -3,6 +3,45 @@
 - 빌더: Claude Opus 5.5 · 검증 예정: Claude Sonnet 5.5 · 브랜치 `task/E4-L2d`(`task/E4-L2c` 위에서 시작, 시작 때 `main` 병합 1회, 충돌 없음)
 - 스펙: PM 배정 지시(과제 파일 없음). 배경: cloudflared quick tunnel은 응답을 약 100초에서 끊는다(524). 분석 1건 60~70초라 대기열에서 기다리면 넘는다.
 
+## 재작업 4(검증 FAIL 1건: 접근 로그의 퍼센트 인코딩 job_id)
+
+문제: uvicorn 접근 로그는 쿼리 문자열을 날것으로 적는다. 재작업 3의 가리기는 값이 `%`로 시작하거나 중간에 `%XX`가 끼면 토큰이 끊겨 job_id가 남았다(검증 퍼징: job이 아닌 쿼리 키에 인코딩 글자 하나 → 300건 중 183건 누출). 모든 명령 `NEUMANN_LLM_PROVIDER=mock`, `git stash` 안 씀.
+
+| 한 일 | 확인 |
+|---|---|
+| `serving.mask_job_paths`: `[URL-safe 글자 \| %XX]`가 이어진 구간을 토큰으로 읽고 **풀어서(decoded)** 판정한다. 푼 글자가 URL-safe로 이어진 길이가 접근 로그 20자·앱 로그 26자 이상이면 그 부분을 "푼 앞 6자 + …"로 바꾼다(인코딩된 구분 글자 `%2F` 등은 그대로 두고 앞뒤를 따로 본다). `/premortem/jobs/…` 경로와 `?job=`·`?job_id=`·`?id=`·`?ticket=` 쿼리 값은 길이와 무관하게 푼 앞 6자(구분 글자에서 멈춤) + "…". 두 번 걸어도 같다. 요청 번호(16자)·예외 이름·템플릿 이름 같은 짧은 토큰은 그대로 | `test_access_log_masks_percent_encoded_job_ids_through_uvicorn_formatter`: 실제 `uvicorn.access` 로거 + uvicorn `AccessFormatter` + 서빙 로그 필터(로거·핸들러 두 번)를 거쳐 `?job=`(첫 글자·두 글자·전체 인코딩), `?x=`(평문·`%2D` 하나·전체), 다른 키 `?next=`, 인코딩된 키 `?%6Aob=`, 쿼리 안 인코딩 경로, 경로·`%2F` 경로·경로+쿼리 12종 × id 5개 — 원래 id도 푼 id(1·2회 unquote)도 12자 조각 0. `test_access_log_mask_fuzz_300_no_leak_and_idempotent`: 모양 10종 × 인코딩 확률 0~100% 무작위 300건 누출 0, 모두 멱등. **두 테스트 모두 고치기 전 코드(40e283e)에서는 실패**(스크래치 사본에서 확인) |
+
+검증자 스크립트(scratchpad `v/`)로 다시 잼:
+
+```
+$ NEUMANN_LLM_PROVIDER=mock python v/mask_fuzz.py
+cases: 1950 leaks: 0
+$ NEUMANN_LLM_PROVIDER=mock python v/mask_fuzz2.py          # 모양 6종 × 인코딩 확률 5종 × 300건
+/x?job={}   p=0.03~1.0 leaks 0/300 (각각)  ·  /x?x={}  0/300  ·  /premortem/jobs?job_id={}  0/300
+/premortem/jobs/{}  0/300  ·  /x?a=1&ticket={}  0/300  ·  /x/{}  0/300
+$ NEUMANN_LLM_PROVIDER=mock python v/e2e_log.py <worktree> 8139 …   # 실제 uvicorn(serve.py와 같은 옵션) + 가짜 파이프라인
+jobs: [('fkeXtR…', 'done'), ('-0Kf7l…', 'done'), ('SwTB82…', 'done')]
+id fkeXtR…: full-id-in-log=False; 12-char-slice-in-log(raw)=False; (after unquote)=False   (세 id 모두 같음)
+exposed lines for id0: 0            (요청 18종: 경로·대문자·겹 슬래시·%2F·인코딩 id·?job=·?x=·?ticket=·부분·전체 인코딩)
+```
+
+```
+$ git archive HEAD → E4-L2c_main.patch → E4-L2d_main.patch (둘 다 git apply --check 통과) → NEUMANN_LLM_PROVIDER=mock pytest -q
+PATCHES: L2c→L2d check+apply OK
+1213 passed, 26 skipped in 124.68s   (0 failed)
+```
+
+```
+$ NEUMANN_LLM_PROVIDER=mock python scripts/verify.py --security
+보안: 파일 410개
+verify 통과
+$ NEUMANN_LLM_PROVIDER=mock python scripts/verify.py
+1213 passed, 26 skipped in 121.67s
+보안: 파일 410개 / 계약: 2개 / 테스트: 통과 / verify 통과
+```
+
+남은 위험(병합을 막지 않음, 검증 참고): **합류했지만 끝나지 않은 작업**은 원래 분석이 끝날 때까지(최대 `NEUMANN_JOB_TIMEOUT_S` 900초) 저장소 자리를 잡는다. 대책(후속): 공개 운영에서 `NEUMANN_JOB_TIMEOUT_S`를 분석 시간의 2~3배(예 240초)로 낮추고, 합류 작업에는 따로 짧은 대기 상한(예: 원래 분석의 남은 예상 시간 + 60초)을 둬 넘으면 "잠시 뒤 같은 계획서로 다시" 문구로 끝낸다.
+
 ## 재작업 3(E4-L2d 재검증 PASS-조건부 대응, 소유 범위) + PM 결정 ①(단계 보고)
 
 근거: main 체크아웃 `docs/reports/E4-L2d.verify.md` "재검증 (d44df68)". 필수 1번(이메일 정규식 O(n²), `models.py`)은 PM의 SEC-4가 맡아 **하지 않았다.** 모든 명령 `NEUMANN_LLM_PROVIDER=mock`, `git stash` 안 씀.
