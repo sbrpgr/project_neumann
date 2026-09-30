@@ -1,0 +1,8719 @@
+{
+ "task": "E4-L2e",
+ "started_at": "2026-09-30T20:41:15+0900",
+ "ns": [
+  16,
+  24,
+  48
+ ],
+ "delays": {
+  "fitness": [
+   4.0,
+   6.0
+  ],
+  "query_axes": [
+   2.5,
+   3.5
+  ],
+  "extract_issues": [
+   2.0,
+   5.0
+  ],
+  "synthesize_cards": [
+   9.0,
+   11.0
+  ],
+  "expected_review": [
+   9.0,
+   11.0
+  ],
+  "checklist": [
+   9.0,
+   11.0
+  ],
+  "semantic_validate": [
+   9.0,
+   11.0
+  ]
+ },
+ "delay_scale": 1.0,
+ "llm": "DelayedMockProvider(mock, 실제 OpenAI 호출 0)",
+ "bases": [
+  "plan",
+  "plan_elife_neuro",
+  "plan_medimaging",
+  "neural_operator_weather",
+  "protein_ligand_affinity",
+  "climate_emulator",
+  "materials_gnn",
+  "molecule_reaction",
+  "pde_operator",
+  "protein_binding"
+ ],
+ "n_texts": 88,
+ "gpu_before": {
+  "mem_used_mb": 0.0,
+  "mem_total_mb": 6141.0,
+  "util_pct": 0.0,
+  "compute_pids": []
+ },
+ "server_reference": {
+  "n": 88,
+  "elapsed_s": 49.13,
+  "compute_s": {
+   "n": 88,
+   "min": 0.154,
+   "p50": 0.261,
+   "mean": 0.276,
+   "p95": 0.425,
+   "max": 0.58
+  },
+  "errors": 0,
+  "warmup": {
+   "index_load_s": 1.126,
+   "embedder_load_s": 11.948,
+   "dense": true,
+   "device": "cuda",
+   "reason": null,
+   "n_works": 1128,
+   "n_excerpts": 133769
+  }
+ },
+ "server": {
+  "port": 8145,
+  "endpoint": "/premortem/view",
+  "gpu_ready": {
+   "mem_used_mb": 1169.0,
+   "mem_total_mb": 6141.0,
+   "util_pct": 0.0,
+   "compute_pids": [
+    23640
+   ]
+  },
+  "gpu_base_mb": 1221.0,
+  "rounds": [
+   {
+    "n": 16,
+    "ok": 16,
+    "errors": 0,
+    "error_kinds": [],
+    "stage_errors": 0,
+    "new_degraded_stages": 0,
+    "fingerprint_mismatch": 0,
+    "no_reference": 0,
+    "search_status_mixup": 0,
+    "total_s": {
+     "n": 16,
+     "min": 53.515,
+     "p50": 56.189,
+     "mean": 55.58,
+     "p95": 57.741,
+     "max": 58.457
+    },
+    "run_s": {
+     "n": 16,
+     "min": 53.497,
+     "p50": 56.161,
+     "mean": 55.544,
+     "p95": 57.697,
+     "max": 58.405
+    },
+    "queue_s": {
+     "n": 16,
+     "min": 0.018,
+     "p50": 0.037,
+     "mean": 0.036,
+     "p95": 0.049,
+     "max": 0.052
+    },
+    "makespan_s": 60.354,
+    "throughput_per_min": 15.91,
+    "stage_s": {
+     "fitness": {
+      "n": 16,
+      "min": 4.166,
+      "p50": 4.812,
+      "mean": 4.898,
+      "p95": 5.924,
+      "max": 5.963
+     },
+     "query_axes": {
+      "n": 16,
+      "min": 2.595,
+      "p50": 3.015,
+      "mean": 2.996,
+      "p95": 3.373,
+      "max": 3.409
+     },
+     "search": {
+      "n": 16,
+      "min": 0.024,
+      "p50": 0.053,
+      "mean": 0.097,
+      "p95": 0.28,
+      "max": 0.317
+     },
+     "extract_issues": {
+      "n": 16,
+      "min": 5.384,
+      "p50": 6.937,
+      "mean": 6.833,
+      "p95": 8.302,
+      "max": 8.701
+     },
+     "synthesize_cards": {
+      "n": 16,
+      "min": 9.019,
+      "p50": 10.244,
+      "mean": 10.051,
+      "p95": 10.773,
+      "max": 10.839
+     },
+     "verify_evidence": {
+      "n": 16,
+      "min": 0.0,
+      "p50": 0.0,
+      "mean": 0.0,
+      "p95": 0.001,
+      "max": 0.001
+     },
+     "expected_review": {
+      "n": 16,
+      "min": 9.168,
+      "p50": 9.877,
+      "mean": 9.982,
+      "p95": 10.843,
+      "max": 10.849
+     },
+     "checklist": {
+      "n": 16,
+      "min": 9.268,
+      "p50": 10.655,
+      "mean": 10.323,
+      "p95": 10.959,
+      "max": 10.975
+     },
+     "semantic_validate": {
+      "n": 16,
+      "min": 9.485,
+      "p50": 10.383,
+      "mean": 10.36,
+      "p95": 10.969,
+      "max": 10.984
+     }
+    },
+    "embed_wait_s": {
+     "n": 16,
+     "min": 0.0,
+     "p50": 0.0,
+     "mean": 0.014,
+     "p95": 0.065,
+     "max": 0.112
+    },
+    "embed_round": {
+     "calls": 16,
+     "wait_total_s": 0.2311,
+     "wait_max_s": 0.1121,
+     "hold_total_s": 1.0115,
+     "hold_max_s": 0.2257,
+     "max_waiting": 2
+    },
+    "llm_calls_per_analysis": {
+     "n": 16,
+     "min": 29.0,
+     "p50": 35.0,
+     "mean": 35.688,
+     "p95": 43.0,
+     "max": 43.0
+    },
+    "llm_input_chars_per_analysis": {
+     "n": 16,
+     "min": 250282.0,
+     "p50": 322927.0,
+     "mean": 328787.688,
+     "p95": 410096.0,
+     "max": 410104.0
+    },
+    "gpu_mem_max_mb": 1483.0,
+    "gpu_mem_delta_mb": 262.0,
+    "gpu_util_max_pct": 8.0,
+    "proc": {
+     "wall_s": 60.652,
+     "cpu_s": 7.672,
+     "cores_avg": 0.126,
+     "cores_max": 1.971,
+     "sys_cpu_avg_pct": 34.8,
+     "sys_cpu_max_pct": 62.9,
+     "n_cpus": 16,
+     "rss_start_mb": 3158.4,
+     "rss_max_mb": 3161.4,
+     "rss_peak_lifetime_mb": 4347.1,
+     "private_max_mb": 5904.5,
+     "threads_max": 403,
+     "gil_probe_ms": {
+      "n": 10397,
+      "p50": 0.36,
+      "p99": 7.92,
+      "max": 1559.68
+     },
+     "torch_cuda_max_alloc_mb": 1215.0,
+     "torch_cuda_max_reserved_mb": 1254.0
+    },
+    "max_active_pipelines": 16
+   },
+   {
+    "n": 24,
+    "ok": 24,
+    "errors": 0,
+    "error_kinds": [],
+    "stage_errors": 0,
+    "new_degraded_stages": 0,
+    "fingerprint_mismatch": 0,
+    "no_reference": 0,
+    "search_status_mixup": 0,
+    "total_s": {
+     "n": 24,
+     "min": 52.255,
+     "p50": 55.528,
+     "mean": 55.478,
+     "p95": 57.58,
+     "max": 58.089
+    },
+    "run_s": {
+     "n": 24,
+     "min": 52.19,
+     "p50": 55.48,
+     "mean": 55.437,
+     "p95": 57.528,
+     "max": 58.027
+    },
+    "queue_s": {
+     "n": 24,
+     "min": 0.013,
+     "p50": 0.04,
+     "mean": 0.04,
+     "p95": 0.065,
+     "max": 0.068
+    },
+    "makespan_s": 59.583,
+    "throughput_per_min": 24.17,
+    "stage_s": {
+     "fitness": {
+      "n": 24,
+      "min": 4.065,
+      "p50": 5.148,
+      "mean": 5.081,
+      "p95": 5.883,
+      "max": 5.925
+     },
+     "query_axes": {
+      "n": 24,
+      "min": 2.589,
+      "p50": 2.96,
+      "mean": 2.932,
+      "p95": 3.374,
+      "max": 3.404
+     },
+     "search": {
+      "n": 24,
+      "min": 0.022,
+      "p50": 0.092,
+      "mean": 0.102,
+      "p95": 0.244,
+      "max": 0.247
+     },
+     "extract_issues": {
+      "n": 24,
+      "min": 4.646,
+      "p50": 6.708,
+      "mean": 6.374,
+      "p95": 7.75,
+      "max": 7.884
+     },
+     "synthesize_cards": {
+      "n": 24,
+      "min": 9.017,
+      "p50": 10.248,
+      "mean": 10.227,
+      "p95": 10.861,
+      "max": 10.884
+     },
+     "verify_evidence": {
+      "n": 24,
+      "min": 0.0,
+      "p50": 0.0,
+      "mean": 0.0,
+      "p95": 0.0,
+      "max": 0.0
+     },
+     "expected_review": {
+      "n": 24,
+      "min": 9.037,
+      "p50": 10.332,
+      "mean": 10.165,
+      "p95": 10.976,
+      "max": 11.0
+     },
+     "checklist": {
+      "n": 24,
+      "min": 9.178,
+      "p50": 10.251,
+      "mean": 10.123,
+      "p95": 10.947,
+      "max": 10.95
+     },
+     "semantic_validate": {
+      "n": 24,
+      "min": 9.411,
+      "p50": 10.593,
+      "mean": 10.43,
+      "p95": 10.951,
+      "max": 10.957
+     }
+    },
+    "embed_wait_s": {
+     "n": 24,
+     "min": 0.0,
+     "p50": 0.014,
+     "mean": 0.022,
+     "p95": 0.094,
+     "max": 0.141
+    },
+    "embed_round": {
+     "calls": 24,
+     "wait_total_s": 0.5195,
+     "wait_max_s": 0.1407,
+     "hold_total_s": 1.1903,
+     "hold_max_s": 0.1483,
+     "max_waiting": 2
+    },
+    "llm_calls_per_analysis": {
+     "n": 24,
+     "min": 29.0,
+     "p50": 35.0,
+     "mean": 35.333,
+     "p95": 43.0,
+     "max": 43.0
+    },
+    "llm_input_chars_per_analysis": {
+     "n": 24,
+     "min": 250282.0,
+     "p50": 322320.0,
+     "mean": 323906.75,
+     "p95": 410096.0,
+     "max": 410104.0
+    },
+    "gpu_mem_max_mb": 1627.0,
+    "gpu_mem_delta_mb": 406.0,
+    "gpu_util_max_pct": 81.0,
+    "proc": {
+     "wall_s": 59.945,
+     "cpu_s": 12.234,
+     "cores_avg": 0.204,
+     "cores_max": 4.745,
+     "sys_cpu_avg_pct": 38.9,
+     "sys_cpu_max_pct": 88.6,
+     "n_cpus": 16,
+     "rss_start_mb": 2156.6,
+     "rss_max_mb": 2434.3,
+     "rss_peak_lifetime_mb": 4347.1,
+     "private_max_mb": 5555.1,
+     "threads_max": 602,
+     "gil_probe_ms": {
+      "n": 10694,
+      "p50": 0.36,
+      "p99": 6.83,
+      "max": 215.44
+     },
+     "torch_cuda_max_alloc_mb": 1280.0,
+     "torch_cuda_max_reserved_mb": 1334.0
+    },
+    "max_active_pipelines": 24
+   },
+   {
+    "n": 48,
+    "ok": 48,
+    "errors": 0,
+    "error_kinds": [],
+    "stage_errors": 0,
+    "new_degraded_stages": 0,
+    "fingerprint_mismatch": 0,
+    "no_reference": 0,
+    "search_status_mixup": 0,
+    "total_s": {
+     "n": 48,
+     "min": 53.08,
+     "p50": 56.128,
+     "mean": 64.312,
+     "p95": 107.698,
+     "max": 110.234
+    },
+    "run_s": {
+     "n": 48,
+     "min": 51.285,
+     "p50": 55.621,
+     "mean": 55.292,
+     "p95": 58.128,
+     "max": 58.727
+    },
+    "queue_s": {
+     "n": 48,
+     "min": 0.021,
+     "p50": 0.076,
+     "mean": 9.02,
+     "p95": 53.774,
+     "max": 54.393
+    },
+    "makespan_s": 112.954,
+    "throughput_per_min": 25.5,
+    "stage_s": {
+     "fitness": {
+      "n": 48,
+      "min": 4.007,
+      "p50": 4.991,
+      "mean": 4.936,
+      "p95": 5.816,
+      "max": 5.99
+     },
+     "query_axes": {
+      "n": 48,
+      "min": 2.532,
+      "p50": 3.064,
+      "mean": 3.042,
+      "p95": 3.447,
+      "max": 3.501
+     },
+     "search": {
+      "n": 48,
+      "min": 0.048,
+      "p50": 0.201,
+      "mean": 0.225,
+      "p95": 0.487,
+      "max": 0.522
+     },
+     "extract_issues": {
+      "n": 48,
+      "min": 4.652,
+      "p50": 6.949,
+      "mean": 6.729,
+      "p95": 8.343,
+      "max": 8.816
+     },
+     "synthesize_cards": {
+      "n": 48,
+      "min": 9.046,
+      "p50": 9.955,
+      "mean": 9.941,
+      "p95": 10.843,
+      "max": 10.987
+     },
+     "verify_evidence": {
+      "n": 48,
+      "min": 0.0,
+      "p50": 0.0,
+      "mean": 0.0,
+      "p95": 0.0,
+      "max": 0.001
+     },
+     "expected_review": {
+      "n": 48,
+      "min": 9.003,
+      "p50": 10.046,
+      "mean": 10.071,
+      "p95": 10.812,
+      "max": 10.937
+     },
+     "checklist": {
+      "n": 48,
+      "min": 9.111,
+      "p50": 10.22,
+      "mean": 10.197,
+      "p95": 10.78,
+      "max": 10.999
+     },
+     "semantic_validate": {
+      "n": 48,
+      "min": 9.075,
+      "p50": 10.161,
+      "mean": 10.148,
+      "p95": 10.909,
+      "max": 10.986
+     }
+    },
+    "embed_wait_s": {
+     "n": 48,
+     "min": 0.0,
+     "p50": 0.087,
+     "mean": 0.101,
+     "p95": 0.319,
+     "max": 0.33
+    },
+    "embed_round": {
+     "calls": 48,
+     "wait_total_s": 4.8621,
+     "wait_max_s": 0.3295,
+     "hold_total_s": 2.8589,
+     "hold_max_s": 0.1493,
+     "max_waiting": 5
+    },
+    "llm_calls_per_analysis": {
+     "n": 48,
+     "min": 29.0,
+     "p50": 35.0,
+     "mean": 35.562,
+     "p95": 43.0,
+     "max": 43.0
+    },
+    "llm_input_chars_per_analysis": {
+     "n": 48,
+     "min": 250282.0,
+     "p50": 322328.0,
+     "mean": 325811.25,
+     "p95": 410104.0,
+     "max": 410104.0
+    },
+    "gpu_mem_max_mb": 1917.0,
+    "gpu_mem_delta_mb": 696.0,
+    "gpu_util_max_pct": 23.0,
+    "proc": {
+     "wall_s": 114.188,
+     "cpu_s": 27.578,
+     "cores_avg": 0.242,
+     "cores_max": 9.289,
+     "sys_cpu_avg_pct": 36.7,
+     "sys_cpu_max_pct": 89.0,
+     "n_cpus": 16,
+     "rss_start_mb": 2191.9,
+     "rss_max_mb": 2643.3,
+     "rss_peak_lifetime_mb": 4347.1,
+     "private_max_mb": 6168.2,
+     "threads_max": 1002,
+     "gil_probe_ms": {
+      "n": 20257,
+      "p50": 0.37,
+      "p99": 5.63,
+      "max": 237.0
+     },
+     "torch_cuda_max_alloc_mb": 1413.8,
+     "torch_cuda_max_reserved_mb": 1494.0
+    },
+    "max_active_pipelines": 40
+   }
+  ],
+  "records": [
+   [
+    {
+     "key": "e2d0c2e83be820f5",
+     "base": "plan",
+     "error": null,
+     "http": 200,
+     "bytes": 28822,
+     "c_start": 1.888,
+     "c_end": 55.403,
+     "client_s": 53.515,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "edbfd40d355ae9d9",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.166,
+      "query_axes": 3.108,
+      "search": 0.153,
+      "extract_issues": 5.972,
+      "synthesize_cards": 10.773,
+      "verify_evidence": 0.0,
+      "expected_review": 9.292,
+      "checklist": 9.452,
+      "semantic_validate": 10.579
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0226,
+      "hold_s": 0.0984
+     },
+     "llm": {
+      "calls": 32,
+      "chars": 282145,
+      "failed": 0,
+      "delay_s": 150.001,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 18.635,
+        "chars": 9713,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.29,
+        "chars": 8832,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 24,
+        "delay_s": 83.775,
+        "chars": 218652,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.162,
+        "chars": 2639,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.107,
+        "chars": 2142,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 20.262,
+        "chars": 11839,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.77,
+        "chars": 28328,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 53.497,
+     "total_s": 53.515,
+     "queue_s": 0.018
+    },
+    {
+     "key": "e3273cea6be5afbb",
+     "base": "plan_elife_neuro",
+     "error": null,
+     "http": 200,
+     "bytes": 29492,
+     "c_start": 1.888,
+     "c_end": 58.301,
+     "client_s": 56.413,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "81815ac3ce58a1ba",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.716,
+      "query_axes": 3.333,
+      "search": 0.03,
+      "extract_issues": 6.658,
+      "synthesize_cards": 10.388,
+      "verify_evidence": 0.0,
+      "expected_review": 9.824,
+      "checklist": 10.766,
+      "semantic_validate": 10.656
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0,
+      "hold_s": 0.0231
+     },
+     "llm": {
+      "calls": 38,
+      "chars": 368434,
+      "failed": 0,
+      "delay_s": 171.834,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 19.968,
+        "chars": 9861,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.821,
+        "chars": 8861,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 30,
+        "delay_s": 102.423,
+        "chars": 295048,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.713,
+        "chars": 2629,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.331,
+        "chars": 2133,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 21.197,
+        "chars": 12374,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.382,
+        "chars": 37528,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 56.373,
+     "total_s": 56.413,
+     "queue_s": 0.04
+    },
+    {
+     "key": "c9e1060a524c6680",
+     "base": "plan_medimaging",
+     "error": null,
+     "http": 200,
+     "bytes": 27066,
+     "c_start": 1.888,
+     "c_end": 58.077,
+     "client_s": 56.189,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "caef7787f45a1a0e",
+      "n_similar": 10,
+      "n_cards": 5,
+      "n_checklist": 5,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.845,
+      "query_axes": 3.066,
+      "search": 0.048,
+      "extract_issues": 8.701,
+      "synthesize_cards": 10.381,
+      "verify_evidence": 0.001,
+      "expected_review": 9.441,
+      "checklist": 9.458,
+      "semantic_validate": 10.218
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0024,
+      "hold_s": 0.0328
+     },
+     "llm": {
+      "calls": 39,
+      "chars": 380543,
+      "failed": 0,
+      "delay_s": 184.584,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 18.814,
+        "chars": 10057,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.439,
+        "chars": 9287,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 31,
+        "delay_s": 117.868,
+        "chars": 306754,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.842,
+        "chars": 2689,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.065,
+        "chars": 2193,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 20.178,
+        "chars": 12540,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.378,
+        "chars": 37023,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 56.161,
+     "total_s": 56.189,
+     "queue_s": 0.028
+    },
+    {
+     "key": "f2bb4756b0344c39",
+     "base": "neural_operator_weather",
+     "error": null,
+     "http": 200,
+     "bytes": 12296,
+     "c_start": 1.889,
+     "c_end": 56.008,
+     "client_s": 54.119,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "dc09810bfdd8b38f",
+      "n_similar": 10,
+      "n_cards": 1,
+      "n_checklist": 1,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.303,
+      "query_axes": 3.118,
+      "search": 0.097,
+      "extract_issues": 6.208,
+      "synthesize_cards": 10.244,
+      "verify_evidence": 0.0,
+      "expected_review": 10.262,
+      "checklist": 10.341,
+      "semantic_validate": 9.494
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.007,
+      "hold_s": 0.0575
+     },
+     "llm": {
+      "calls": 29,
+      "chars": 250282,
+      "failed": 0,
+      "delay_s": 126.95,
+      "max_inflight": 23,
+      "by_task": {
+       "checklist": {
+        "calls": 1,
+        "delay_s": 10.341,
+        "chars": 3073,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.26,
+        "chars": 4009,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 23,
+        "delay_s": 79.202,
+        "chars": 204704,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.296,
+        "chars": 2900,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.116,
+        "chars": 2404,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 1,
+        "delay_s": 9.493,
+        "chars": 3755,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.242,
+        "chars": 29437,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 54.071,
+     "total_s": 54.119,
+     "queue_s": 0.048
+    },
+    {
+     "key": "c08e07e1e1e01018",
+     "base": "protein_ligand_affinity",
+     "error": null,
+     "http": 200,
+     "bytes": 27751,
+     "c_start": 1.887,
+     "c_end": 55.527,
+     "client_s": 53.64,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "52d964766ae5cd5b",
+      "n_similar": 10,
+      "n_cards": 5,
+      "n_checklist": 5,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.411,
+      "query_axes": 2.595,
+      "search": 0.317,
+      "extract_issues": 6.181,
+      "synthesize_cards": 9.019,
+      "verify_evidence": 0.0,
+      "expected_review": 9.168,
+      "checklist": 10.975,
+      "semantic_validate": 10.948
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0647,
+      "hold_s": 0.2176
+     },
+     "llm": {
+      "calls": 35,
+      "chars": 322927,
+      "failed": 0,
+      "delay_s": 162.201,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 21.272,
+        "chars": 9602,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.166,
+        "chars": 8567,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 27,
+        "delay_s": 94.182,
+        "chars": 251881,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.407,
+        "chars": 2920,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.593,
+        "chars": 2423,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 21.565,
+        "chars": 11694,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.016,
+        "chars": 35840,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 53.616,
+     "total_s": 53.64,
+     "queue_s": 0.024
+    },
+    {
+     "key": "959140f169742418",
+     "base": "climate_emulator",
+     "error": null,
+     "http": 200,
+     "bytes": 29239,
+     "c_start": 1.887,
+     "c_end": 59.628,
+     "client_s": 57.741,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "b769f2b4c638a279",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.812,
+      "query_axes": 2.702,
+      "search": 0.045,
+      "extract_issues": 8.302,
+      "synthesize_cards": 9.434,
+      "verify_evidence": 0.0,
+      "expected_review": 10.843,
+      "checklist": 10.586,
+      "semantic_validate": 10.969
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0,
+      "hold_s": 0.038
+     },
+     "llm": {
+      "calls": 43,
+      "chars": 410096,
+      "failed": 0,
+      "delay_s": 194.343,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 19.905,
+        "chars": 10073,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.842,
+        "chars": 8732,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 35,
+        "delay_s": 125.5,
+        "chars": 337705,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.808,
+        "chars": 2895,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.7,
+        "chars": 2372,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 21.157,
+        "chars": 12234,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.432,
+        "chars": 36085,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 57.697,
+     "total_s": 57.741,
+     "queue_s": 0.044
+    },
+    {
+     "key": "6dd66d6aafac8d78",
+     "base": "materials_gnn",
+     "error": null,
+     "http": 200,
+     "bytes": 19281,
+     "c_start": 1.897,
+     "c_end": 60.353,
+     "client_s": 58.457,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "f4af36104b710920",
+      "n_similar": 10,
+      "n_cards": 3,
+      "n_checklist": 3,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.924,
+      "query_axes": 3.373,
+      "search": 0.053,
+      "extract_issues": 7.686,
+      "synthesize_cards": 9.832,
+      "verify_evidence": 0.0,
+      "expected_review": 10.849,
+      "checklist": 9.701,
+      "semantic_validate": 10.984
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0,
+      "hold_s": 0.0318
+     },
+     "llm": {
+      "calls": 35,
+      "chars": 317409,
+      "failed": 0,
+      "delay_s": 150.784,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 1,
+        "delay_s": 9.7,
+        "chars": 4900,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.847,
+        "chars": 5747,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 29,
+        "delay_s": 100.133,
+        "chars": 263270,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.92,
+        "chars": 2712,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.372,
+        "chars": 2189,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 1,
+        "delay_s": 10.983,
+        "chars": 6146,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.83,
+        "chars": 32445,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 58.405,
+     "total_s": 58.457,
+     "queue_s": 0.052
+    },
+    {
+     "key": "afafeef240638f70",
+     "base": "molecule_reaction",
+     "error": null,
+     "http": 200,
+     "bytes": 29662,
+     "c_start": 1.895,
+     "c_end": 58.173,
+     "client_s": 56.278,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "21d168a4efc3c86c",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.393,
+      "query_axes": 3.307,
+      "search": 0.051,
+      "extract_issues": 6.967,
+      "synthesize_cards": 10.489,
+      "verify_evidence": 0.001,
+      "expected_review": 9.907,
+      "checklist": 10.959,
+      "semantic_validate": 10.168
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0,
+      "hold_s": 0.0434
+     },
+     "llm": {
+      "calls": 36,
+      "chars": 322320,
+      "failed": 0,
+      "delay_s": 163.775,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 20.435,
+        "chars": 10045,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.906,
+        "chars": 8787,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 28,
+        "delay_s": 96.045,
+        "chars": 249810,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.389,
+        "chars": 2804,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.306,
+        "chars": 2281,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 19.207,
+        "chars": 12480,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.486,
+        "chars": 36113,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 56.246,
+     "total_s": 56.278,
+     "queue_s": 0.032
+    },
+    {
+     "key": "9f633ea68b569fc0",
+     "base": "pde_operator",
+     "error": null,
+     "http": 200,
+     "bytes": 23245,
+     "c_start": 1.895,
+     "c_end": 56.897,
+     "client_s": 55.001,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "44a8ae655255c40d",
+      "n_similar": 10,
+      "n_cards": 4,
+      "n_checklist": 4,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.171,
+      "query_axes": 2.696,
+      "search": 0.038,
+      "extract_issues": 6.304,
+      "synthesize_cards": 10.767,
+      "verify_evidence": 0.0,
+      "expected_review": 9.791,
+      "checklist": 9.849,
+      "semantic_validate": 10.34
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0,
+      "hold_s": 0.0271
+     },
+     "llm": {
+      "calls": 34,
+      "chars": 296369,
+      "failed": 0,
+      "delay_s": 156.674,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 19.604,
+        "chars": 8199,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.789,
+        "chars": 6934,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 26,
+        "delay_s": 88.511,
+        "chars": 238809,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.162,
+        "chars": 2869,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.695,
+        "chars": 2347,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 20.147,
+        "chars": 9790,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.765,
+        "chars": 27421,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 54.96,
+     "total_s": 55.001,
+     "queue_s": 0.041
+    },
+    {
+     "key": "9d746d4cdbe89313",
+     "base": "protein_binding",
+     "error": null,
+     "http": 200,
+     "bytes": 30331,
+     "c_start": 1.896,
+     "c_end": 58.312,
+     "client_s": 56.416,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "63c18d26c0319ddd",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.001,
+      "fitness": 5.963,
+      "query_axes": 2.957,
+      "search": 0.042,
+      "extract_issues": 7.026,
+      "synthesize_cards": 9.501,
+      "verify_evidence": 0.0,
+      "expected_review": 9.74,
+      "checklist": 10.895,
+      "semantic_validate": 10.239
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0,
+      "hold_s": 0.0281
+     },
+     "llm": {
+      "calls": 34,
+      "chars": 295605,
+      "failed": 0,
+      "delay_s": 155.963,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 21.052,
+        "chars": 9969,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.738,
+        "chars": 8629,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 26,
+        "delay_s": 86.574,
+        "chars": 227259,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.958,
+        "chars": 2877,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.956,
+        "chars": 2354,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 20.186,
+        "chars": 12464,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.498,
+        "chars": 32053,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 56.367,
+     "total_s": 56.416,
+     "queue_s": 0.049
+    },
+    {
+     "key": "d11e5b8c9c6ba4fb",
+     "base": "plan",
+     "error": null,
+     "http": 200,
+     "bytes": 28820,
+     "c_start": 1.888,
+     "c_end": 56.113,
+     "client_s": 54.225,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "edbfd40d355ae9d9",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.744,
+      "query_axes": 3.409,
+      "search": 0.027,
+      "extract_issues": 5.384,
+      "synthesize_cards": 9.125,
+      "verify_evidence": 0.0,
+      "expected_review": 9.877,
+      "checklist": 10.655,
+      "semantic_validate": 10.964
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0,
+      "hold_s": 0.0181
+     },
+     "llm": {
+      "calls": 32,
+      "chars": 282153,
+      "failed": 0,
+      "delay_s": 151.272,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 20.398,
+        "chars": 9715,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.875,
+        "chars": 8833,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 24,
+        "delay_s": 82.589,
+        "chars": 218652,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.741,
+        "chars": 2640,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.408,
+        "chars": 2143,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 21.139,
+        "chars": 11841,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.122,
+        "chars": 28329,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 54.188,
+     "total_s": 54.225,
+     "queue_s": 0.037
+    },
+    {
+     "key": "e81883185fc41344",
+     "base": "plan_elife_neuro",
+     "error": null,
+     "http": 200,
+     "bytes": 29492,
+     "c_start": 1.887,
+     "c_end": 56.351,
+     "client_s": 54.463,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "81815ac3ce58a1ba",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.1,
+      "query_axes": 2.626,
+      "search": 0.08,
+      "extract_issues": 6.937,
+      "synthesize_cards": 9.557,
+      "verify_evidence": 0.0,
+      "expected_review": 10.737,
+      "checklist": 9.905,
+      "semantic_validate": 9.485
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0223,
+      "hold_s": 0.0444
+     },
+     "llm": {
+      "calls": 38,
+      "chars": 368442,
+      "failed": 0,
+      "delay_s": 167.941,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 18.982,
+        "chars": 9863,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.734,
+        "chars": 8862,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 30,
+        "delay_s": 102.128,
+        "chars": 295048,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.094,
+        "chars": 2630,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.624,
+        "chars": 2134,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 18.825,
+        "chars": 12376,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.554,
+        "chars": 37529,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 54.43,
+     "total_s": 54.463,
+     "queue_s": 0.033
+    },
+    {
+     "key": "68fa0c70c0a82065",
+     "base": "plan_medimaging",
+     "error": null,
+     "http": 200,
+     "bytes": 27067,
+     "c_start": 1.895,
+     "c_end": 56.943,
+     "client_s": 55.048,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "caef7787f45a1a0e",
+      "n_similar": 10,
+      "n_cards": 5,
+      "n_checklist": 5,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.298,
+      "query_axes": 2.956,
+      "search": 0.204,
+      "extract_issues": 7.292,
+      "synthesize_cards": 10.135,
+      "verify_evidence": 0.0,
+      "expected_review": 9.387,
+      "checklist": 10.831,
+      "semantic_validate": 9.899
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.1121,
+      "hold_s": 0.0694
+     },
+     "llm": {
+      "calls": 39,
+      "chars": 380551,
+      "failed": 0,
+      "delay_s": 177.369,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 21.51,
+        "chars": 10059,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.385,
+        "chars": 9288,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 31,
+        "delay_s": 109.725,
+        "chars": 306754,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.291,
+        "chars": 2690,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.955,
+        "chars": 2194,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 19.371,
+        "chars": 12542,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.132,
+        "chars": 37024,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 55.007,
+     "total_s": 55.048,
+     "queue_s": 0.041
+    },
+    {
+     "key": "0cfb26310c75494e",
+     "base": "neural_operator_weather",
+     "error": null,
+     "http": 200,
+     "bytes": 12298,
+     "c_start": 1.889,
+     "c_end": 56.774,
+     "client_s": 54.885,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "dc09810bfdd8b38f",
+      "n_similar": 10,
+      "n_cards": 1,
+      "n_checklist": 1,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.171,
+      "query_axes": 2.674,
+      "search": 0.28,
+      "extract_issues": 5.577,
+      "synthesize_cards": 10.468,
+      "verify_evidence": 0.0,
+      "expected_review": 10.57,
+      "checklist": 10.738,
+      "semantic_validate": 10.383
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0,
+      "hold_s": 0.2257
+     },
+     "llm": {
+      "calls": 29,
+      "chars": 250288,
+      "failed": 0,
+      "delay_s": 134.964,
+      "max_inflight": 23,
+      "by_task": {
+       "checklist": {
+        "calls": 1,
+        "delay_s": 10.737,
+        "chars": 3074,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.569,
+        "chars": 4010,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 23,
+        "delay_s": 85.971,
+        "chars": 204704,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.167,
+        "chars": 2901,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.672,
+        "chars": 2405,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 1,
+        "delay_s": 10.382,
+        "chars": 3756,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.466,
+        "chars": 29438,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 54.864,
+     "total_s": 54.885,
+     "queue_s": 0.021
+    },
+    {
+     "key": "455d62cd62bac2ad",
+     "base": "protein_ligand_affinity",
+     "error": null,
+     "http": 200,
+     "bytes": 27754,
+     "c_start": 1.888,
+     "c_end": 58.13,
+     "client_s": 56.242,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "52d964766ae5cd5b",
+      "n_similar": 10,
+      "n_cards": 5,
+      "n_checklist": 5,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.829,
+      "query_axes": 2.996,
+      "search": 0.064,
+      "extract_issues": 6.908,
+      "synthesize_cards": 10.839,
+      "verify_evidence": 0.0,
+      "expected_review": 9.213,
+      "checklist": 10.794,
+      "semantic_validate": 9.565
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0,
+      "hold_s": 0.0349
+     },
+     "llm": {
+      "calls": 35,
+      "chars": 322935,
+      "failed": 0,
+      "delay_s": 157.7,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 19.954,
+        "chars": 9604,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.21,
+        "chars": 8568,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 27,
+        "delay_s": 90.288,
+        "chars": 251881,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.825,
+        "chars": 2921,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.994,
+        "chars": 2424,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 18.593,
+        "chars": 11696,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.836,
+        "chars": 35841,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 56.213,
+     "total_s": 56.242,
+     "queue_s": 0.029
+    },
+    {
+     "key": "9c0c361957b02345",
+     "base": "climate_emulator",
+     "error": null,
+     "http": 200,
+     "bytes": 29240,
+     "c_start": 1.886,
+     "c_end": 58.529,
+     "client_s": 56.642,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "b769f2b4c638a279",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.528,
+      "query_axes": 3.015,
+      "search": 0.024,
+      "extract_issues": 7.226,
+      "synthesize_cards": 9.864,
+      "verify_evidence": 0.0,
+      "expected_review": 10.805,
+      "checklist": 9.268,
+      "semantic_validate": 10.872
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0,
+      "hold_s": 0.0212
+     },
+     "llm": {
+      "calls": 43,
+      "chars": 410104,
+      "failed": 0,
+      "delay_s": 186.553,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 18.51,
+        "chars": 10075,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.804,
+        "chars": 8733,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 35,
+        "delay_s": 117.849,
+        "chars": 337705,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.52,
+        "chars": 2896,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.014,
+        "chars": 2373,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 20.995,
+        "chars": 12236,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.861,
+        "chars": 36086,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 56.605,
+     "total_s": 56.642,
+     "queue_s": 0.037
+    }
+   ],
+   [
+    {
+     "key": "c829ec83dde65bfc",
+     "base": "plan",
+     "error": null,
+     "http": 200,
+     "bytes": 28823,
+     "c_start": 1.494,
+     "c_end": 57.932,
+     "client_s": 56.438,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "edbfd40d355ae9d9",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.759,
+      "query_axes": 2.85,
+      "search": 0.061,
+      "extract_issues": 4.992,
+      "synthesize_cards": 10.861,
+      "verify_evidence": 0.0,
+      "expected_review": 11.0,
+      "checklist": 10.251,
+      "semantic_validate": 10.648
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.025,
+      "hold_s": 0.0322
+     },
+     "llm": {
+      "calls": 32,
+      "chars": 282145,
+      "failed": 0,
+      "delay_s": 158.742,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 19.483,
+        "chars": 9713,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.998,
+        "chars": 8832,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 24,
+        "delay_s": 87.62,
+        "chars": 218652,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.756,
+        "chars": 2639,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.849,
+        "chars": 2142,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 21.177,
+        "chars": 11839,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.859,
+        "chars": 28328,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 56.425,
+     "total_s": 56.438,
+     "queue_s": 0.013
+    },
+    {
+     "key": "37d6804dc001824d",
+     "base": "plan_elife_neuro",
+     "error": null,
+     "http": 200,
+     "bytes": 29492,
+     "c_start": 1.496,
+     "c_end": 58.753,
+     "client_s": 57.257,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "81815ac3ce58a1ba",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.657,
+      "query_axes": 2.714,
+      "search": 0.033,
+      "extract_issues": 7.75,
+      "synthesize_cards": 10.884,
+      "verify_evidence": 0.0,
+      "expected_review": 9.037,
+      "checklist": 10.257,
+      "semantic_validate": 10.897
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0,
+      "hold_s": 0.0186
+     },
+     "llm": {
+      "calls": 38,
+      "chars": 368434,
+      "failed": 0,
+      "delay_s": 171.853,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 19.298,
+        "chars": 9861,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.035,
+        "chars": 8861,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 30,
+        "delay_s": 102.599,
+        "chars": 295048,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.654,
+        "chars": 2629,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.713,
+        "chars": 2133,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 21.672,
+        "chars": 12374,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.881,
+        "chars": 37528,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 57.229,
+     "total_s": 57.257,
+     "queue_s": 0.028
+    },
+    {
+     "key": "6f7c23545b94d996",
+     "base": "plan_medimaging",
+     "error": null,
+     "http": 200,
+     "bytes": 27067,
+     "c_start": 1.496,
+     "c_end": 56.571,
+     "client_s": 55.075,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "caef7787f45a1a0e",
+      "n_similar": 10,
+      "n_cards": 5,
+      "n_checklist": 5,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.107,
+      "query_axes": 2.589,
+      "search": 0.175,
+      "extract_issues": 6.708,
+      "synthesize_cards": 10.22,
+      "verify_evidence": 0.0,
+      "expected_review": 10.056,
+      "checklist": 10.621,
+      "semantic_validate": 10.541
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0,
+      "hold_s": 0.1236
+     },
+     "llm": {
+      "calls": 39,
+      "chars": 380543,
+      "failed": 0,
+      "delay_s": 168.15,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 20.249,
+        "chars": 10057,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.054,
+        "chars": 9287,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 31,
+        "delay_s": 100.602,
+        "chars": 306754,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.105,
+        "chars": 2689,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.587,
+        "chars": 2193,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 20.335,
+        "chars": 12540,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.218,
+        "chars": 37023,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 55.02,
+     "total_s": 55.075,
+     "queue_s": 0.055
+    },
+    {
+     "key": "7baed2443c923ba8",
+     "base": "neural_operator_weather",
+     "error": null,
+     "http": 200,
+     "bytes": 12296,
+     "c_start": 1.493,
+     "c_end": 55.632,
+     "client_s": 54.139,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "dc09810bfdd8b38f",
+      "n_similar": 10,
+      "n_cards": 1,
+      "n_checklist": 1,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.883,
+      "query_axes": 2.738,
+      "search": 0.082,
+      "extract_issues": 4.792,
+      "synthesize_cards": 10.359,
+      "verify_evidence": 0.0,
+      "expected_review": 10.687,
+      "checklist": 9.396,
+      "semantic_validate": 10.133
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0,
+      "hold_s": 0.0295
+     },
+     "llm": {
+      "calls": 29,
+      "chars": 250282,
+      "failed": 0,
+      "delay_s": 124.83,
+      "max_inflight": 23,
+      "by_task": {
+       "checklist": {
+        "calls": 1,
+        "delay_s": 9.395,
+        "chars": 3073,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.685,
+        "chars": 4009,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 23,
+        "delay_s": 75.644,
+        "chars": 204704,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.88,
+        "chars": 2900,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.737,
+        "chars": 2404,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 1,
+        "delay_s": 10.132,
+        "chars": 3755,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.357,
+        "chars": 29437,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 54.071,
+     "total_s": 54.139,
+     "queue_s": 0.068
+    },
+    {
+     "key": "1a49a73b8705fd80",
+     "base": "protein_ligand_affinity",
+     "error": null,
+     "http": 200,
+     "bytes": 27754,
+     "c_start": 1.495,
+     "c_end": 59.074,
+     "client_s": 57.58,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "52d964766ae5cd5b",
+      "n_similar": 10,
+      "n_cards": 5,
+      "n_checklist": 5,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.023,
+      "query_axes": 3.098,
+      "search": 0.107,
+      "extract_issues": 7.286,
+      "synthesize_cards": 10.248,
+      "verify_evidence": 0.0,
+      "expected_review": 10.081,
+      "checklist": 10.725,
+      "semantic_validate": 10.957
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0334,
+      "hold_s": 0.0354
+     },
+     "llm": {
+      "calls": 35,
+      "chars": 322927,
+      "failed": 0,
+      "delay_s": 168.911,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 20.515,
+        "chars": 9602,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.079,
+        "chars": 8567,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 27,
+        "delay_s": 98.627,
+        "chars": 251881,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.02,
+        "chars": 2920,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.097,
+        "chars": 2423,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 21.327,
+        "chars": 11694,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.246,
+        "chars": 35840,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 57.528,
+     "total_s": 57.58,
+     "queue_s": 0.052
+    },
+    {
+     "key": "085e6d822d2ca63c",
+     "base": "climate_emulator",
+     "error": null,
+     "http": 200,
+     "bytes": 29241,
+     "c_start": 1.494,
+     "c_end": 59.583,
+     "client_s": 58.089,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "b769f2b4c638a279",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.803,
+      "query_axes": 2.724,
+      "search": 0.062,
+      "extract_issues": 7.28,
+      "synthesize_cards": 10.25,
+      "verify_evidence": 0.0,
+      "expected_review": 10.945,
+      "checklist": 10.289,
+      "semantic_validate": 10.67
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0201,
+      "hold_s": 0.0386
+     },
+     "llm": {
+      "calls": 43,
+      "chars": 410096,
+      "failed": 0,
+      "delay_s": 191.981,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 20.03,
+        "chars": 10073,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.942,
+        "chars": 8732,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 35,
+        "delay_s": 121.042,
+        "chars": 337705,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.8,
+        "chars": 2895,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.723,
+        "chars": 2372,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 21.197,
+        "chars": 12234,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.248,
+        "chars": 36085,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 58.027,
+     "total_s": 58.089,
+     "queue_s": 0.062
+    },
+    {
+     "key": "feaec38109c50f85",
+     "base": "materials_gnn",
+     "error": null,
+     "http": 200,
+     "bytes": 19283,
+     "c_start": 1.495,
+     "c_end": 58.347,
+     "client_s": 56.852,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "f4af36104b710920",
+      "n_similar": 10,
+      "n_cards": 3,
+      "n_checklist": 3,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.264,
+      "query_axes": 3.317,
+      "search": 0.147,
+      "extract_issues": 7.232,
+      "synthesize_cards": 9.982,
+      "verify_evidence": 0.0,
+      "expected_review": 10.976,
+      "checklist": 10.942,
+      "semantic_validate": 9.969
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0488,
+      "hold_s": 0.0601
+     },
+     "llm": {
+      "calls": 35,
+      "chars": 317409,
+      "failed": 0,
+      "delay_s": 152.699,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 1,
+        "delay_s": 10.941,
+        "chars": 4900,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.974,
+        "chars": 5747,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 29,
+        "delay_s": 103.259,
+        "chars": 263270,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.261,
+        "chars": 2712,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.316,
+        "chars": 2189,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 1,
+        "delay_s": 9.968,
+        "chars": 6146,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.98,
+        "chars": 32445,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 56.831,
+     "total_s": 56.852,
+     "queue_s": 0.021
+    },
+    {
+     "key": "2c8ae738878bed37",
+     "base": "molecule_reaction",
+     "error": null,
+     "http": 200,
+     "bytes": 29662,
+     "c_start": 1.494,
+     "c_end": 56.51,
+     "client_s": 55.016,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "21d168a4efc3c86c",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.496,
+      "query_axes": 3.082,
+      "search": 0.075,
+      "extract_issues": 7.016,
+      "synthesize_cards": 10.229,
+      "verify_evidence": 0.0,
+      "expected_review": 9.801,
+      "checklist": 9.6,
+      "semantic_validate": 10.691
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0142,
+      "hold_s": 0.0436
+     },
+     "llm": {
+      "calls": 36,
+      "chars": 322320,
+      "failed": 0,
+      "delay_s": 163.692,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 19.18,
+        "chars": 10045,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.8,
+        "chars": 8787,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 28,
+        "delay_s": 95.668,
+        "chars": 249810,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.493,
+        "chars": 2804,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.081,
+        "chars": 2281,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 21.243,
+        "chars": 12480,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.226,
+        "chars": 36113,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 54.994,
+     "total_s": 55.016,
+     "queue_s": 0.022
+    },
+    {
+     "key": "8bfe5d6d1a4ee0a1",
+     "base": "pde_operator",
+     "error": null,
+     "http": 200,
+     "bytes": 23246,
+     "c_start": 1.497,
+     "c_end": 57.918,
+     "client_s": 56.421,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "44a8ae655255c40d",
+      "n_similar": 10,
+      "n_cards": 4,
+      "n_checklist": 4,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.485,
+      "query_axes": 2.599,
+      "search": 0.135,
+      "extract_issues": 7.193,
+      "synthesize_cards": 10.622,
+      "verify_evidence": 0.0,
+      "expected_review": 10.732,
+      "checklist": 9.671,
+      "semantic_validate": 10.951
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0,
+      "hold_s": 0.1142
+     },
+     "llm": {
+      "calls": 34,
+      "chars": 296369,
+      "failed": 0,
+      "delay_s": 166.677,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 19.276,
+        "chars": 8199,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.73,
+        "chars": 6934,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 26,
+        "delay_s": 97.172,
+        "chars": 238809,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.482,
+        "chars": 2869,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.598,
+        "chars": 2347,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 21.799,
+        "chars": 9790,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.62,
+        "chars": 27421,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 56.39,
+     "total_s": 56.421,
+     "queue_s": 0.031
+    },
+    {
+     "key": "95d9696b80bfab6c",
+     "base": "protein_binding",
+     "error": null,
+     "http": 200,
+     "bytes": 30332,
+     "c_start": 1.498,
+     "c_end": 56.484,
+     "client_s": 54.986,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "63c18d26c0319ddd",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.148,
+      "query_axes": 3.079,
+      "search": 0.028,
+      "extract_issues": 5.298,
+      "synthesize_cards": 9.817,
+      "verify_evidence": 0.0,
+      "expected_review": 10.483,
+      "checklist": 10.754,
+      "semantic_validate": 10.312
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0,
+      "hold_s": 0.0258
+     },
+     "llm": {
+      "calls": 34,
+      "chars": 295605,
+      "failed": 0,
+      "delay_s": 154.039,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 19.795,
+        "chars": 9969,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.482,
+        "chars": 8629,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 26,
+        "delay_s": 85.135,
+        "chars": 227259,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.145,
+        "chars": 2877,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.078,
+        "chars": 2354,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 20.589,
+        "chars": 12464,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.815,
+        "chars": 32053,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 54.923,
+     "total_s": 54.986,
+     "queue_s": 0.063
+    },
+    {
+     "key": "6b9964a9e3ee5819",
+     "base": "plan",
+     "error": null,
+     "http": 200,
+     "bytes": 28821,
+     "c_start": 1.493,
+     "c_end": 54.597,
+     "client_s": 53.104,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "edbfd40d355ae9d9",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.645,
+      "query_axes": 3.101,
+      "search": 0.092,
+      "extract_issues": 4.646,
+      "synthesize_cards": 9.927,
+      "verify_evidence": 0.0,
+      "expected_review": 9.417,
+      "checklist": 9.813,
+      "semantic_validate": 10.42
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0,
+      "hold_s": 0.0365
+     },
+     "llm": {
+      "calls": 32,
+      "chars": 282153,
+      "failed": 0,
+      "delay_s": 150.448,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 19.342,
+        "chars": 9715,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.415,
+        "chars": 8833,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 24,
+        "delay_s": 82.858,
+        "chars": 218652,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.643,
+        "chars": 2640,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.1,
+        "chars": 2143,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 20.166,
+        "chars": 11841,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.925,
+        "chars": 28329,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 53.064,
+     "total_s": 53.104,
+     "queue_s": 0.04
+    },
+    {
+     "key": "f4d4cad8733ba8fe",
+     "base": "plan_elife_neuro",
+     "error": null,
+     "http": 200,
+     "bytes": 29491,
+     "c_start": 1.495,
+     "c_end": 57.024,
+     "client_s": 55.528,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "81815ac3ce58a1ba",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.177,
+      "query_axes": 3.085,
+      "search": 0.229,
+      "extract_issues": 6.247,
+      "synthesize_cards": 9.735,
+      "verify_evidence": 0.0,
+      "expected_review": 10.474,
+      "checklist": 10.816,
+      "semantic_validate": 10.713
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.1407,
+      "hold_s": 0.0407
+     },
+     "llm": {
+      "calls": 38,
+      "chars": 368442,
+      "failed": 0,
+      "delay_s": 175.146,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 19.832,
+        "chars": 9863,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.473,
+        "chars": 8862,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 30,
+        "delay_s": 107.867,
+        "chars": 295048,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.175,
+        "chars": 2630,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.084,
+        "chars": 2134,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 19.984,
+        "chars": 12376,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.732,
+        "chars": 37529,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 55.48,
+     "total_s": 55.528,
+     "queue_s": 0.048
+    },
+    {
+     "key": "2137f5b21f6e6ad6",
+     "base": "plan_medimaging",
+     "error": null,
+     "http": 200,
+     "bytes": 27067,
+     "c_start": 1.493,
+     "c_end": 56.123,
+     "client_s": 54.63,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "caef7787f45a1a0e",
+      "n_similar": 10,
+      "n_cards": 5,
+      "n_checklist": 5,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.032,
+      "query_axes": 2.69,
+      "search": 0.075,
+      "extract_issues": 6.797,
+      "synthesize_cards": 10.671,
+      "verify_evidence": 0.0,
+      "expected_review": 10.418,
+      "checklist": 9.178,
+      "semantic_validate": 9.718
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0,
+      "hold_s": 0.0234
+     },
+     "llm": {
+      "calls": 39,
+      "chars": 380551,
+      "failed": 0,
+      "delay_s": 175.441,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 18.235,
+        "chars": 10059,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.416,
+        "chars": 9288,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 31,
+        "delay_s": 109.108,
+        "chars": 306754,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.03,
+        "chars": 2690,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.689,
+        "chars": 2194,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 19.294,
+        "chars": 12542,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.669,
+        "chars": 37024,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 54.582,
+     "total_s": 54.63,
+     "queue_s": 0.048
+    },
+    {
+     "key": "5bed9c3fbf17710e",
+     "base": "neural_operator_weather",
+     "error": null,
+     "http": 200,
+     "bytes": 12297,
+     "c_start": 1.492,
+     "c_end": 54.082,
+     "client_s": 52.59,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "dc09810bfdd8b38f",
+      "n_similar": 10,
+      "n_cards": 1,
+      "n_checklist": 1,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.484,
+      "query_axes": 2.665,
+      "search": 0.244,
+      "extract_issues": 4.999,
+      "synthesize_cards": 10.775,
+      "verify_evidence": 0.0,
+      "expected_review": 9.347,
+      "checklist": 9.226,
+      "semantic_validate": 10.808
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.043,
+      "hold_s": 0.1483
+     },
+     "llm": {
+      "calls": 29,
+      "chars": 250288,
+      "failed": 0,
+      "delay_s": 126.921,
+      "max_inflight": 23,
+      "by_task": {
+       "checklist": {
+        "calls": 1,
+        "delay_s": 9.225,
+        "chars": 3074,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.345,
+        "chars": 4010,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 23,
+        "delay_s": 79.626,
+        "chars": 204704,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.48,
+        "chars": 2901,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.664,
+        "chars": 2405,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 1,
+        "delay_s": 10.807,
+        "chars": 3756,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.773,
+        "chars": 29438,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 52.551,
+     "total_s": 52.59,
+     "queue_s": 0.039
+    },
+    {
+     "key": "2b02d050204e0336",
+     "base": "protein_ligand_affinity",
+     "error": null,
+     "http": 200,
+     "bytes": 27752,
+     "c_start": 1.497,
+     "c_end": 53.752,
+     "client_s": 52.255,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "52d964766ae5cd5b",
+      "n_similar": 10,
+      "n_cards": 5,
+      "n_checklist": 5,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.093,
+      "query_axes": 3.125,
+      "search": 0.247,
+      "extract_issues": 5.831,
+      "synthesize_cards": 9.513,
+      "verify_evidence": 0.0,
+      "expected_review": 9.195,
+      "checklist": 9.744,
+      "semantic_validate": 10.439
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0938,
+      "hold_s": 0.0723
+     },
+     "llm": {
+      "calls": 35,
+      "chars": 322935,
+      "failed": 0,
+      "delay_s": 160.471,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 18.86,
+        "chars": 9604,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.193,
+        "chars": 8568,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 27,
+        "delay_s": 95.849,
+        "chars": 251881,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.089,
+        "chars": 2921,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.124,
+        "chars": 2424,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 19.845,
+        "chars": 11696,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.511,
+        "chars": 35841,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 52.19,
+     "total_s": 52.255,
+     "queue_s": 0.065
+    },
+    {
+     "key": "c7b6a925fef51a50",
+     "base": "climate_emulator",
+     "error": null,
+     "http": 200,
+     "bytes": 29238,
+     "c_start": 1.492,
+     "c_end": 58.798,
+     "client_s": 57.306,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "b769f2b4c638a279",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.425,
+      "query_axes": 2.684,
+      "search": 0.022,
+      "extract_issues": 7.884,
+      "synthesize_cards": 9.017,
+      "verify_evidence": 0.0,
+      "expected_review": 10.804,
+      "checklist": 10.831,
+      "semantic_validate": 10.593
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0,
+      "hold_s": 0.0186
+     },
+     "llm": {
+      "calls": 43,
+      "chars": 410104,
+      "failed": 0,
+      "delay_s": 191.739,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 20.551,
+        "chars": 10075,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.802,
+        "chars": 8733,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 35,
+        "delay_s": 123.238,
+        "chars": 337705,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.422,
+        "chars": 2896,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.683,
+        "chars": 2373,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 20.028,
+        "chars": 12236,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.014,
+        "chars": 36086,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 57.263,
+     "total_s": 57.306,
+     "queue_s": 0.043
+    },
+    {
+     "key": "bcd36488a97b1ac5",
+     "base": "materials_gnn",
+     "error": null,
+     "http": 200,
+     "bytes": 19284,
+     "c_start": 1.497,
+     "c_end": 57.06,
+     "client_s": 55.563,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "f4af36104b710920",
+      "n_similar": 10,
+      "n_cards": 3,
+      "n_checklist": 3,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.925,
+      "query_axes": 3.05,
+      "search": 0.033,
+      "extract_issues": 7.058,
+      "synthesize_cards": 10.216,
+      "verify_evidence": 0.0,
+      "expected_review": 9.892,
+      "checklist": 9.265,
+      "semantic_validate": 10.067
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0,
+      "hold_s": 0.0272
+     },
+     "llm": {
+      "calls": 35,
+      "chars": 317415,
+      "failed": 0,
+      "delay_s": 146.125,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 1,
+        "delay_s": 9.264,
+        "chars": 4901,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.891,
+        "chars": 5748,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 29,
+        "delay_s": 97.721,
+        "chars": 263270,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.922,
+        "chars": 2713,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.048,
+        "chars": 2190,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 1,
+        "delay_s": 10.066,
+        "chars": 6147,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.214,
+        "chars": 32446,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 55.507,
+     "total_s": 55.563,
+     "queue_s": 0.056
+    },
+    {
+     "key": "c113585f8adce7c7",
+     "base": "molecule_reaction",
+     "error": null,
+     "http": 200,
+     "bytes": 29663,
+     "c_start": 1.493,
+     "c_end": 56.956,
+     "client_s": 55.462,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "21d168a4efc3c86c",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.065,
+      "query_axes": 3.374,
+      "search": 0.104,
+      "extract_issues": 6.604,
+      "synthesize_cards": 9.36,
+      "verify_evidence": 0.0,
+      "expected_review": 10.421,
+      "checklist": 10.79,
+      "semantic_validate": 10.707
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0225,
+      "hold_s": 0.0774
+     },
+     "llm": {
+      "calls": 36,
+      "chars": 322328,
+      "failed": 0,
+      "delay_s": 166.194,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 20.394,
+        "chars": 10047,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.42,
+        "chars": 8788,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 28,
+        "delay_s": 97.222,
+        "chars": 249810,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.061,
+        "chars": 2805,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.368,
+        "chars": 2282,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 21.371,
+        "chars": 12482,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.358,
+        "chars": 36114,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 55.428,
+     "total_s": 55.462,
+     "queue_s": 0.034
+    },
+    {
+     "key": "15a4fb76c6d087df",
+     "base": "pde_operator",
+     "error": null,
+     "http": 200,
+     "bytes": 23247,
+     "c_start": 1.493,
+     "c_end": 57.924,
+     "client_s": 56.431,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "44a8ae655255c40d",
+      "n_similar": 10,
+      "n_cards": 4,
+      "n_checklist": 4,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.966,
+      "query_axes": 3.167,
+      "search": 0.054,
+      "extract_issues": 6.956,
+      "synthesize_cards": 10.827,
+      "verify_evidence": 0.0,
+      "expected_review": 10.607,
+      "checklist": 9.494,
+      "semantic_validate": 10.327
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0063,
+      "hold_s": 0.0404
+     },
+     "llm": {
+      "calls": 34,
+      "chars": 296377,
+      "failed": 0,
+      "delay_s": 160.898,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 18.617,
+        "chars": 8201,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.605,
+        "chars": 6935,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 26,
+        "delay_s": 92.442,
+        "chars": 238809,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.962,
+        "chars": 2870,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.166,
+        "chars": 2348,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 20.281,
+        "chars": 9792,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.825,
+        "chars": 27422,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 56.401,
+     "total_s": 56.431,
+     "queue_s": 0.03
+    },
+    {
+     "key": "7c200c2e2f7e207d",
+     "base": "protein_binding",
+     "error": null,
+     "http": 200,
+     "bytes": 30334,
+     "c_start": 1.495,
+     "c_end": 58.839,
+     "client_s": 57.344,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "63c18d26c0319ddd",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.795,
+      "query_axes": 2.698,
+      "search": 0.044,
+      "extract_issues": 6.558,
+      "synthesize_cards": 10.43,
+      "verify_evidence": 0.0,
+      "expected_review": 10.052,
+      "checklist": 10.95,
+      "semantic_validate": 10.78
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0,
+      "hold_s": 0.018
+     },
+     "llm": {
+      "calls": 34,
+      "chars": 295605,
+      "failed": 0,
+      "delay_s": 170.949,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 21.166,
+        "chars": 9969,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.05,
+        "chars": 8629,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 26,
+        "delay_s": 99.609,
+        "chars": 227259,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.792,
+        "chars": 2877,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.697,
+        "chars": 2354,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 21.208,
+        "chars": 12464,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.427,
+        "chars": 32053,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 57.31,
+     "total_s": 57.344,
+     "queue_s": 0.034
+    },
+    {
+     "key": "546d8c73eb01e34e",
+     "base": "plan",
+     "error": null,
+     "http": 200,
+     "bytes": 28821,
+     "c_start": 1.492,
+     "c_end": 55.181,
+     "client_s": 53.689,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "edbfd40d355ae9d9",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.856,
+      "query_axes": 2.681,
+      "search": 0.039,
+      "extract_issues": 4.984,
+      "synthesize_cards": 9.835,
+      "verify_evidence": 0.0,
+      "expected_review": 9.217,
+      "checklist": 10.947,
+      "semantic_validate": 10.076
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0,
+      "hold_s": 0.0275
+     },
+     "llm": {
+      "calls": 32,
+      "chars": 282153,
+      "failed": 0,
+      "delay_s": 153.407,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 20.416,
+        "chars": 9715,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.216,
+        "chars": 8833,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 24,
+        "delay_s": 85.575,
+        "chars": 218652,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.853,
+        "chars": 2640,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.68,
+        "chars": 2143,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 19.835,
+        "chars": 11841,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.833,
+        "chars": 28329,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 53.637,
+     "total_s": 53.689,
+     "queue_s": 0.052
+    },
+    {
+     "key": "d0dc835264d396ed",
+     "base": "plan_elife_neuro",
+     "error": null,
+     "http": 200,
+     "bytes": 29493,
+     "c_start": 1.496,
+     "c_end": 56.504,
+     "client_s": 55.008,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "81815ac3ce58a1ba",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.424,
+      "query_axes": 3.404,
+      "search": 0.107,
+      "extract_issues": 6.576,
+      "synthesize_cards": 10.221,
+      "verify_evidence": 0.0,
+      "expected_review": 9.995,
+      "checklist": 9.851,
+      "semantic_validate": 9.411
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0181,
+      "hold_s": 0.0601
+     },
+     "llm": {
+      "calls": 38,
+      "chars": 368442,
+      "failed": 0,
+      "delay_s": 168.358,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 19.156,
+        "chars": 9863,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.993,
+        "chars": 8862,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 30,
+        "delay_s": 101.475,
+        "chars": 295048,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.421,
+        "chars": 2630,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.401,
+        "chars": 2134,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 18.692,
+        "chars": 12376,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.218,
+        "chars": 37529,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 54.991,
+     "total_s": 55.008,
+     "queue_s": 0.017
+    },
+    {
+     "key": "81a92309de2c2f2c",
+     "base": "plan_medimaging",
+     "error": null,
+     "http": 200,
+     "bytes": 27067,
+     "c_start": 1.494,
+     "c_end": 58.634,
+     "client_s": 57.139,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "caef7787f45a1a0e",
+      "n_similar": 10,
+      "n_cards": 5,
+      "n_checklist": 5,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.871,
+      "query_axes": 2.889,
+      "search": 0.125,
+      "extract_issues": 7.212,
+      "synthesize_cards": 10.711,
+      "verify_evidence": 0.0,
+      "expected_review": 9.991,
+      "checklist": 9.661,
+      "semantic_validate": 10.648
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0328,
+      "hold_s": 0.0395
+     },
+     "llm": {
+      "calls": 39,
+      "chars": 380551,
+      "failed": 0,
+      "delay_s": 179.248,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 18.988,
+        "chars": 10059,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.99,
+        "chars": 9288,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 31,
+        "delay_s": 110.879,
+        "chars": 306754,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.869,
+        "chars": 2690,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.888,
+        "chars": 2194,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 19.926,
+        "chars": 12542,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.709,
+        "chars": 37024,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 57.113,
+     "total_s": 57.139,
+     "queue_s": 0.026
+    },
+    {
+     "key": "4b447038c6c4aa84",
+     "base": "neural_operator_weather",
+     "error": null,
+     "http": 200,
+     "bytes": 12298,
+     "c_start": 1.495,
+     "c_end": 55.062,
+     "client_s": 53.567,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "dc09810bfdd8b38f",
+      "n_similar": 10,
+      "n_cards": 1,
+      "n_checklist": 1,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.563,
+      "query_axes": 2.96,
+      "search": 0.122,
+      "extract_issues": 5.076,
+      "synthesize_cards": 10.746,
+      "verify_evidence": 0.0,
+      "expected_review": 10.332,
+      "checklist": 9.892,
+      "semantic_validate": 9.85
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0207,
+      "hold_s": 0.039
+     },
+     "llm": {
+      "calls": 29,
+      "chars": 250288,
+      "failed": 0,
+      "delay_s": 132.617,
+      "max_inflight": 23,
+      "by_task": {
+       "checklist": {
+        "calls": 1,
+        "delay_s": 9.891,
+        "chars": 3074,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.331,
+        "chars": 4010,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 23,
+        "delay_s": 84.285,
+        "chars": 204704,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.559,
+        "chars": 2901,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.959,
+        "chars": 2405,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 1,
+        "delay_s": 9.847,
+        "chars": 3756,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.744,
+        "chars": 29438,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 53.544,
+     "total_s": 53.567,
+     "queue_s": 0.023
+    }
+   ],
+   [
+    {
+     "key": "7c2991e40ac6cfb9",
+     "base": "plan",
+     "error": null,
+     "http": 200,
+     "bytes": 28821,
+     "c_start": 2.725,
+     "c_end": 108.191,
+     "client_s": 105.467,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "edbfd40d355ae9d9",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.709,
+      "query_axes": 2.715,
+      "search": 0.114,
+      "extract_issues": 4.987,
+      "synthesize_cards": 9.905,
+      "verify_evidence": 0.0,
+      "expected_review": 9.962,
+      "checklist": 9.649,
+      "semantic_validate": 9.792
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0,
+      "hold_s": 0.1057
+     },
+     "llm": {
+      "calls": 32,
+      "chars": 282145,
+      "failed": 0,
+      "delay_s": 153.073,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 18.649,
+        "chars": 9713,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.957,
+        "chars": 8832,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 24,
+        "delay_s": 88.301,
+        "chars": 218652,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.705,
+        "chars": 2639,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.714,
+        "chars": 2142,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 18.845,
+        "chars": 11839,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.902,
+        "chars": 28328,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 51.837,
+     "total_s": 105.467,
+     "queue_s": 53.63
+    },
+    {
+     "key": "4189e88688da8998",
+     "base": "plan_elife_neuro",
+     "error": null,
+     "http": 200,
+     "bytes": 29491,
+     "c_start": 2.712,
+     "c_end": 57.67,
+     "client_s": 54.957,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "81815ac3ce58a1ba",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.546,
+      "query_axes": 2.618,
+      "search": 0.25,
+      "extract_issues": 7.586,
+      "synthesize_cards": 9.955,
+      "verify_evidence": 0.0,
+      "expected_review": 9.432,
+      "checklist": 9.488,
+      "semantic_validate": 10.028
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.1475,
+      "hold_s": 0.0926
+     },
+     "llm": {
+      "calls": 38,
+      "chars": 368434,
+      "failed": 0,
+      "delay_s": 175.773,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 18.772,
+        "chars": 9861,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.43,
+        "chars": 8861,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 30,
+        "delay_s": 110.295,
+        "chars": 295048,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.543,
+        "chars": 2629,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.595,
+        "chars": 2133,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 19.185,
+        "chars": 12374,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.953,
+        "chars": 37528,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 54.907,
+     "total_s": 54.957,
+     "queue_s": 0.05
+    },
+    {
+     "key": "ac9fefaaf23d01cf",
+     "base": "plan_medimaging",
+     "error": null,
+     "http": 200,
+     "bytes": 27066,
+     "c_start": 2.713,
+     "c_end": 59.656,
+     "client_s": 56.943,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "caef7787f45a1a0e",
+      "n_similar": 10,
+      "n_cards": 5,
+      "n_checklist": 5,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.001,
+      "fitness": 4.81,
+      "query_axes": 3.138,
+      "search": 0.371,
+      "extract_issues": 7.176,
+      "synthesize_cards": 10.758,
+      "verify_evidence": 0.0,
+      "expected_review": 10.085,
+      "checklist": 10.403,
+      "semantic_validate": 10.128
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.125,
+      "hold_s": 0.0571
+     },
+     "llm": {
+      "calls": 39,
+      "chars": 380543,
+      "failed": 0,
+      "delay_s": 179.251,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 20.045,
+        "chars": 10057,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.083,
+        "chars": 9287,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 31,
+        "delay_s": 110.81,
+        "chars": 306754,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.807,
+        "chars": 2689,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.136,
+        "chars": 2193,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 19.614,
+        "chars": 12540,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.756,
+        "chars": 37023,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 56.873,
+     "total_s": 56.943,
+     "queue_s": 0.07
+    },
+    {
+     "key": "e9ac27f5d82311f6",
+     "base": "neural_operator_weather",
+     "error": null,
+     "http": 200,
+     "bytes": 12295,
+     "c_start": 2.713,
+     "c_end": 58.426,
+     "client_s": 55.713,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "dc09810bfdd8b38f",
+      "n_similar": 10,
+      "n_cards": 1,
+      "n_checklist": 1,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.972,
+      "query_axes": 2.7,
+      "search": 0.16,
+      "extract_issues": 5.963,
+      "synthesize_cards": 10.843,
+      "verify_evidence": 0.0,
+      "expected_review": 9.765,
+      "checklist": 10.426,
+      "semantic_validate": 10.839
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0479,
+      "hold_s": 0.0407
+     },
+     "llm": {
+      "calls": 29,
+      "chars": 250282,
+      "failed": 0,
+      "delay_s": 133.364,
+      "max_inflight": 23,
+      "by_task": {
+       "checklist": {
+        "calls": 1,
+        "delay_s": 10.425,
+        "chars": 3073,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.763,
+        "chars": 4009,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 23,
+        "delay_s": 83.83,
+        "chars": 204704,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.968,
+        "chars": 2900,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.699,
+        "chars": 2404,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 1,
+        "delay_s": 10.838,
+        "chars": 3755,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.841,
+        "chars": 29437,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 55.67,
+     "total_s": 55.713,
+     "queue_s": 0.043
+    },
+    {
+     "key": "4ab6fb2e57550b2a",
+     "base": "protein_ligand_affinity",
+     "error": null,
+     "http": 200,
+     "bytes": 27751,
+     "c_start": 2.724,
+     "c_end": 57.619,
+     "client_s": 54.895,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "52d964766ae5cd5b",
+      "n_similar": 10,
+      "n_cards": 5,
+      "n_checklist": 5,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.495,
+      "query_axes": 3.047,
+      "search": 0.487,
+      "extract_issues": 6.949,
+      "synthesize_cards": 9.567,
+      "verify_evidence": 0.0,
+      "expected_review": 9.303,
+      "checklist": 9.83,
+      "semantic_validate": 10.105
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.2915,
+      "hold_s": 0.0689
+     },
+     "llm": {
+      "calls": 35,
+      "chars": 322927,
+      "failed": 0,
+      "delay_s": 161.46,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 19.64,
+        "chars": 9602,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.301,
+        "chars": 8567,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 27,
+        "delay_s": 94.271,
+        "chars": 251881,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.491,
+        "chars": 2920,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.017,
+        "chars": 2423,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 20.175,
+        "chars": 11694,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.564,
+        "chars": 35840,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 54.785,
+     "total_s": 54.895,
+     "queue_s": 0.11
+    },
+    {
+     "key": "a3719a5ea09eaf59",
+     "base": "climate_emulator",
+     "error": null,
+     "http": 200,
+     "bytes": 29240,
+     "c_start": 2.715,
+     "c_end": 58.23,
+     "client_s": 55.515,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "b769f2b4c638a279",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.038,
+      "query_axes": 2.532,
+      "search": 0.141,
+      "extract_issues": 6.949,
+      "synthesize_cards": 10.688,
+      "verify_evidence": 0.0,
+      "expected_review": 9.935,
+      "checklist": 9.799,
+      "semantic_validate": 10.379
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.1057,
+      "hold_s": 0.0319
+     },
+     "llm": {
+      "calls": 43,
+      "chars": 410096,
+      "failed": 0,
+      "delay_s": 189.087,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 19.517,
+        "chars": 10073,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.933,
+        "chars": 8732,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 35,
+        "delay_s": 120.858,
+        "chars": 337705,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.035,
+        "chars": 2895,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.53,
+        "chars": 2372,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 20.528,
+        "chars": 12234,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.686,
+        "chars": 36085,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 55.464,
+     "total_s": 55.515,
+     "queue_s": 0.051
+    },
+    {
+     "key": "653dcb3db7607e51",
+     "base": "materials_gnn",
+     "error": null,
+     "http": 200,
+     "bytes": 19284,
+     "c_start": 2.715,
+     "c_end": 57.186,
+     "client_s": 54.471,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "f4af36104b710920",
+      "n_similar": 10,
+      "n_cards": 3,
+      "n_checklist": 3,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.41,
+      "query_axes": 3.447,
+      "search": 0.1,
+      "extract_issues": 6.49,
+      "synthesize_cards": 10.533,
+      "verify_evidence": 0.0,
+      "expected_review": 10.654,
+      "checklist": 9.111,
+      "semantic_validate": 9.649
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0262,
+      "hold_s": 0.0626
+     },
+     "llm": {
+      "calls": 35,
+      "chars": 317409,
+      "failed": 0,
+      "delay_s": 146.275,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 1,
+        "delay_s": 9.11,
+        "chars": 4900,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.652,
+        "chars": 5747,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 29,
+        "delay_s": 98.506,
+        "chars": 263270,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.406,
+        "chars": 2712,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.422,
+        "chars": 2189,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 1,
+        "delay_s": 9.648,
+        "chars": 6146,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.531,
+        "chars": 32445,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 54.396,
+     "total_s": 54.471,
+     "queue_s": 0.075
+    },
+    {
+     "key": "358eb8d5199a5f77",
+     "base": "molecule_reaction",
+     "error": null,
+     "http": 200,
+     "bytes": 29664,
+     "c_start": 2.715,
+     "c_end": 61.52,
+     "client_s": 58.805,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "21d168a4efc3c86c",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.99,
+      "query_axes": 2.591,
+      "search": 0.314,
+      "extract_issues": 8.816,
+      "synthesize_cards": 10.32,
+      "verify_evidence": 0.0,
+      "expected_review": 10.255,
+      "checklist": 10.141,
+      "semantic_validate": 10.297
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.2323,
+      "hold_s": 0.0648
+     },
+     "llm": {
+      "calls": 36,
+      "chars": 322320,
+      "failed": 0,
+      "delay_s": 177.516,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 19.471,
+        "chars": 10045,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.253,
+        "chars": 8787,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 28,
+        "delay_s": 108.46,
+        "chars": 249810,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.987,
+        "chars": 2804,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.576,
+        "chars": 2281,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 20.452,
+        "chars": 12480,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.317,
+        "chars": 36113,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 58.727,
+     "total_s": 58.805,
+     "queue_s": 0.078
+    },
+    {
+     "key": "cb79e22c47f222c7",
+     "base": "pde_operator",
+     "error": null,
+     "http": 200,
+     "bytes": 23244,
+     "c_start": 2.716,
+     "c_end": 58.71,
+     "client_s": 55.994,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "44a8ae655255c40d",
+      "n_similar": 10,
+      "n_cards": 4,
+      "n_checklist": 4,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.828,
+      "query_axes": 2.91,
+      "search": 0.167,
+      "extract_issues": 7.241,
+      "synthesize_cards": 9.394,
+      "verify_evidence": 0.0,
+      "expected_review": 10.592,
+      "checklist": 10.211,
+      "semantic_validate": 10.606
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0272,
+      "hold_s": 0.0993
+     },
+     "llm": {
+      "calls": 34,
+      "chars": 296369,
+      "failed": 0,
+      "delay_s": 173.604,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 20.305,
+        "chars": 8199,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.59,
+        "chars": 6934,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 26,
+        "delay_s": 104.636,
+        "chars": 238809,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.825,
+        "chars": 2869,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.908,
+        "chars": 2347,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 20.949,
+        "chars": 9790,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.392,
+        "chars": 27421,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 55.953,
+     "total_s": 55.994,
+     "queue_s": 0.041
+    },
+    {
+     "key": "6ed16abd569b32a5",
+     "base": "protein_binding",
+     "error": null,
+     "http": 200,
+     "bytes": 30333,
+     "c_start": 2.716,
+     "c_end": 59.184,
+     "client_s": 56.469,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "63c18d26c0319ddd",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.27,
+      "query_axes": 3.124,
+      "search": 0.143,
+      "extract_issues": 6.806,
+      "synthesize_cards": 10.3,
+      "verify_evidence": 0.0,
+      "expected_review": 9.907,
+      "checklist": 10.999,
+      "semantic_validate": 10.848
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0531,
+      "hold_s": 0.0442
+     },
+     "llm": {
+      "calls": 34,
+      "chars": 295605,
+      "failed": 0,
+      "delay_s": 164.597,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 21.766,
+        "chars": 9969,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.904,
+        "chars": 8629,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 26,
+        "delay_s": 94.408,
+        "chars": 227259,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.267,
+        "chars": 2877,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.123,
+        "chars": 2354,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 20.832,
+        "chars": 12464,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.297,
+        "chars": 32053,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 56.401,
+     "total_s": 56.469,
+     "queue_s": 0.068
+    },
+    {
+     "key": "a0b37303ec16a887",
+     "base": "plan",
+     "error": null,
+     "http": 200,
+     "bytes": 28822,
+     "c_start": 2.716,
+     "c_end": 56.485,
+     "client_s": 53.77,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "edbfd40d355ae9d9",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.792,
+      "query_axes": 3.174,
+      "search": 0.337,
+      "extract_issues": 5.81,
+      "synthesize_cards": 9.462,
+      "verify_evidence": 0.0,
+      "expected_review": 10.07,
+      "checklist": 10.682,
+      "semantic_validate": 9.344
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.1686,
+      "hold_s": 0.0827
+     },
+     "llm": {
+      "calls": 32,
+      "chars": 282153,
+      "failed": 0,
+      "delay_s": 144.66,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 20.867,
+        "chars": 9715,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.068,
+        "chars": 8833,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 24,
+        "delay_s": 77.806,
+        "chars": 218652,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.789,
+        "chars": 2640,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.173,
+        "chars": 2143,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 18.498,
+        "chars": 11841,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.46,
+        "chars": 28329,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 53.673,
+     "total_s": 53.77,
+     "queue_s": 0.097
+    },
+    {
+     "key": "488a278c9c44b1f5",
+     "base": "plan_elife_neuro",
+     "error": null,
+     "http": 200,
+     "bytes": 29494,
+     "c_start": 2.723,
+     "c_end": 61.033,
+     "client_s": 58.311,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "81815ac3ce58a1ba",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.816,
+      "query_axes": 3.389,
+      "search": 0.127,
+      "extract_issues": 7.642,
+      "synthesize_cards": 10.556,
+      "verify_evidence": 0.0,
+      "expected_review": 10.148,
+      "checklist": 9.712,
+      "semantic_validate": 10.866
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0,
+      "hold_s": 0.0537
+     },
+     "llm": {
+      "calls": 38,
+      "chars": 368442,
+      "failed": 0,
+      "delay_s": 178.885,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 19.237,
+        "chars": 9863,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.146,
+        "chars": 8862,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 30,
+        "delay_s": 108.485,
+        "chars": 295048,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.813,
+        "chars": 2630,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.351,
+        "chars": 2134,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 21.299,
+        "chars": 12376,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.554,
+        "chars": 37529,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 58.26,
+     "total_s": 58.311,
+     "queue_s": 0.051
+    },
+    {
+     "key": "5db636519c92d82f",
+     "base": "plan_medimaging",
+     "error": null,
+     "http": 200,
+     "bytes": 27066,
+     "c_start": 2.715,
+     "c_end": 58.693,
+     "client_s": 55.977,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "caef7787f45a1a0e",
+      "n_similar": 10,
+      "n_cards": 5,
+      "n_checklist": 5,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.979,
+      "query_axes": 3.39,
+      "search": 0.522,
+      "extract_issues": 7.353,
+      "synthesize_cards": 9.255,
+      "verify_evidence": 0.0,
+      "expected_review": 10.654,
+      "checklist": 10.24,
+      "semantic_validate": 9.493
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.3189,
+      "hold_s": 0.0302
+     },
+     "llm": {
+      "calls": 39,
+      "chars": 380551,
+      "failed": 0,
+      "delay_s": 165.109,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 19.438,
+        "chars": 10059,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.652,
+        "chars": 9288,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 31,
+        "delay_s": 98.786,
+        "chars": 306754,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.976,
+        "chars": 2690,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.389,
+        "chars": 2194,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 18.615,
+        "chars": 12542,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.253,
+        "chars": 37024,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 55.891,
+     "total_s": 55.977,
+     "queue_s": 0.086
+    },
+    {
+     "key": "4b3ff4c14a632ad8",
+     "base": "neural_operator_weather",
+     "error": null,
+     "http": 200,
+     "bytes": 12296,
+     "c_start": 2.716,
+     "c_end": 108.944,
+     "client_s": 106.228,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "dc09810bfdd8b38f",
+      "n_similar": 10,
+      "n_cards": 1,
+      "n_checklist": 1,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.612,
+      "query_axes": 2.944,
+      "search": 0.091,
+      "extract_issues": 4.718,
+      "synthesize_cards": 9.126,
+      "verify_evidence": 0.0,
+      "expected_review": 10.249,
+      "checklist": 10.635,
+      "semantic_validate": 9.075
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0118,
+      "hold_s": 0.0665
+     },
+     "llm": {
+      "calls": 29,
+      "chars": 250288,
+      "failed": 0,
+      "delay_s": 124.21,
+      "max_inflight": 23,
+      "by_task": {
+       "checklist": {
+        "calls": 1,
+        "delay_s": 10.634,
+        "chars": 3074,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.248,
+        "chars": 4010,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 23,
+        "delay_s": 76.579,
+        "chars": 204704,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.608,
+        "chars": 2901,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.942,
+        "chars": 2405,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 1,
+        "delay_s": 9.074,
+        "chars": 3756,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.124,
+        "chars": 29438,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 52.454,
+     "total_s": 106.228,
+     "queue_s": 53.774
+    },
+    {
+     "key": "c332adbe60051baa",
+     "base": "protein_ligand_affinity",
+     "error": null,
+     "http": 200,
+     "bytes": 27754,
+     "c_start": 2.721,
+     "c_end": 58.421,
+     "client_s": 55.699,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "52d964766ae5cd5b",
+      "n_similar": 10,
+      "n_cards": 5,
+      "n_checklist": 5,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.007,
+      "query_axes": 3.196,
+      "search": 0.297,
+      "extract_issues": 7.449,
+      "synthesize_cards": 10.987,
+      "verify_evidence": 0.0,
+      "expected_review": 9.003,
+      "checklist": 10.555,
+      "semantic_validate": 10.161
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.1691,
+      "hold_s": 0.0416
+     },
+     "llm": {
+      "calls": 35,
+      "chars": 322935,
+      "failed": 0,
+      "delay_s": 163.442,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 20.454,
+        "chars": 9604,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.001,
+        "chars": 8568,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 27,
+        "delay_s": 96.551,
+        "chars": 251881,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.003,
+        "chars": 2921,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.195,
+        "chars": 2424,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 19.252,
+        "chars": 11696,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.985,
+        "chars": 35841,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 55.657,
+     "total_s": 55.699,
+     "queue_s": 0.042
+    },
+    {
+     "key": "c0f9e2cf0cee3319",
+     "base": "climate_emulator",
+     "error": null,
+     "http": 200,
+     "bytes": 29239,
+     "c_start": 2.713,
+     "c_end": 58.802,
+     "client_s": 56.089,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "b769f2b4c638a279",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.653,
+      "query_axes": 3.415,
+      "search": 0.195,
+      "extract_issues": 8.375,
+      "synthesize_cards": 9.072,
+      "verify_evidence": 0.0,
+      "expected_review": 9.599,
+      "checklist": 10.119,
+      "semantic_validate": 9.58
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0359,
+      "hold_s": 0.0269
+     },
+     "llm": {
+      "calls": 43,
+      "chars": 410104,
+      "failed": 0,
+      "delay_s": 187.963,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 19.513,
+        "chars": 10075,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.597,
+        "chars": 8733,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 35,
+        "delay_s": 122.127,
+        "chars": 337705,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.648,
+        "chars": 2896,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.395,
+        "chars": 2373,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 18.614,
+        "chars": 12236,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.069,
+        "chars": 36086,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 56.012,
+     "total_s": 56.089,
+     "queue_s": 0.077
+    },
+    {
+     "key": "02ac0cb75b967d44",
+     "base": "materials_gnn",
+     "error": null,
+     "http": 200,
+     "bytes": 19283,
+     "c_start": 2.719,
+     "c_end": 58.847,
+     "client_s": 56.128,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "f4af36104b710920",
+      "n_similar": 10,
+      "n_cards": 3,
+      "n_checklist": 3,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.086,
+      "query_axes": 2.973,
+      "search": 0.249,
+      "extract_issues": 7.24,
+      "synthesize_cards": 9.046,
+      "verify_evidence": 0.0,
+      "expected_review": 10.779,
+      "checklist": 10.028,
+      "semantic_validate": 10.626
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.1459,
+      "hold_s": 0.0189
+     },
+     "llm": {
+      "calls": 35,
+      "chars": 317415,
+      "failed": 0,
+      "delay_s": 143.451,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 1,
+        "delay_s": 10.027,
+        "chars": 4901,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.778,
+        "chars": 5748,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 29,
+        "delay_s": 94.938,
+        "chars": 263270,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.083,
+        "chars": 2713,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.957,
+        "chars": 2190,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 1,
+        "delay_s": 10.624,
+        "chars": 6147,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.044,
+        "chars": 32446,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 56.029,
+     "total_s": 56.128,
+     "queue_s": 0.099
+    },
+    {
+     "key": "b28eec55ccceea13",
+     "base": "molecule_reaction",
+     "error": null,
+     "http": 200,
+     "bytes": 29664,
+     "c_start": 2.714,
+     "c_end": 56.347,
+     "client_s": 53.634,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "21d168a4efc3c86c",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.147,
+      "query_axes": 2.753,
+      "search": 0.11,
+      "extract_issues": 6.479,
+      "synthesize_cards": 10.2,
+      "verify_evidence": 0.0,
+      "expected_review": 9.846,
+      "checklist": 9.583,
+      "semantic_validate": 10.443
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0,
+      "hold_s": 0.1084
+     },
+     "llm": {
+      "calls": 36,
+      "chars": 322328,
+      "failed": 0,
+      "delay_s": 155.687,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 18.906,
+        "chars": 10047,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.844,
+        "chars": 8788,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 28,
+        "delay_s": 90.196,
+        "chars": 249810,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.142,
+        "chars": 2805,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.752,
+        "chars": 2282,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 19.651,
+        "chars": 12482,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.197,
+        "chars": 36114,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 53.562,
+     "total_s": 53.634,
+     "queue_s": 0.072
+    },
+    {
+     "key": "b158c4aec19387ad",
+     "base": "pde_operator",
+     "error": null,
+     "http": 200,
+     "bytes": 23246,
+     "c_start": 2.723,
+     "c_end": 60.245,
+     "client_s": 57.522,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "44a8ae655255c40d",
+      "n_similar": 10,
+      "n_cards": 4,
+      "n_checklist": 4,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.227,
+      "query_axes": 2.726,
+      "search": 0.329,
+      "extract_issues": 6.152,
+      "synthesize_cards": 10.758,
+      "verify_evidence": 0.0,
+      "expected_review": 10.744,
+      "checklist": 10.759,
+      "semantic_validate": 10.745
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.1582,
+      "hold_s": 0.0295
+     },
+     "llm": {
+      "calls": 34,
+      "chars": 296377,
+      "failed": 0,
+      "delay_s": 157.139,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 21.505,
+        "chars": 8201,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.743,
+        "chars": 6935,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 26,
+        "delay_s": 85.756,
+        "chars": 238809,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.223,
+        "chars": 2870,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.725,
+        "chars": 2348,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 20.431,
+        "chars": 9792,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.756,
+        "chars": 27422,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 57.445,
+     "total_s": 57.522,
+     "queue_s": 0.077
+    },
+    {
+     "key": "e164cd1c32dfb41b",
+     "base": "protein_binding",
+     "error": null,
+     "http": 200,
+     "bytes": 30331,
+     "c_start": 2.713,
+     "c_end": 57.106,
+     "client_s": 54.393,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "63c18d26c0319ddd",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.148,
+      "query_axes": 2.911,
+      "search": 0.129,
+      "extract_issues": 6.273,
+      "synthesize_cards": 9.718,
+      "verify_evidence": 0.001,
+      "expected_review": 10.025,
+      "checklist": 10.202,
+      "semantic_validate": 10.91
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0,
+      "hold_s": 0.1143
+     },
+     "llm": {
+      "calls": 34,
+      "chars": 295605,
+      "failed": 0,
+      "delay_s": 160.284,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 19.59,
+        "chars": 9969,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.021,
+        "chars": 8629,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 26,
+        "delay_s": 92.923,
+        "chars": 227259,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.145,
+        "chars": 2877,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.91,
+        "chars": 2354,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 20.98,
+        "chars": 12464,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.715,
+        "chars": 32053,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 54.319,
+     "total_s": 54.393,
+     "queue_s": 0.074
+    },
+    {
+     "key": "d88443012fc9d1bb",
+     "base": "plan",
+     "error": null,
+     "http": 200,
+     "bytes": 28822,
+     "c_start": 2.724,
+     "c_end": 108.656,
+     "client_s": 105.932,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "edbfd40d355ae9d9",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.063,
+      "query_axes": 3.27,
+      "search": 0.084,
+      "extract_issues": 4.936,
+      "synthesize_cards": 9.918,
+      "verify_evidence": 0.0,
+      "expected_review": 9.66,
+      "checklist": 10.092,
+      "semantic_validate": 9.513
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0,
+      "hold_s": 0.0562
+     },
+     "llm": {
+      "calls": 32,
+      "chars": 282153,
+      "failed": 0,
+      "delay_s": 150.82,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 19.903,
+        "chars": 9715,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.658,
+        "chars": 8833,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 24,
+        "delay_s": 85.433,
+        "chars": 218652,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.059,
+        "chars": 2640,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.267,
+        "chars": 2143,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 18.585,
+        "chars": 11841,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.914,
+        "chars": 28329,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 51.539,
+     "total_s": 105.932,
+     "queue_s": 54.393
+    },
+    {
+     "key": "eb446a47a71ac0b0",
+     "base": "plan_elife_neuro",
+     "error": null,
+     "http": 200,
+     "bytes": 29492,
+     "c_start": 2.717,
+     "c_end": 57.215,
+     "client_s": 54.498,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "81815ac3ce58a1ba",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.194,
+      "query_axes": 2.803,
+      "search": 0.23,
+      "extract_issues": 7.122,
+      "synthesize_cards": 9.402,
+      "verify_evidence": 0.0,
+      "expected_review": 10.818,
+      "checklist": 10.357,
+      "semantic_validate": 9.46
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.1131,
+      "hold_s": 0.1112
+     },
+     "llm": {
+      "calls": 38,
+      "chars": 368442,
+      "failed": 0,
+      "delay_s": 169.488,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 19.433,
+        "chars": 9863,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.815,
+        "chars": 8862,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 30,
+        "delay_s": 104.276,
+        "chars": 295048,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.191,
+        "chars": 2630,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.801,
+        "chars": 2134,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 18.572,
+        "chars": 12376,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.4,
+        "chars": 37529,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 54.391,
+     "total_s": 54.498,
+     "queue_s": 0.107
+    },
+    {
+     "key": "444f9a6044758954",
+     "base": "plan_medimaging",
+     "error": null,
+     "http": 200,
+     "bytes": 27065,
+     "c_start": 2.72,
+     "c_end": 59.475,
+     "client_s": 56.755,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "caef7787f45a1a0e",
+      "n_similar": 10,
+      "n_cards": 5,
+      "n_checklist": 5,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.959,
+      "query_axes": 2.925,
+      "search": 0.34,
+      "extract_issues": 7.068,
+      "synthesize_cards": 9.705,
+      "verify_evidence": 0.0,
+      "expected_review": 9.389,
+      "checklist": 10.72,
+      "semantic_validate": 10.577
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0998,
+      "hold_s": 0.0429
+     },
+     "llm": {
+      "calls": 39,
+      "chars": 380551,
+      "failed": 0,
+      "delay_s": 179.431,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 20.161,
+        "chars": 10059,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.387,
+        "chars": 9288,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 31,
+        "delay_s": 111.385,
+        "chars": 306754,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.955,
+        "chars": 2690,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.891,
+        "chars": 2194,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 19.949,
+        "chars": 12542,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.703,
+        "chars": 37024,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 56.684,
+     "total_s": 56.755,
+     "queue_s": 0.071
+    },
+    {
+     "key": "ae148c43c4996ddc",
+     "base": "neural_operator_weather",
+     "error": null,
+     "http": 200,
+     "bytes": 12299,
+     "c_start": 2.722,
+     "c_end": 109.087,
+     "client_s": 106.365,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "dc09810bfdd8b38f",
+      "n_similar": 10,
+      "n_cards": 1,
+      "n_checklist": 1,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.582,
+      "query_axes": 3.412,
+      "search": 0.082,
+      "extract_issues": 4.747,
+      "synthesize_cards": 10.093,
+      "verify_evidence": 0.0,
+      "expected_review": 10.151,
+      "checklist": 9.71,
+      "semantic_validate": 9.075
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0,
+      "hold_s": 0.0662
+     },
+     "llm": {
+      "calls": 29,
+      "chars": 250288,
+      "failed": 0,
+      "delay_s": 119.038,
+      "max_inflight": 23,
+      "by_task": {
+       "checklist": {
+        "calls": 1,
+        "delay_s": 9.709,
+        "chars": 3074,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.149,
+        "chars": 4010,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 23,
+        "delay_s": 71.031,
+        "chars": 204704,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.575,
+        "chars": 2901,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.41,
+        "chars": 2405,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 1,
+        "delay_s": 9.074,
+        "chars": 3756,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.09,
+        "chars": 29438,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 52.855,
+     "total_s": 106.365,
+     "queue_s": 53.51
+    },
+    {
+     "key": "dba1653def19e1f9",
+     "base": "protein_ligand_affinity",
+     "error": null,
+     "http": 200,
+     "bytes": 27753,
+     "c_start": 2.718,
+     "c_end": 59.773,
+     "client_s": 57.055,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "52d964766ae5cd5b",
+      "n_similar": 10,
+      "n_cards": 5,
+      "n_checklist": 5,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.155,
+      "query_axes": 3.041,
+      "search": 0.341,
+      "extract_issues": 7.084,
+      "synthesize_cards": 9.513,
+      "verify_evidence": 0.0,
+      "expected_review": 10.751,
+      "checklist": 10.495,
+      "semantic_validate": 10.623
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.2147,
+      "hold_s": 0.0493
+     },
+     "llm": {
+      "calls": 35,
+      "chars": 322935,
+      "failed": 0,
+      "delay_s": 165.97,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 20.828,
+        "chars": 9604,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.75,
+        "chars": 8568,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 27,
+        "delay_s": 96.557,
+        "chars": 251881,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.151,
+        "chars": 2921,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.028,
+        "chars": 2424,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 20.145,
+        "chars": 11696,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.511,
+        "chars": 35841,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 57.006,
+     "total_s": 57.055,
+     "queue_s": 0.049
+    },
+    {
+     "key": "92e8d1992fbf2540",
+     "base": "climate_emulator",
+     "error": null,
+     "http": 200,
+     "bytes": 29242,
+     "c_start": 2.722,
+     "c_end": 60.205,
+     "client_s": 57.483,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "b769f2b4c638a279",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.111,
+      "query_axes": 3.404,
+      "search": 0.113,
+      "extract_issues": 7.663,
+      "synthesize_cards": 10.636,
+      "verify_evidence": 0.0,
+      "expected_review": 10.384,
+      "checklist": 10.714,
+      "semantic_validate": 10.358
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0689,
+      "hold_s": 0.0419
+     },
+     "llm": {
+      "calls": 43,
+      "chars": 410104,
+      "failed": 0,
+      "delay_s": 195.436,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 20.415,
+        "chars": 10075,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.383,
+        "chars": 8733,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 35,
+        "delay_s": 125.897,
+        "chars": 337705,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.107,
+        "chars": 2896,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.403,
+        "chars": 2373,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 20.597,
+        "chars": 12236,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.634,
+        "chars": 36086,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 57.388,
+     "total_s": 57.483,
+     "queue_s": 0.095
+    },
+    {
+     "key": "07006a2bb23999d0",
+     "base": "materials_gnn",
+     "error": null,
+     "http": 200,
+     "bytes": 19282,
+     "c_start": 2.721,
+     "c_end": 56.334,
+     "client_s": 53.613,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "f4af36104b710920",
+      "n_similar": 10,
+      "n_cards": 3,
+      "n_checklist": 3,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.634,
+      "query_axes": 3.278,
+      "search": 0.174,
+      "extract_issues": 6.856,
+      "synthesize_cards": 9.134,
+      "verify_evidence": 0.0,
+      "expected_review": 9.186,
+      "checklist": 10.576,
+      "semantic_validate": 9.748
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.1252,
+      "hold_s": 0.0267
+     },
+     "llm": {
+      "calls": 35,
+      "chars": 317415,
+      "failed": 0,
+      "delay_s": 141.937,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 1,
+        "delay_s": 10.574,
+        "chars": 4901,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.184,
+        "chars": 5748,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 29,
+        "delay_s": 95.399,
+        "chars": 263270,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.631,
+        "chars": 2713,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.27,
+        "chars": 2190,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 1,
+        "delay_s": 9.747,
+        "chars": 6147,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.132,
+        "chars": 32446,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 53.587,
+     "total_s": 53.613,
+     "queue_s": 0.026
+    },
+    {
+     "key": "93f37d6b03f97448",
+     "base": "molecule_reaction",
+     "error": null,
+     "http": 200,
+     "bytes": 29663,
+     "c_start": 2.717,
+     "c_end": 59.868,
+     "client_s": 57.151,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "21d168a4efc3c86c",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.745,
+      "query_axes": 3.316,
+      "search": 0.218,
+      "extract_issues": 7.149,
+      "synthesize_cards": 10.217,
+      "verify_evidence": 0.0,
+      "expected_review": 9.918,
+      "checklist": 10.086,
+      "semantic_validate": 10.441
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0156,
+      "hold_s": 0.0384
+     },
+     "llm": {
+      "calls": 36,
+      "chars": 322328,
+      "failed": 0,
+      "delay_s": 165.864,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 19.705,
+        "chars": 10047,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.917,
+        "chars": 8788,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 28,
+        "delay_s": 96.853,
+        "chars": 249810,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.741,
+        "chars": 2805,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.306,
+        "chars": 2282,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 20.127,
+        "chars": 12482,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.214,
+        "chars": 36114,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 57.092,
+     "total_s": 57.151,
+     "queue_s": 0.059
+    },
+    {
+     "key": "452c49625c7f150e",
+     "base": "pde_operator",
+     "error": null,
+     "http": 200,
+     "bytes": 23246,
+     "c_start": 2.719,
+     "c_end": 57.787,
+     "client_s": 55.069,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "44a8ae655255c40d",
+      "n_similar": 10,
+      "n_cards": 4,
+      "n_checklist": 4,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.04,
+      "query_axes": 3.075,
+      "search": 0.201,
+      "extract_issues": 6.353,
+      "synthesize_cards": 10.068,
+      "verify_evidence": 0.0,
+      "expected_review": 9.835,
+      "checklist": 10.636,
+      "semantic_validate": 9.765
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.1162,
+      "hold_s": 0.0327
+     },
+     "llm": {
+      "calls": 34,
+      "chars": 296377,
+      "failed": 0,
+      "delay_s": 166.883,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 20.509,
+        "chars": 8201,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.833,
+        "chars": 6935,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 26,
+        "delay_s": 99.295,
+        "chars": 238809,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.036,
+        "chars": 2870,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.05,
+        "chars": 2348,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 19.092,
+        "chars": 9792,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.066,
+        "chars": 27422,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 54.978,
+     "total_s": 55.069,
+     "queue_s": 0.091
+    },
+    {
+     "key": "5b89c25d7e974756",
+     "base": "protein_binding",
+     "error": null,
+     "http": 200,
+     "bytes": 30332,
+     "c_start": 2.718,
+     "c_end": 58.461,
+     "client_s": 55.743,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "63c18d26c0319ddd",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.361,
+      "query_axes": 3.11,
+      "search": 0.06,
+      "extract_issues": 6.961,
+      "synthesize_cards": 9.101,
+      "verify_evidence": 0.0,
+      "expected_review": 10.937,
+      "checklist": 10.78,
+      "semantic_validate": 10.308
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0,
+      "hold_s": 0.0535
+     },
+     "llm": {
+      "calls": 34,
+      "chars": 295605,
+      "failed": 0,
+      "delay_s": 158.044,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 20.311,
+        "chars": 9969,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.935,
+        "chars": 8629,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 26,
+        "delay_s": 90.611,
+        "chars": 227259,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.357,
+        "chars": 2877,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.103,
+        "chars": 2354,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 19.628,
+        "chars": 12464,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.098,
+        "chars": 32053,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 55.621,
+     "total_s": 55.743,
+     "queue_s": 0.122
+    },
+    {
+     "key": "fe1707660950945e",
+     "base": "plan",
+     "error": null,
+     "http": 200,
+     "bytes": 28823,
+     "c_start": 2.722,
+     "c_end": 56.455,
+     "client_s": 53.733,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "edbfd40d355ae9d9",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.46,
+      "query_axes": 2.589,
+      "search": 0.259,
+      "extract_issues": 5.838,
+      "synthesize_cards": 10.274,
+      "verify_evidence": 0.0,
+      "expected_review": 9.721,
+      "checklist": 10.736,
+      "semantic_validate": 9.735
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.1627,
+      "hold_s": 0.0291
+     },
+     "llm": {
+      "calls": 32,
+      "chars": 282153,
+      "failed": 0,
+      "delay_s": 152.899,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 21.006,
+        "chars": 9715,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.718,
+        "chars": 8833,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 24,
+        "delay_s": 85.471,
+        "chars": 218652,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.458,
+        "chars": 2640,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.588,
+        "chars": 2143,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 19.387,
+        "chars": 11841,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.271,
+        "chars": 28329,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 53.615,
+     "total_s": 53.733,
+     "queue_s": 0.118
+    },
+    {
+     "key": "2cd4d33626f8e48c",
+     "base": "plan_elife_neuro",
+     "error": null,
+     "http": 200,
+     "bytes": 29491,
+     "c_start": 2.714,
+     "c_end": 60.81,
+     "client_s": 58.096,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "81815ac3ce58a1ba",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.372,
+      "query_axes": 3.501,
+      "search": 0.372,
+      "extract_issues": 7.403,
+      "synthesize_cards": 10.408,
+      "verify_evidence": 0.0,
+      "expected_review": 10.046,
+      "checklist": 10.111,
+      "semantic_validate": 10.787
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.1395,
+      "hold_s": 0.0335
+     },
+     "llm": {
+      "calls": 38,
+      "chars": 368442,
+      "failed": 0,
+      "delay_s": 170.047,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 19.76,
+        "chars": 9863,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.044,
+        "chars": 8862,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 30,
+        "delay_s": 100.568,
+        "chars": 295048,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.369,
+        "chars": 2630,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.495,
+        "chars": 2134,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 20.406,
+        "chars": 12376,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.405,
+        "chars": 37529,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 58.004,
+     "total_s": 58.096,
+     "queue_s": 0.092
+    },
+    {
+     "key": "9efde1649eec975d",
+     "base": "plan_medimaging",
+     "error": null,
+     "http": 200,
+     "bytes": 27067,
+     "c_start": 2.72,
+     "c_end": 59.414,
+     "client_s": 56.694,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "caef7787f45a1a0e",
+      "n_similar": 10,
+      "n_cards": 5,
+      "n_checklist": 5,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.164,
+      "query_axes": 3.045,
+      "search": 0.436,
+      "extract_issues": 7.584,
+      "synthesize_cards": 10.275,
+      "verify_evidence": 0.0,
+      "expected_review": 9.89,
+      "checklist": 10.244,
+      "semantic_validate": 9.977
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.2134,
+      "hold_s": 0.1181
+     },
+     "llm": {
+      "calls": 39,
+      "chars": 380551,
+      "failed": 0,
+      "delay_s": 178.334,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 19.344,
+        "chars": 10059,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.889,
+        "chars": 9288,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 31,
+        "delay_s": 111.59,
+        "chars": 306754,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.162,
+        "chars": 2690,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.039,
+        "chars": 2194,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 19.038,
+        "chars": 12542,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.272,
+        "chars": 37024,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 56.618,
+     "total_s": 56.694,
+     "queue_s": 0.076
+    },
+    {
+     "key": "40843b50f45bcc3b",
+     "base": "neural_operator_weather",
+     "error": null,
+     "http": 200,
+     "bytes": 12297,
+     "c_start": 2.714,
+     "c_end": 57.69,
+     "client_s": 54.976,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "dc09810bfdd8b38f",
+      "n_similar": 10,
+      "n_cards": 1,
+      "n_checklist": 1,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.043,
+      "query_axes": 2.798,
+      "search": 0.117,
+      "extract_issues": 5.821,
+      "synthesize_cards": 10.961,
+      "verify_evidence": 0.0,
+      "expected_review": 9.788,
+      "checklist": 10.328,
+      "semantic_validate": 10.096
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.032,
+      "hold_s": 0.0266
+     },
+     "llm": {
+      "calls": 29,
+      "chars": 250288,
+      "failed": 0,
+      "delay_s": 131.413,
+      "max_inflight": 23,
+      "by_task": {
+       "checklist": {
+        "calls": 1,
+        "delay_s": 10.327,
+        "chars": 3074,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.787,
+        "chars": 4010,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 23,
+        "delay_s": 82.432,
+        "chars": 204704,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.04,
+        "chars": 2901,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.773,
+        "chars": 2405,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 1,
+        "delay_s": 10.095,
+        "chars": 3756,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.959,
+        "chars": 29438,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 54.955,
+     "total_s": 54.976,
+     "queue_s": 0.021
+    },
+    {
+     "key": "f63f0245f1da90f2",
+     "base": "protein_ligand_affinity",
+     "error": null,
+     "http": 200,
+     "bytes": 27756,
+     "c_start": 2.72,
+     "c_end": 112.954,
+     "client_s": 110.234,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "52d964766ae5cd5b",
+      "n_similar": 10,
+      "n_cards": 5,
+      "n_checklist": 5,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.567,
+      "query_axes": 3.064,
+      "search": 0.109,
+      "extract_issues": 6.568,
+      "synthesize_cards": 10.296,
+      "verify_evidence": 0.0,
+      "expected_review": 10.042,
+      "checklist": 10.831,
+      "semantic_validate": 10.134
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0,
+      "hold_s": 0.0908
+     },
+     "llm": {
+      "calls": 35,
+      "chars": 322935,
+      "failed": 0,
+      "delay_s": 171.243,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 20.695,
+        "chars": 9604,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.04,
+        "chars": 8568,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 27,
+        "delay_s": 101.611,
+        "chars": 251881,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.563,
+        "chars": 2921,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.062,
+        "chars": 2424,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 19.979,
+        "chars": 11696,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.293,
+        "chars": 35841,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 56.614,
+     "total_s": 110.234,
+     "queue_s": 53.62
+    },
+    {
+     "key": "14bb97cd1fadbee8",
+     "base": "climate_emulator",
+     "error": null,
+     "http": 200,
+     "bytes": 29239,
+     "c_start": 2.723,
+     "c_end": 60.886,
+     "client_s": 58.163,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "b769f2b4c638a279",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.343,
+      "query_axes": 3.156,
+      "search": 0.433,
+      "extract_issues": 8.283,
+      "synthesize_cards": 9.852,
+      "verify_evidence": 0.0,
+      "expected_review": 10.59,
+      "checklist": 9.482,
+      "semantic_validate": 10.986
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.3295,
+      "hold_s": 0.021
+     },
+     "llm": {
+      "calls": 43,
+      "chars": 410104,
+      "failed": 0,
+      "delay_s": 190.292,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 18.802,
+        "chars": 10075,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.589,
+        "chars": 8733,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 35,
+        "delay_s": 121.999,
+        "chars": 337705,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.339,
+        "chars": 2896,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.125,
+        "chars": 2373,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 20.589,
+        "chars": 12236,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.849,
+        "chars": 36086,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 58.128,
+     "total_s": 58.163,
+     "queue_s": 0.035
+    },
+    {
+     "key": "a744ab943752a595",
+     "base": "materials_gnn",
+     "error": null,
+     "http": 200,
+     "bytes": 19284,
+     "c_start": 2.721,
+     "c_end": 110.512,
+     "client_s": 107.791,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "f4af36104b710920",
+      "n_similar": 10,
+      "n_cards": 3,
+      "n_checklist": 3,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.652,
+      "query_axes": 3.17,
+      "search": 0.132,
+      "extract_issues": 6.174,
+      "synthesize_cards": 9.388,
+      "verify_evidence": 0.0,
+      "expected_review": 10.367,
+      "checklist": 9.425,
+      "semantic_validate": 10.739
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0,
+      "hold_s": 0.1064
+     },
+     "llm": {
+      "calls": 35,
+      "chars": 317415,
+      "failed": 0,
+      "delay_s": 145.065,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 1,
+        "delay_s": 9.423,
+        "chars": 4901,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.365,
+        "chars": 5748,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 29,
+        "delay_s": 97.337,
+        "chars": 263270,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.648,
+        "chars": 2713,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.169,
+        "chars": 2190,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 1,
+        "delay_s": 10.737,
+        "chars": 6147,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.385,
+        "chars": 32446,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 54.051,
+     "total_s": 107.791,
+     "queue_s": 53.74
+    },
+    {
+     "key": "24f737735fa21170",
+     "base": "molecule_reaction",
+     "error": null,
+     "http": 200,
+     "bytes": 29663,
+     "c_start": 2.717,
+     "c_end": 57.763,
+     "client_s": 55.046,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "21d168a4efc3c86c",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.037,
+      "query_axes": 3.463,
+      "search": 0.08,
+      "extract_issues": 7.198,
+      "synthesize_cards": 9.373,
+      "verify_evidence": 0.0,
+      "expected_review": 10.812,
+      "checklist": 10.22,
+      "semantic_validate": 9.753
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0282,
+      "hold_s": 0.0467
+     },
+     "llm": {
+      "calls": 36,
+      "chars": 322328,
+      "failed": 0,
+      "delay_s": 165.762,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 19.637,
+        "chars": 10047,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.81,
+        "chars": 8788,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 28,
+        "delay_s": 99.399,
+        "chars": 249810,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.034,
+        "chars": 2805,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.462,
+        "chars": 2282,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 19.049,
+        "chars": 12482,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.371,
+        "chars": 36114,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 54.938,
+     "total_s": 55.046,
+     "queue_s": 0.108
+    },
+    {
+     "key": "5c2498767b830d8d",
+     "base": "pde_operator",
+     "error": null,
+     "http": 200,
+     "bytes": 23244,
+     "c_start": 2.717,
+     "c_end": 56.229,
+     "client_s": 53.513,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "44a8ae655255c40d",
+      "n_similar": 10,
+      "n_cards": 4,
+      "n_checklist": 4,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.177,
+      "query_axes": 3.284,
+      "search": 0.487,
+      "extract_issues": 5.468,
+      "synthesize_cards": 9.198,
+      "verify_evidence": 0.0,
+      "expected_review": 9.971,
+      "checklist": 10.241,
+      "semantic_validate": 9.657
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.3269,
+      "hold_s": 0.0591
+     },
+     "llm": {
+      "calls": 34,
+      "chars": 296377,
+      "failed": 0,
+      "delay_s": 155.547,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 19.343,
+        "chars": 8201,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.969,
+        "chars": 6935,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 26,
+        "delay_s": 89.639,
+        "chars": 238809,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.172,
+        "chars": 2870,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.282,
+        "chars": 2348,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 18.947,
+        "chars": 9792,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.196,
+        "chars": 27422,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 53.485,
+     "total_s": 53.513,
+     "queue_s": 0.028
+    },
+    {
+     "key": "fed48778ab172efe",
+     "base": "protein_binding",
+     "error": null,
+     "http": 200,
+     "bytes": 30332,
+     "c_start": 2.721,
+     "c_end": 58.787,
+     "client_s": 56.066,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "63c18d26c0319ddd",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.214,
+      "query_axes": 2.659,
+      "search": 0.166,
+      "extract_issues": 6.942,
+      "synthesize_cards": 9.376,
+      "verify_evidence": 0.001,
+      "expected_review": 10.658,
+      "checklist": 10.515,
+      "semantic_validate": 10.473
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0871,
+      "hold_s": 0.0464
+     },
+     "llm": {
+      "calls": 34,
+      "chars": 295605,
+      "failed": 0,
+      "delay_s": 161.952,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 20.325,
+        "chars": 9969,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.656,
+        "chars": 8629,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 26,
+        "delay_s": 93.238,
+        "chars": 227259,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.21,
+        "chars": 2877,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.649,
+        "chars": 2354,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 20.5,
+        "chars": 12464,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.373,
+        "chars": 32053,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 56.008,
+     "total_s": 56.066,
+     "queue_s": 0.058
+    },
+    {
+     "key": "a101ea04f4cb9a50",
+     "base": "plan",
+     "error": null,
+     "http": 200,
+     "bytes": 28820,
+     "c_start": 2.719,
+     "c_end": 107.094,
+     "client_s": 104.375,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "edbfd40d355ae9d9",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.516,
+      "query_axes": 3.126,
+      "search": 0.129,
+      "extract_issues": 4.652,
+      "synthesize_cards": 9.844,
+      "verify_evidence": 0.0,
+      "expected_review": 9.414,
+      "checklist": 10.212,
+      "semantic_validate": 9.387
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0,
+      "hold_s": 0.1098
+     },
+     "llm": {
+      "calls": 32,
+      "chars": 282153,
+      "failed": 0,
+      "delay_s": 147.352,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 19.946,
+        "chars": 9715,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.411,
+        "chars": 8833,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 24,
+        "delay_s": 81.884,
+        "chars": 218652,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.511,
+        "chars": 2640,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.125,
+        "chars": 2143,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 18.634,
+        "chars": 11841,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.841,
+        "chars": 28329,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 51.285,
+     "total_s": 104.375,
+     "queue_s": 53.09
+    },
+    {
+     "key": "54afc9fd37852ea0",
+     "base": "plan_elife_neuro",
+     "error": null,
+     "http": 200,
+     "bytes": 29493,
+     "c_start": 2.719,
+     "c_end": 57.094,
+     "client_s": 54.376,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "81815ac3ce58a1ba",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.248,
+      "query_axes": 2.844,
+      "search": 0.25,
+      "extract_issues": 6.42,
+      "synthesize_cards": 10.38,
+      "verify_evidence": 0.0,
+      "expected_review": 9.009,
+      "checklist": 10.175,
+      "semantic_validate": 10.909
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.1706,
+      "hold_s": 0.0623
+     },
+     "llm": {
+      "calls": 38,
+      "chars": 368442,
+      "failed": 0,
+      "delay_s": 171.672,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 19.91,
+        "chars": 9863,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.007,
+        "chars": 8862,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 30,
+        "delay_s": 104.299,
+        "chars": 295048,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.245,
+        "chars": 2630,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.843,
+        "chars": 2134,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 20.99,
+        "chars": 12376,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.377,
+        "chars": 37529,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 54.239,
+     "total_s": 54.376,
+     "queue_s": 0.137
+    },
+    {
+     "key": "fd5b5cdf68846a26",
+     "base": "plan_medimaging",
+     "error": null,
+     "http": 200,
+     "bytes": 27068,
+     "c_start": 2.718,
+     "c_end": 59.902,
+     "client_s": 57.184,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "caef7787f45a1a0e",
+      "n_similar": 10,
+      "n_cards": 5,
+      "n_checklist": 5,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.39,
+      "query_axes": 2.954,
+      "search": 0.203,
+      "extract_issues": 7.424,
+      "synthesize_cards": 10.667,
+      "verify_evidence": 0.0,
+      "expected_review": 10.432,
+      "checklist": 10.773,
+      "semantic_validate": 10.296
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0713,
+      "hold_s": 0.0473
+     },
+     "llm": {
+      "calls": 39,
+      "chars": 380551,
+      "failed": 0,
+      "delay_s": 178.344,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 21.345,
+        "chars": 10059,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.43,
+        "chars": 9288,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 31,
+        "delay_s": 108.269,
+        "chars": 306754,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.387,
+        "chars": 2690,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.95,
+        "chars": 2194,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 20.298,
+        "chars": 12542,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.665,
+        "chars": 37024,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 57.142,
+     "total_s": 57.184,
+     "queue_s": 0.042
+    },
+    {
+     "key": "6ba9cdbe0d00a11e",
+     "base": "neural_operator_weather",
+     "error": null,
+     "http": 200,
+     "bytes": 12296,
+     "c_start": 2.719,
+     "c_end": 55.8,
+     "client_s": 53.08,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "dc09810bfdd8b38f",
+      "n_similar": 10,
+      "n_cards": 1,
+      "n_checklist": 1,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.991,
+      "query_axes": 2.984,
+      "search": 0.213,
+      "extract_issues": 5.808,
+      "synthesize_cards": 10.157,
+      "verify_evidence": 0.0,
+      "expected_review": 9.258,
+      "checklist": 9.235,
+      "semantic_validate": 10.404
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0852,
+      "hold_s": 0.0424
+     },
+     "llm": {
+      "calls": 29,
+      "chars": 250288,
+      "failed": 0,
+      "delay_s": 127.893,
+      "max_inflight": 23,
+      "by_task": {
+       "checklist": {
+        "calls": 1,
+        "delay_s": 9.235,
+        "chars": 3074,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.257,
+        "chars": 4010,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 23,
+        "delay_s": 80.874,
+        "chars": 204704,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.988,
+        "chars": 2901,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.982,
+        "chars": 2405,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 1,
+        "delay_s": 10.403,
+        "chars": 3756,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.155,
+        "chars": 29438,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 53.053,
+     "total_s": 53.08,
+     "queue_s": 0.027
+    },
+    {
+     "key": "254d18eca411697b",
+     "base": "protein_ligand_affinity",
+     "error": null,
+     "http": 200,
+     "bytes": 27755,
+     "c_start": 2.712,
+     "c_end": 59.389,
+     "client_s": 56.677,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "52d964766ae5cd5b",
+      "n_similar": 10,
+      "n_cards": 5,
+      "n_checklist": 5,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.169,
+      "query_axes": 3.183,
+      "search": 0.473,
+      "extract_issues": 7.048,
+      "synthesize_cards": 10.768,
+      "verify_evidence": 0.0,
+      "expected_review": 10.684,
+      "checklist": 9.592,
+      "semantic_validate": 9.7
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.2145,
+      "hold_s": 0.1493
+     },
+     "llm": {
+      "calls": 35,
+      "chars": 322935,
+      "failed": 0,
+      "delay_s": 158.079,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 19.126,
+        "chars": 9604,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.683,
+        "chars": 8568,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 27,
+        "delay_s": 90.399,
+        "chars": 251881,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.165,
+        "chars": 2921,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.18,
+        "chars": 2424,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 18.76,
+        "chars": 11696,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 10.766,
+        "chars": 35841,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 56.62,
+     "total_s": 56.677,
+     "queue_s": 0.057
+    },
+    {
+     "key": "df2bc8cfa5c8ebc4",
+     "base": "climate_emulator",
+     "error": null,
+     "http": 200,
+     "bytes": 29240,
+     "c_start": 2.717,
+     "c_end": 58.034,
+     "client_s": 55.317,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "b769f2b4c638a279",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.9,
+      "query_axes": 2.974,
+      "search": 0.048,
+      "extract_issues": 7.342,
+      "synthesize_cards": 9.425,
+      "verify_evidence": 0.0,
+      "expected_review": 10.77,
+      "checklist": 9.997,
+      "semantic_validate": 9.803
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0,
+      "hold_s": 0.028
+     },
+     "llm": {
+      "calls": 43,
+      "chars": 410104,
+      "failed": 0,
+      "delay_s": 187.585,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 19.626,
+        "chars": 10075,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.768,
+        "chars": 8733,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 35,
+        "delay_s": 120.723,
+        "chars": 337705,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.897,
+        "chars": 2896,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.954,
+        "chars": 2373,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 19.195,
+        "chars": 12236,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.422,
+        "chars": 36086,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 55.26,
+     "total_s": 55.317,
+     "queue_s": 0.057
+    },
+    {
+     "key": "fcbfae8499f847c9",
+     "base": "materials_gnn",
+     "error": null,
+     "http": 200,
+     "bytes": 19283,
+     "c_start": 2.724,
+     "c_end": 60.045,
+     "client_s": 57.321,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "f4af36104b710920",
+      "n_similar": 10,
+      "n_cards": 3,
+      "n_checklist": 3,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 5.417,
+      "query_axes": 3.35,
+      "search": 0.345,
+      "extract_issues": 8.343,
+      "synthesize_cards": 9.21,
+      "verify_evidence": 0.0,
+      "expected_review": 10.552,
+      "checklist": 10.007,
+      "semantic_validate": 10.031
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.1828,
+      "hold_s": 0.0254
+     },
+     "llm": {
+      "calls": 35,
+      "chars": 317415,
+      "failed": 0,
+      "delay_s": 153.774,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 1,
+        "delay_s": 10.005,
+        "chars": 4901,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 10.55,
+        "chars": 5748,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 29,
+        "delay_s": 105.222,
+        "chars": 263270,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 5.413,
+        "chars": 2713,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 3.346,
+        "chars": 2190,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 1,
+        "delay_s": 10.029,
+        "chars": 6147,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.207,
+        "chars": 32446,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 57.257,
+     "total_s": 57.321,
+     "queue_s": 0.064
+    },
+    {
+     "key": "bba56f37c89ffac8",
+     "base": "molecule_reaction",
+     "error": null,
+     "http": 200,
+     "bytes": 29663,
+     "c_start": 2.714,
+     "c_end": 110.412,
+     "client_s": 107.698,
+     "status": "degraded",
+     "fingerprint": {
+      "digest": "21d168a4efc3c86c",
+      "n_similar": 10,
+      "n_cards": 6,
+      "n_checklist": 6,
+      "status_mixup": false
+     },
+     "stage_states": {
+      "ok": 10
+     },
+     "timings_s": {
+      "plan_normalize": 0.0,
+      "fitness": 4.892,
+      "query_axes": 2.553,
+      "search": 0.067,
+      "extract_issues": 6.276,
+      "synthesize_cards": 9.073,
+      "verify_evidence": 0.0,
+      "expected_review": 9.389,
+      "checklist": 10.582,
+      "semantic_validate": 10.473
+     },
+     "embed": {
+      "calls": 1,
+      "wait_s": 0.0,
+      "hold_s": 0.0572
+     },
+     "llm": {
+      "calls": 36,
+      "chars": 322328,
+      "failed": 0,
+      "delay_s": 166.973,
+      "max_inflight": 24,
+      "by_task": {
+       "checklist": {
+        "calls": 2,
+        "delay_s": 21.043,
+        "chars": 10047,
+        "failed": 0
+       },
+       "expected_review": {
+        "calls": 1,
+        "delay_s": 9.387,
+        "chars": 8788,
+        "failed": 0
+       },
+       "extract_issues": {
+        "calls": 28,
+        "delay_s": 99.791,
+        "chars": 249810,
+        "failed": 0
+       },
+       "fitness": {
+        "calls": 1,
+        "delay_s": 4.888,
+        "chars": 2805,
+        "failed": 0
+       },
+       "query_axes": {
+        "calls": 1,
+        "delay_s": 2.552,
+        "chars": 2282,
+        "failed": 0
+       },
+       "semantic_validate": {
+        "calls": 2,
+        "delay_s": 20.241,
+        "chars": 12482,
+        "failed": 0
+       },
+       "synthesize_cards": {
+        "calls": 1,
+        "delay_s": 9.071,
+        "chars": 36114,
+        "failed": 0
+       }
+      }
+     },
+     "run_s": 53.308,
+     "total_s": 107.698,
+     "queue_s": 54.39
+    }
+   ]
+  ]
+ },
+ "server_stopped": {
+  "port_closed": true,
+  "returncode": 1
+ },
+ "gpu_end": {
+  "mem_used_mb": 0.0,
+  "mem_total_mb": 6141.0,
+  "util_pct": 0.0,
+  "compute_pids": []
+ },
+ "finished_at": "2026-09-30T20:46:17+0900"
+}
