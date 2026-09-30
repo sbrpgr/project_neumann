@@ -40,8 +40,12 @@ def test_real_finalization_response_contract_tools_and_duplicate(tmp_path, monke
             assert report["tool_checks_before"][0]["tool"] == "z3"
             assert report["tool_checks_before"][0]["status"] == "failed"
             assert report["final_text"] == manuscript and out["final_text"] == manuscript
-            assert report["counters"] == {"assessment_calls": 1, "correction_calls": 1,
-                                           "correction_batches": 0, "recheck_runs": 0}
+            counters = dict(report["counters"])
+            tool_runs = counters.pop("tool_runs", None)  # FIX-TOOLS-LIVE: 도구별 실행 수(선택 필드)
+            counters.pop("tool_attempts", None)
+            assert counters == {"assessment_calls": 1, "correction_calls": 1,
+                                "correction_batches": 0, "recheck_runs": 0}
+            assert tool_runs is not None and tool_runs["z3"] >= 1  # 넘긴 z3 검사가 실제로 돌았다
             again = await c.post(finalize.FINALIZE_PATH, json=request)
             assert again.status_code == 200 and again.json() == out
     run(go())
