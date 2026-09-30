@@ -106,7 +106,7 @@ def test_researcher_modification_applied_and_masked(bundle, plan):
     assert st["applied"] == 1 and st["modified"] == 1 and st["rejected"] == 1 and st["skipped"] == 2
     ch = out["changes"][0]
     assert ch["revised_by"] == "researcher" and ch["decision"] == "modify" and "[EMAIL]" in ch["new_text"] and "@" not in ch["new_text"]
-    assert ch["note"] == "내 문안" and ch["excerpt_ids"] == e[0]["rationale"]["excerpt_ids"]
+    assert ch["note"] == "내 문안" and ch["excerpt_ids"] == [] and ch["rationale"] == ""
     assert {s["reason"] for s in out["skipped"]} == {"unknown_edit", "modify_without_text"}
     assert out["rejected"] == [e[1]["edit_id"]]
 

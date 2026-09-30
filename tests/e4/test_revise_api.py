@@ -347,7 +347,7 @@ def test_assemble_conflict_listed_via_api(tmp_path, monkeypatch):
             e0 = bundle["revisions"][0]["edits"][0]
             bundle["revisions"][0]["edits"].append({**e0, "edit_id": e0["edit_id"] + "b", "proposed_text": "다른 안"})
             decisions = [{"edit_id": e0["edit_id"], "decision": "adopt"}, {"edit_id": e0["edit_id"] + "b", "decision": "adopt"}]
-            r = await c.post("/premortem/revise/assemble", json={"plan_text": PLAN, "revision": bundle, "decisions": decisions})
+            r = await c.post("/premortem/revise/assemble", json={"plan_text": PLAN, "revision": bundle, "decisions": decisions, "result": result_json()})
             assert r.status_code == 200
             out = r.json()
             assert out["stats"]["conflicts"] == 1 and out["conflicts"][0]["kind"] == "same_line" and out["stats"]["applied"] == 0
@@ -368,3 +368,109 @@ def test_plan_id_of_matches_pipeline_normalization():
     assert revise_api.plan_id_of(PLAN) == fx.premortem_result.plan_id
     assert revise_api.plan_id_of(PLAN + "\n연락처 010-1234-5678") != revise_api.plan_id_of(PLAN)
     assert json.dumps(revise_api.sign_payload("revision", {"a": 1.0}) or None) in ("null", json.dumps(revise_api.sign_payload("revision", {"a": 1})))
+
+
+@pytest.fixture
+def signing_contract(monkeypatch):
+    """병합 전에는 공개 함수 계약 double, 병합 뒤에는 E4-L2f 실제 모듈을 검사한다."""
+    try:
+        from neumann.api import signing
+        if hasattr(signing, "sign_payload"):
+            return signing
+    except ImportError:
+        pass
+    import hashlib
+    import sys
+    import types
+    import neumann.api
+
+    signing = types.ModuleType("neumann.api.signing")
+
+    def payload(kind, data):
+        if hasattr(data, "model_dump"):
+            data = data.model_dump(mode="json")
+        return "contract-test-" + hashlib.sha256((kind + json.dumps(data, sort_keys=True, ensure_ascii=False)).encode()).hexdigest()
+
+    signing.sign_payload = payload
+    signing.verify_payload = lambda kind, data, sig: isinstance(sig, str) and sig == payload(kind, data)
+    signing.sign_result = lambda data: payload("result", data)
+    signing.verify_result = lambda data, sig: data is not None and isinstance(sig, str) and sig == payload("result", data)
+    monkeypatch.setitem(sys.modules, "neumann.api.signing", signing)
+    monkeypatch.setattr(neumann.api, "signing", signing, raising=False)
+    return signing
+
+
+def test_unsigned_result_never_receives_revision_server_signature(tmp_path, monkeypatch, signing_contract):
+    srv, app = make(tmp_path, monkeypatch)
+
+    async def go():
+        async with client(app) as c:
+            for sig in (None, "v1." + "0" * 64, "서명위조"):
+                response = await c.post("/premortem/revise", json={"result": result_json(), "plan_text": PLAN, "result_sig": sig})
+                assert response.status_code == 200
+                assert response.json()["revision_sig"] is None
+                assert response.json()["origin"] == "client_submitted_unverified"
+    run(go())
+
+
+@pytest.mark.parametrize("tamper", ["none", "result", "revision", "result_sig", "revision_sig", "missing_result"])
+def test_assembly_signing_requires_result_and_revision_authenticity(tmp_path, monkeypatch, signing_contract, tamper):
+    import copy
+
+    srv, app = make(tmp_path, monkeypatch)
+    result = result_json()
+    result_sig = signing_contract.sign_result(result)
+
+    async def go():
+        async with client(app) as c:
+            response = await c.post("/premortem/revise", json={"result": result, "plan_text": PLAN, "result_sig": result_sig})
+            assert response.status_code == 200, response.text
+            bundle = response.json()
+            assert bundle["revision_sig"] and bundle["origin"] == "server_signed"
+            body = {"result": copy.deepcopy(result), "result_sig": result_sig, "plan_text": PLAN,
+                    "revision": bundle, "decisions": []}
+            if tamper == "result":
+                body["result"]["session_id"] += "-forged"
+            elif tamper == "revision":
+                bundle["model"] = "gpt-forged"
+                bundle["generator"] = "astra"
+            elif tamper == "result_sig":
+                body["result_sig"] = "비ASCII서명"
+            elif tamper == "revision_sig":
+                body["revision_sig"] = "비ASCII서명"
+            elif tamper == "missing_result":
+                body.pop("result")
+            response = await c.post("/premortem/revise/assemble", json=body)
+            assert response.status_code == 200, response.text
+            out = response.json()
+            if tamper == "none":
+                assert out["origin"] == "server_signed" and out["revised_plan_sig"]
+                assert revise_api.verify_payload("revised-plan", {k: v for k, v in out.items() if k != "revised_plan_sig"}, out["revised_plan_sig"])
+            else:
+                assert out["origin"] == "client_submitted_unverified" and out["revised_plan_sig"] is None
+                assert "client_submitted_unverified" in out["label"] and "gpt-forged" not in out["label"]
+    run(go())
+
+
+@pytest.mark.parametrize("case", ["number", "pii", "placeholder", "unknown_evidence", "other_card_evidence"])
+def test_assembly_regates_returned_proposals_and_refunds(tmp_path, monkeypatch, case):
+    srv, app = make(tmp_path, monkeypatch)
+
+    async def go():
+        async with client(app) as c:
+            bundle = await _bundle(c)
+            baseline = srv.budget.used
+            edit = bundle["revisions"][0]["edits"][0]
+            if case == "number":
+                edit["proposed_text"] = "정확도 99%를 이미 달성했다."
+            elif case == "pii":
+                edit["proposed_text"] = "연락 forged@example.org로 협의한다."
+            elif case == "placeholder":
+                edit["proposed_text"] = "[확인 필요: 닫히지 않은 자리표시"
+            else:
+                edit["rationale"]["excerpt_ids"] = ["unknown-excerpt" if case == "unknown_evidence" else result_json()["risk_cards"][1]["evidence"][0]]
+            response = await c.post("/premortem/revise/assemble", json={"plan_text": PLAN, "revision": bundle, "result": result_json(),
+                                                                      "decisions": [{"edit_id": edit["edit_id"], "decision": "adopt"}]})
+            assert response.status_code == 422 and response.json()["error_code"] == "invalid_revision_proposal"
+            assert srv.gate.active == srv.gate.waiting == 0 and srv.budget.used == baseline
+    run(go())

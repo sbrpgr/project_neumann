@@ -19,6 +19,7 @@ from neumann.api.export import FILE_NAMES, build_package, router
 from neumann.llm import MockProvider
 from tests.e3.revise_fixtures import make_store
 from tests.fixtures.loader import load_fixtures, plan_text
+from tests.e4.test_revise_api import signing_contract
 
 
 @pytest.fixture(scope="module")
@@ -99,3 +100,50 @@ def test_package_route_accepts_revision(bundle):
         bad = c.post("/premortem/package", json={"result": result, "revision": bundle,
                                                  "revision_decisions": [{"edit_id": "x/e9", "decision": "adopt"}]})
         assert bad.status_code == 422
+
+
+def test_revision_origin_requires_both_result_and_revision_signatures(bundle, signing_contract):
+    from neumann.api import revise as api
+
+    result = load_fixtures().premortem_result
+    result_sig = signing_contract.sign_result(result)
+    body = {**bundle, "origin": "server_signed"}
+    sig = api.sign_payload("revision", body)
+    revision = {**body, "revision_sig": sig}
+    assert export_revision._origin(revision, sig, result, result_sig) == "server_signed"
+    assert export_revision._origin(revision, sig, result) == "client_submitted_unverified"
+    assert export_revision._origin(revision, "비ASCII", result, result_sig) == "client_submitted_unverified"
+    changed = result.model_copy(update={"session_id": result.session_id + "-forged"})
+    assert export_revision._origin(revision, sig, changed, result_sig) == "client_submitted_unverified"
+    files = export_revision.extra_files(result, revision, [], None, sig, result_sig)
+    assert json.loads(files["revision.json"])["origin"] == "server_signed"
+
+
+def test_unverified_plan_markdown_and_generator_are_not_trusted(bundle):
+    import copy
+
+    result = load_fixtures().premortem_result
+    forged = copy.deepcopy(bundle)
+    forged["generator"] = "astra"
+    forged["model"] = "gpt-forged"
+    edit = edits(forged)[0]
+    out = asm.assemble_revised_plan(plan_text("plan.md"), forged, [{"edit_id": edit["edit_id"], "decision": "adopt"}])
+    out["markdown"] = {"footnoted": "FORGED LLM mail@example.org", "history": "FORGED HISTORY"}
+    files = export_revision.extra_files(result, forged, [], out)
+    md = files["revised_plan.md"].decode()
+    assert "FORGED" not in md and "gpt-forged" not in md and "mail@example.org" not in md
+    assert "client_submitted_unverified" in md
+
+
+def test_pii_excerpt_is_withheld_from_markdown(bundle):
+    import copy
+
+    result = load_fixtures().premortem_result.model_dump(mode="json")
+    result["evidence"][0]["text"] = "Private contact mail@example.org"
+    forged = copy.deepcopy(bundle)
+    edit = edits(forged)[0]
+    edit["rationale"]["excerpt_ids"] = [result["evidence"][0]["excerpt_id"]]
+    out = asm.assemble_revised_plan(plan_text("plan.md"), forged, [{"edit_id": edit["edit_id"], "decision": "adopt"}])
+    markdown = asm.render_markdown(out, asm.evidence_lookup(result, forged), generator="client_submitted_unverified")
+    assert "mail@example.org" not in json.dumps(markdown, ensure_ascii=False)
+    assert "개인정보가 포함된 발췌는 표시하지 않음" in markdown["footnoted"]

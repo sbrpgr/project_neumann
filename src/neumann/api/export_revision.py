@@ -86,13 +86,12 @@ def validate_decisions(revision: Mapping[str, Any], decisions: Sequence[Mapping[
     return out
 
 
-def _origin(revision: Mapping[str, Any], sig: Any) -> str:
+def _origin(revision: Mapping[str, Any], sig: Any, result: Any = None, result_sig: Any = None) -> str:
     try:
-        from neumann.api.revise import verify_payload
+        from neumann.api.revise import revision_verified, verify_result
     except ImportError:
         return "client_submitted_unverified"
-    body = {k: v for k, v in revision.items() if k != "revision_sig"}
-    return "server_signed" if verify_payload("revision", body, sig) else "client_submitted_unverified"
+    return "server_signed" if verify_result(result, result_sig) and revision_verified(revision, sig) else "client_submitted_unverified"
 
 
 def _json_bytes(obj: Any) -> bytes:
@@ -105,6 +104,7 @@ def extra_files(
     decisions: Sequence[Mapping[str, Any] | RevisionDecision] | None,
     revised_plan: Mapping[str, Any] | None,
     revision_sig: Any = None,
+    result_sig: Any = None,
 ) -> dict[str, bytes]:
     """덧붙일 파일 {이름: 바이트}. 계약 위반·plan_id 불일치·없는 edit_id는 ValueError."""
     files: dict[str, bytes] = {}
@@ -124,7 +124,7 @@ def extra_files(
         sig = revision_sig if revision_sig is not None else revision.get("revision_sig")
         files[REVISION_FILE] = _json_bytes({
             "format": "neumann-package/1", "schema_version": SCHEMA_VERSION, "plan_id": result.plan_id,
-            "origin": _origin(revision, sig), "choices": DECISION_LABELS,
+            "origin": _origin(revision, sig, result, result_sig), "choices": DECISION_LABELS,
             "revision": {k: v for k, v in revision.items() if k != "revision_sig"},
             "decisions": [d.model_dump(mode="json") for d in decided],
         })
@@ -138,13 +138,16 @@ def extra_files(
             raise ValueError("통합본이 계약(revised_plan.schema.json)과 맞지 않는다: " + "; ".join(errs[:3]))
         if revised_plan.get("plan_id") != result.plan_id:
             raise ValueError("통합본의 plan_id가 결과의 plan_id와 다르다")
-        md = revised_plan.get("markdown") if isinstance(revised_plan.get("markdown"), Mapping) else None
-        if md and isinstance(md.get("footnoted"), str) and isinstance(md.get("history"), str):
-            text = md["footnoted"].rstrip("\n") + "\n\n" + md["history"]
-        else:
-            rendered = asm.render_markdown(revised_plan, asm.evidence_lookup(result, revision),
-                                          model=(revision or {}).get("model"), generator=(revision or {}).get("generator"))
-            text = rendered["footnoted"].rstrip("\n") + "\n\n" + rendered["history"]
+        from neumann.api.revise import verify_payload
+
+        plan_body = {k: v for k, v in revised_plan.items() if k != "revised_plan_sig"}
+        trusted = (revision is not None and _origin(revision, revision_sig if revision_sig is not None else revision.get("revision_sig"),
+                                                   result, result_sig) == "server_signed"
+                   and verify_payload("revised-plan", plan_body, revised_plan.get("revised_plan_sig")))
+        rendered = asm.render_markdown(revised_plan, asm.evidence_lookup(result, revision),
+                                      model=(revision or {}).get("model") if trusted else None,
+                                      generator=(revision or {}).get("generator") if trusted else "client_submitted_unverified")
+        text = rendered["footnoted"].rstrip("\n") + "\n\n" + rendered["history"]
         files[REVISED_PLAN_FILE] = text.encode("utf-8")
     return files
 

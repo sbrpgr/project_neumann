@@ -814,6 +814,7 @@ def build_package_files(
     revision_decisions: Sequence[Mapping[str, Any]] | None = None,
     revised_plan: Mapping[str, Any] | None = None,
     revision_sig: str | None = None,
+    result_sig: str | None = None,
 ) -> dict[str, bytes]:
     """9개 파일 {이름: 바이트}(FILE_NAMES 순서). 입력이 계약을 어기면 ValueError(ValidationError 포함).
 
@@ -822,7 +823,7 @@ def build_package_files(
     if not isinstance(result, PremortemResult):
         result = PremortemResult.model_validate(result)
     c = _make_ctx(result, plan_text, decisions)
-    extras = export_revision.extra_files(result, revision, revision_decisions, revised_plan, revision_sig)
+    extras = export_revision.extra_files(result, revision, revision_decisions, revised_plan, revision_sig, result_sig)
     c.extra_files = list(extras)
     c.extra_summary = export_revision.summary_lines(revision, revision_decisions, revised_plan)
     files: dict[str, bytes] = {
@@ -891,6 +892,7 @@ class PackageRequest(BaseModel):
     revision_decisions: list[dict[str, Any]] | None = None
     revised_plan: dict[str, Any] | None = None
     revision_sig: str | None = Field(default=None, max_length=200)
+    result_sig: str | None = Field(default=None, max_length=200)
 
 
 def _errors(exc: ValidationError) -> list[dict[str, Any]]:
@@ -934,7 +936,7 @@ def premortem_package(payload: dict[str, Any] = Body(...)) -> Response:
     try:
         data = build_package(result, plan_text=req.plan_text if has_text else None, decisions=req.decisions,
                              revision=req.revision, revision_decisions=req.revision_decisions,
-                             revised_plan=req.revised_plan, revision_sig=req.revision_sig)
+                             revised_plan=req.revised_plan, revision_sig=req.revision_sig, result_sig=req.result_sig)
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=_errors(exc)) from None
     except ValueError as exc:

@@ -26,11 +26,7 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
-import hmac
-import json
 import logging
-import math
 import re
 import threading
 import time
@@ -71,6 +67,7 @@ class ReviseRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     result: dict[str, Any] = Field(..., description="분석 결과 JSON(POST /premortem 응답 또는 화면 응답의 result)")
+    result_sig: str | None = Field(default=None, max_length=200)
     plan_text: str = Field(..., max_length=MAX_PLAN_CHARS, description="분석에 쓴 계획서 원문(결과의 plan_id와 같아야 한다)")
     card_ids: list[str] | None = Field(default=None, max_length=MAX_CARD_IDS, description="카드 id 목록. 없으면 결과의 모든 카드")
 
@@ -97,6 +94,8 @@ class AssembleRequest(BaseModel):
     revision: dict[str, Any] = Field(..., description="POST /premortem/revise 응답")
     decisions: list[dict[str, Any]] = Field(default_factory=list, max_length=MAX_DECISIONS)
     result: dict[str, Any] | None = Field(default=None, description="분석 결과(있으면 각주에 카드 근거 인용을 붙인다)")
+    result_sig: str | None = Field(default=None, max_length=200)
+    revision_sig: str | None = Field(default=None, max_length=200)
     polish: bool = Field(default=False, description="문장 다듬기(LLM 1회). 기본 끔")
     format: Literal["json", "md", "docx"] = "json"
     title: str | None = Field(default=None, max_length=200)
@@ -112,37 +111,44 @@ class AssembleRequest(BaseModel):
 # ───────────────────────── 서명(E4-L2f signing이 있을 때만) ─────────────────────────
 
 
-def _canonical(data: Any) -> bytes:
-    def norm(v: Any) -> Any:
-        if isinstance(v, bool) or v is None or isinstance(v, (int, str)):
-            return v
-        if isinstance(v, float):
-            return int(v) if math.isfinite(v) and v.is_integer() and abs(v) < 2**53 else v
-        if isinstance(v, Mapping):
-            return {str(k): norm(x) for k, x in v.items()}
-        if isinstance(v, (list, tuple)):
-            return [norm(x) for x in v]
-        return str(v)
-
-    return json.dumps(norm(data), ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
-
-
 def sign_payload(kind: str, data: Mapping[str, Any]) -> str | None:
-    """`neumann.api.signing`(E4-L2f)의 키로 HMAC(도메인 `neumann-<kind>-v1`). 모듈이 없으면 None(서명 없음)."""
+    """E4-L2f 공개 헬퍼로만 서명한다. 모듈·헬퍼가 없으면 서명하지 않는다."""
     try:
         from neumann.api import signing
     except ImportError:
         return None
-    key = getattr(signing, "_KEY", None)
-    if not isinstance(key, (bytes, bytearray)):
+    sign = getattr(signing, "sign_payload", None)
+    if not callable(sign):
         return None
-    mac = hmac.new(bytes(key), f"neumann-{kind}-v1\n".encode() + _canonical(data), hashlib.sha256).hexdigest()
-    return f"{getattr(signing, 'SIG_VERSION', 'v1')}.{mac}"
+    return sign(kind, data)
 
 
 def verify_payload(kind: str, data: Mapping[str, Any], sig: Any) -> bool:
-    expected = sign_payload(kind, data)
-    return isinstance(sig, str) and expected is not None and hmac.compare_digest(expected, sig)
+    try:
+        from neumann.api import signing
+    except ImportError:
+        return False
+    verify = getattr(signing, "verify_payload", None)
+    return bool(callable(verify) and verify(kind, data, sig))
+
+
+def verify_result(result: Any, sig: Any) -> bool:
+    if result is None:
+        return False
+    try:
+        from neumann.api.signing import verify_result as verify
+    except ImportError:
+        return False
+    return verify(result, sig)
+
+
+def revision_verified(revision: Mapping[str, Any], sig: Any = None) -> bool:
+    body = {k: v for k, v in revision.items() if k != "revision_sig"}
+    return verify_payload("revision", body, sig if sig is not None else revision.get("revision_sig"))
+
+
+def assembly_verified(req: AssembleRequest) -> bool:
+    return verify_result(req.result, req.result_sig) and revision_verified(req.revision, req.revision_sig)
 
 
 # ───────────────────────── 실행(동기, 작업 방식으로 감쌀 수 있게) ─────────────────────────
@@ -163,7 +169,11 @@ def run_revision(req: ReviseRequest, *, provider: str | None = None,
     from neumann.analyze.revise import revise_result
 
     out = revise_result(req.result, card_ids=req.card_ids, plan_text=req.plan_text, provider=provider, cancel_event=cancel_event)
-    out["revision_sig"] = sign_payload("revision", out)
+    verified = verify_result(req.result, req.result_sig)
+    out["origin"] = "server_signed" if verified else "client_submitted_unverified"
+    if not verified:
+        out["notices"].append("입력 분석 결과의 서버 서명을 확인하지 못했다. 근거 원문·출처는 미확인이다.")
+    out["revision_sig"] = sign_payload("revision", out) if verified else None
     return out
 
 
@@ -176,7 +186,11 @@ def run_assembly(req: AssembleRequest, *, provider: str | None = None, timeout_s
     from neumann.analyze.revise import check_cancelled
 
     check_cancelled(cancel_event)
-    out = asm.assemble_revised_plan(req.plan_text, req.revision, req.decisions)
+    out = asm.assemble_revised_plan(req.plan_text, req.revision, req.decisions, result=req.result, regate=True)
+    verified = assembly_verified(req)
+    out["origin"] = "server_signed" if verified else "client_submitted_unverified"
+    if not verified:
+        out["notices"].append("입력 결과·수정 권고의 서버 서명을 확인하지 못했다. 생성자·모델 표기와 근거 출처는 미확인이다.")
     generator: str | None = None
     model: str | None = None
     if req.polish:
@@ -190,17 +204,18 @@ def run_assembly(req: AssembleRequest, *, provider: str | None = None, timeout_s
         except ValueError:
             call = None
         out = asm.polish_revised_plan(out, call, effort=opts["effort"])
-        generator, model = out["polish"].get("generator"), out["polish"].get("model")
+        if out["polish"].get("applied"):
+            generator, model = out["polish"].get("generator"), out["polish"].get("model")
     rev_model = req.revision.get("model") if isinstance(req.revision, Mapping) else None
     check_cancelled(cancel_event)
     rev_gen = req.revision.get("generator") if isinstance(req.revision, Mapping) else None
     ev = asm.evidence_lookup(req.result, req.revision)
-    label_model = model or (rev_model if isinstance(rev_model, str) else None)
-    label_gen = generator or (rev_gen if isinstance(rev_gen, str) else None)
+    label_model = model or (rev_model if verified and isinstance(rev_model, str) else None)
+    label_gen = generator or (rev_gen if verified and isinstance(rev_gen, str) else "client_submitted_unverified")
     out["markdown"] = asm.render_markdown(out, ev, model=label_model, generator=label_gen, title=req.title or "수정된 연구계획서")
     out["label"] = asm._label_line(label_model, out["generated_at"], label_gen)
     out["docx_available"] = True
-    out["revised_plan_sig"] = sign_payload("revised_plan", {k: v for k, v in out.items() if k not in ("markdown", "revised_plan_sig")})
+    out["revised_plan_sig"] = sign_payload("revised-plan", {k: v for k, v in out.items() if k != "revised_plan_sig"}) if verified else None
     return out
 
 
@@ -209,10 +224,11 @@ def build_docx_bytes(req: AssembleRequest, assembled: Mapping[str, Any]) -> byte
 
     ev = asm.evidence_lookup(req.result, req.revision)
     pol = assembled.get("polish", {}) if isinstance(assembled.get("polish"), Mapping) else {}
+    verified = assembly_verified(req)
     rev_model = req.revision.get("model") if isinstance(req.revision, Mapping) else None
     rev_gen = req.revision.get("generator") if isinstance(req.revision, Mapping) else None
-    return asm.build_docx(assembled, ev, model=pol.get("model") or (rev_model if isinstance(rev_model, str) else None),
-                          generator=pol.get("generator") or (rev_gen if isinstance(rev_gen, str) else None),
+    return asm.build_docx(assembled, ev, model=(pol.get("model") if pol.get("applied") else None) or (rev_model if verified and isinstance(rev_model, str) else None),
+                          generator=(pol.get("generator") if pol.get("applied") else None) or (rev_gen if verified and isinstance(rev_gen, str) else "client_submitted_unverified"),
                           title=req.title or "수정된 연구계획서")
 
 
@@ -378,6 +394,13 @@ async def premortem_revise_assemble(request: Request) -> Response:
             return _json(serving._err("invalid_request", MESSAGES["result_invalid"], ticket, fields=_errors(exc)[:20]), 422)
         if res.plan_id != rev_pid:
             return _json(serving._err("plan_mismatch", MESSAGES["plan_mismatch"], ticket), 422)
+    try:
+        from neumann.analyze import assemble as asm
+
+        # 실행·예산 소비 전에 검사한다. worker도 같은 경계를 다시 확인한다.
+        asm.assemble_revised_plan(req.plan_text, req.revision, req.decisions, result=req.result, regate=True)
+    except ValueError:
+        return _json(serving._err("invalid_revision_proposal", "수정 제안의 근거·수치·개인정보 검사를 통과하지 못했습니다.", ticket), 422)
     limit = _timeout_s()
 
     def assemble_output(cancelled: threading.Event) -> tuple[dict[str, Any], bytes | None]:
@@ -392,6 +415,8 @@ async def premortem_revise_assemble(request: Request) -> Response:
         out, data = await gate.run(assemble_output, limit)
     except serving.AnalysisTimeout:
         return _timeout_response(ctx, limit)
+    except ValueError:
+        return _json(serving._err("invalid_revision_proposal", "수정 제안의 근거·수치·개인정보 검사를 통과하지 못했습니다.", ticket), 422)
     except Exception as exc:  # noqa: BLE001
         return _internal_response(ctx, exc)
     short = re.sub(r"[^0-9A-Za-z_-]", "", str(out.get("revised_plan_id", "")))[:12] or "plan"

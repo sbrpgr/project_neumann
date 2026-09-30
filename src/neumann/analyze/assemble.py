@@ -165,6 +165,9 @@ def assemble_revised_plan(
     plan_text: str | PlanDocument,
     revision: Mapping[str, Any] | Sequence[Mapping[str, Any]],
     decisions: Sequence[Mapping[str, Any]] | None = None,
+    *,
+    result: Any = None,
+    regate: bool = False,
 ) -> dict[str, Any]:
     """채택·수정된 안을 줄 단위로 합친다(LLM 없음). 계약 `contracts/revised_plan.schema.json`의 본체.
 
@@ -179,6 +182,8 @@ def assemble_revised_plan(
     if isinstance(rev_plan_id, str) and rev_plan_id and rev_plan_id != plan.plan_id:
         notices.append("수정 권고의 plan_id가 계획서 본문과 다르다 — 줄 번호가 어긋날 수 있다(current_text 대조로 걸러진다)")
     original = {ln.no: ln.text for ln in plan.lines}
+    if regate:
+        _regate_adoptions(plan, revision, edits, decided, result)
 
     applied: dict[str, tuple[EditRef, DecisionRef, str]] = {}  # edit_id → (안, 결정, 적용 문안)
     skipped: list[dict[str, Any]] = []
@@ -280,11 +285,54 @@ def assemble_revised_plan(
     }
 
 
+def _regate_adoptions(plan: PlanDocument, revision: Any, edits: dict[str, EditRef],
+                     decided: dict[str, DecisionRef], result: Any) -> None:
+    """되돌려 받은 제안은 새 신뢰 경계다. 채택 문안을 적용하기 전에 다시 검사한다."""
+    from neumann.analyze.revise import fabricated_numbers
+    from neumann.analyze.gate import Draft, EvidenceIndex
+    from neumann.models import PremortemResult
+
+    ev = evidence_lookup(result, revision if isinstance(revision, Mapping) else None)
+    pools = {str(r.get("card_id")): set(r.get("evidence_pool", []))
+             for r in (revision.get("revisions", []) if isinstance(revision, Mapping) else []) if isinstance(r, Mapping)}
+    index = EvidenceIndex(result if isinstance(result, PremortemResult) else PremortemResult.model_validate(result)) if result is not None else None
+    for eid, decision in decided.items():
+        edit = edits.get(eid)
+        if decision.decision != "adopt" or edit is None:
+            continue
+        text = edit.proposed_text
+        if contains_pii(text):
+            raise ValueError("proposed_text contains personal information")
+        if "[확인 필요" in PLACEHOLDER_RE.sub("", text):
+            raise ValueError("proposed_text has an invalid placeholder")
+        if not edit.excerpt_ids or any(x not in ev or x not in pools.get(edit.card_id, set()) for x in edit.excerpt_ids):
+            raise ValueError("proposed_text lacks verified evidence links")
+        if index is not None:
+            source_card = index.cards.get(edit.card_id)
+            if source_card is None or any(x in index.excerpts and x not in source_card.evidence for x in edit.excerpt_ids):
+                raise ValueError("proposed_text cites another card")
+            # 기록 발췌도 숫자 대조 풀에 추가한다. 결과 밖 id를 허용하지 않는다.
+            from neumann.models import Excerpt
+
+            for rec in (revision.get("records", []) if isinstance(revision, Mapping) else []):
+                if isinstance(rec, Mapping) and rec.get("excerpt_id") in edit.excerpt_ids:
+                    index.excerpts.setdefault(rec["excerpt_id"], Excerpt.model_validate({k: v for k, v in rec.items()
+                                                                                       if k in Excerpt.model_fields}))
+            unknown = fabricated_numbers(text, Draft("edit", text, tuple(edit.excerpt_ids), (), (edit.plan_line,)), index)
+        else:
+            allowed = set(gate_mod.extract_numbers(plan.text))
+            for x in edit.excerpt_ids:
+                allowed.update(gate_mod.extract_numbers(ev[x]["text"]))
+            unknown = [n for n in gate_mod.extract_numbers(text) if n not in allowed]
+        if unknown:
+            raise ValueError("proposed_text contains unsupported numbers")
+
+
 def _change(e: EditRef, d: DecisionRef, no: int, old_text: str, new_text: str, new_no: int) -> dict[str, Any]:
     return {
         "edit_id": e.edit_id, "card_id": e.card_id, "kind": e.kind, "old_range": [no, no], "old_text": old_text,
-        "new_text": new_text, "new_range": [new_no, new_no], "excerpt_ids": list(e.excerpt_ids),
-        "rationale": e.rationale, "decision": d.decision, "decision_ko": DECISION_KO[d.decision],
+        "new_text": new_text, "new_range": [new_no, new_no], "excerpt_ids": [] if d.decision == "modify" else list(e.excerpt_ids),
+        "rationale": "" if d.decision == "modify" else e.rationale, "decision": d.decision, "decision_ko": DECISION_KO[d.decision],
         "revised_by": "researcher" if d.decision == "modify" else "proposal", "proposed_label": PROPOSED_LABEL,
         "note": d.note, "decided_at": d.decided_at, "placeholders": placeholders(new_text),
     }
@@ -396,21 +444,28 @@ def evidence_lookup(result: Mapping[str, Any] | Any = None, revision: Mapping[st
     res = result.model_dump(mode="json") if hasattr(result, "model_dump") else (dict(result) if isinstance(result, Mapping) else {})
     for ex in res.get("evidence", []) or []:
         if isinstance(ex, Mapping) and ex.get("excerpt_id"):
-            out[str(ex["excerpt_id"])] = {"text": str(ex.get("text", "")), "source_url": str(ex.get("source_url", "")),
+            out[str(ex["excerpt_id"])] = {"text": _display_excerpt(str(ex.get("text", ""))), "source_url": redact_pii(str(ex.get("source_url", ""))),
                                           "source_kind": str(ex.get("source_kind", "review")), "record_kind": "review",
                                           "work_id": None}
     for rec in (revision or {}).get("records", []) or []:
         if isinstance(rec, Mapping) and rec.get("excerpt_id"):
-            out.setdefault(str(rec["excerpt_id"]), {"text": str(rec.get("text", "")), "source_url": str(rec.get("source_url", "")),
+            out.setdefault(str(rec["excerpt_id"]), {"text": _display_excerpt(str(rec.get("text", ""))), "source_url": redact_pii(str(rec.get("source_url", ""))),
                                                      "source_kind": str(rec.get("source_kind", "")),
                                                      "record_kind": str(rec.get("record_kind", "")), "work_id": rec.get("work_id")})
     return out
+
+
+def _display_excerpt(text: str) -> str:
+    # 개인정보 포함 입력의 문자열을 원문 인용처럼 렌더링하지 않는다.
+    return "(개인정보가 포함된 발췌는 표시하지 않음)" if contains_pii(text) else text
 
 
 KIND_KO = {"review": "심사평", "meta_review": "메타리뷰", "author_response": "저자 답변", "decision": "결정", "post_status": "사후 기록"}
 
 
 def _label_line(model: str | None, generated_at: str, generator: str | None = None) -> str:
+    if generator == "client_submitted_unverified":
+        return f"{LABEL_PREFIX} · client_submitted_unverified (입력 출처·생성자 미확인) · 생성 시각 {generated_at}"
     who = "LLM" if generator in (None, "astra") else generator
     return f"{LABEL_PREFIX} · {who} ({model or '모델 미상'}) · 생성 시각 {generated_at}"
 

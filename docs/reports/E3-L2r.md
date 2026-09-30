@@ -22,6 +22,15 @@
 - 한계: Python 스레드·진행 중 provider 호출을 강제로 중단하지 못한다. 최대 3개의 진행 중 호출은 provider 자체 timeout까지 남을 수 있으며 그동안 관문 자리도 남는다. 후속 카드 호출은 중단한다.
 - 명령: `python -m pytest tests/e3/test_revise.py tests/e3/test_assemble.py tests/e4/test_revise_api.py tests/e4/test_export_revision.py -p no:cacheprovider --basetemp <허용된 임시 경로> -q` → **64 passed in 2.42s**. 환경은 수정 1과 같고 실제 API 0회.
 
+## Codex 인수 수정 4 — F4 입력 인증·조립 재검사 (2026-09-30)
+
+- `ReviseRequest.result_sig`, `AssembleRequest.result_sig/revision_sig`를 선택 필드로 추가했다. 수정 권고는 result 서명이 확인될 때만, 통합본은 result+revision 둘 다 확인될 때만 서버 서명을 붙인다. 미확인 입력은 출력 서명 null·origin `client_submitted_unverified`·출처/생성자 미확인 라벨이다.
+- E4-L2f 공개 `sign_payload/verify_payload`에 위임한다. private `_KEY` 접근을 없앴다. kind는 `revision`, `revised-plan`. 통합본 서명은 markdown을 포함한 전체 응답(서명 필드 제외)에 걸어 본문도 보호한다.
+- 채택안 적용 전 근거 id·카드 풀·다른 카드 인용·수치·PII·잘못된 자리표시를 다시 검사한다. preflight에서 거절한 422는 자리·예산을 환불하고 worker도 동일 검사를 반복한다. 연구자 직접 수정은 연구자 문안으로 표기하며 제안의 각주를 자동으로 붙이지 않는다(F8d).
+- 개인정보가 든 입력 발췌는 원문 인용처럼 표시하지 않고 미표시 문구로 대체한다. 내보내기는 result+revision 인증이 모두 있어야 `server_signed`; 통합본 인증까지 확인해야 저장된 생성자 라벨을 사용한다. 클라이언트 markdown은 사용하지 않고 재렌더링한다.
+- 회귀: 결과/권고/서명 변조·비ASCII·결과 누락, 제안 수치·PII·자리표시·없는 id·타 카드 id, export 출처 이중 인증·위조 markdown·PII 발췌 제외. 명령은 수정 3의 대상 4파일 → **79 passed in 2.50s**.
+- 의존 한계: 이 브랜치에는 아직 E4-L2f signing.py가 없다. 서명 테스트는 모듈이 없으면 공개 인터페이스 contract double을 쓰고, 병합 뒤 generic 헬퍼가 있으면 실제 모듈을 자동 사용한다. HMAC의 실제 통합 검증은 PM 병합 시뮬레이션에서 필요하다. export.py의 result_sig 추가는 E4-L2f와 합칠 때 같은 필드를 하나만 유지해야 한다.
+
 - 빌더: Claude Fable 5.1 · 브랜치 `task/E3-L2r`(main `03503d6` 기준) · 2026-09-30
 - 모든 명령은 `NEUMANN_LLM_PROVIDER=mock`, `NEUMANN_LIVE_LLM_OK=0`으로 돌렸다. **OpenAI 호출 0회.** 라이브 확인은 대표 승인 뒤 구축 세션(§9).
 
