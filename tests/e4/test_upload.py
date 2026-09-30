@@ -382,6 +382,16 @@ def test_route_registered():
     assert "multipart/form-data" in body["content"]
 
 
+def test_main_app_wires_upload_router():
+    """main.py(PM)가 선택 라우터로 이 모듈을 붙였는지. 붙지 않았으면 /upload/plan이 404다."""
+    from neumann.api.main import ROUTER_STATE, app
+
+    assert ROUTER_STATE.get("neumann.api.upload") == "ok"
+    res = post(TestClient(app), "계획서.md", "# 연구 목표\n본문".encode("utf-8"), "text/markdown")
+    assert res.status_code == 200, res.text
+    assert res.json()["lines"] == 2
+
+
 def test_api_txt(client):
     res = post(client, "연구계획서.md", PLAN_MD.encode("utf-8"), "text/markdown")
     assert res.status_code == 200, res.text
