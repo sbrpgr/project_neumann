@@ -1,5 +1,7 @@
 # core-revision-dates-fix
 
+최신 후속 상태: SEC7 raw-cap export 연결은 실제 적용 완료, 코드 HEAD `39c22438815bcf8f0a7552a0d46c8fc0bf502147`, targeted 회귀 42 passed. 아래 초기 dependency 대기 설명은 당시 기록이며 마지막 후속 통합 절이 현재 상태다.
+
 Builder actual model: `codex-gpt-6.1-sol`, HIGH (PM 배정). Worktree `C:/Users/User/Desktop/project_neumann/out/codex/fix-revision-readme`, branch `codex/revision-readme-authority`. 시작 HEAD `894e15cefdbc308a286de631f332041c556d63ef`, 시작 작업 트리 깨끗함. 수정 범위: export.py·export_revision.py·새 E4 검사·이 보고서.
 
 ## 수정과 기준
@@ -31,7 +33,7 @@ Python `C:/Users/User/.venvs/neumann/Scripts/python.exe`. 모든 표적 시험·
 
 변이는 별도 프로세스 메모리에서만 실행해 저장소 코드를 바꾸지 않았다. anyio assertion-rewrite 경고는 변이 probe가 pytest 전에 앱 모듈을 import한 영향이다. 첫 날짜 변이 실행은 합성 ZIP 응답을 실패 메시지로 출력해 노이즈가 컸다. 테스트의 실패 메시지만 status/content-type으로 줄인 뒤 최종 변이를 재실행했다. 기대 상태나 날짜·출처 검사는 낮추지 않았다.
 
-## SEC7 dependency 뒤 적용할 export 전용 작은 패치
+## SEC7 dependency 뒤 적용할 export 전용 작은 패치 (아래 후속 통합에서 완료)
 
 아래 diff는 이 보고서 작성 시점의 export.py를 기준으로 생성했다. `eb7a331`의 shared `neumann.api.plan_limits`가 **먼저** 포함돼야 한다. 새 cap/helper 구현은 복제하지 않는다. API에서는 nested Pydantic/NFC 이전, 직접 builder에서는 model 검증/게이트 이전에 호출한다. 기존 normalize_text·해시·근거·서명 판정은 건드리지 않는다. dependency와 이 패치를 합친 뒤 oversize raw text/embedded lines를 넣고 model/NFC 호출 0 및 정상 본문/id 동일성을 표적 검증해야 한다. 이 통합 경로는 현재 worktree에서 적용·실행하지 않았다. 보고서 diff를 final LF를 포함해 `out/codex/core-revision-dates-export-cap.patch`로 추출한 뒤 `git apply --check`는 exit 0이다. 첫 scratch 추출은 마지막 LF를 빠뜨려 corrupt patch였으며 추출만 고쳤다(제품 파일 적용 없음).
 
@@ -92,3 +94,34 @@ Python `C:/Users/User/.venvs/neumann/Scripts/python.exe`. 모든 표적 시험·
          payload = {"result": payload}
      try:
 ```
+
+## 2026-10-01 raw-cap/audit 후속 실제 통합
+
+작업 tree `C:/Users/User/Desktop/project_neumann/out/codex/fix-revision-readme`, branch `codex/revision-readme-authority`, 시작 HEAD `a55738b891b7503d96c32b9cc517fc5e81229c35` clean. 실제 builder: `codex-gpt-6.1-sol` (HIGH). 제품 코드 안정 커밋 **`39c22438815bcf8f0a7552a0d46c8fc0bf502147`**. OpenAI 호출 **0**, mock, live 플래그 unset. 별도 서버·실데이터·네트워크 호출 없음. 02:16 목표를 넘겨 02:18 KST 안정 커밋을 남겼다.
+
+위의 deferred raw-cap 문단과 남은 일 1번은 이 후속 작업으로 완료되었다. merged shared `plan_limits`를 그대로 import하고 API의 nested 모델 검증 이전과 두 직접 builder의 모델/NFC/문맥/ZIP 할당 이전에 연결했다. 기존 SEC7 Request/config cap 로직을 유지하도록 옛 patch의 API context만 좁게 조정했다. helper/models/config/contracts/main/upload/serving/UI는 수정하지 않았다. raw 200,000자/5,000줄 guard와 기존 공개 export 50,000자 cap을 구분하며 정상 raw padding·NFC body·plan_id·기존 citation offsets/authority 처리 코드는 그대로다.
+
+최신 a557에서 synthetic fixture의 `expected_review.audit=1`, `[1]`을 모델 검증/로컬 서명 후 TestClient로 내보내 각각 **500**을 재현했다. 서명 함수는 합성 fixture 생성 용도이며 공개 위조 가능성을 주장하지 않는다. audit 최상위 자료형이 객체 또는 null이 아니면 기존 ValueError→422 경로로 거절한다. blanket TypeError catch나 계약 변경은 없다.
+
+모든 아래 실행은 정확한 venv와 shared 슬롯을 사용했다. 명령 prefix: `C:/Users/User/.venvs/neumann/Scripts/python.exe C:/Users/User/Desktop/project_neumann/out/codex/run_target_tests.py -- C:/Users/User/.venvs/neumann/Scripts/python.exe`.
+
+| 완료 기준 | prefix 뒤 명령 | 실제 출력 |
+|---|---|---|
+| raw early guard, signed authority/11파일 연결, README/date 회귀 | `-m pytest tests/e4/test_export_raw_audit.py tests/e4/test_export_revision_dates.py tests/e4/test_export_plan_authority.py -q -p no:cacheprovider --basetemp C:/Users/User/Desktop/project_neumann/out/codex/raw-audit-final2 --tb=short` | **42 passed in 1.68s** |
+| NFC/모델/문맥 spy 및 두 직접 builder 강화 후 | `-m pytest tests/e4/test_export_raw_audit.py -q -p no:cacheprovider --basetemp C:/Users/User/Desktop/project_neumann/out/codex/raw-audit-final3 --tb=short` | **12 passed in 0.99s** |
+| 초과 raw 문자/물리 줄/embedded 문자/줄 | 위 12검사 | API 413/422, 두 builder PlanLimitError; 모델 검증·from_text·normalize_text·문맥 호출 **0** |
+| 정상 경계·내용·해시 | 위 12검사 | 공개 50,000자/5,000줄 200, raw guard 200,000자 허용, hash_verified 및 9파일, 전달 원문·정규화 PlanLine·plan_id 동일. 기존 Markdown의 trailing whitespace 표시 제거 정책은 그대로 |
+| audit 자료형 | 위 12검사 | int/list/empty list 422, 객체 정상 signed ZIP 200 |
+| raw guard 제거 의미 변이 | `C:/Users/User/Desktop/project_neumann/out/codex/export-raw-audit-mutation.py raw` | **4 failed, 8 deselected**, `RAW_MUTATION_DETECTED=True` |
+| audit 거절 우회 의미 변이 | `C:/Users/User/Desktop/project_neumann/out/codex/export-raw-audit-mutation.py audit` | **3 failed, 1 passed, 8 deselected**, `AUDIT_MUTATION_DETECTED=True` |
+| 커밋 검사 | 지정 두 파일 `git add`, 정상 `git commit` | 보안(스테이징): 파일 2개, verify 통과 |
+
+변이는 별도 슬롯 프로세스 메모리에서만 실행했다. pytest 사전 import에 따른 assertion-rewrite warning 1건씩이며 제품 실패가 아니다. 처음 새 테스트는 거대한 parameter id가 HTTP test header 제한을 넘어 setup error 2건, 기존 공개 cap에 맞지 않은 200,000자 ZIP 기대 및 Markdown trailing whitespace 기대가 부정확했다. 짧은 ids, 공개 50,000자/raw guard 200,000자 경계 분리, 실제 resolver의 원문/PlanLine 완전 일치 검사로 바로잡았다. 기존 제품 검사 기대를 약화하지 않았다. 원래 날짜 3종은 모두 deterministic 422, 정상 2020/ZIP 경계 날짜와 signed result/revision/assembly purpose 검사는 42개 회귀에서 보존됐다.
+
+### 후속 남은 일 5줄
+
+1. raw-cap 실제 export 통합과 audit counterexample 수정은 완료했으며 추가 제품 코드 작업 없음.
+2. PM은 안정 코드 `39c2243`와 후속 검사·보고서 커밋을 기존 후보에 반영한다.
+3. 독립 gpt-6-sol 검증 및 전체 scripts/verify.py는 PM 전용 큐에서 수행한다; 이 builder는 전체 검사를 실행하지 않았다.
+4. main merge/push/tag·공통 HANDOFF/QUEUE/decisions 변경은 PM 담당이다.
+5. 02:25 새 개발 중단·02:35 handoff와 shared stop-request를 준수한다; 미해결 실행 차단 없음.

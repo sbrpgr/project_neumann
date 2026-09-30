@@ -7,6 +7,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from neumann.api import export
+from neumann import models
+from neumann.api.plan_limits import PlanLimitError
 from neumann.api.signing import sign_result
 from neumann.models import PlanDocument, PremortemResult
 from tests.fixtures.loader import load_fixtures
@@ -47,13 +49,15 @@ def test_raw_refusal_before_models_nfc_context(client, monkeypatch, kind, status
 
     monkeypatch.setattr(PremortemResult, "model_validate", forbidden)
     monkeypatch.setattr(PlanDocument, "from_text", forbidden)
+    monkeypatch.setattr(models, "normalize_text", forbidden)
     monkeypatch.setattr(export, "_make_ctx", forbidden)
     response = client.post("/premortem/package", json=payload)
     assert response.status_code == status
     assert calls == []
-    with pytest.raises(Exception) as refusal:
-        export.build_package_files(data, plan_text=payload.get("plan_text"))
-    assert getattr(refusal.value, "status_code", None) == status
+    for builder in (export.build_package_files, export.build_package):
+        with pytest.raises(PlanLimitError) as refusal:
+            builder(data, plan_text=payload.get("plan_text"))
+        assert refusal.value.status_code == status
     assert calls == []
 
 
