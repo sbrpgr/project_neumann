@@ -190,8 +190,20 @@ def _raise_kbi(*_: object) -> None:
     raise KeyboardInterrupt
 
 
+EVENT_EPILOG = """행사(발표 현장·같은 와이파이 여러 명) 권장 기동값 — 기본값은 그대로 두고 환경변수로만 올린다(E4-L2d 재검증·E4-L2e 부하 시험):
+  NEUMANN_JOB_PER_IP=10         IP당 활성 작업(기본 3)
+  NEUMANN_JOB_RATE_PER_MIN=30   IP당 작업 POST/분, 합류·캐시 포함(공개 기본 6)
+  NEUMANN_RATE_PER_MIN=30       IP당 새 분석/분(공개 기본 6)
+  NEUMANN_JOB_POLL_PER_MIN=1200 IP당 상태 확인 GET/분(기본 600, 사용자 1명 약 40)
+  NEUMANN_MAX_CONCURRENT=6      동시 분석(공개 기본 4)
+  예) PowerShell: $env:NEUMANN_JOB_PER_IP="10"; ... ; python scripts/serve.py --public
+  같은 와이파이가 10명을 넘으면 앞 네 값을 인원의 2~3배로. 행사가 끝나면 환경변수를 지워 기본값으로 되돌린다.
+"""
+
+
 def parse(argv: list[str] | None = None) -> argparse.Namespace:
-    ap = argparse.ArgumentParser(description="Neumann 라이브 서버 실행 + /health 감시·자동 재시작")
+    ap = argparse.ArgumentParser(description="Neumann 라이브 서버 실행 + /health 감시·자동 재시작",
+                                 epilog=EVENT_EPILOG, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--host", default=os.getenv("NEUMANN_API_HOST", "127.0.0.1"))
     ap.add_argument("--port", type=int, default=int(os.getenv("NEUMANN_API_PORT", "8000")))
     ap.add_argument("--app", default="neumann.api.main:app", help="uvicorn 앱 경로")
