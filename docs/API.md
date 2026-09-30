@@ -1,12 +1,12 @@
 # API
 
-- 기준: 이 문서를 병합하기 직전의 `main`(작성 때 확인한 커밋 `c4679f9`).
-- 아래 응답 예시는 `304e91e`의 서버를 `NEUMANN_LLM_PROVIDER=mock`, 임베딩 모델 없이(어휘 검색만) 포트 8125에서 띄워 실제로 요청해 받은 값을 줄인 것이다. **mock 응답이라 카드 내용은 분석 결과가 아니다.** 실제 서비스(provider `openai`)에서는 `generator`가 `astra`이고 검색 강등이 없다(임베딩 모델이 있을 때).
+- 기준: 이 문서를 병합하기 직전의 `main`(작성 때 확인한 커밋 `52d1dae`).
+- 아래 응답 예시는 `304e91e`의 서버를 `NEUMANN_LLM_PROVIDER=mock`, 임베딩 모델 없이(어휘 검색만) 포트 8125에서 띄워 실제로 요청해 받은 값을 줄인 것이다. **mock 응답이라 카드 내용은 분석 결과가 아니다.** 실제 서비스(provider를 `openai`로 켠 경우)에서는 `generator`가 `astra`이고 검색 강등이 없다(임베딩 모델이 있을 때). 예시 수치(근거 22건·카드 5장·점수)는 검색 보정(E2-L1, main `9a2471e`) 이전 값이라 지금 main에서는 조금 다르다.
 - **있음** = main의 서버에 라우트가 있다. **예정** = main에 없다(지금 요청하면 404).
 - 서버 실행은 [RUNNING.md §5](RUNNING.md#5-분석-실행). 기본 주소 `http://127.0.0.1:8000`.
 - 전체 스키마: `GET /openapi.json`. `GET /docs`도 FastAPI 기본값으로 열리지만 Swagger UI 파일을 외부 CDN(jsdelivr)에서 받는다. 오프라인 확인에는 `/openapi.json`을 쓴다.
 
-> **비용 주의:** provider가 `openai`(기본)면 `POST /premortem`, `POST /premortem/view`, 그리고 `plan_text`만 보낸 `POST /premortem/package`는 요청마다 OpenAI API를 부른다.
+> **provider와 비용:** 기본 provider는 `mock`이다(비용 없음, 결과에 mock 표시). `NEUMANN_LLM_PROVIDER=openai`로 켜면 `POST /premortem`, `POST /premortem/view`, 그리고 `plan_text`만 보낸 `POST /premortem/package`가 요청마다 OpenAI API를 부르고 비용이 든다.
 
 ## 목록
 
@@ -154,7 +154,7 @@ Windows Git Bash에서는 한글을 `-d '…'`로 직접 넘기면 인코딩이 
 | 키 | 뜻 |
 |---|---|
 | `result` | 분석 결과 JSON(`/premortem` 응답). `PremortemResult`로 검증한다(모르는 키는 거부) |
-| `plan_text` | 계획서 원문(최대 1,000,000자). `result` 없이 오면 서버가 파이프라인을 돌린다(provider가 openai면 OpenAI 호출) |
+| `plan_text` | 계획서 원문(최대 1,000,000자). `result` 없이 오면 서버가 파이프라인을 돌린다(기본 mock, provider를 openai로 켰으면 OpenAI 호출) |
 | `decisions` | 결정 로그. 항목 `{"card_id"` 또는 `"item_id", "decision": "adopt"·"hold"·"reject"(채택·보류·기각도 받음), "note"?, "decided_at"?}` |
 
 `result`로 감싸지 않고 결과 JSON을 그대로 보내도 된다(`session_id`·`plan_id`가 있으면 결과로 본다).
@@ -166,7 +166,7 @@ curl -X POST http://127.0.0.1:8000/premortem/package \
 #                "decisions": [{"card_id": "<카드 id>", "decision": "채택", "note": "분할을 저자 단위로 바꾼다"}]}
 ```
 
-실측: `/premortem` 응답(mock)을 그대로 보내면 `200 application/zip`. `plan_text`만 보내면(mock) 파이프라인이 돌아 `200`, ZIP 9파일, manifest `status: degraded`, `cards_by_generator: {"astra": 0, "rule": 0, "mock": 5}`. 응답 헤더 `Content-Disposition: attachment; filename="neumann_package_<plan_id 앞 12자>.zip"`.
+실측: `/premortem` 응답(mock)을 그대로 보내면 `200 application/zip`. `plan_text`만 보내면(mock) 파이프라인이 돌아 `200`, ZIP 9파일, `manifest.result.status: degraded`, `cards_by_generator: {"astra": 0, "rule": 0, "mock": 5}`. 응답 헤더 `Content-Disposition: attachment; filename="neumann_package_<plan_id 앞 12자>.zip"`.
 
 ZIP의 `README.md` 첫 줄들은 결과 상태, 카드·근거·유사 연구 수, 생성 방식별 카드 수(astra·rule·mock)를 적는다.
 

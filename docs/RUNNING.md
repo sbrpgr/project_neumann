@@ -1,9 +1,9 @@
 # 실행 방법
 
-- 기준: 이 문서를 병합하기 직전의 `main`(작성 때 확인한 커밋 `c4679f9`). 이 문서의 명령은 `304e91e`·`588da63`에서 Windows 11 + Git Bash + Python 3.12.10으로 실행해 확인했다(결과는 `docs/reports/E6-docs.md`). 실행하지 않은 명령은 그렇다고 적었다.
+- 기준: 이 문서를 병합하기 직전의 `main`(작성 때 확인한 커밋 `52d1dae`). 이 문서의 명령은 `304e91e`·`588da63`에서 Windows 11 + Git Bash + Python 3.12.10으로 실행해 확인했다(결과는 `docs/reports/E6-docs.md`). 실행하지 않은 명령은 그렇다고 적었다.
 - 구조와 상태는 [ARCHITECTURE.md](ARCHITECTURE.md), 엔드포인트는 [API.md](API.md).
 
-> **비용 주의:** 기본 설정(`NEUMANN_LLM_PROVIDER=openai`)에서는 서버의 분석 요청(`/premortem`, `/premortem/view`, `plan_text`만 보낸 `/premortem/package`)과 파이프라인 명령이 OpenAI API(기본 모델 `gpt-6.1-sol`)를 부른다. 시험·개발은 `NEUMANN_LLM_PROVIDER=mock`으로 한다. mock 결과는 분석이 아니며 결과에 그렇게 표시된다.
+> **LLM provider와 비용:** 기본 provider는 `mock`이다(결정적 가짜 응답, 비용 없음). mock 결과는 분석이 아니며 결과에 그렇게 표시된다. `NEUMANN_LLM_PROVIDER=openai`로 켜면 서버의 분석 요청(`/premortem`, `/premortem/view`, `plan_text`만 보낸 `/premortem/package`)과 파이프라인 명령이 요청마다 OpenAI API(기본 모델 `gpt-6.1-sol`)를 부르고 비용이 든다. 실서비스·대표 승인 확인에서만 켠다(`AGENTS.md`).
 
 ## 1. 설치
 
@@ -34,7 +34,7 @@ cp .env.example .env      # .env는 .gitignore로 막혀 있다. 절대 커밋�
 |---|---|---|
 | `OPENAI_API_KEY` | 제품 LLM 키. **환경변수로만 넣는다.** 값을 파일·문서·로그에 쓰지 않는다 | 없음 |
 | `NEUMANN_PSEUDONYM_SALT` | 리뷰어 가명 해시 솔트. 비어 있으면 가명 생성을 거부한다 | 없음 |
-| `NEUMANN_LLM_PROVIDER` | `openai`(실제 호출, 비용) 또는 `mock`(시험용 결정적 응답) | `openai` |
+| `NEUMANN_LLM_PROVIDER` | `mock`(시험용 결정적 응답) 또는 `openai`(실제 호출, 키 필요, 비용) | `mock` |
 | `NEUMANN_LLM_MODEL` | 제품 모델(평가 수치는 `gpt-6-astra`로 잰 것) | `gpt-6.1-sol` |
 | `NEUMANN_LLM_TIMEOUT_S` | 호출 시간 상한(초). 넘으면 그 단계만 비상 규칙 경로. 호출별로는 `NEUMANN_LLM_TIMEOUT_<TASK>_S` | `60` |
 | `NEUMANN_LLM_EFFORT_<TASK>` | 호출별 추론 강도 덮어쓰기(예: `NEUMANN_LLM_EFFORT_SYNTHESIZE_CARDS`) | 호출별 기본값(`llm.py`) |
@@ -44,7 +44,13 @@ cp .env.example .env      # .env는 .gitignore로 막혀 있다. 절대 커밋�
 | `NEUMANN_DATA_DIR` | 가공 데이터 폴더(코퍼스·색인·평가 산출·사전 계산본) | `<저장소>/data` |
 | `NEUMANN_EMBED_MODEL` | bge-m3 로컬 폴더(색인 빌드·검색). 없으면 검색은 어휘(BM25)만 쓰고 강등을 기록한다 | 없음 |
 | `NEUMANN_INDEX_DIR`, `NEUMANN_EMBED_DEVICE`, `NEUMANN_EMBED_BATCH`, `NEUMANN_EMBED_MAX_SEQ` | 색인 폴더·임베딩 장치·배치·최대 토큰(`src/neumann/index/settings.py`) | `<데이터 폴더>/index`, `auto`(cuda 있으면 cuda), `16`, `512` |
-| `NEUMANN_SEARCH_ALPHA`, `NEUMANN_SEARCH_SCORE_FLOOR` | 검색 결합 점수의 임베딩 비중, 점수 하한 | `0.6`, `0.0` |
+| `NEUMANN_SEARCH_ALPHA` | 검색 결합 점수의 임베딩 비중(나머지는 BM25) | `0.6` |
+| `NEUMANN_SEARCH_SCORE_FLOOR` | 점수 하한. 비우면 임베딩 모델별 실측 보정값(bge-m3 0.45), 보정값 없는 모델·어휘만 검색이면 0 | 비움 |
+| `NEUMANN_SEARCH_FUSION` | 여러 질의 결합: `rrf`(질의별 순위 융합) 또는 `max` | `rrf` |
+| `NEUMANN_SEARCH_RRF_K` | 순위 융합 상수 k | `60` |
+| `NEUMANN_SEARCH_PER_QUERY_MIN` | 질의마다 하한을 넘은 상위 n편을 결과에 먼저 넣는다(0이면 끔) | `1` |
+| `NEUMANN_SEARCH_AXIS_WEIGHTS` | 축별 가중치 | `topic=1,method=1,data=1,evaluation=0.5` |
+| `NEUMANN_SEARCH_ADAPTIVE_ALPHA` | 질의 낱말 중 색인 어휘에 있는 비율만큼만 BM25에 비중(한국어 질의는 임베딩만) | `true` |
 | `NEUMANN_API_HOST`, `NEUMANN_API_PORT` | 서버 주소 설정 칸. 지금 서버는 uvicorn 명령줄의 `--host`·`--port`로 정한다 | `127.0.0.1`, `8000` |
 
 키가 들어 있는지는 참·거짓으로만 확인한다. 값을 출력하지 않는다.
@@ -59,7 +65,7 @@ python -c "import os; print(bool(os.getenv('OPENAI_API_KEY')))"
 export PYTHONIOENCODING=utf-8 PYTHONPATH="src;." HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 export NEUMANN_RAW_DIR="<공개자료 폴더>"
 export NEUMANN_DATA_DIR="<데이터 폴더>"
-export NEUMANN_LLM_PROVIDER=mock        # 시험할 때. 실제 분석은 openai(키 필요, 비용)
+export NEUMANN_LLM_PROVIDER=mock        # 기본값과 같다. 실제 분석은 openai(키 필요, 비용, 승인 뒤)
 ```
 
 ## 3. 공개자료 원본
@@ -122,8 +128,8 @@ python scripts/build_index_check.py                                      # 색�
 ### 5-1. 서버
 
 ```bash
-NEUMANN_LLM_PROVIDER=mock python -m uvicorn neumann.api.main:app --host 127.0.0.1 --port 8000   # 시험(mock)
-python -m uvicorn neumann.api.main:app --host 127.0.0.1 --port 8000                             # 실제 분석(openai, 키 필요, 비용)
+python -m uvicorn neumann.api.main:app --host 127.0.0.1 --port 8000                             # 기본 mock(비용 없음)
+NEUMANN_LLM_PROVIDER=openai python -m uvicorn neumann.api.main:app --host 127.0.0.1 --port 8000 # 실제 분석(키 필요, 비용, 승인 뒤)
 ```
 
 - 화면: `http://127.0.0.1:8000/`. 상태: `curl http://127.0.0.1:8000/health` → `pipeline.state: "connected"`.
@@ -142,7 +148,7 @@ python -m neumann.pipeline tests/fixtures/plans/plan.md --provider mock     # �
 ### 5-3. 데모 사전 계산본(오프라인 폴백)
 
 ```bash
-python scripts/precompute_demo.py                       # 데모 3건 → <데이터 폴더>/precomputed/ (파이프라인 사용, provider는 설정대로)
+python scripts/precompute_demo.py                       # 데모 3건 → <데이터 폴더>/precomputed/ (파이프라인 사용, provider는 설정대로: 기본 mock)
 python scripts/precompute_demo.py --source fixture      # 네트워크·API 없이 fixture로
 python scripts/precompute_demo.py --out <다른 폴더>
 ```

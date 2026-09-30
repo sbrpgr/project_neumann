@@ -1,6 +1,6 @@
 # 루트 README.md v0 개정 초안 (E6-docs, PM 검토용)
 
-루트 `README.md`는 PM 소유라 고치지 않았다. 아래 "초안 본문"을 그대로 옮겨 쓰면 된다. 숫자는 저장소에 있는 보고서·결정 기록의 값만 썼고, 출처는 맨 끝 "숫자 출처"에 파일별로 적었다. 기준은 main `c4679f9`(2026-09-30, v0 태그 이후)다.
+루트 `README.md`는 PM 소유라 고치지 않았다. 아래 "초안 본문"을 그대로 옮겨 쓰면 된다. 숫자는 저장소에 있는 보고서·결정 기록의 값만 썼고, 출처는 맨 끝 "숫자 출처"에 파일별로 적었다. 기준은 main `52d1dae`(2026-09-30, v0 태그 이후)다.
 
 ---
 
@@ -20,7 +20,7 @@
 3. **근거가 연결된 위험카드**로 돌려준다. 카드마다 실제 심사평 문장을 원문 오프셋 그대로 인용하고 원문 링크를 단다.
 
 - 분석 대상은 논문 본문이 아니라 평가 과정 기록이다. 개입 시점은 투고 직전이 아니라 연구 착수 전이다.
-- 제품 LLM은 OpenAI API다(기본 모델 `gpt-6.1-sol`). 아래 평가 수치는 모두 `gpt-6-astra`로 잰 값이다(평가 모델 gpt-6-astra, 제품 기본 모델 gpt-6.1-sol). LLM은 인용문을 쓰지 않고 발췌 id만 돌려주며, 인용 문자열은 코드가 원문에서 잘라 붙인다.
+- 제품 LLM은 OpenAI API다(기본 모델 `gpt-6.1-sol`). 아래 수치 중 LLM으로 잰 것(Macro-F1 0.4864, 라이브 E2E)은 `gpt-6-astra`로 잰 값이다(평가 모델 gpt-6-astra, 제품 기본 모델 gpt-6.1-sol). 빈도 기준선·사람 상한·코퍼스·색인 수치는 LLM 측정이 아니다. LLM은 인용문을 쓰지 않고 발췌 id만 돌려주며, 인용 문자열은 코드가 원문에서 잘라 붙인다.
 - API가 실패하면 그 단계만 비상 규칙 경로로 돌리고, 결과와 화면에 강등과 생성 방식(astra·rule·mock)을 그대로 표시한다.
 - 범위는 AI 활용 과학 연구(AI for Science) 계획서다.
 
@@ -53,10 +53,10 @@
 uv venv --python 3.12 .venv
 uv pip install --python .venv -r pyproject.toml --extra dev
 git config core.hooksPath .githooks
-NEUMANN_LLM_PROVIDER=mock python -m uvicorn neumann.api.main:app --host 127.0.0.1 --port 8000
+python -m uvicorn neumann.api.main:app --host 127.0.0.1 --port 8000   # 기본 mock
 ```
 
-기본 provider는 `openai`라 분석 요청마다 OpenAI API를 부른다(키는 환경변수 `OPENAI_API_KEY`). 시험은 `NEUMANN_LLM_PROVIDER=mock`으로 한다(mock 결과는 분석이 아니며 그렇게 표시된다).
+기본 provider는 `mock`이다(비용 없음, mock 결과는 분석이 아니며 그렇게 표시된다). 실제 분석은 `NEUMANN_LLM_PROVIDER=openai`와 환경변수 `OPENAI_API_KEY`로 켜며, 그때는 분석 요청마다 OpenAI API를 부르고 비용이 든다.
 
 ## 구조
 
@@ -81,14 +81,14 @@ NEUMANN_LLM_PROVIDER=mock python -m uvicorn neumann.api.main:app --host 127.0.0.
 - `.gitignore`가 `.env`, 데이터, 모델 가중치, 색인, 캐시, 로그를 막는다. `scripts/verify.py`와 git 훅(`pre-commit`·`commit-msg`·`pre-push`)이 키 형태 문자열, 실제 키 값, 금지 파일, 5MB 넘는 파일을 찾는다. GitHub 시크릿 스캐닝과 푸시 보호가 켜져 있다.
 - 서버 응답에는 예외 원문·상류 API 오류 문구·내부 경로를 싣지 않는다.
 - 입력 화면에 "계획서는 분석을 위해 OpenAI API로 전송된다, 개인정보·미공개 기밀은 넣지 말 것, 본문은 파일로 저장하지 않는다"는 고지를 띄운다.
-- 공개 서버 방어선: 접근 토큰 없이 공개할 서버의 비용 방어선(서버 쪽 일일 예산 상한·차단 스위치·동시 상한)은 아직 main에 없다. 그것이 main에 들어가 켜진 것을 확인하고 보안 점검 지적을 고친 뒤에만 공개 터널을 연다.
+- 공개 서버: 접근 토큰 없이 공개할 계획이다. 일일 예산 상한은 걸지 않는다(결정 기록 19:46). 안정성 장치 중 동시 분석 상한(2건)은 main에 있고, 대기열·속도 제한(E4-L2c)은 예정이다. 공개 터널은 보안 점검(SEC-1) 지적 수정·재점검 뒤에 연다(결정 기록 19:20).
 
 ## 개발 방식과 반입 자료
 
 - 2026 NAIS AI 해커톤 본선(2026-09-30 17:00 ~ 10-01 12:00) 현장에서 만들었다. 17:00 이전 커밋은 없고 첫 커밋은 18:06이다. 커밋 이력이 곧 현장 개발 기록이다.
-- 사람 1명과 AI 코딩 에이전트(빌더·검증자 분리)가 과제 단위로 개발했다. 과제 지시문과 보고서·검증 보고서는 `docs/tasks/`·`docs/reports/`에 있다.
+- 사람(대표)과 AI 코딩 에이전트(빌더·검증자 분리)가 과제 단위로 개발했다. 과제 지시문과 보고서·검증 보고서는 `docs/tasks/`·`docs/reports/`에 있다.
 - 반입한 것은 주최측이 허용한 기획 자료와 공개 자료뿐이다.
-  - 기획 문서와 목업: 화면은 기획 단계 목업을 바탕으로 현장에서 재구성했다(`webui/index.html`의 의미 있는 줄 약 55%가 목업과 같다). `contracts/` 스키마는 기획 문서 원본이다.
+  - 기획 문서와 목업: 화면은 기획 단계 목업을 바탕으로 현장에서 재구성했다(`webui/index.html`의 의미 있는 줄 약 55%가 목업과 같다, 19:22 측정). `contracts/` 스키마는 기획 문서 원본이다.
   - 공개 데이터·모델: ResearchArcade, DISAPERE, Retraction Watch, bge-m3, 폰트, JSZip 원본 그대로. 가공물(코퍼스·색인·라벨·캐시)은 모두 현장에서 만들었다.
 - 사전 개발 점검: 개발용 venv에는 라이브러리만 있었고(9/29 설치), 공유 데이터 폴더의 파일은 모두 17:00 이후 현장에서 만들어졌으며, 기획 자료에는 코드가 없다(공개 라이브러리 JSZip만).
 
@@ -104,7 +104,7 @@ NEUMANN_LLM_PROVIDER=mock python -m uvicorn neumann.api.main:app --host 127.0.0.
 | 임베딩 모델 BAAI/bge-m3 | MIT |
 | 화면 폰트(Pretendard, Jost, IBM Plex Mono, Instrument Serif, Mr Dafoe) | SIL OFL 1.1 |
 
-리뷰어 신원은 저장하지 않는다. 개인정보(이메일·ORCID)는 가린다.
+리뷰어 신원은 저장하지 않는다. 개인정보(이메일·ORCID, 계획서의 전화번호·주민번호 형태)는 가린다.
 ````
 
 ---
@@ -115,7 +115,7 @@ NEUMANN_LLM_PROVIDER=mock python -m uvicorn neumann.api.main:app --host 127.0.0.
 |---|---|
 | 코퍼스 1,128편, 심사평 4,298 + 메타리뷰 1,068 = 5,366건 | `docs/reports/E1-L0.md` §완료 기준 1·2, 서버 `GET /api`의 `summary_ko` |
 | 색인 문장 133,769개, 오프셋 전량 대조 100% | `docs/reports/E2-L0.md`(커밋 427dcb0 메시지와 같음), `GET /api` |
-| 라이브 E2E 5/5, 카드 5·3·5장·0장, 근거 10/10·13/13·20/20, 화면 전체 69.6·62.0·65.1초 | `docs/reports/E5-L0e2e_live_summary.json`(`plans.*.linkage`, `timings.ui_total_s`, `n_cards`), 커밋 b671d0e 메시지 |
+| 라이브 E2E 5/5(검사 5개: 파이프라인 연결 확인 1 + 데모 3 + 범위 밖 1), 카드 5·3·5장(화면 실행)·0장, 근거 10/10·13/13·20/20(API 재호출 실행), 화면 전체 69.6·62.0·65.1초 | `docs/reports/E5-L0e2e_live_summary.json`(`plans.*.linkage`, `timings.ui_total_s`, `n_cards`), 커밋 b671d0e 메시지 |
 | astra Macro-F1 0.4864 [0.4276, 0.5394], Micro-F1 0.5644, 기준선 Micro 0.5379, "Macro에서만 기준선 초과·단일 실행" | `docs/reports/E5-L1b.md` 표와 "PM 정정·발표 표기" 절(main `2b00b41`·`588da63`에서 병합) |
 | 빈도 기준선 0.3308 [0.2980, 0.3623] | `docs/reports/E5-L1a.md`, `docs/HANDOFF.md` |
 | 사람 상한 0.725 | `eval/macro_f1.py`의 `REFERENCE_LINES`(외부 참조선) |
@@ -123,7 +123,7 @@ NEUMANN_LLM_PROVIDER=mock python -m uvicorn neumann.api.main:app --host 127.0.0.
 | 목업과 같은 줄 약 55% | `docs/decisions.md` 2026-09-30 19:22 "기획 자료와 겹치는 코드 공개" |
 | 제품 기본 모델 gpt-6.1-sol, 평가 모델 gpt-6-astra 구분 | `docs/decisions.md` 2026-09-30 19:38 두 항목, `src/neumann/config.py` 기본값 |
 | 입력 화면 전송 고지 | `src/neumann/webui/index.html`(E4-S06, main 08f32c5 병합) |
-| 공개 서버 방어선 미완 | `docs/decisions.md` 2026-09-30 19:14(비용 방어선), 19:20(터널 공개는 수정 뒤), `docs/reports/SEC-1.md` 판정 |
+| 공개 서버(예산 상한 없음, 동시 상한 있음, 대기열·속도 제한 예정, 터널은 수정 뒤) | `docs/decisions.md` 2026-09-30 19:46(정정), 19:20, `src/neumann/api/main.py` `MAX_CONCURRENT`, `docs/reports/SEC-1.md` 판정 |
 
 ## 초안 작성 메모
 

@@ -2,7 +2,7 @@
 
 Neumann은 연구계획서를 받아, 비슷한 연구가 실제로 받은 심사평·저자 답변·결정·정정/철회 기록에서 위험을 찾는다. 결과는 근거 문장과 원문 링크가 달린 위험카드다.
 
-- 기준: 이 문서를 병합하기 직전의 `main`(작성 때 확인한 커밋 `c4679f9`, 태그 `v0` 이후).
+- 기준: 이 문서를 병합하기 직전의 `main`(작성 때 확인한 커밋 `52d1dae`, 태그 `v0` 이후).
 - 표기: **있음** = main에 코드와 테스트가 있고 제품 경로에서 쓰인다. **있음(모듈만)** = 모듈과 테스트는 있지만 분석 파이프라인이 아직 부르지 않아 서버 응답에는 쓰이지 않는다. **예정** = main에 없다(과제 ID를 붙였다).
 - 실행 방법은 [RUNNING.md](RUNNING.md), 엔드포인트는 [API.md](API.md).
 
@@ -16,6 +16,7 @@ Neumann은 연구계획서를 받아, 비슷한 연구가 실제로 받은 심�
 | LLM 호출 층(provider `openai`·`mock`·`off`) | 있음 | `src/neumann/llm.py` |
 | 검색어·축 추출, 지적 추출, 카드 합성, 비상 규칙 | 있음 | `src/neumann/analyze/queries.py`, `extract.py`, `cards.py`, `rules.py`, `backend.py` |
 | 코퍼스: ResearchArcade → AI for Science 1,128편 | 있음 | `src/neumann/sources/researcharcade.py`, `corpus.py`, `scripts/collect_researcharcade.py` |
+| 검색 질의 축 나누기(제목 규칙, LLM 없음)·검색 보정(순위 융합·축 가중치·모델별 점수 하한) | 있음 | `src/neumann/index/queries.py`, `search.py`, `settings.py` |
 | 확대 코퍼스·확대 색인(샤드 6개 + 일반 ML, 별도 폴더 `processed_l3`·`index_l3`) | 있음(기본 색인은 1,128편, `NEUMANN_INDEX_DIR`로 전환) | `src/neumann/sources/corpus_l3.py`, `scripts/collect_l3_*.py`, `scripts/build_index_l3.py` |
 | 정정·철회 사후 상태(Retraction Watch) | 있음 | `src/neumann/sources/retraction.py` |
 | DISAPERE 로더(평가 골드용) | 있음 | `src/neumann/sources/disapere.py` |
@@ -43,7 +44,7 @@ Neumann은 연구계획서를 받아, 비슷한 연구가 실제로 받은 심�
 
 | 단계 | 하는 일 | 산출 | 상태 |
 |---|---|---|---|
-| INPUT | 계획서 정규화(NFC·LF)와 줄 번호, 이메일·ORCID 가림. 제품 LLM이 검색어·방법·데이터·평가 축을 뽑고 연구계획서인지 본다 | `PlanDocument`(줄 목록, `plan_id` = 본문 sha256), 검색어 | 있음(`models.PlanDocument`, `analyze/queries.py`). 적합성 판정 강화판(`fitness.py`)·전화번호 등 마스킹(`pii.py`)은 있음(모듈만) |
+| INPUT | 계획서 정규화(NFC·LF)와 줄 번호, 이메일·ORCID 가림, 전화번호·주민번호 형태 가림(최소판). 제품 LLM이 검색어·방법·데이터·평가 축을 뽑고 연구계획서인지 본다 | `PlanDocument`(줄 목록, `plan_id` = 본문 sha256), 검색어 | 있음(`models.PlanDocument`, `pipeline.mask_extra_pii`, `analyze/queries.py`). 적합성 판정 강화판(`fitness.py`)·마스킹 강화판(`pii.py`)은 있음(모듈만) |
 | EVIDENCE | 색인에서 유사 연구를 찾고, 그 연구의 심사평에서 제품 LLM이 지적을 뽑는다 | 유사 연구 목록, 근거 구간(`Excerpt`: 원문 오프셋·해시) | 있음(`index/search.py`, `analyze/extract.py`). 코퍼스 1,128편·색인 문장 133,769개(`/api` 실측). 사후 상태 소스는 있으나 지금 코퍼스(ICLR)에는 DOI가 없어 이어진 논문은 0편 |
 | RISK | 반복되는 지적을 위험 유형 R0~R9로 묶고 점수를 매긴다. 점수 = 유사도 × 빈도 × 심각도 × 신뢰도(곱, 가중치 없음) | 위험카드(`RiskCard`) | 있음(`analyze/cards.py`). 카드 0장이면 사유를 `risk_synthesis.no_card_reason`과 `notices`에 담는다 |
 | REVIEW | 카드 근거를 원문과 다시 대조. 예상 심사평(문장마다 근거 번호, 근거 없는 문장은 내보내지 않음) | 검증된 카드, 예상 심사평 | 원문 대조(`verify_evidence`)는 있음. 예상 심사평·근거 게이트는 있음(모듈만) |
@@ -63,7 +64,7 @@ Neumann은 연구계획서를 받아, 비슷한 연구가 실제로 받은 심�
             ▼
       api/main.py ── neumann.pipeline.run_premortem (동시 2건)
             │         plan_normalize → query_axes → search → extract_issues → synthesize_cards → verify_evidence
-            │         LLM 호출은 설정된 provider(기본 openai, 모델 기본값 gpt-6.1-sol, 시험은 mock)
+            │         LLM 호출은 설정된 provider(기본 mock, 실제 호출은 openai로 켤 때만, 모델 기본값 gpt-6.1-sol)
             │         단계가 실패하면 그 단계만 비상 규칙으로 대신하거나 건너뛰고 stages에 남긴다
             │
             ├─ 성공 ─────────────> 결과(PremortemResult)
@@ -102,7 +103,8 @@ src/neumann/
 │  ├─ taxonomy.py              비상 경로용 최소 규칙 태거(R0~R8, generator="rule")               있음
 │  ├─ bm25.py · embed.py       BM25(영어 어휘) · bge-m3 임베딩(다국어)                           있음
 │  ├─ search.py                하이브리드 검색(임베딩 못 읽으면 어휘만, 강등 기록)               있음
-│  └─ store.py · settings.py   색인 저장소 · 경로·검색 설정                                      있음
+│  ├─ store.py · settings.py   색인 저장소 · 경로·검색 설정                                      있음
+│  └─ queries.py               계획서 → 축별 검색 질의(제목 규칙, LLM 없음)                     있음
 ├─ analyze/
 │  ├─ queries.py               검색어·축 추출(LLM ①), 연구계획서 여부                         있음
 │  ├─ extract.py               심사평 지적 추출(LLM ②, 발췌 id·줄 번호만 받음)                  있음
@@ -140,8 +142,8 @@ tests/                         fixtures/(공용 가짜 데이터) + e0·e1·e2·
 
 ## 5. LLM 경로: 제품 LLM 주력, 규칙은 비상 경로
 
-- 제품 LLM은 OpenAI Responses API다. **기본 모델은 `gpt-6.1-sol`**(설정 `NEUMANN_LLM_MODEL`, 결정 기록 2026-09-30 19:38: 비용). 이미 잰 평가 수치(DISAPERE Macro-F1, 라이브 E2E, v0)와 백테스트는 `gpt-6-astra`로 쟀다. 생성 방식 값 `astra`는 계약 이름("제품 LLM이 만든 것")이라 그대로이고, 실제 모델은 카드의 `model`과 결과 `manifest.llm_model`에 적힌다. 설정 로더가 받는 provider는 `openai`(기본)와 `mock`이다. `llm.py`는 비상 경로 확인용 `off`도 처리한다(파이프라인 명령줄 `--provider off`). 로컬 LLM은 없다.
-- **기본 설정(`NEUMANN_LLM_PROVIDER=openai`)에서는 분석 요청마다 OpenAI API를 부른다(비용이 든다).** 시험·데모 준비는 `NEUMANN_LLM_PROVIDER=mock`으로 한다. 테스트는 `tests/conftest.py`가 mock으로 고정한다.
+- 제품 LLM은 OpenAI Responses API다. **기본 모델은 `gpt-6.1-sol`**(설정 `NEUMANN_LLM_MODEL`, 결정 기록 2026-09-30 19:38: 비용). 이미 잰 평가 수치(DISAPERE Macro-F1, 라이브 E2E, v0)와 백테스트는 `gpt-6-astra`로 쟀다. 생성 방식 값 `astra`는 계약 이름("제품 LLM이 만든 것")이라 그대로이고, 실제 모델은 카드의 `model`과 결과 `manifest.llm_model`에 적힌다. 설정 로더가 받는 provider는 `mock`(기본)과 `openai`다. `llm.py`는 비상 경로 확인용 `off`도 처리한다(파이프라인 명령줄 `--provider off`). 로컬 LLM은 없다.
+- **기본 provider는 `mock`이다**(main `a736efc`). 실제 OpenAI 호출은 `NEUMANN_LLM_PROVIDER=openai`(와 환경변수 `OPENAI_API_KEY`)로 켤 때만 일어나고 비용이 든다. 실서비스·대표 승인 확인에서만 켠다(`AGENTS.md`). 테스트는 `tests/conftest.py`가 mock으로 고정한다. mock 결과는 분석이 아니며 결과·화면에 그렇게 표시된다.
 - 파이프라인의 LLM 호출은 세 곳이다: 검색어·축 추출(`query_axes`), 지적 추출(`extract_issues`), 카드 합성(`synthesize_cards`). 추론 강도와 시간 상한은 호출마다 정하고 설정 키로 덮어쓴다(`NEUMANN_LLM_EFFORT_<TASK>`, `NEUMANN_LLM_TIMEOUT_S` 등).
 - 모든 호출은 "JSON 스키마 요청 → 로컬 재검증" 한 가지 방식이다. 실패·시간 초과·스키마 위반이면 그 단계만 비상 규칙 경로로 돌리고, 단계 `status`를 `degraded`로 남긴다. 강등이 하나라도 있으면 결과 `status`가 `degraded`가 된다(`PremortemResult` 검증기).
 - LLM은 인용문을 쓰지 않는다. 발췌 id·카드 id·계획서 줄 번호만 돌려주고, 인용 문자열은 코드가 원문에서 잘라 붙인다.
@@ -165,7 +167,7 @@ tests/                         fixtures/(공용 가짜 데이터) + e0·e1·e2·
 | 사전 계산본 표시 | 사전 계산본은 "실시간 분석이 아니라 미리 계산해 둔 결과"로 표시하고, fixture로 대체된 것이면 그것도 적는다. sha256이 다르면 404 | 있음(`api/precomputed.py`) |
 | 출처 필수 | 영속 엔티티는 `provenance`(원문 URL·접근 시각·원문 sha256)가 필수. 코퍼스 전량 검사 `audit_processed()` 위반 0 | 있음 |
 | 신원 필드 금지 | 필드 이름에 신원 토큰(`name`·`email`·`orcid`·`author`·`reviewer_id` 등)이 있으면 클래스 정의 시점에 TypeError. 모르는 키는 거부(`extra="forbid"`) | 있음(`models.NeumannModel`) |
-| 개인정보 가림 | 이메일·ORCID를 `[EMAIL]`·`[ORCID]`로 가린다(발췌를 만들기 전). 전화번호·주민번호 형태까지 가리는 강화판은 모듈만 | 있음(`models.redact_pii`), 있음(모듈만, `analyze/pii.py`) |
+| 개인정보 가림 | 이메일·ORCID를 `[EMAIL]`·`[ORCID]`로 가린다(발췌를 만들기 전). 파이프라인은 계획서에서 전화번호·주민번호 형태도 가린다(최소판). 표기 변형까지 잡는 강화판은 모듈만 | 있음(`models.redact_pii`), 있음(최소판, `pipeline.mask_extra_pii`), 있음(모듈만, `analyze/pii.py`) |
 | 비밀값 차단 | 키 형태 문자열·`.env` 값 유출·금지 파일·5MB 초과 파일을 git 훅과 `verify`가 막는다. 찾은 값은 출력하지 않는다 | 있음(`scripts/verify.py`, `.githooks/`) |
 
 ## 7. 데이터 출처와 라이선스
