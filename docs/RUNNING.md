@@ -1,6 +1,6 @@
 # 실행 방법
 
-- 기준: `main` 커밋 `ed1d1a0`. 이 문서의 명령은 그 커밋의 사본에서 Windows 11 + Git Bash + Python 3.12.10으로 실행해 확인했다(결과는 `docs/reports/E6-docs.md`).
+- 기준: `main` 커밋 `82146f9`. 이 문서의 명령은 그 커밋의 사본에서 Windows 11 + Git Bash + Python 3.12.10으로 실행해 확인했다(결과는 `docs/reports/E6-docs.md`).
 - **예정**이라고 적은 명령은 main에 아직 없는 스크립트다. 과제가 병합되면 그 과제 보고서(`docs/reports/<과제ID>.md`)를 본다.
 - 구조와 상태는 [ARCHITECTURE.md](ARCHITECTURE.md), 엔드포인트는 [API.md](API.md).
 
@@ -65,7 +65,7 @@ export NEUMANN_DATA_DIR="<데이터 폴더>"
 ├─ data/researcharcade/papers/train-00000-of-00001.parquet
 ├─ data/researcharcade/reviews/train-00000-of-00006.parquet, train-00001-of-00006.parquet
 ├─ data/disapere/DISAPERE.zip
-├─ data/retraction_watch/retraction_watch.csv          (예정 E1-L2에서 사용)
+├─ data/retraction_watch/retraction_watch.csv
 └─ models/bge-m3/                                      (예정 E2-L0에서 사용)
 ```
 
@@ -83,6 +83,19 @@ python -c "from neumann.sources.corpus import audit_processed; r = audit_process
 ```
 
 확인한 출력(요약): `편수 1128`, `심사평 4298 + 메타리뷰 1068, 저자 답변 12660, 결정 1128`, 거절 비율 `0.6028`, 전량 검사 위반 `0`.
+
+## 4-1. 정정·철회 사후 상태 (있음)
+
+Retraction Watch CSV를 `PostStatus` JSONL로 바꾸고, 원논문 DOI로 조회한다. 결과는 `<NEUMANN_DATA_DIR>/processed/retraction*.json(l)`이다.
+
+```bash
+python -m neumann.sources.retraction build            # CSV → retraction.jsonl + facets + manifest (약 4초)
+python -m neumann.sources.retraction lookup <DOI>     # 원논문 DOI의 사후 상태 목록(없으면 [])
+python -m neumann.sources.retraction join             # 코퍼스 Work와 DOI 조인
+python -m neumann.sources.retraction prior <키워드>…   # 분야 키워드별 철회 사유 빈도
+```
+
+확인한 출력(요약): `rows_read 72684`, `records_written 66737`(원논문 DOI 없는 5,947행 제외), 고유 원논문 DOI 63,690.
 
 ## 5. 색인 빌드 (예정, E2-L0)
 
@@ -107,7 +120,7 @@ python -m pytest tests/e4 -q               # 에픽별
 NEUMANN_LIVE_TESTS=1 python -m pytest -q   # 실제 API 테스트까지(키 필요, 돈이 든다)
 ```
 
-- 확인한 결과: `226 passed`(main `ed1d1a0`).
+- 확인한 결과: `301 passed, 2 skipped`(main `82146f9`, 건너뛴 2건은 `NEUMANN_LIVE_TESTS=1`일 때만 도는 실제 API 테스트).
 - 공유 데이터 폴더가 없으면 실데이터 테스트(`tests/e1/test_e1_corpus_real.py` 등)는 건너뛴다.
 
 화면 스크린샷(Playwright, 1440×900). 스크립트가 uvicorn을 하위 프로세스로 띄우고 끝나면 끈다:

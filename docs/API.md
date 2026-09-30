@@ -1,6 +1,6 @@
 # API
 
-- 기준: `main` 커밋 `ed1d1a0`. 아래 응답 예시는 그 커밋의 서버(`127.0.0.1:8125`)에 실제로 요청해 받은 값을 줄인 것이다.
+- 기준: `main` 커밋 `82146f9`. 아래 응답 예시는 그 커밋의 서버(`127.0.0.1:8125`)에 실제로 요청해 받은 값을 줄인 것이다.
 - **있음** = main의 서버에 라우트가 있다. **예정** = 과제 브랜치에서 진행 중이다. 지금 요청하면 404다.
 - 서버 실행은 [RUNNING.md §6](RUNNING.md#6-서버-실행-있음). 기본 주소 `http://127.0.0.1:8000`.
 - 전체 스키마: `GET /openapi.json`(서버가 만든 OpenAPI). `GET /docs`도 FastAPI 기본값으로 열리지만 Swagger UI 파일을 외부 CDN(jsdelivr)에서 받는다. 오프라인 확인에는 `/openapi.json`을 쓴다.
@@ -49,14 +49,16 @@ curl http://127.0.0.1:8000/health
     "pipeline": {"available": false, "modules": {"neumann.pipeline": "missing: 모듈 없음"}},
     "INPUT":    {"available": false, "modules": {"neumann.analyze.plan": "missing: 모듈 없음"}},
     "RISK":     {"available": false, "modules": {"neumann.analyze.cards": "missing: 모듈 없음"}},
+    "ACTION":   {"available": true,  "modules": {"neumann.analyze.checklist": "ok"}},
     "models":   {"available": true,  "modules": {"neumann.models": "ok"}},
-    "...": "EVIDENCE, REVIEW, ACTION, TRACE, llm, config 도 같은 모양"
+    "...": "EVIDENCE, REVIEW, TRACE, llm은 false, config는 true"
   },
   "routers": {"neumann.api.export": "ok", "neumann.api.upload": "missing", "neumann.api.precomputed": "missing",
               "neumann.api.templates": "missing", "neumann.api.meta": "missing"}
 }
 ```
 
+- `ACTION`이 `true`인 것은 체크리스트 모듈이 main에 있어서다. 파이프라인이 없으므로 서버 응답에는 아직 쓰이지 않는다.
 - `pipeline.state`: `connected`(모듈 있음) · `unavailable`(모듈 없음 → 샘플) · `error`(import 실패)
 - 모듈 상태: `ok` · `missing: …` · `error: …`
 
@@ -161,7 +163,7 @@ curl -X POST http://127.0.0.1:8000/premortem/package \
 |---|---|
 | 422 | `result`와 `plan_text`가 모두 없다, `result`가 계약에 맞지 않는다, 결정 로그의 `card_id`·`item_id`가 결과에 없다 |
 
-알려진 제약(main `ed1d1a0`): 지금 `/premortem`의 **샘플 응답**을 그대로 `/premortem/package`에 보내면 422다. 샘플에 붙는 표시 키(`sample`, `stages[0]`의 `status: "unavailable"`·`degraded`·`details`)가 `PremortemResult` 계약에 없기 때문이다. 실제 파이프라인 결과나 `tests/fixtures/premortem_result.json`은 통과한다.
+알려진 제약(main `82146f9`): 지금 `/premortem`의 **샘플 응답**을 그대로 `/premortem/package`에 보내면 422다. 샘플에 붙는 표시 키(`sample`, `stages[0]`의 `status: "unavailable"`·`degraded`·`details`)가 `PremortemResult` 계약에 없기 때문이다. 실제 파이프라인 결과나 `tests/fixtures/premortem_result.json`은 통과한다.
 
 ## 예정 엔드포인트 (main에 없음)
 
