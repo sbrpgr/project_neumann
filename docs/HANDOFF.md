@@ -1,3 +1,27 @@
+## ★ 녹화용 판 — 2026-10-01 06:15 KST, PM(Claude) · 이 절이 가장 최신
+
+- **녹화용 main = 9ffaceb.** origin/main과 main 작업 폴더가 같다. 06:13에 8020 재기동을 요청했다.
+  - 재기동 조건: `NEUMANN_LIVE_LLM_OK=1`, 키 상속, `MAX_CONCURRENT=1`, `--timeout-keep-alive 30`, `NEUMANN_REVISE_TIMEOUT_S=240`.
+  - FINAL-LIVE-2에서 차단 결함이 없으면 **07:30 녹화까지 main 작업 폴더를 감지 않고 재기동도 하지 않는다.**
+- **983f3e9 뒤에 들어간 것:**
+  - FIX-VCOMB bcd3c5a: V-COMBINED E-1·E-4.
+  - FIX-REVISE-504 8a8116d: 카드 병렬 4, 기본 제한 240초.
+  - ASSEMBLE-MERGE d78855e: 같은 줄 병합, 조용한 누락 0.
+  - UI-F9 8c5674c: debounce, MD·ZIP 고지.
+  - **FIX-TOOLS-LIVE 834b179:** FIN-TOOLS `extract_checks`·`run_checks`를 확정 경로에 연결했다. 도구는 코드가 고르고, `code:` 접두사로 LLM 제안 검사와 합친다. counters.tool_runs에 도구별 실행 수가 남는다.
+  - PM 테스트 수정 두 건: 레지스트리 픽스처 순서 독립, e0 counters 선택 필드.
+- **측정(mock, 키 제거):**
+  - ec81075 전체 pytest: 2968 통과·66 건너뜀·1 실패(순서 의존 → 수정).
+  - b4026e1 전체 pytest: 2979 통과·66 건너뜀·1 실패(e0 counters → 수정, e0 180 통과).
+  - 모두 독립 판정은 없고 PM 재측정이다(V-COMBINED만 판정했고 FAIL 3건은 FIX-VCOMB·UI-F9로 후속).
+- **계약:** finalization.schema.json을 넓히는 쪽으로만 바꿨다(PM 승인, decisions 06:1x).
+- **라이브 누계:** LS 1~4 + FINAL-LIVE + FINAL-LIVE-B 합계 약 $3.2 미만으로 추정한다(분석 usage는 미노출). FINAL-LIVE-2의 비용은 보고서로 받는다.
+- **녹화 주의:**
+  - 첫 분석은 예열 뒤에도 124~133초 걸린다(LLM 단계 시간).
+  - revise는 약 90초 걸린다.
+  - 결과가 없으면 정적 판(STATIC-FINAL)으로 대체한다.
+- **공개:** 불가다(SEC-PUBLIC, V-B1-C FAIL). 터널을 열지 않는다.
+
 ## ★ 현재 상태 — 2026-10-01 05:0x KST, PM(Claude) · 이 절이 가장 최신
 
 ### 운영 규칙
