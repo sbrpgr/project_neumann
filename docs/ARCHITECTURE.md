@@ -2,7 +2,7 @@
 
 Neumann은 연구계획서를 받아, 비슷한 연구가 실제로 받은 심사평·저자 답변·결정·정정/철회 기록에서 위험을 찾는다. 결과는 근거 문장과 원문 링크가 달린 위험카드다.
 
-- 기준: 이 문서를 병합하기 직전의 `main`(작성 때 확인한 커밋 `d1dc0aa`, 태그 `v0` 이후).
+- 기준: 이 문서를 병합하기 직전의 `main`(작성 때 확인한 커밋 `47e45e5`, 태그 `v0` 이후).
 - 표기: **있음** = main에 코드와 테스트가 있고 제품 경로에서 쓰인다. **있음(모듈만)** = 모듈과 테스트는 있지만 분석 파이프라인이 아직 부르지 않아 서버 응답에는 쓰이지 않는다. **예정** = main에 없다(과제 ID를 붙였다).
 - 실행 방법은 [RUNNING.md](RUNNING.md), 엔드포인트는 [API.md](API.md).
 
@@ -35,7 +35,7 @@ Neumann은 연구계획서를 받아, 비슷한 연구가 실제로 받은 심�
 | 평가: 백테스트(표본·일반 LLM 기준선·판정 실행기·지표), 리포트 카드 | 있음 | `eval/backtest_*.py`, `baseline_llm.py`, `judge_run.py`, `report_card.py` |
 | 라이브 E2E(실서버·Playwright, `NEUMANN_LIVE_TESTS=1`일 때만) | 있음 | `tests/e2e/` |
 | 검증 러너·git 훅 | 있음 | `scripts/verify.py`, `.githooks/` |
-| 업로드 파서(txt·md·pdf·docx, HWP 거부, 디스크 미저장, 증폭 상한) | 있음 | `src/neumann/api/upload.py` |
+| 업로드 파서(txt·md·pdf·docx, HWP 거부, 디스크 미저장, 증폭 상한) | 있음(API만, 화면 연결은 예정 E4-L1f) | `src/neumann/api/upload.py` |
 | eLife·Europe PMC | 예정 (E1-L1b) | — |
 
 ## 2. 6단계

@@ -377,7 +377,7 @@ $ python -m pytest -q -rs     (588da63 병합 상태, NEUMANN_RAW_DIR·NEUMANN_D
 
 ## 재작업 2 (재검증 02f30a5: PASS-조건부 → 조건 해소)
 
-재검증 보고서(`docs/reports/E6-docs.verify.md` "재검증 (02f30a5)" 절)의 조건 5개는 전부 main이 움직여 생긴 낡은 서술이었다. `git merge main`(`52d1dae`, 그 뒤 `d1dc0aa`, 충돌 없음) 뒤 문서만 고쳤다. 문서 기준 커밋은 `d1dc0aa`.
+재검증 보고서(`docs/reports/E6-docs.verify.md` "재검증 (02f30a5)" 절)의 조건 5개는 전부 main이 움직여 생긴 낡은 서술이었다. `git merge main`(`52d1dae`, 그 뒤 `d1dc0aa`, 충돌 없음) 뒤 문서만 고쳤다. 문서 기준 커밋은 `47e45e5`(`d1dc0aa` 뒤 변경은 HANDOFF·QUEUE·과제 지시문뿐).
 
 | 조건 | 고친 것 |
 |---|---|
@@ -402,7 +402,7 @@ $ grep -n "기본 openai\|(기본)면\|`openai`(기본)\|사람 1명" (세 문�
 
 환경변수를 하나도 주지 않아도 provider가 `mock`으로 돌고(`manifest.llm_provider: mock`), 카드 6·근거 28은 검색 보정 뒤 값이라 API 예시(카드 5·근거 22, `304e91e`)와 다르다는 것을 API 머리에 밝혔다. `=openai`가 남은 곳은 전부 "openai로 켜면" 조건문이다(ARCHITECTURE §5, RUNNING 머리·서버 명령, API 머리, README 실행 절).
 
-추가: 재작업 2 도중 main `d1dc0aa`에 **E4-L1a 업로드 파서가 병합**돼 "예정"이던 `POST /upload/plan`을 "있음"으로 옮겼다(ARCHITECTURE 상태 표·요청 흐름·모듈 지도, API 목록·`/health` routers 예시(`upload: ok`)·새 절). 실측(TestClient, OpenAI 호출 없음):
+추가: 재작업 2 도중 main `d1dc0aa`에 **E4-L1a 업로드 파서가 병합**돼(화면의 파일 올리기 연결은 과제 E4-L1f로 예정, `webui/index.html`에 `/upload/plan` 호출 0건이라 "있음(API만)"으로 적음) "예정"이던 `POST /upload/plan`을 "있음"으로 옮겼다(ARCHITECTURE 상태 표·요청 흐름·모듈 지도, API 목록·`/health` routers 예시(`upload: ok`)·새 절). 실측(TestClient, OpenAI 호출 없음):
 
 ```
 routers {'neumann.api.export': 'ok', 'neumann.api.upload': 'ok', 'neumann.api.precomputed': 'ok', 'neumann.api.templates': 'ok', 'neumann.api.meta': 'ok'}

@@ -1,6 +1,6 @@
 # API
 
-- 기준: 이 문서를 병합하기 직전의 `main`(작성 때 확인한 커밋 `d1dc0aa`).
+- 기준: 이 문서를 병합하기 직전의 `main`(작성 때 확인한 커밋 `47e45e5`).
 - 아래 응답 예시는 `304e91e`의 서버를 `NEUMANN_LLM_PROVIDER=mock`, 임베딩 모델 없이(어휘 검색만) 포트 8125에서 띄워 실제로 요청해 받은 값을 줄인 것이다. **mock 응답이라 카드 내용은 분석 결과가 아니다.** 실제 서비스(provider를 `openai`로 켠 경우)에서는 `generator`가 `astra`이고 검색 강등이 없다(임베딩 모델이 있을 때). 예시 수치(근거 22건·카드 5장·점수)는 검색 보정(E2-L1, main `9a2471e`) 이전 값이라 지금 main에서는 조금 다르다.
 - **있음** = main의 서버에 라우트가 있다. **예정** = main에 없다(지금 요청하면 404).
 - 서버 실행은 [RUNNING.md §5](RUNNING.md#5-분석-실행). 기본 주소 `http://127.0.0.1:8000`.
@@ -243,7 +243,7 @@ python -m neumann.api.mcp_server
 
 ## POST /upload/plan
 
-계획서 파일에서 텍스트를 뽑는다. 입력 화면의 파일 올리기가 쓴다. 분석은 하지 않는다(뽑은 텍스트를 `/premortem/view`로 보낸다).
+계획서 파일에서 텍스트를 뽑는다. 분석은 하지 않는다(뽑은 텍스트를 `/premortem`·`/premortem/view`에 보낸다). 입력 화면의 파일 올리기를 이 엔드포인트에 연결하는 것은 예정(E4-L1f)이고, 지금 화면은 MD·TXT 파일을 브라우저에서 직접 읽는다.
 
 ```bash
 curl -X POST http://127.0.0.1:8000/upload/plan -F "file=@tests/fixtures/plans/plan.md"
