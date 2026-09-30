@@ -305,7 +305,10 @@ def search(
                 "top_score": round(float(np.max(np.where(col_ok, combined[qi], 0.0))), 6),
                 "top_relevance": round(float(np.max(np.where(col_ok, relevance[qi], 0.0))), 6),
                 "n_above_floor": len(per_q_order[qi]),
-                "n_in_results": sum(1 for h in hits if h.matched_query == q),
+                "n_best_match": sum(1 for h in hits if h.matched_query == q),  # 결과 중 이 질의 점수가 가장 높은 편수
+                "n_ranked_in_results": int(np.count_nonzero(ok[qi, chosen] & (relevance[qi, chosen] > 0.0)))
+                if chosen
+                else 0,  # 결과 중 이 질의가 순위를 매긴(하한 통과) 편수 = 결합에 기여한 편수
             }
             for qi, q in enumerate(qs)
         ],

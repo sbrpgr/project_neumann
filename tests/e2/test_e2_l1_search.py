@@ -73,7 +73,8 @@ def test_rrf_interleaves_queries(mono_store):
     assert [h.fused for h in hits] == sorted([h.fused for h in hits], reverse=True)
     st = last_search_status()
     assert st["fusion"] == "rrf" and st["rrf_k"] == 60.0
-    assert {q["query"]: q["n_in_results"] for q in st["per_query"]} == {QA: 3, QB: 3}
+    assert {q["query"]: q["n_best_match"] for q in st["per_query"]} == {QA: 3, QB: 3}
+    assert {q["query"]: q["n_ranked_in_results"] for q in st["per_query"]} == {QA: 3, QB: 3}
 
 
 def test_per_query_min_reserves_slots_even_with_max(mono_store):
