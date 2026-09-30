@@ -10,7 +10,8 @@
 - 파이프라인 강등(status degraded, 규칙 경로)은 숨기지 않고 위험 묶음의 status·generator에 그대로 남긴다.
 
 실행(E3 `neumann.pipeline.run_premortem`과 E2 색인이 main에 있을 때):
-    python -m eval.backtest_run_neumann [--limit N] [--conditions real,shuffle]
+    python -m eval.backtest_run_neumann [--limit N] [--conditions real,shuffle] [--out F] [--runs-dir D] [--cache-dir D]
+mock 예행은 기본 실행 폴더(`data/eval/neumann_runs`, 실제 실행 결과)에 쓰지 않는다(`output_paths`).
 """
 
 from __future__ import annotations
@@ -91,13 +92,47 @@ def run(sample: dict[str, Any], plans: dict[str, dict[str, Any]], exclusions: di
     return rows
 
 
+def effective_provider(cli: str | None) -> str:
+    """run_premortem이 실제로 쓸 provider 이름(--provider > NEUMANN_LLM_PROVIDER/설정 > mock)."""
+    if cli:
+        return cli
+    try:
+        from neumann.config import get_settings
+
+        return str(get_settings().llm_provider)
+    except Exception:  # noqa: BLE001 — 설정을 못 읽으면 설정 기본값(mock)으로 본다
+        return "mock"
+
+
+def output_paths(provider: str, *, limit: int | None, out: Path | None, runs_dir: Path | None,
+                 base: Path) -> tuple[Path, Path]:
+    """(위험 묶음 파일, 실행 결과 폴더). mock은 기본 이름·기본 실행 폴더(`neumann_runs`)에 쓰지 않는다.
+
+    기본 `neumann_runs/`에는 실제 실행의 결과가 논문별로 들어 있어, mock 예행이 덮어쓰면 실제 결과가 사라진다."""
+    mock = provider == "mock"
+    name = "riskset_neumann" + (f".first{limit}" if limit else "") + (".mock" if mock else "") + ".jsonl"
+    out_path = Path(out) if out else base / name
+    if runs_dir is not None:
+        rd = Path(runs_dir)
+    elif mock:
+        rd = out_path.parent / "neumann_runs.mock"
+    else:
+        rd = base / "neumann_runs"
+    return out_path, rd
+
+
 def main(argv: list[str] | None = None) -> int:
     utf8_stdio()
     ap = argparse.ArgumentParser(description="Neumann 위험 묶음(누출 제거 상태로 파이프라인 실행)")
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--conditions", default="real,shuffle")
     ap.add_argument("--provider", default=None, help="run_premortem provider(기본 설정값, 보통 openai)")
-    ap.add_argument("--out", type=Path, default=None, help="기본 data/eval/riskset_neumann.jsonl(--limit면 .firstN)")
+    ap.add_argument("--out", type=Path, default=None,
+                    help="기본 data/eval/riskset_neumann.jsonl(--limit면 .firstN, mock이면 .mock)")
+    ap.add_argument("--runs-dir", type=Path, default=None,
+                    help="논문별 PremortemResult 폴더. 기본 data/eval/neumann_runs(mock이면 <out 폴더>/neumann_runs.mock)")
+    ap.add_argument("--cache-dir", type=Path, default=None,
+                    help="run_premortem 캐시 뿌리(기본 설정값 data/cache). 예행은 임시 폴더를 준다")
     args = ap.parse_args(argv)
     try:
         from neumann.pipeline import run_premortem
@@ -105,6 +140,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[중단] neumann.pipeline.run_premortem 없음(E3 미병합): {exc}")
         return 2
     from eval.backtest_common import load_corpus_view
+
+    provider = effective_provider(args.provider)
+    out, runs_dir = output_paths(provider, limit=args.limit, out=args.out, runs_dir=args.runs_dir, base=eval_dir())
 
     base = data_dir()
     sample = read_json(eval_dir() / "backtest_sample.json")
@@ -118,14 +156,15 @@ def main(argv: list[str] | None = None) -> int:
     view = load_corpus_view(base)
     lookup = source_lookup(Path(view.processed_dir))
 
+    extra: dict[str, Any] = {"cache_dir": args.cache_dir} if args.cache_dir is not None else {}
+
     def fn(plan_text: str, **kw: Any) -> Any:
-        return run_premortem(plan_text, provider=args.provider, **kw)
+        return run_premortem(plan_text, provider=args.provider, **extra, **kw)
 
     conditions = tuple(c.strip() for c in args.conditions.split(",") if c.strip())
-    rows = run(sample, plans, excl, view, fn, lookup, limit=args.limit, conditions=conditions,
-               runs_dir=eval_dir() / "neumann_runs")
-    out = args.out or eval_dir() / ("riskset_neumann" + (f".first{args.limit}" if args.limit else "") + ".jsonl")
+    rows = run(sample, plans, excl, view, fn, lookup, limit=args.limit, conditions=conditions, runs_dir=runs_dir)
     sha = write_jsonl(out, rows)
+    print(f"provider {provider} · 실행 결과 {runs_dir}")
     leaks = sum(r["leak_check"]["leaks"] for r in rows)
     for r in rows:
         print(f"- [{r['condition']}] {r['work_id']} status={r['status']} generator={r['generator']} 위험 {r['n_risks']} "

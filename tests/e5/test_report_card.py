@@ -132,11 +132,11 @@ def test_values_copied_verbatim_into_detail_table(fake_inputs):
     assert row[2] == str(FAKE_P3)
     assert row[3] == f"[{FAKE_P3_CI[0]}, {FAKE_P3_CI[1]}]"
     assert row[4] == "30"
-    micro = _cells(_row(text, "| 지적 추출 Micro-F1 (리뷰 단위) | Neumann (astra) |"))
+    micro = _cells(_row(text, "| 지적 추출 Micro-F1 (리뷰 단위) | Neumann (LLM) |"))
     assert micro[2] == str(FAKE_MICRO) and micro[3] == "[0.65, 0.75]" and micro[4] == "148"
-    hit = _cells(_row(text, "| 백테스트 Top-3 적중 hit@3 | Neumann (astra) |"))
+    hit = _cells(_row(text, "| 백테스트 Top-3 적중 hit@3 | Neumann (LLM) |"))
     assert hit[5] == "판정자 Claude 3명 블라인드 다수결" and hit[6] == "n=30"
-    drop = _cells(_row(text, "| 폐기율 (버린 지적 / 전체 지적) | Neumann (astra) |"))
+    drop = _cells(_row(text, "| 폐기율 (버린 지적 / 전체 지적) | Neumann (LLM) |"))
     assert drop[2] == f"{5 / 60} (5/60)" and drop[4] == "60"
 
 
@@ -146,7 +146,7 @@ def test_missing_metrics_marked_not_measured(fake_inputs):
         cells = _cells(_row(text, key))
         assert cells[3] == "측정 전" and cells[4] == "—" and cells[5] == "—" and cells[6] == "**측정 전**"
     for starts in (
-        "| 백테스트 오탐률 (C 비율) | Neumann (astra) |",
+        "| 백테스트 오탐률 (C 비율) | Neumann (LLM) |",
         "| 백테스트 특이성 (진짜 − 셔플 적중률) | 일반 LLM 기준선 |",
         "| 지적 추출 Macro-F1 (리뷰 단위) | Neumann 비상 규칙 |",
         "| 판정 κ (대표 vs AI 다수결, A 여부 이진) | 전체 |",
@@ -208,7 +208,7 @@ def test_ci_below_target_is_flagged(tmp_path):
 def test_excluded_classes_and_footnotes(fake_inputs):
     text = _build(fake_inputs)
     sec = text[text.index("## 4. 골드 없는 클래스"):text.index("## 5. 각주")]
-    assert "| Neumann (astra) | R1, R2, R5, R6, R7 | R3, R4, R8, R9 |" in sec
+    assert "| Neumann (LLM) | R1, R2, R5, R6, R7 | R3, R4, R8, R9 |" in sec
     assert "[주1] R7 매핑 한계" in text and "asp_motivation-impact" in text
     assert "[주2] 신청서 대비 골드 대체" in text and "수동 라벨 100건(2인 교차)" in text
     assert "[주3] 골드 없는 클래스 제외" in text
@@ -230,7 +230,7 @@ def test_mock_generator_never_fills_promise(tmp_path):
 def test_linkage_without_drop_rate_is_marked(tmp_path):
     text = _build([_write(tmp_path, "l.json", _linkage_json(40, 40, drop=None))])
     assert _cells(_row(text, "| P2 |"))[6] == "**달성(폐기율 병기)**"
-    drop = _cells(_row(text, "| 폐기율 (버린 지적 / 전체 지적) | Neumann (astra) |"))
+    drop = _cells(_row(text, "| 폐기율 (버린 지적 / 전체 지적) | Neumann (LLM) |"))
     assert drop[2] == "측정 전 (폐기율 없음)"
 
 
@@ -240,9 +240,9 @@ def test_multiple_linkage_reports_are_summed_and_marked_computed(tmp_path):
         _write(tmp_path, "l2.json", _linkage_json(5, 10, drop=(0, 10))),
     ]
     text = _build(paths)
-    row = _cells(_row(text, "| 근거 연결률 (링크 단위) | Neumann (astra) |"))
+    row = _cells(_row(text, "| 근거 연결률 (링크 단위) | Neumann (LLM) |"))
     assert row[2] == f"{15 / 20} (15/20) 계산" and row[4] == "20"
-    drop = _cells(_row(text, "| 폐기율 (버린 지적 / 전체 지적) | Neumann (astra) |"))
+    drop = _cells(_row(text, "| 폐기율 (버린 지적 / 전체 지적) | Neumann (LLM) |"))
     assert drop[2] == f"{1 / 21} (1/21) 계산"
 
 
@@ -324,7 +324,7 @@ def test_rule_only_linkage_goes_to_emergency_row(tmp_path):
     assert _cells(_row(text, "| P2 |"))[6] == "**측정 전**"
     row = _cells(_row(text, "| 근거 연결률 (링크 단위) | Neumann 비상 규칙 |"))
     assert row[2] == "1.0 (10/10)" and "비상 규칙 카드 10/10장 포함" in row[5]
-    assert _cells(_row(text, "| 근거 연결률 (링크 단위) | Neumann (astra) |"))[2] == "측정 전"
+    assert _cells(_row(text, "| 근거 연결률 (링크 단위) | Neumann (LLM) |"))[2] == "측정 전"
 
 
 def test_astra_plus_rule_linkage_marks_rule_cards_in_promise_row(tmp_path):
@@ -332,8 +332,8 @@ def test_astra_plus_rule_linkage_marks_rule_cards_in_promise_row(tmp_path):
     p2 = _cells(_row(text, "| P2 |"))
     assert p2[3] == "1.0 (10/10)"
     assert p2[6] == "**달성(폐기율 병기)** · 비상 규칙 카드 3/10장 포함"
-    row = _cells(_row(text, "| 근거 연결률 (링크 단위) | Neumann (astra) |"))
-    assert "astra 카드만의 값이 아니다" in row[6]
+    row = _cells(_row(text, "| 근거 연결률 (링크 단위) | Neumann (LLM) |"))
+    assert "LLM 카드만의 값이 아니다" in row[6]
 
 
 def test_generic_metric_without_system_rejected(tmp_path):

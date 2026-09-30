@@ -54,6 +54,41 @@ TAXONOMY: dict[str, tuple[str, str]] = {
 }
 
 GENERATORS = {"astra", "rule", "mock", "sample"}
+# 생성 방식 표시 이름(DISP-1, decisions 2026-09-30 21:5x). 계약 값 ``astra``는 "제품 LLM"이라는 이름일 뿐 모델이 아니다.
+# 저장 값(``generator: "astra"``)은 그대로 두고, 사람이 보는 화면·ZIP 문서·리포트 카드만 이 함수를 거친다
+# (``neumann.api.export``·``eval.report_card``도 여기서 가져다 쓴다).
+# astra는 여기 없다: 모델명을 붙여 display_generator가 "LLM (모델명)"으로 만든다.
+GENERATOR_DISPLAY = {"rule": "비상 규칙", "mock": "모의(mock)", "sample": "샘플 · 분석 결과 아님"}
+UNKNOWN_GENERATOR_LABEL = "생성 방식 미표기"
+# 계약 이름으로 쓴 astra만 잡는다. 모델명 안의 astra(gpt-6-astra 등)는 실제 모델 이름이라 건드리지 않는다.
+# 바로 뒤에 붙은 조사도 잡아 받침에 맞게 바꾼다(astra가 → LLM이, astra는 → LLM은).
+_CONTRACT_ASTRA = re.compile(r"(?<![A-Za-z0-9_.\-])astra(?![A-Za-z0-9_\-])([가는를와로라나랑])?", re.IGNORECASE)
+_JOSA_AFTER_LLM = {"가": "이", "는": "은", "를": "을", "와": "과", "로": "으로", "라": "이라", "나": "이나", "랑": "이랑"}
+
+
+def display_generator(generator: Any, model: Any = None) -> str:
+    """생성 방식(계약 값) → 사람이 보는 이름. ``astra`` → "LLM (모델명)"(모델명이 없으면 "LLM").
+
+    ``rule`` → "비상 규칙", ``mock`` → "모의(mock)". 규칙·mock에는 모델명을 붙이지 않는다(LLM 결과로 보이지 않게).
+    모르는 값은 추정하지 않고 그 값을 보인다. 모델명은 고치지 않는다(실제 모델이 astra 계열이면 그 이름이 보인다).
+    """
+    g = _text(generator).strip()
+    key = g.lower()
+    if key == "astra":
+        m = _text(model).strip()
+        return f"LLM ({m})" if m else "LLM"
+    if key in GENERATOR_DISPLAY:
+        return GENERATOR_DISPLAY[key]
+    if not key or key == "unknown":
+        return UNKNOWN_GENERATOR_LABEL
+    return display_text(g)
+
+
+def display_text(text: Any) -> str:
+    """사람이 보는 자유 문구(알림·단계 사유)에서 계약 이름 ``astra``만 "LLM"으로 바꾼다. 인용·계획서 줄에는 쓰지 않는다."""
+    return _CONTRACT_ASTRA.sub(lambda m: "LLM" + _JOSA_AFTER_LLM.get(m.group(1) or "", ""), _text(text))
+
+
 # DecisionOutcome(models.py) → 화면 라벨. 원문 문자열(outcome_raw)보다 먼저 본다.
 OUTCOME_LABEL = {
     "accept_oral": "Oral", "accept_spotlight": "Spotlight", "accept_poster": "Poster", "accept": "채택",
@@ -678,6 +713,7 @@ def _build_cards(res: Mapping[str, Any], works: list[dict[str, Any]], ctx: _Ctx)
             "ev": ev_nums,
             "acts": acts,
             "gen": gen,
+            "genl": display_generator(gen, _get(c, "model")),
             "id": _text(_get(c, "card_id", "id")),
             "_works": sorted(card_works),
         })
@@ -821,6 +857,10 @@ def _build_review(res: Mapping[str, Any], ctx: _Ctx, has_works: bool) -> dict[st
         v = _text(_get(er, *aliases))
         if v:
             out[key] = v[:300]
+    if out.get("gen"):
+        out["genl"] = display_generator(out["gen"], out.get("model"))
+    if out.get("why"):
+        out["why"] = display_text(out["why"])
     return out
 
 
@@ -859,6 +899,8 @@ def _build_checklist(res: Mapping[str, Any], ctx: _Ctx | None = None) -> list[di
             v = _text(_get(it, *aliases))
             if v:
                 item[key] = v[:300]
+        if item.get("gen"):
+            item["genl"] = display_generator(item["gen"], _get(it, "model"))
         out.append(item)
     return out
 
@@ -890,7 +932,7 @@ def _build_pipeline(res: Mapping[str, Any]) -> tuple[list[dict[str, Any]], list[
         name = _text(_get(st, "name", "stage")) or "stage"
         phase = (_text(_get(st, "phase")) or name).upper()
         status = _text(_get(st, "status", "state")).lower() or "ok"
-        reason = _text(_get(st, "reason", "detail"))
+        reason = display_text(_get(st, "reason", "detail"))
         impl = _text(_get(st, "impl"))
         el = _num(st.get("elapsed_s"))
         if el is not None and el >= 0:
@@ -923,6 +965,22 @@ def _fill_work_flags(works: list[dict[str, Any]], cards: list[dict[str, Any]], c
         fam_works[cd["fam"]].update(cd["_works"])
     for w in works:
         w["f"] = [1 if w["id"] in fw else 0 for fw in fam_works]
+
+
+def _generator_labels(view: dict[str, Any], gens: Mapping[str, int]) -> dict[str, str]:
+    """생성 방식별 표시 이름(DISP-1). 모델명이 없는 LLM 카드·심사평·체크리스트는 결과 manifest의 모델로 채운다.
+
+    계약 값(``gen``)은 그대로 두고 ``genl``만 채운다. 규칙·mock에는 모델을 붙이지 않는다.
+    """
+    model = (view.get("kpi") or {}).get("model_id")
+    for d in [*view.get("cards", []), view.get("review", {}), *view.get("checklist", [])]:
+        if d.get("gen") == "astra" and d.get("genl") == "LLM" and model:
+            d["genl"] = display_generator("astra", model)
+    labels: dict[str, str] = {}
+    for g in gens:
+        names = list(dict.fromkeys(cd["genl"] for cd in view.get("cards", []) if cd.get("gen") == g and cd.get("genl")))
+        labels[g] = " · ".join(names) if names else display_generator(g, model if g == "astra" else None)
+    return labels
 
 
 # ───────────────────────── 공개 함수 ─────────────────────────
@@ -1064,13 +1122,14 @@ def _build(result: Any, *, filename: str | None, sample: bool, pipeline_state: s
     result_status = _text(res.get("status")).lower() or (None if not res else "ok")
     if error:
         result_status = "error"
-    notices = [_text(n) for n in _list(res.get("notices")) if _text(n)] + [n for n in extra_notices if n]
+    notices = [display_text(n) for n in _list(res.get("notices")) if _text(n)] + [display_text(n) for n in extra_notices if n]
     status = _status_block(sample=sample, pipeline_state=pipeline_state, result_status=result_status,
                            error=error, notices=notices, input_info=input_info)
     gens: dict[str, int] = {}
     for cd in cards:
         gens[cd["gen"]] = gens.get(cd["gen"], 0) + 1
     status["generators"] = gens
+    status["generator_labels"] = _generator_labels(view, gens)
     status["stages_not_ok"] = not_ok
     status["degraded"] = bool(status["degraded"] or not_ok or any(g != "astra" for g in gens))
     if not cards:
@@ -1080,7 +1139,7 @@ def _build(result: Any, *, filename: str | None, sample: bool, pipeline_state: s
             reason = (card_stage or {}).get("reason", "")
         if not reason and ctx.dropped.get("cards_without_evidence"):
             reason = f"근거가 연결되지 않은 카드 {ctx.dropped['cards_without_evidence']}장을 뺐다"
-        status["empty_reason"] = reason or error or "위험카드 0장 — 결과에 사유가 없다"
+        status["empty_reason"] = display_text(reason or error or "위험카드 0장 — 결과에 사유가 없다")
     status["dropped"] = ctx.dropped
     status["section_errors"] = ctx.section_errors
     status["generated_at"] = _text(res.get("generated_at")) or None

@@ -19,6 +19,8 @@
 - 비밀 짝 표(어느 위험이 어느 시스템·조건·순위인지)는 봉투 폴더 밖 별도 파일(`judge_key/pairing.json`).
 - 시스템명·근거 인용·원문 링크·카드 번호는 위험 묶음 단계(`backtest_riskset.blind_text`)에서 지우고, 여기서 한 번 더 검사해
   흔적이 있으면 봉투를 만들지 않는다(`blind_violations`).
+- 진짜 조건만 있는 실행(셔플 행 없음)도 같은 형식이다. 모든 시스템이 위험 0개인 논문은 봉투를 만들지 않고 짝 표의
+  `empty_works`에 적는다(판정할 위험이 없다. 지표는 적중 0으로 센다).
 """
 
 from __future__ import annotations
@@ -98,7 +100,11 @@ META_FORBIDDEN = re.compile(
     re.I,
 )
 # 위험 글에 나오면 안 되는 말(시스템 이름). "baseline" 같은 일반어는 위험 내용일 수 있어 여기서는 뺀다.
-RISK_FORBIDDEN = re.compile(r"neumann|노이만|gpt-6|astra|일반\s*LLM|baseline_llm|유사\s*(?:연구|논문)의?\s*심사평", re.I)
+RISK_FORBIDDEN = re.compile(
+    r"neumann|노이만|gpt-6|astra|일반\s*LLM|baseline_llm"
+    r"|유사\s*(?:연구|논문)(?:의|에서는?|들의?)?\s*(?:심사평|리뷰어|심사자|리뷰|지적|검토)",
+    re.I,
+)
 RISK_ID = re.compile(r"^k\d{2}$")
 ENV_ID = re.compile(r"^env_[0-9a-f]{12}$")
 
@@ -115,6 +121,32 @@ def answer_template(envelope_id: str, risk_ids: list[str]) -> dict[str, Any]:
         "judge_model": "<실제 모델 id>",
         "judgments": [{"risk_id": r, "grade": "<A|B|C>", "review_no": None, "reason": "<한 줄>"} for r in risk_ids],
     }
+
+
+# 위험 설명 앞머리에 붙은 조사(예: "제목 — 은 기존 연구가…"). Neumann 카드 합성에서 줄 번호 "L1은"의 번호만
+# 지운 버그의 흔적이라, 두 시스템을 구분하는 단서가 된다(E5-L2d 진단). 봉투를 만들 때 **두 시스템 모두에**
+# 같은 규칙으로 지우고(원 위험 묶음 파일은 그대로), blind_violations가 남은 것을 잡는다.
+RISK_SEP = " — "
+LEADING_PARTICLE = re.compile(r"^(?:은|는|이|가|을|를|의|에서|에게|에|과|와|도|으로|로)\s+")
+
+
+# 근거 출처 문장("유사 연구의 리뷰어들은 … 지적했다", "유사 연구에서는 … 쟁점이었다"). 사전 등록 블라인드 규칙
+# ("근거 인용·원문 링크는 지운다")에 해당하는 근거 참조 문장이다. Neumann에만 있어 시스템 구분 단서가 되므로
+# (E5-L2c 검증) 두 시스템 모두에서 이런 문장을 통째로 지운다. 판정은 위험 자체의 내용으로 한다.
+SOURCE_SENTENCE = re.compile(r"유사\s*(?:연구|논문)")
+_SENT_SPLIT = re.compile(r"(?<=[.!?。])\s+")
+
+
+def normalize_risk_text(text: str) -> str:
+    """"제목 — 설명"에서 설명 앞머리의 조사 하나와, 유사 연구 심사평을 가리키는 근거 출처 문장을 지운다."""
+    title, sep, body = text.partition(RISK_SEP)
+    if not sep:
+        return text
+    body2 = LEADING_PARTICLE.sub("", body, count=1)
+    sentences = [x for x in _SENT_SPLIT.split(body2) if x.strip()]
+    kept = [x for x in sentences if not SOURCE_SENTENCE.search(x)]
+    body3 = " ".join(kept).strip()
+    return f"{title}{sep}{body3}" if body3 else title
 
 
 def build_envelopes(
@@ -147,8 +179,12 @@ def build_envelopes(
                 "n_risks": len(rs["risks"]), "evidence_ok": [bool(r.get("evidence_ok")) for r in rs["risks"]],
             })
             for r in rs["risks"]:
-                items.append((r["text"], {"system": rs["system"], "condition": rs["condition"], "rank": r["rank"],
+                items.append((normalize_risk_text(r["text"]), {"system": rs["system"], "condition": rs["condition"], "rank": r["rank"],
                                           "plan_work_id": rs["plan_work_id"], "evidence_ok": bool(r.get("evidence_ok"))}))
+        if not items:
+            # 모든 시스템이 위험 0개(실패)인 논문: 판정할 것이 없어 봉투를 만들지 않는다. 지표에서는 적중 0으로 센다
+            key.setdefault("empty_works", []).append(wid)
+            continue
         rng = random.Random(f"{seed}|{wid}")
         rng.shuffle(items)
         env_id = envelope_id_for(wid, seed)
@@ -203,6 +239,9 @@ def blind_violations(env: dict[str, Any]) -> list[str]:
         res = blind_residue(text)
         if res:
             p.append(f"{r.get('risk_id')}: 흔적 {res}")
+        _t, _sep, _body = text.partition(RISK_SEP)
+        if _sep and LEADING_PARTICLE.match(_body):
+            p.append(f"{r.get('risk_id')}: 설명 앞머리 조사(시스템 구분 단서)")
     return p
 
 

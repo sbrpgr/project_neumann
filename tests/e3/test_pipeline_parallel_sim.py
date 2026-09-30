@@ -73,7 +73,7 @@ def simulate(scale: float, parallel: bool) -> dict[str, Any]:
 
 
 def test_simulated_parallel_is_faster_and_same(monkeypatch):
-    scale = 0.02  # 12초 → 0.24초
+    scale = 0.05  # 12초 → 0.6초(부하 때 스레드 기동 지연이 단위에 비해 작도록. 0.02에서 과부하 시 간헐 실패)
     seq, par = simulate(scale, False), simulate(scale, True)
     assert seq["states"] == par["states"] and seq["calls"] == par["calls"]
     from tests.e3.test_pipeline_parallel import _dump

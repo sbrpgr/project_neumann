@@ -20,6 +20,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from neumann.api import export
 from neumann.api.export import FILE_NAMES, build_package, build_package_files, router
 from neumann.models import PremortemResult, sha256_text
 from tests.fixtures.loader import load_fixtures, plan_text
@@ -248,7 +249,7 @@ def test_degraded_stages_and_rule_cards_are_labelled_honestly() -> None:
     cards = base["risk_cards"]
     cards[0]["generator"] = "rule"
     cards[1]["generator"] = "astra"
-    cards[1]["model"] = "gpt-6-astra"
+    cards[1]["model"] = "gpt-6.1-sol"
     stages = base["stages"]
     stages[1].update(status="degraded", reason="astra 호출 시간 초과 → 규칙 태거", impl="fallback:rule_tagger")
     stages[2].update(status="error", reason="카드 합성 스키마 검증 실패")
@@ -260,22 +261,22 @@ def test_degraded_stages_and_rule_cards_are_labelled_honestly() -> None:
     report = text(files, "neumann_report.md")
     for doc in (readme, report):
         assert "**degraded**" in doc
-        assert "astra 호출 시간 초과 → 규칙 태거" in doc
+        assert "LLM 호출 시간 초과 → 규칙 태거" in doc  # 계약 이름 astra는 사람용 문서에서 LLM(DISP-1)
         assert "카드 합성 스키마 검증 실패" in doc
-        assert "**rule** 1장: 규칙(비상 경로" in doc and "LLM 결과가 아니다" in doc
-        assert "**astra** 1장: 제품 LLM(OpenAI, 모델은 manifest 참조)" in doc
-    assert "- C1 `card-fx-leak` — rule(규칙 비상 경로)" in readme
-    assert "- C2 `card-fx-seed` — astra(LLM), 모델 gpt-6-astra" in readme
+        assert "**비상 규칙** 1장: 규칙(비상 경로" in doc and "LLM 결과가 아니다" in doc
+        assert "**LLM (gpt-6.1-sol)** 1장: 제품 LLM(OpenAI, 모델은 manifest 참조)" in doc
+    assert "- C1 `card-fx-leak` — 비상 규칙" in readme
+    assert "- C2 `card-fx-seed` — LLM (gpt-6.1-sol)" in readme
     assert "| extract | degraded | fallback:rule_tagger |" in readme
     assert "| cards | error |" in readme
     # 규칙 카드를 LLM 카드로 적지 않는다
     rule_line = next(ln for ln in report.splitlines() if "카드 `card-fx-leak`" in ln)
-    assert "rule(규칙 비상 경로)" in rule_line and "astra" not in rule_line
+    assert "비상 규칙" in rule_line and "LLM" not in rule_line and "astra" not in rule_line
     manifest = as_json(files, "manifest.json")
     assert manifest["cards_by_generator"] == {"astra": 1, "rule": 1, "mock": 0}
     assert [s["name"] for s in manifest["not_ok_stages"]] == ["extract", "cards"]
     ai = text(files, "ai_context.md")
-    assert "generator: rule" in ai and "정상이 아닌 단계: extract: degraded" in ai
+    assert "생성: 비상 규칙" in ai and "정상이 아닌 단계: extract: degraded" in ai
 
 
 def test_status_error_without_cards() -> None:
@@ -326,7 +327,7 @@ def test_checklist_items_render_and_accept_item_decisions() -> None:
     decisions = [{"item_id": "A2", "card_id": "card-fx-seed", "decision": "보류", "note": "GPU 예산 확인 후"}]
     files = unzip(build_package(result, decisions=decisions))
     report = text(files, "neumann_report.md")
-    assert "- [A1] scaffold 기반 분할 추가 (카드 card-fx-leak · 계획서 줄 16 · 생성 rule)" in report
+    assert "- [A1] scaffold 기반 분할 추가 (카드 card-fx-leak · 계획서 줄 16 · 생성 비상 규칙)" in report
     assert "- [A2] 5회 반복 실험 평균±표준편차 보고 (R2) — 결정: 보류 — GPU 예산 확인" in report
     assert "카드 `card-fx-seed` · 행동 `A2`: 보류 — GPU 예산 확인 후" in report
     log = as_json(files, "decision_log.json")
@@ -410,20 +411,10 @@ def test_api_rejects_bad_input(client: TestClient) -> None:
     assert client.post("/premortem/package", json={"result": {}, "extra": 1}).status_code == 422
 
 
-def test_api_plan_text_without_pipeline_is_honest(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setitem(sys.modules, "neumann.pipeline", None)  # import가 실패하게
-    resp = client.post("/premortem/package", json={"plan_text": plan_text("plan.md")})
-    assert resp.status_code == 200
-    assert resp.headers["x-neumann-status"] == "error"
-    assert resp.headers["x-neumann-cards"] == "0"
-    files = unzip(resp.content)
-    readme = text(files, "README.md")
-    assert "분석 파이프라인 미연결" in readme and "위험카드 0장" in readme
-    assert "16 | We randomly split" in text(files, "plan_annotated.md")  # 카드는 없어도 줄 번호·본문은 담는다
-    assert as_json(files, "manifest.json")["cards_by_generator"] == {"astra": 0, "rule": 0, "mock": 0}
-
-
-def test_api_plan_text_uses_pipeline_when_available(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_api_plan_text_only_is_rejected_without_running_pipeline(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """SEC-1 S-02: plan_text만 오면 파이프라인을 돌리지 않고 422 + 사용자 문구(내보내기는 결과만 받는다)."""
     calls: list[str] = []
 
     def fake_run_premortem(text_in: str, *, session_id: str | None = None) -> PremortemResult:
@@ -434,21 +425,16 @@ def test_api_plan_text_uses_pipeline_when_available(client: TestClient, monkeypa
     module.run_premortem = fake_run_premortem  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "neumann.pipeline", module)
     resp = client.post("/premortem/package", json={"plan_text": plan_text("plan.md")})
+    assert resp.status_code == 422
+    assert calls == []
+    assert "분석 결과가 필요합니다" in resp.text
+    assert "We randomly split" not in resp.text  # 입력을 되돌려 보내지 않는다
+    assert not hasattr(export, "_run_pipeline")  # 파이프라인 실행 경로 자체가 없다
+
+
+def test_api_result_with_plan_text_still_packages(client: TestClient) -> None:
+    """result가 있으면 plan_text는 계획서 줄 번호용으로만 쓴다(파이프라인 실행 없음)."""
+    body = {"result": variant(plan=None).model_dump(mode="json"), "plan_text": plan_text("plan.md")}
+    resp = client.post("/premortem/package", json=body)
     assert resp.status_code == 200
-    assert calls == [plan_text("plan.md")]
-    assert resp.headers["x-neumann-cards"] == "2"
-
-
-def test_api_pipeline_exception_becomes_error_package(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    def boom(text_in: str, *, session_id: str | None = None) -> PremortemResult:
-        raise RuntimeError("internal detail that should not leak")
-
-    module = types.ModuleType("neumann.pipeline")
-    module.run_premortem = boom  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "neumann.pipeline", module)
-    resp = client.post("/premortem/package", json={"plan_text": plan_text("plan.md")})
-    assert resp.status_code == 200
-    assert resp.headers["x-neumann-status"] == "error"
-    readme = text(unzip(resp.content), "README.md")
-    assert "분석 파이프라인 오류(RuntimeError)" in readme
-    assert "internal detail" not in readme
+    assert "16 [C1] | We randomly split" in text(unzip(resp.content), "plan_annotated.md")
