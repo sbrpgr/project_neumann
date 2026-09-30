@@ -423,3 +423,56 @@ $ python scripts/verify.py
 테스트: 통과
 verify 통과
 ```
+
+## 재작업 3 (재검증 3: PASS-조건부 → 조건 해소)
+
+`git merge main`(`b01df0a`, E3-L1w 파이프라인 v1 포함, 충돌 없음) 뒤 문서만 고쳤다. 문서 기준 커밋은 `b01df0a`. 모든 python·pytest 명령에 `NEUMANN_LLM_PROVIDER=mock`을 명령줄로 붙이고 `OPENAI_API_KEY`·`NEUMANN_LIVE_TESTS`·`NEUMANN_EMBED_MODEL`을 `env -u`로 해제했다(설정 로더 출력 `provider mock has_key False`). 실제 OpenAI 호출 0회, 서버는 띄우지 않고 FastAPI TestClient로만 요청했다(포트 사용 0). `git stash`는 쓰지 않았다.
+
+| 조건 | 고친 것 |
+|---|---|
+| ① E3-L1w 반영 | ARCHITECTURE: "있음(모듈만)" 정의와 표기 전부 삭제(예상 심사평·게이트, 체크리스트·2차 검증, 적합성·PII 강화 → "있음"), 상태 표·§2·요청 흐름·모듈 지도의 단계를 10개(`plan_normalize → fitness → query_axes → search → extract_issues → synthesize_cards → verify_evidence → expected_review → checklist → semantic_validate`)로, 부적합이면 검색 전에 멈추고 나머지 `skipped`, LLM 호출 "세 곳" → 일곱 단계, "모듈만 있는 LLM 호출(연결 전)" → 뒤쪽 단계의 실패 동작(규칙·`unverified`, 생성 주체는 provider에서만). API: :60 문장 삭제, 머리 예시 설명을 `b01df0a`·mock·TestClient로, `/premortem` 예시를 mock으로 다시 받은 값(`neumann-e3-l1w`, 단계 10개, 근거 28·카드 6, `expected_review`·`checklist`·`verification`·`stage_limits_s`·`query_cache`)으로 교체, 부적합 예시를 "…; 검색 안 함, 8단계 skipped"로, `/view` `_status`·package 예시 수치(mock 6, `neumann-e3-l1w`) 갱신. README 초안 :132 메모 갱신 |
+| ② 백테스트·평가 모델 범위 | ARCHITECTURE §5: "백테스트는 gpt-6-astra로 쟀다" 삭제 → "LLM으로 잰 수치(Macro-F1 0.4864, 라이브 E2E, v0)는 gpt-6-astra, 백테스트는 일반 LLM 기준선 30편 생성만 gpt-6-astra(참고용), 측정은 보류(19:42: 재개하면 승인 뒤 Neumann·기준선 모두 gpt-6.1-sol로 15편)". RUNNING 환경변수 표 `NEUMANN_LLM_MODEL`: "LLM으로 잰 평가 수치(Macro-F1 0.4864, 라이브 E2E)는 gpt-6-astra" |
+| ③ SEC-3(`NEUMANN_LIVE_LLM_OK`) | main `b01df0a`에 없다(`grep NEUMANN_LIVE_LLM_OK src .env.example AGENTS.md` 0건). 지시대로 문서에 넣지 않고 아래 "다음"에 적었다 |
+| 권고 R2(테스트 수) | RUNNING 재측정 줄을 `1047 passed, 26 skipped`(main `b01df0a` 병합 상태, mock 명시, 두 폴더 지정)로 |
+
+재측정(mock, TestClient):
+
+```
+provider mock has_key False
+health connected {'pipeline': True, 'INPUT': True, 'EVIDENCE': True, 'RISK': True, 'REVIEW': True, 'ACTION': True, 'TRACE': True, 'llm': True, 'models': True, 'config': True}
+POST /premortem (plan.md) 1.69s
+{"status": "degraded", "pipeline_version": "neumann-e3-l1w", "plan_id": "3d35460def76…"}
+manifest llm_provider mock · llm_model mock-deterministic-v1 · prompt_versions query_axes.v1, extract_issues.v1, synthesize_cards.v3, expected_review@v1 · total_s 1.679 · query_cache {enabled false, hit false, stored false} · stage_limits_s {fitness 30, query_axes 45, expected_review 90, checklist 90, semantic_validate 90}
+stages plan_normalize ok · fitness ok(fit by mock) · query_axes ok · search degraded(어휘만) · extract_issues ok(폐기율 0.0%) · synthesize_cards ok · verify_evidence ok(근거 28/28 원문 일치) · expected_review ok(통과 8/8) · checklist ok · semantic_validate ok
+sw 10 ev 28 cards 6 ['mock'] · expected_review status ok, strength 0 · weakness 4 · request 4 · checklist 6
+POST /premortem (negative_recipe.md)
+degraded cards 0 "입력이 연구계획서가 아니다(mock 판단: mock: 연구 어휘 개수로 판정); 검색 안 함"
+stages plan_normalize ok, fitness ok, 나머지 8개 skipped
+POST /premortem/view (plan.md) _status
+{"source": "pipeline", "label": "일부 단계 강등", "degraded": true, "generators": {"mock": 6}, "contract_ok": true, "dropped": {}, "pipeline": "connected", "result_status": "degraded", "stages_not_ok": [search degraded]}
+POST /premortem/package (plan_text만)
+200 application/zip 9 degraded {'astra': 0, 'rule': 0, 'mock': 6} neumann-e3-l1w
+$ NEUMANN_LLM_PROVIDER=mock python -m pytest -q   (NEUMANN_RAW_DIR·NEUMANN_DATA_DIR 지정)
+1047 passed, 26 skipped in 90.68s
+$ grep -n "모듈만\|neumann-e3-l0\|세 곳\|백테스트는 `gpt-6-astra`로 쟀\|파일 올리기가 쓴다\|연결 전" (세 문서 + README 초안)
+(출력 없음)
+```
+
+### 다음 (PM)
+
+- **SEC-3가 main에 들어오면** RUNNING §2에 두 줄을 더한다: "실제 OpenAI 호출은 `NEUMANN_LIVE_LLM_OK=1`일 때만"(SEC-3 동작을 병합본에서 확인한 뒤 문구 확정), "셸·사용자 환경변수의 `NEUMANN_LLM_PROVIDER`·`NEUMANN_LLM_MODEL`은 `.env`와 코드 기본값보다 먼저 적용된다(설정 로더 우선순위). 이 노트북은 사용자 환경변수에 `openai`·`gpt-6-astra`가 남아 있을 수 있으니 시험 명령에는 `NEUMANN_LLM_PROVIDER=mock`을 명령줄로 붙인다".
+- 입력 화면 고지 문구(`webui/index.html`)에 "OpenAI API(gpt-6-astra)"가 남아 있다(제품 기본 모델은 gpt-6.1-sol). E4 몫.
+- E4-L1f(화면 업로드 연결)·E4-L2c(대기열·속도 제한)·E1-L1b(eLife)가 병합되면 해당 "예정" 표기를 고친다.
+
+## 최종 verify (재작업 3 후)
+
+worktree(`task/E6-docs`, main `b01df0a` 병합 상태, `NEUMANN_LLM_PROVIDER=mock` 명시, `OPENAI_API_KEY`·`NEUMANN_LIVE_TESTS` 해제, 데이터 폴더 환경변수 없음)에서 실행.
+
+```
+$ NEUMANN_LLM_PROVIDER=mock python scripts/verify.py
+1030 passed, 43 skipped in 74.23s (0:01:14)
+보안: 파일 364개
+계약: 2개
+테스트: 통과
+verify 통과
+```
