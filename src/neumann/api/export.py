@@ -47,6 +47,7 @@ from neumann.analyze.gate import EvidenceIndex, MALFORMED, NO_EVIDENCE_FAMILY, S
 from neumann.api.view import display_generator, display_text
 from neumann.api.plan_limits import check_embedded_plan, check_payload_plan
 from neumann.api import export_revision  # E3-L2r: ZIP에 덧붙이는 수정 권고·통합본 파일(선택)
+from neumann.api.export_title import content_disposition, plan_title
 from neumann.models import (
     SCHEMA_VERSION,
     Excerpt,
@@ -1119,7 +1120,7 @@ def _decision_log_json(c: _Ctx) -> bytes:
     )
 
 
-def _manifest_json(c: _Ctx, files: Mapping[str, bytes], created_at: datetime) -> bytes:
+def _manifest_json(c: _Ctx, files: Mapping[str, bytes], created_at: datetime, title: str) -> bytes:
     r = c.result
     return _json_bytes(
         {
@@ -1127,6 +1128,8 @@ def _manifest_json(c: _Ctx, files: Mapping[str, bytes], created_at: datetime) ->
             "schema_version": SCHEMA_VERSION,
             "created_at": _iso(created_at),
             "result_origin": c.origin,
+            "title": title,
+            "title_origin": "user_input_unsigned",
             **_plan_metadata(c),
             "result": {
                 "session_id": r.session_id,
@@ -1189,6 +1192,7 @@ def build_package_files(
     revision_sig: str | None = None,
     result_sig: str | None = None,
     meta: dict[str, Any] | None = None,
+    title: str | None = None,
 ) -> dict[str, bytes]:
     """9개 파일 {이름: 바이트}(FILE_NAMES 순서). 입력이 계약을 어기면 ValueError(ValidationError 포함).
 
@@ -1201,7 +1205,8 @@ def build_package_files(
         result = PremortemResult.model_validate(result)
     c = _make_ctx(result, plan_text, decisions, result_origin)
     c.composition = export_revision.compose(result, revision, revision_decisions, revised_plan, revision_sig, result_sig)
-    extras = export_revision.render_files(c.composition, result)
+    export_title = plan_title(revised_plan, title)
+    extras = export_revision.render_files(c.composition, result, title=export_title)
     c.extra_files = list(extras)
     c.extra_summary = export_revision.summary_of(c.composition)
     if meta is not None:
@@ -1222,8 +1227,11 @@ def build_package_files(
         head, separator, tail = files[name].decode("utf-8").partition("\n")
         files[name] = (head + separator + "\n" + _plan_authority_text(c) + "\n" + tail).encode("utf-8")
     files.update(extras)
+    # Title is user metadata: never imply the result/assembly signature covers it.
+    files["README.md"] += (f"\n## 계획서 제목\n\n{_one_line(export_title)}\n\n"
+                            "제목은 사용자 입력이며 서버 서명 대상이 아닙니다.\n").encode("utf-8")
     when = created_at or datetime.now(UTC).replace(microsecond=0)
-    files["manifest.json"] = _manifest_json(c, files, when)
+    files["manifest.json"] = _manifest_json(c, files, when, export_title)
     return {name: files[name] for name in (*FILE_NAMES, *c.extra_files)}
 
 
@@ -1348,6 +1356,7 @@ class PackageRequest(BaseModel):
     result: dict[str, Any] | None = None
     result_sig: str | None = Field(default=None, max_length=200, description="화면 응답의 서버 서명(v1.<hex>)")
     plan_text: str | None = Field(default=None, max_length=MAX_PLAN_CHARS)
+    title: str | None = Field(default=None, max_length=200, description="사용자 제목(서명 대상 아님)")
     decisions: list[dict[str, Any]] | None = None
     # E3-L2r(선택): 수정 권고·연구자 결정·통합본 → revision.json·revised_plan.md
     revision: dict[str, Any] | None = None
@@ -1362,10 +1371,6 @@ def _errors(exc: ValidationError) -> list[dict[str, Any]]:
         {"loc": list(e.get("loc", ())), "msg": e.get("msg", ""), "type": e.get("type", "")}
         for e in exc.errors(include_input=False, include_url=False)
     ]
-
-
-def _safe_filename_part(plan_id: str) -> str:
-    return re.sub(r"[^0-9A-Za-z_-]", "", plan_id)[:12] or "plan"
 
 
 @router.post(
@@ -1416,13 +1421,13 @@ def premortem_package(request: Request, payload: dict[str, Any] = Body(...)) -> 
                              result_origin=origin,
                              revision=req.revision, revision_decisions=req.revision_decisions,
                              revised_plan=req.revised_plan, revision_sig=req.revision_sig, result_sig=req.result_sig,
-                             meta=meta)
+                             meta=meta, title=req.title)
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=_errors(exc)) from None
     except ValueError as exc:  # 계약 위반·plan_id 불일치·없는 edit_id·결합 모순(B1-pairing PairingConflict)
         raise HTTPException(status_code=422, detail=str(exc)) from None
 
-    filename = f"neumann_package_{_safe_filename_part(result.plan_id)}.zip"
+    disposition = content_disposition("neumann_package", result.plan_id, plan_title(req.revised_plan, req.title), "zip")
     comp: export_revision.Composition = meta.get("composition") or export_revision.Composition()
     # B1-pairing: 덧붙인 파일의 출처는 결과 서명과 별개다(결합 검증을 거친 값). 화면은 이 헤더로 파일별 출처를 보일 수 있다.
     extra_headers = {name: value for name, value in (("X-Neumann-Revision-Origin", comp.revision_origin),
@@ -1431,7 +1436,7 @@ def premortem_package(request: Request, payload: dict[str, Any] = Body(...)) -> 
         content=data,
         media_type="application/zip",
         headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Disposition": disposition,
             "X-Neumann-Status": result.status,
             "X-Neumann-Cards": str(len(result.risk_cards)),
             "X-Neumann-Result-Origin": origin,
