@@ -1,0 +1,224 @@
+{
+  "plans": {
+    "plan.md": {
+      "http_status": 200,
+      "api_status": 200,
+      "source": "pipeline",
+      "result_status": "ok",
+      "n_cards": 5,
+      "generators": {
+        "astra": 5
+      },
+      "stages_not_ok": [],
+      "timings": {
+        "ui_response_s": 68.896,
+        "ui_total_s": 69.645,
+        "view_phase_s": {
+          "INPUT": 7.875,
+          "EVIDENCE": 30.665,
+          "RISK": 30.305,
+          "REVIEW": 0.0
+        },
+        "view_server_elapsed_s": 68.852,
+        "view_pipeline_total_s": 68.845,
+        "result_stage_s": {
+          "INPUT/plan_normalize": 0.0,
+          "INPUT/query_axes": 7.051,
+          "EVIDENCE/search": 0.143,
+          "EVIDENCE/extract_issues": 0.015,
+          "RISK/synthesize_cards": 22.264,
+          "REVIEW/verify_evidence": 0.0
+        },
+        "api_premortem_s": 29.493
+      },
+      "linkage": {
+        "summary": "근거 연결률 10/10 = 1.000 · 카드 통과 3/3 = 1.000 · 폐기율 1/643 = 0.002 (verification) · 실패 0건 · 판정 pass",
+        "verdict": "pass",
+        "linkage_rate": 1.0,
+        "links": "10/10",
+        "cards": "3/3",
+        "reason_counts": {},
+        "contract_valid": true
+      },
+      "shots": [
+        "E5-L0e2e_live_plan_input.png",
+        "E5-L0e2e_live_plan_report.png",
+        "E5-L0e2e_live_plan_cards.png"
+      ],
+      "browser": {
+        "console_errors": 0,
+        "page_errors": 0,
+        "external": 0,
+        "failed": 0
+      },
+      "failures": []
+    },
+    "plan_elife_neuro.md": {
+      "http_status": 200,
+      "api_status": 200,
+      "source": "pipeline",
+      "result_status": "ok",
+      "n_cards": 3,
+      "generators": {
+        "astra": 3
+      },
+      "stages_not_ok": [],
+      "timings": {
+        "ui_response_s": 61.315,
+        "ui_total_s": 62.046,
+        "view_phase_s": {
+          "INPUT": 7.249,
+          "EVIDENCE": 35.541,
+          "RISK": 18.472,
+          "REVIEW": 0.0
+        },
+        "view_server_elapsed_s": 61.268,
+        "view_pipeline_total_s": 61.262,
+        "result_stage_s": {
+          "INPUT/plan_normalize": 0.0,
+          "INPUT/query_axes": 7.913,
+          "EVIDENCE/search": 0.182,
+          "EVIDENCE/extract_issues": 26.552,
+          "RISK/synthesize_cards": 24.061,
+          "REVIEW/verify_evidence": 0.0
+        },
+        "api_premortem_s": 58.73
+      },
+      "linkage": {
+        "summary": "근거 연결률 13/13 = 1.000 · 카드 통과 4/4 = 1.000 · 폐기율 2/701 = 0.003 (verification) · 실패 0건 · 판정 pass",
+        "verdict": "pass",
+        "linkage_rate": 1.0,
+        "links": "13/13",
+        "cards": "4/4",
+        "reason_counts": {},
+        "contract_valid": true
+      },
+      "shots": [
+        "E5-L0e2e_live_plan_elife_neuro_input.png",
+        "E5-L0e2e_live_plan_elife_neuro_report.png",
+        "E5-L0e2e_live_plan_elife_neuro_cards.png"
+      ],
+      "browser": {
+        "console_errors": 0,
+        "page_errors": 0,
+        "external": 0,
+        "failed": 0
+      },
+      "failures": []
+    },
+    "plan_medimaging.md": {
+      "http_status": 200,
+      "api_status": 200,
+      "source": "pipeline",
+      "result_status": "ok",
+      "n_cards": 5,
+      "generators": {
+        "astra": 5
+      },
+      "stages_not_ok": [],
+      "timings": {
+        "ui_response_s": 64.322,
+        "ui_total_s": 65.096,
+        "view_phase_s": {
+          "INPUT": 6.532,
+          "EVIDENCE": 33.781,
+          "RISK": 23.96,
+          "REVIEW": 0.0
+        },
+        "view_server_elapsed_s": 64.283,
+        "view_pipeline_total_s": 64.273,
+        "result_stage_s": {
+          "INPUT/plan_normalize": 0.0,
+          "INPUT/query_axes": 6.523,
+          "EVIDENCE/search": 0.138,
+          "EVIDENCE/extract_issues": 14.676,
+          "RISK/synthesize_cards": 28.507,
+          "REVIEW/verify_evidence": 0.0
+        },
+        "api_premortem_s": 49.868
+      },
+      "linkage": {
+        "summary": "근거 연결률 20/20 = 1.000 · 카드 통과 5/5 = 1.000 · 폐기율 4/689 = 0.006 (verification) · 실패 0건 · 판정 pass",
+        "verdict": "pass",
+        "linkage_rate": 1.0,
+        "links": "20/20",
+        "cards": "5/5",
+        "reason_counts": {},
+        "contract_valid": true
+      },
+      "shots": [
+        "E5-L0e2e_live_plan_medimaging_input.png",
+        "E5-L0e2e_live_plan_medimaging_report.png",
+        "E5-L0e2e_live_plan_medimaging_cards.png"
+      ],
+      "browser": {
+        "console_errors": 0,
+        "page_errors": 0,
+        "external": 0,
+        "failed": 0
+      },
+      "failures": []
+    },
+    "negative_recipe.md": {
+      "http_status": 200,
+      "source": "pipeline",
+      "result_status": "ok",
+      "n_cards": 0,
+      "empty_reason": "입력이 연구계획서가 아니다(astra 판단: 재료와 조리 순서, 보관 방법을 적은 요리 메모로 연구 계획이 아닙니다.); 유사 연구 검색 상위 점수 0.249",
+      "zero_card_reasons": [
+        "입력이 연구계획서가 아니다(astra 판단: 재료와 조리 순서, 보관 방법을 적은 요리 메모로 연구 계획이 아닙니다.); 유사 연구 검색 상위 점수 0.249",
+        "위험카드 0장: 입력이 연구계획서가 아니다(astra 판단: 재료와 조리 순서, 보관 방법을 적은 요리 메모로 연구 계획이 아닙니다.); 유사 연구 검색 상위 점수 0.249"
+      ],
+      "timings": {
+        "ui_response_s": 3.675,
+        "ui_total_s": 4.433,
+        "view_phase_s": {
+          "INPUT": 3.606,
+          "EVIDENCE": 0.018,
+          "RISK": 0.0,
+          "REVIEW": 0.0
+        },
+        "view_server_elapsed_s": 3.628,
+        "view_pipeline_total_s": 3.624
+      },
+      "shots": [
+        "E5-L0e2e_live_negative_recipe_input.png",
+        "E5-L0e2e_live_negative_recipe_report.png",
+        "E5-L0e2e_live_negative_recipe_cards.png"
+      ],
+      "browser": {
+        "console_errors": 0,
+        "page_errors": 0,
+        "external": 0,
+        "failed": 0
+      },
+      "failures": []
+    }
+  },
+  "base_url": "http://127.0.0.1:8010/",
+  "timeout_s": 300.0,
+  "started_at": "2026-09-30T10:19:48+00:00",
+  "mode": "live",
+  "health": {
+    "pipeline": {
+      "state": "connected",
+      "reason": "",
+      "mode": "pipeline",
+      "label": ""
+    },
+    "version": "0.0.1",
+    "stages": {
+      "pipeline": true,
+      "INPUT": true,
+      "EVIDENCE": true,
+      "RISK": true,
+      "REVIEW": true,
+      "ACTION": true,
+      "TRACE": true,
+      "llm": true,
+      "models": true,
+      "config": true
+    }
+  },
+  "finished_at": "2026-09-30T10:25:34+00:00"
+}
