@@ -446,6 +446,111 @@
   .expmsg.err { color: var(--red); }
   .expwhy { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--red-l); color: var(--red-d); font-size: 13.5px; }
   @media print { #s-export { display: none !important; } }
+  /* ===== E4-L3m 반응형: 태블릿(≤900px) · 휴대폰(≤600px). 1181px 이상은 위 규칙 그대로 =====
+     좁은 화면의 근거 패널은 오른쪽 서랍(≤1180px): 떠 있는 버튼(.pfab)이나 근거 번호로 열고, 패널의 닫기(.pclose)·바깥·Esc로 닫는다 */
+  .pclose, .pfab { display: none; }
+  @media (max-width: 1180px) {
+    /* .wrap의 z-index:1이 쌓임 맥락을 만들어 서랍(z 31)이 scrim(z 30) 밑에 깔리던 것: 맥락을 풀어 서랍이 scrim 위로(종이 질감보다는 여전히 위, 문서 순서) */
+    .wrap { z-index: auto; }
+    .panel { height: auto; visibility: hidden; transition: transform .25s, visibility 0s linear .25s; }
+    body.popen .panel { visibility: visible; transition: transform .25s; }
+    .ptabs { align-items: center; }
+    .ptabs button { height: 44px; }  /* 터치 대상 44px(탭·닫기) */
+    .ptabs .pclose { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; padding: 0 4px; color: var(--text2); }
+    .ptabs .pclose:hover { color: var(--ink); }
+    .pfab { display: inline-flex; position: fixed; right: 16px; bottom: 16px; z-index: 25; box-shadow: 0 2px 10px rgba(20,22,26,.16); }
+    .btn.sm.pfab { height: 44px; padding: 0 16px; }  /* 터치 대상 44px(.btn.sm 32px를 이긴다) */
+    body.popen .pfab { display: none; }
+    body[data-view="report"] .foot { padding-bottom: 84px; }  /* 맨 아래에서 떠 있는 버튼(16+44px)이 푸터를 가리지 않게 */
+    /* 추적: 64자 세션 해시가 칸을 밀어 601~1180px에서 가로로 넘치던 것 */
+    .trace { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .trace .mono { word-break: break-all; }
+  }
+  @media (max-width: 900px) {
+    .top { height: auto; min-height: 60px; flex-wrap: wrap; gap: 4px 18px; padding: 8px 16px; }
+    .steps { order: 3; width: 100%; margin-left: 0; flex-wrap: wrap; gap: 2px 20px; }
+    .wrap { padding: 20px 16px 72px 16px; }
+    .doc section { scroll-margin-top: 110px; }
+    .hero .title { font-size: 40px; }
+    .hero h1 { font-size: 24px; }
+    .idx { flex-wrap: wrap; row-gap: 4px; }
+    .audit .del { grid-column: 1 / -1; border-left: none; border-top: 1px solid var(--line); padding: 10px 0 0 0; }
+    .foot { padding: 24px 16px 36px 16px; }
+  }
+  @media (max-width: 600px) {
+    /* 상단바: 두세 줄로 접히니 따라오지 않게(sticky 해제). 영문 부제는 숨긴다 */
+    .top { position: relative; gap: 2px 12px; }
+    .wordmark .w { font-size: 30px; }
+    .wordmark .ws { display: none; }
+    .top .r { margin-left: auto; gap: 10px; }
+    .top .r > * + * { padding-left: 10px; }
+    .steps { gap: 2px 14px; }
+    .stp { font-size: 12.5px; letter-spacing: .03em; padding: 12px 0; }  /* 터치 대상 44px 가까이 */
+    .doc section { scroll-margin-top: 12px; }
+    .wrap { padding: 16px 16px 72px 16px; }
+    /* 입력 */
+    .scope { font-size: 12.5px; }
+    .hero { margin: 16px 0 20px 0; }
+    .hero .title { font-size: 30px; }
+    .hero .by { font-size: 11.5px; letter-spacing: .12em; }
+    .hero h1 { font-size: 19px; margin-top: 16px; }
+    #inCard { padding: 16px 14px 18px 14px !important; }
+    .tprow { flex-direction: column; align-items: stretch; gap: 2px; }
+    .tprow .optl { width: auto; }
+    .tpls { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; }
+    .exs { flex-direction: column; align-items: flex-start; gap: 6px; }
+    textarea.ta { min-height: 240px; padding: 12px; font-size: 16px; }  /* iOS는 16px 미만 입력칸에 초점이 가면 화면을 확대한다 */
+    .drop { padding: 16px 14px; }
+    .sendnote summary { gap: 10px; }
+    html { scroll-padding-bottom: 96px; }
+    html:has(#sendNote[open]) { scroll-padding-bottom: 200px; }
+    /* 대기 */
+    body[data-view="job"] .hero h1 { font-size: 24px !important; flex-wrap: wrap; row-gap: 4px; }
+    .tn { grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; }
+    .tn .msg { grid-column: 1 / -1; grid-row: 2; }
+    .log { padding: 12px; font-size: 12px; }
+    /* 리포트 */
+    #repTitle { font-size: 23px !important; }
+    .idx { gap: 0; margin: 14px 0 18px 0; }
+    .idx a { padding: 6px 8px; letter-spacing: .04em; }
+    .sec { flex-wrap: wrap; gap: 2px 10px; }
+    .sec h2 { font-size: 20px; }
+    .strip { grid-template-columns: repeat(10, minmax(0, 1fr)); }
+    .strip .c { height: 32px; }
+    .kpiline { gap: 14px 24px; }
+    .kpiline .k .v { font-size: 26px; }
+    .t3 { grid-template-columns: 34px minmax(0, 1fr) auto; gap: 10px; padding: 12px 14px; }
+    .t3 .rk { font-size: 24px; }
+    .corp { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .rc { padding: 16px 14px; }
+    .rc .hd { grid-template-columns: 38px minmax(0, 1fr) auto; gap: 10px; }
+    .rc .hd .rk { font-size: 30px; }
+    .rc .hd h3 { font-size: 18px; }
+    .rc .score .v { font-size: 22px; }
+    .kv { grid-template-columns: 72px minmax(0, 1fr); gap: 6px 10px; }
+    .ev .q { font-size: 16px; }
+    .oth { padding: 4px 14px; }
+    .rev { padding: 16px 14px; }
+    .rev .g p { font-size: 15px; line-height: 1.8; }
+    .audit { padding: 14px; }
+    /* 체크리스트: 번호 | 행동(전체 폭) / 위험 · 결정 두 줄 */
+    .ck.head { display: none; }
+    .ck { grid-template-columns: 30px minmax(0, 1fr) auto; gap: 6px 10px; padding: 12px 14px; align-items: start; }
+    .ck > :nth-child(1) { grid-row: 1 / span 2; padding-top: 2px; }
+    .ck > :nth-child(2) { grid-column: 2 / -1; }
+    .ck > :nth-child(3) { grid-column: 2; grid-row: 2; }
+    .ck > :nth-child(4) { grid-column: 3; grid-row: 2; }
+    .dec { height: 44px; padding: 0 14px; }
+    /* 근거 번호·행 번호: 글줄은 그대로 두고 누르는 자리만 위아래 12px 넓힌다(20px → 44px) */
+    .cite, .lref { position: relative; }
+    .cite::after, .lref::after { content: ""; position: absolute; left: 0; right: 0; top: -12px; bottom: -12px; }
+    .trace { grid-template-columns: minmax(0, 1fr); }
+    /* 근거 패널: 화면 전체 서랍 */
+    .panel { width: 100%; max-width: none; border-left: none; }
+    .pbody { padding: 14px 4px 24px 4px; }
+    .foot .sc { font-size: 20px; padding: 0 6px; }
+    .modal .box { max-width: calc(100vw - 32px); }
+  }
 </style>
 </head>
 <body data-view="boot">
@@ -844,7 +949,7 @@
       '<div id="traceRecords"><div class="k">Records</div>' + (st.records ? '결정·평점: 코퍼스 기록 조회 <span class="mono">' + esc(st.records.source) + '</span><br>' + esc(Object.keys(st.records.filled || {}).map(function (k) { return k + ' ' + st.records.filled[k]; }).join(' · ') || '채운 값 없음') : '결정·평점: 분석 결과 값만') + '</div>' +
       '<div><div class="k">Verify</div>' + (st.verification ? '원문 대조 ' + esc(st.verification.verified == null ? '—' : st.verification.verified) + ' / ' + esc(st.verification.total == null ? '—' : st.verification.total) + (st.verification.stage ? ' · verify_evidence ' + esc(st.verification.stage) : '') : '원문 대조 기록 없음') + '</div></div>' +
       '<div class="sm muted" style="margin-top:14px; padding-top:12px; border-top:1px solid var(--line);">모든 출력은 \'문서화된 위험 신호\'이며 특정 저자·리뷰어에 대한 판단이 아닙니다. 리뷰어는 익명 번호로만 표기됩니다. 최종 판단은 연구자에게 있습니다.</div></div></section>';
-    var panel = '<aside class="panel card" style="padding:12px;"><div class="ptabs"><button class="' + (S.ptab === 'ev' ? 'on' : '') + '" data-ptab="ev" type="button">근거</button><button class="' + (S.ptab === 'plan' ? 'on' : '') + '" data-ptab="plan" type="button">계획서</button></div><div class="pbody" id="pbody"></div></aside>';
+    var panel = '<aside class="panel card" style="padding:12px;"><div class="ptabs"><button class="' + (S.ptab === 'ev' ? 'on' : '') + '" data-ptab="ev" type="button">근거</button><button class="' + (S.ptab === 'plan' ? 'on' : '') + '" data-ptab="plan" type="button">계획서</button><button class="pclose" data-pclose="1" type="button" aria-label="패널 닫기">닫기 ✕</button></div><div class="pbody" id="pbody"></div></aside><button class="btn sm pfab" data-popen="1" type="button">근거 · 계획서</button>';
     var planApp = '<section id="s-plan" class="print-only"><div class="sec"><span class="num">§</span><h2>부록 · 계획서 원문</h2><span class="d">' + esc(D.plan.file) + ' · 붉은 밑줄 = 위험카드가 대응하는 문장</span></div><div class="card" style="padding:16px 18px;">' + docLines(null) + '</div></section>';
     return '<div class="rep"><article class="doc">' + summary + map + cardsSec + review + check + trace + expHtml() + planApp + '</article>' + panel + '</div>';
   }
@@ -1026,10 +1131,32 @@
     document.body.dataset.ready = '1';
   }
   function newAnalysis() { closeAll(); D = null; S.text = ''; S.filename = ''; S.fileMeta = ''; S.inErr = ''; S.job = null; S.ev = null; S.line = null; S.ptab = 'plan'; S.maxStep = 0; go(0); }
-  function openPanel() { document.body.classList.add('popen'); }
-  function closeAll() { document.body.classList.remove('popen'); }
+  /* 좁은 화면(패널이 fixed 서랍일 때만): 열면 현재 탭으로 초점, 열린 동안 Tab은 서랍 안에서 돈다, 닫으면 연 요소로 되돌린다 */
+  var opener = null;
+  function drawer() { var p = document.querySelector('.panel'); return !!p && getComputedStyle(p).position === 'fixed'; }
+  function panelFocusables(p) { return Array.prototype.filter.call(p.querySelectorAll('button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'), function (el) { return el.getClientRects().length > 0; }); }
+  function openPanel() {
+    var was = document.body.classList.contains('popen');
+    document.body.classList.add('popen');
+    if (was || !drawer()) return;
+    var p = document.querySelector('.panel'), a = document.activeElement;
+    opener = a && a !== document.body && !p.contains(a) ? a : null;
+    p.setAttribute('role', 'dialog'); p.setAttribute('aria-modal', 'true'); p.setAttribute('aria-label', '근거 패널');
+    var t = p.querySelector('.ptabs button.on') || p.querySelector('.ptabs button');
+    if (t) t.focus({ preventScroll: true });
+  }
+  function closeAll() {
+    var was = document.body.classList.contains('popen'), dr = was && drawer();
+    document.body.classList.remove('popen');
+    var p = document.querySelector('.panel');
+    if (p) { p.removeAttribute('role'); p.removeAttribute('aria-modal'); p.removeAttribute('aria-label'); }
+    var o = opener && document.contains(opener) ? opener : document.querySelector('.pfab'); opener = null;
+    if (dr && o) o.focus({ preventScroll: true });
+  }
   document.addEventListener('click', function (ev) {
     var t;
+    if (ev.target.closest('[data-pclose]')) { closeAll(); return; }
+    if (ev.target.closest('[data-popen]')) { renderPanel(); openPanel(); return; }
     if ((t = ev.target.closest('[data-ev]'))) { S.ev = t.dataset.ev; S.ptab = 'ev'; document.querySelectorAll('.cite').forEach(function (c) { c.classList.toggle('on', c.dataset.ev === S.ev); }); document.querySelectorAll('.ptabs button').forEach(function (b) { b.classList.toggle('on', b.dataset.ptab === 'ev'); }); renderPanel(); openPanel(); return; }
     if ((t = ev.target.closest('[data-line]'))) { S.line = +t.dataset.line; S.ptab = 'plan'; document.querySelectorAll('.ptabs button').forEach(function (b) { b.classList.toggle('on', b.dataset.ptab === 'plan'); }); renderPanel(); openPanel(); return; }
     if ((t = ev.target.closest('[data-ptab]'))) { S.ptab = t.dataset.ptab; document.querySelectorAll('.ptabs button').forEach(function (b) { b.classList.toggle('on', b === t); }); renderPanel(); return; }
@@ -1039,7 +1166,15 @@
     if ((t = ev.target.closest('.dec'))) { var it = D.checklist[+t.dataset.i]; it.s = order[(order.indexOf(it.s) + 1) % 3]; t.dataset.s = it.s; t.textContent = it.s; var c = ckCounts(), sum = $('ckSum'); if (sum) sum.innerHTML = '채택 <strong>' + c['채택'] + '</strong> · 보류 <strong>' + c['보류'] + '</strong> · 기각 <strong>' + c['기각'] + '</strong>'; return; }
   });
   $('scrim').addEventListener('click', closeAll);
-  document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') closeAll(); });
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape') { closeAll(); return; }
+    if (ev.key !== 'Tab' || !document.body.classList.contains('popen') || !drawer()) return;
+    var p = document.querySelector('.panel'), f = panelFocusables(p), a = document.activeElement;
+    if (!f.length) return;
+    if (!p.contains(a)) { ev.preventDefault(); f[0].focus(); }
+    else if (ev.shiftKey && a === f[0]) { ev.preventDefault(); f[f.length - 1].focus(); }
+    else if (!ev.shiftKey && a === f[f.length - 1]) { ev.preventDefault(); f[0].focus(); }
+  });
   renderSteps(); render(); loadHealth(); loadTemplates();
 })();
 </script>
