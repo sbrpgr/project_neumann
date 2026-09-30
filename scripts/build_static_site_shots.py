@@ -5,7 +5,8 @@
 - GitHub Pages와 같은 하위 경로를 흉내 낸다: 임시 폴더에 ``project_neumann/``으로 복사하고
   ``http://127.0.0.1:<port>/project_neumann/``을 연다(상대 경로가 깨지면 여기서 드러난다).
 - 1440×900, 렌더 완료 DOM 조건을 기다린 뒤 찍는다: 입력(데모 선택) → 데모 1 리포트 → 위험카드·근거 패널.
-- 데모 3건을 모두 돌려 리포트에 "라이브 분석 아님" 표시가 나오는지, 데모 밖 입력이 거절되는지 잰다.
+- 데모(E6-L3d: AI4S 3건 + 범위 밖 1건)를 모두 돌려 리포트에 "라이브 분석 아님" 표시가 나오는지, 데모 밖 입력이
+  거절되는지 잰다. 데모마다 리포트 상단을 ``<prefix>_report_<n>.png``로 찍고 상단 배지(``#statusNotice b``)를 남긴다.
 - 화면이 템플릿 선택기(GET templates, E4-L1b)를 쓰면: 목록이 정적 JSON으로 뜨는지, 골격을 고르면 본문이 바뀌고
   실행이 막히는지(분석 결과는 데모뿐), 예시를 고르면 데모와 맞아 실행이 열리는지 잰다.
 - 콘솔 오류·페이지 오류·실패 요청(4xx/5xx 포함)·외부 도메인 요청을 기록한다. 하나라도 있으면 exit 1.
@@ -169,6 +170,8 @@ def shoot(base: str, out: Path, prefix: str) -> dict:
             page.wait_for_load_state("networkidle")
             dom = page.evaluate("""() => ({
                 notice: document.getElementById('statusNotice').textContent,
+                badge: (document.querySelector('#statusNotice b') || {}).textContent || '',
+                no_cards: (document.getElementById('noCards') || {}).textContent || '',
                 title: (document.getElementById('repTitle') || {}).textContent || '',
                 cards: document.querySelectorAll('#s-cards .rc').length,
                 works_rows: document.querySelectorAll('table.map tbody tr:not(.tf)').length,
@@ -179,6 +182,9 @@ def shoot(base: str, out: Path, prefix: str) -> dict:
             dom["demo"] = i
             dom["live_note_shown"] = "라이브 분석 아님" in dom["notice"]
             res["reports"].append(dom)
+            page.evaluate("window.scrollTo(0, 0)")
+            page.wait_for_timeout(150)
+            page.screenshot(path=str(out / f"{prefix}_report_{i + 1}.png"))
             if i == 0:
                 res["fonts_report"] = page.evaluate(f"{json.dumps(FONTS)}.map(f => document.fonts.check(f))")
                 page.screenshot(path=str(out / f"{prefix}_report.png"))
@@ -256,7 +262,8 @@ def main() -> int:
                   and ex.get("start_enabled") is True and ex.get("demo") not in (None, "-1"))
     result["templates_ok"] = tpl_ok
     print(json.dumps(result, ensure_ascii=False, indent=1))
-    ok = (not bad and tpl_ok and len(reports) == 3 and all(r["live_note_shown"] for r in reports)
+    ok = (not bad and tpl_ok and len(reports) >= 3 and len(reports) == len(inp.get("demos", []))
+          and all(r["live_note_shown"] for r in reports)
           and result.get("input", {}).get("textarea_readonly") and result.get("non_demo", {}).get("status") == 404)
     print("shots:", "통과" if ok else "실패")
     return 0 if ok else 1

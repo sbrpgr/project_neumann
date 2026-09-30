@@ -8,9 +8,11 @@
   1) ``<head>``: 데모 목록 ``window.NEUMANN_STATIC`` + ``fetch`` 가로채기(``health`` → 정적 상태,
      ``premortem/view`` → ``demo/<id>.json``을 상대 경로로 읽음)
   2) 헤더 아래: "정적 판 · 사전 계산본 — 라이브 분석 아님" 띠
-  3) ``</body>`` 앞: 입력 화면을 데모 3건 선택으로 바꾼다(본문 읽기 전용, 파일 업로드 숨김)
-- 데모 3건(``tests/fixtures/plans``)마다 사전 계산본(``<data>/precomputed/``, E6-L2a)을 찾고,
-  없거나 검증에 실패하면 공용 fixture 결과(가짜 데이터)로 채우되 화면·JSON에 그렇다고 적는다.
+  3) ``</body>`` 앞: 입력 화면을 데모 선택으로 바꾼다(본문 읽기 전용, 파일 업로드 숨김)
+- 데모(E6-L3d: AI4S 예시 3건 + 범위 밖 1건, ``DEMO_PLANS``)마다 사전 계산본(``<data>/precomputed/``, E6-L2a)을
+  찾고, 없거나 검증에 실패하면 공용 fixture 결과(가짜 데이터)로 채우되 화면·JSON에 그렇다고 적는다.
+- 사전 계산본이 라이브 E2E 결과(매니페스트 source ``live_e2e``, ``precompute_demo.py --from-results``)면
+  "사전 계산본(라이브 서버, <모델>, <시각>)" 배지를 데모 선택·리포트 상단·띠에 띄운다. mock·규칙 대체는 그대로 적는다.
 - 모든 경로는 상대 경로라 GitHub Pages 하위 경로(``/project_neumann/``)에서도 돈다.
 - 빌드 뒤 ``check_site``가 자동 검사한다: 필수 파일, 비밀값 패턴·실제 비밀값, 환경변수 이름,
   로컬 절대 경로, 외부 도메인·루트 절대 경로 참조. 하나라도 걸리면 exit 1(찾은 값은 출력하지 않는다).
@@ -45,8 +47,16 @@ from neumann.models import PlanDocument, PremortemResult  # noqa: E402
 WEBUI_DIR = ROOT / "src" / "neumann" / "webui"
 FIXTURE_RESULT = ROOT / "tests" / "fixtures" / "premortem_result.json"
 PLANS_DIR = ROOT / "tests" / "fixtures" / "plans"
-DEMO_PLANS = ("plan.md", "plan_elife_neuro.md", "plan_medimaging.md")
+# 저장소 루트 기준 경로(E6-L3d, 대표 지시: AI4S 3건 + 범위 밖 1건. 옛 fMRI·의료영상은 뺐다). precompute_demo와 같다
+DEMO_PLANS = (
+    "tests/fixtures/plans/plan.md",
+    "src/neumann/api/templates/examples/protein_ligand_affinity.md",
+    "src/neumann/api/templates/examples/neural_operator_weather.md",
+    "tests/fixtures/plans/negative_recipe.md",
+)
+OUT_OF_SCOPE_PLANS = frozenset({"negative_recipe.md"})
 FIXTURE_PLAN = "plan.md"  # 공용 fixture 결과가 기준으로 삼은 계획서
+LIVE_ORIGIN = "live_e2e"
 MANIFEST_NAMES = ("manifest.json", "index.json", "_manifest.json")
 SUBSTITUTE_ORIGINS = ("fixture", "sample", "mock", "fallback")
 BUILD_MARK = "build.json"
@@ -54,9 +64,9 @@ KST = timezone(timedelta(hours=9), "KST")
 
 LIVE_NOTE = "라이브 분석 아님"
 SITE_TITLE_SUFFIX = " (정적 데모 · 사전 계산본)"
-INPUT_NOTE = ("정적 판: 미리 계산해 둔 데모 3건 중 하나를 고르면 본문이 채워집니다. "
+INPUT_NOTE = ("정적 판: 미리 계산해 둔 데모 중 하나를 고르면 본문이 채워집니다. "
               "본문 수정·파일 업로드·라이브 분석은 서버 판에서만 됩니다.")
-NOT_DEMO_NOTE = ("정적 판: 템플릿 골격은 보기만 할 수 있습니다. 분석 결과(사전 계산본)는 데모 3건에만 있어 "
+NOT_DEMO_NOTE = ("정적 판: 템플릿 골격은 보기만 할 수 있습니다. 분석 결과(사전 계산본)는 위 데모에만 있어 "
                  "위 데모나 '예시 불러오기'를 고르면 실행할 수 있습니다.")
 TEMPLATE_ID = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")  # api/templates.py의 id 규칙(파일 이름으로 쓴다)
 TEMPLATES_INDEX = "templates.json"
@@ -75,10 +85,13 @@ class Demo:
     title: str
     plan_text: str
     plan_id: str
+    role: str = "demo"  # demo | out_of_scope(범위 밖 입력 예시)
+    path: str = ""  # 저장소 루트 기준 경로
     kind: str = "fixture"  # precomputed | fixture
     result: dict[str, Any] = field(default_factory=dict)
     generated_at: str = ""
     model: str = ""
+    provider: str = ""  # 결과 manifest.llm_provider(있을 때)
     origin: str = ""
     reason: str = ""
     manifest_sha_ok: bool | None = None
@@ -86,8 +99,24 @@ class Demo:
 
     @property
     def substitute(self) -> bool:
-        """실제 분석이 아닌 결과(공용 fixture 폴백, 또는 사전 계산본 자체가 fixture·mock 대체)."""
-        return self.kind != "precomputed" or any(s in self.origin.lower() for s in SUBSTITUTE_ORIGINS)
+        """실제 분석이 아닌 결과(공용 fixture 폴백, 사전 계산본 자체가 fixture·mock 대체, 또는 mock provider 결과)."""
+        return (self.kind != "precomputed" or any(s in self.origin.lower() for s in SUBSTITUTE_ORIGINS)
+                or self.provider.lower() == "mock")
+
+    @property
+    def live(self) -> bool:
+        """라이브 서버 결과를 가져온 사전 계산본(E6-L3d)."""
+        return self.kind == "precomputed" and self.origin == LIVE_ORIGIN
+
+    @property
+    def llm_model(self) -> str:
+        """결과 manifest.llm_model 그대로(배지 표기용, provider 괄호 없이). 없으면 모델 표기."""
+        man = self.result.get("manifest") or {}
+        return str(man.get("llm_model") or self.model or "모델 미기록")
+
+    @property
+    def rule_cards(self) -> int:
+        return sum(1 for c in self.result.get("risk_cards", []) if c.get("generator") == "rule")
 
 
 def _sha256_bytes(data: bytes) -> str:
@@ -100,12 +129,15 @@ def _plan_title(text: str) -> str:
     return re.sub(r"^연구계획서\s*\(예시\)\s*[—\-:]\s*", "", title) or title
 
 
-def load_demos(plans_dir: Path = PLANS_DIR, names: Iterable[str] = DEMO_PLANS) -> list[Demo]:
+def load_demos(plans_dir: Path = ROOT, names: Iterable[str] = DEMO_PLANS) -> list[Demo]:
+    """names는 plans_dir 기준 상대 경로(기본: 저장소 루트 기준 DEMO_PLANS)."""
     demos = []
     for name in names:
         text = (plans_dir / name).read_text(encoding="utf-8")
-        demos.append(Demo(demo_id=Path(name).stem, file=name, title=_plan_title(text), plan_text=text,
-                          plan_id=PlanDocument.from_text(text, "static").plan_id))
+        file = Path(name).name
+        demos.append(Demo(demo_id=Path(name).stem, file=file, title=_plan_title(text), plan_text=text,
+                          plan_id=PlanDocument.from_text(text, "static").plan_id,
+                          role="out_of_scope" if file in OUT_OF_SCOPE_PLANS else "demo", path=Path(name).as_posix()))
     return demos
 
 
@@ -166,12 +198,18 @@ def _fmt_time(value: Any) -> str:
     return dt.astimezone(KST).strftime("%Y-%m-%d %H:%M KST")
 
 
+def _provider_of(result: Mapping[str, Any]) -> str:
+    man = result.get("manifest") or {}
+    return str(_first(man, "llm_provider", "model_provider", "provider") or "")
+
+
 def _model_of(result: Mapping[str, Any], entry: Mapping[str, Any] | None) -> str:
     man = result.get("manifest") or {}
     models = (entry or {}).get("models")
-    model = (_first(man, "model_id", "model") or _first(entry or {}, "model_id", "model")
+    model = (_first(man, "llm_model", "model_id", "model") or _first(entry or {}, "model_id", "model")
              or (", ".join(map(str, models)) if isinstance(models, list) and models else None))
-    provider = _first(man, "model_provider", "provider") or _first(entry or {}, "model_provider", "provider")
+    provider = (_first(man, "llm_provider", "model_provider", "provider")
+                or _first(entry or {}, "model_provider", "provider"))
     if model:
         return f"{model}" + (f" ({provider})" if provider and str(provider) not in str(model) else "")
     gens = sorted({str(c.get("generator", "")) for c in result.get("risk_cards", []) if c.get("generator")})
@@ -261,6 +299,14 @@ def resolve_demo(demo: Demo, pre_dir: Path | None, fixture_path: Path = FIXTURE_
         demo.result = result
         demo.generated_at = str(result.get("generated_at") or _first(entry or {}, "generated_at", "created_at") or "")
         demo.model = _model_of(result, entry)
+        demo.provider = _provider_of(result)
+        if demo.live:
+            port = ((entry or {}).get("live") or {}).get("server_port")
+            demo.notices.append(f"라이브 서버{f'({port})' if port else ''}에서 {demo.llm_model}로 분석한 결과를 "
+                                f"{_fmt_time(demo.generated_at) or '시각 미기록'}에 저장해 둔 사전 계산본이다. "
+                                "이 화면은 서버에 다시 묻지 않는다.")
+            if demo.rule_cards:
+                demo.notices.append(f"카드 {demo.rule_cards}장은 규칙 합성(비상 경로)이다.")
         if demo.manifest_sha_ok:
             demo.notices.append(f"사전 계산본 sha256이 매니페스트({entry.get('_manifest')})와 같다.")
         else:
@@ -275,14 +321,28 @@ def resolve_demo(demo: Demo, pre_dir: Path | None, fixture_path: Path = FIXTURE_
     demo.result = PremortemResult.model_validate(data).model_dump(mode="json")
     demo.generated_at = str(demo.result.get("generated_at") or "")
     demo.model = _model_of(demo.result, None)
+    demo.provider = _provider_of(demo.result)
     demo.notices.append(f"사전 계산본을 쓰지 못함: {why}.")
     if demo.file != FIXTURE_PLAN:
         demo.notices.append(f"아래 화면은 이 계획서({demo.file})가 아니라 예시 계획서({FIXTURE_PLAN}) 기준의 공용 fixture(가짜 데이터)다.")
     return demo
 
 
+def live_badge(demo: Demo) -> str:
+    """E6-L3d 배지: "사전 계산본(라이브 서버, gpt-6.1-sol, 2026-09-30 21:20 KST)". mock·규칙 대체는 덧붙인다."""
+    when = _fmt_time(demo.generated_at) or "시각 미기록"
+    extra = []
+    if demo.provider.lower() == "mock":
+        extra.append("mock 결과 · 가짜 데이터")
+    if demo.rule_cards:
+        extra.append(f"규칙 대체 {demo.rule_cards}장")
+    return f"사전 계산본(라이브 서버, {demo.llm_model}, {when})" + (f" · {' · '.join(extra)}" if extra else "")
+
+
 def demo_label(demo: Demo) -> str:
     when = _fmt_time(demo.generated_at) or "생성 시각 미기록"
+    if demo.live:
+        return f"{live_badge(demo)} — {LIVE_NOTE}"
     if demo.kind == "precomputed" and not demo.substitute:
         return f"사전 계산본(생성 {when} · 모델 {demo.model}) — {LIVE_NOTE}"
     if demo.kind == "precomputed":
@@ -292,6 +352,8 @@ def demo_label(demo: Demo) -> str:
 
 def demo_badge(demo: Demo) -> str:
     when = _fmt_time(demo.generated_at) or "시각 미기록"
+    if demo.live:
+        return live_badge(demo)
     if demo.kind == "precomputed" and not demo.substitute:
         return f"사전 계산본 · {when} · {demo.model}"
     if demo.kind == "precomputed":
@@ -318,7 +380,7 @@ def make_view(demo: Demo, build_view: ViewBuilder, validate: Validator | None, b
     st["label"] = demo_label(demo)
     st["static"] = {
         "kind": demo.kind, "substitute": demo.substitute, "demo_id": demo.demo_id, "file": demo.file,
-        "origin": demo.origin,
+        "role": demo.role, "origin": demo.origin, "live_source": demo.live, "provider": demo.provider,
         "generated_at": demo.generated_at, "generated_kst": _fmt_time(demo.generated_at), "model": demo.model,
         "reason": demo.reason, "manifest_sha256_ok": demo.manifest_sha_ok, "built_at": built_at, "live": False,
     }
@@ -335,13 +397,14 @@ STATIC_CSS = """
   /* ===== 정적 판(E6-L3a 빌드 주입) ===== */
   .sbanner { position: relative; z-index: 1; padding: 8px 36px; border-bottom: 1px solid var(--red-l); background: var(--bg); color: var(--red-d); font-size: 13px; text-align: center; line-height: 1.6; }
   .sbanner b { font-family: var(--head); font-weight: 600; letter-spacing: .04em; color: var(--red); margin-right: 8px; }
-  .sdemos { flex: 1 1 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .sdemos { flex: 1 1 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
   .sdemo { text-align: left; padding: 10px 12px; border: 1px solid var(--line2); border-radius: 3px; background: var(--card); line-height: 1.45; }
   .sdemo:hover { border-color: var(--ink); }
   .sdemo .n { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; color: var(--muted); }
   .sdemo .t { display: block; font-family: var(--head); font-weight: 600; font-size: 14px; color: var(--ink); margin: 2px 0 4px 0; }
   .sdemo .m { display: block; font-size: 12px; color: var(--green); }
   .sdemo .m.fx { color: var(--red); }
+  .sdemo.oos .n { color: var(--red-d); }
   .sdemo.on { border-color: var(--ink); box-shadow: inset 0 -3px 0 var(--red); }
   .snote { font-size: 12.5px; color: var(--text2); margin: 10px 0; }
   .snote.warn { color: var(--red-d); }
@@ -429,7 +492,8 @@ STATIC_INPUT_JS = r"""
     var picker = document.createElement('div');
     picker.className = 'sdemos'; picker.id = 'demoPicker'; picker.setAttribute('role', 'group'); picker.setAttribute('aria-label', '데모 계획서');
     picker.innerHTML = ST.demos.map(function (d, i) {
-      return '<button type="button" class="sdemo" data-demo="' + i + '" aria-pressed="false"><span class="n">DEMO ' + (i + 1) + ' · ' + esc(d.file) + '</span><span class="t">' + esc(d.title) + '</span><span class="m' + (d.substitute ? ' fx' : '') + '">' + esc(d.badge) + '</span></button>';
+      var oos = d.role === 'out_of_scope';
+      return '<button type="button" class="sdemo' + (oos ? ' oos' : '') + '" data-demo="' + i + '" data-role="' + esc(d.role || 'demo') + '" aria-pressed="false"><span class="n">' + (oos ? '범위 밖 입력' : 'DEMO ' + (i + 1)) + ' · ' + esc(d.file) + '</span><span class="t">' + esc(d.title) + '</span><span class="m' + (d.substitute ? ' fx' : '') + '">' + esc(d.badge) + '</span></button>';
     }).join('');
     var seg = document.querySelector('#app .seg');
     if (seg && seg.parentNode) seg.parentNode.replaceChild(picker, seg); else ta.parentNode.insertBefore(picker, ta);
@@ -472,12 +536,27 @@ def inject_static(index_html: str, static: Mapping[str, Any], banner_html: str) 
     return out
 
 
+def _live_summary(demos: list[Demo]) -> str:
+    """라이브 결과 데모들의 모델·시각 요약: "라이브 서버, gpt-6.1-sol, 2026-09-30 21:20 KST"(시각은 가장 늦은 것)."""
+    live = [d for d in demos if d.live]
+    if not live:
+        return ""
+    models = sorted({d.llm_model for d in live})
+    when = _fmt_time(max(d.generated_at for d in live)) or "시각 미기록"
+    return f"라이브 서버, {', '.join(models)}, {when}"
+
+
 def site_label(demos: list[Demo]) -> str:
     n_real = sum(1 for d in demos if not d.substitute)
+    live = _live_summary(demos)
+    if live and n_real == len(demos):
+        return f"정적 판 · 사전 계산본({live}) — {LIVE_NOTE}"
     if n_real == len(demos):
         return f"정적 판 · 사전 계산본 — {LIVE_NOTE}"
     if n_real == 0:
         pre = all(d.kind == "precomputed" for d in demos)
+        if pre and live:
+            return f"정적 판 · 사전 계산본({live} · mock 결과 · 가짜 데이터) — {LIVE_NOTE}"
         return f"정적 판 · {'사전 계산본(fixture 대체)' if pre else '샘플(가짜 데이터)'} — {LIVE_NOTE}"
     return f"정적 판 · 사전 계산본 {n_real}/{len(demos)} · 나머지 가짜 데이터 — {LIVE_NOTE}"
 
@@ -486,7 +565,9 @@ def banner_html(demos: list[Demo]) -> str:
     n_real = sum(1 for d in demos if not d.substitute)
     n_sub = sum(1 for d in demos if d.substitute and d.kind == "precomputed")
     n_fix = sum(1 for d in demos if d.kind != "precomputed")
-    parts = [p for p in (f"사전 계산본 {n_real}건" if n_real else "",
+    n_live = sum(1 for d in demos if d.live and not d.substitute)
+    live = _live_summary(demos)
+    parts = [p for p in (f"사전 계산본 {n_real}건" + (f"(그중 {live} {n_live}건)" if n_live else "") if n_real else "",
                          f"사전 계산본 {n_sub}건(대체 결과 · 가짜 데이터)" if n_sub else "",
                          f"샘플 {n_fix}건(공용 fixture · 가짜 데이터)" if n_fix else "") if p]
     text = (f"<b>정적 판</b>미리 계산해 둔 결과만 보여 줍니다 — {LIVE_NOTE}. "
@@ -531,7 +612,7 @@ def build_site(
     *,
     precomputed_dir: Path | None,
     webui_dir: Path = WEBUI_DIR,
-    plans_dir: Path = PLANS_DIR,
+    plans_dir: Path = ROOT,
     demo_names: Iterable[str] = DEMO_PLANS,
     fixture_path: Path = FIXTURE_RESULT,
     build_view: ViewBuilder | None = None,
@@ -554,7 +635,14 @@ def build_site(
     templates = templates_source()
     if templates is None and PAGE_CALLS_TEMPLATES.search(src_bytes.decode("utf-8")):
         raise RuntimeError("화면이 GET templates를 부르는데 템플릿 카탈로그(neumann.api.templates)를 읽지 못했다")
-    demos = [resolve_demo(d, precomputed_dir, fixture_path) for d in load_demos(plans_dir, demo_names)]
+    demos, dropped = [], []
+    for d in load_demos(plans_dir, demo_names):
+        d = resolve_demo(d, precomputed_dir, fixture_path)
+        # 범위 밖 예시는 자기 사전 계산본이 있을 때만 싣는다(요리 메모에 남의 fixture 카드를 붙여 보여 주지 않는다)
+        if d.role == "out_of_scope" and d.kind != "precomputed":
+            dropped.append({"id": d.demo_id, "file": d.file, "reason": d.reason})
+            continue
+        demos.append(d)
 
     out_dir.parent.mkdir(parents=True, exist_ok=True)
     tmp = Path(tempfile.mkdtemp(prefix=f".{out_dir.name}.build-", dir=out_dir.parent))
@@ -568,9 +656,9 @@ def build_site(
             rel = f"demo/{d.demo_id}.json"
             (tmp / rel).write_bytes(raw)
             entries.append({
-                "n": i, "id": d.demo_id, "file": d.file, "title": d.title, "plan_text": d.plan_text,
-                "plan_id": d.plan_id, "json": rel, "sha256": _sha256_bytes(raw), "kind": d.kind,
-                "substitute": d.substitute, "origin": d.origin,
+                "n": i, "id": d.demo_id, "file": d.file, "path": d.path, "role": d.role, "title": d.title,
+                "plan_text": d.plan_text, "plan_id": d.plan_id, "json": rel, "sha256": _sha256_bytes(raw), "kind": d.kind,
+                "substitute": d.substitute, "origin": d.origin, "live_source": d.live, "provider": d.provider,
                 "generated_at": d.generated_at, "generated_kst": _fmt_time(d.generated_at), "model": d.model,
                 "label": demo_label(d), "badge": demo_badge(d), "reason": d.reason,
                 "cards": len(view.get("cards", [])), "works": len(view.get("works", [])),
@@ -611,8 +699,10 @@ def build_site(
             "built_at": built_at, "neumann_version": _neumann_version(), "git_commit": _git_commit(),
             "webui_index_sha256": _sha256_bytes(src_bytes), "label": label,
             "templates": len(tpl_info["ids"]) if tpl_info else 0,
-            "demos": [{k: e[k] for k in ("id", "file", "kind", "substitute", "origin", "generated_at", "model", "sha256", "cards",
-                                          "works", "reason")} for e in entries],
+            "dropped_demos": dropped,
+            "demos": [{k: e[k] for k in ("id", "file", "role", "kind", "substitute", "origin", "live_source", "provider",
+                                          "generated_at", "model", "badge", "sha256", "cards", "works", "reason")}
+                      for e in entries],
         }
         (tmp / BUILD_MARK).write_text(json.dumps(summary, ensure_ascii=False, indent=1), encoding="utf-8")
         if src_index.read_bytes() != src_bytes:
@@ -708,7 +798,12 @@ def _is_external(ref: str) -> bool:
     return bool(re.match(r"(?i)^(?:[a-z][a-z0-9+.-]*:)?//", ref)) and not ref.lower().startswith("data:")
 
 
-def check_site(site: Path, *, expect_demos: int = len(DEMO_PLANS)) -> tuple[list[str], dict[str, Any]]:
+def _required_demo_ids() -> list[str]:
+    """정적 판에 꼭 있어야 하는 데모(범위 밖 예시는 사전 계산본이 있을 때만 싣는다)."""
+    return [Path(n).stem for n in DEMO_PLANS if Path(n).name not in OUT_OF_SCOPE_PLANS]
+
+
+def check_site(site: Path, *, expect_demos: int | None = None) -> tuple[list[str], dict[str, Any]]:
     """(문제 목록, 측정값). 문제에는 위치와 종류만 적고 찾은 값은 적지 않는다."""
     problems: list[str] = []
     stats: dict[str, Any] = {"files": 0, "text_files": 0, "bytes": 0, "resource_refs": 0, "demos": 0}
@@ -736,8 +831,15 @@ def check_site(site: Path, *, expect_demos: int = len(DEMO_PLANS)) -> tuple[list
         demos = []
         problems.append("[필수] demo/index.json을 읽지 못함")
     stats["demos"] = len(demos)
-    if len(demos) != expect_demos:
-        problems.append(f"[필수] 데모 {len(demos)}건(기대 {expect_demos}건)")
+    if expect_demos is not None:
+        if len(demos) != expect_demos:
+            problems.append(f"[필수] 데모 {len(demos)}건(기대 {expect_demos}건)")
+    else:
+        ids = [str(d.get("id")) for d in demos]
+        missing = [i for i in _required_demo_ids() if i not in ids]
+        if missing or len(demos) > len(DEMO_PLANS):
+            problems.append(f"[필수] 데모 {len(demos)}건 · 빠진 AI4S 예시 {missing}(기대: AI4S {len(_required_demo_ids())}건"
+                            f" + 범위 밖 최대 {len(OUT_OF_SCOPE_PLANS)}건)")
     for d in demos:
         rel = str(d.get("json", ""))
         path = site / rel
@@ -869,7 +971,9 @@ def main(argv: list[str] | None = None) -> int:
         for d in summary["demos"]:
             extra = f" · 사유: {d['reason']}" if d["reason"] else ""
             print(f"  - {d['id']}: {d['kind']}({d['origin']}) · 생성 {d['generated_at'] or '-'} · {d['model']} · "
-                  f"카드 {d['cards']} · 유사 연구 {d['works']}{extra}")
+                  f"카드 {d['cards']} · 유사 연구 {d['works']} · 배지 {d['badge']}{extra}")
+        for d in summary.get("dropped_demos", []):
+            print(f"  - {d['id']}: 범위 밖 예시 — 사전 계산본 없음({d['reason']}) → 정적 판에서 뺐다")
         problems, stats = check_site(out)
     print(f"검사: 파일 {stats['files']}개({stats['bytes'] / 1024 / 1024:.1f}MB) · 텍스트 {stats['text_files']}개 · "
           f"리소스 참조 {stats['resource_refs']}개 · 데모 {stats['demos']}건 · 템플릿·예시 {stats.get('templates', 0)}건")
