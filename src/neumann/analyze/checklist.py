@@ -8,9 +8,14 @@
 3. 코드가 다시 검사한다: 입력에 없는 card_id는 버리고, 없는 줄 번호(범위 밖·빈 줄)는 제거하고,
    그 카드의 근거 풀 밖 excerpt id는 제거한다. 문구 길이·중복을 보고, 행동은 카드당 최대 3개.
    제거한 참조는 항목의 `dropped`에 남긴다(조용히 버리지 않는다).
-4. 호출 실패(None·예외·모양 오류)이거나, 카드가 응답에서 빠졌거나, 행동이 전부 무효면 **그 카드만**
+4. **근거 게이트(E3-L1e)**: 근거 id가 비었거나, 남은 근거가 하나도 없으면(없는 id·다른 카드의 id만 댔으면)
+   그 행동은 **폐기**한다. 카드 근거를 대신 붙이지 않고(승계 없음) 다시 묻지도 않는다(재요청 없음).
+   폐기 수·사유는 단계 기록 counts(`items_dropped_no_evidence`)와 `result.verification["checklist_evidence"]`에 남고,
+   화면에는 "근거 없는 항목 k개 제외"로 나온다. 마지막에 규칙 항목까지 모든 항목을 같은 검사
+   (`gate.evidence_link_problem`: 근거 1개 이상, 전부 결과 evidence 안, 전부 그 카드의 근거 안)로 한 번 더 거른다.
+5. 호출 실패(None·예외·모양 오류)이거나, 카드가 응답에서 빠졌거나, 행동이 전부 무효(근거 없음 포함)면 **그 카드만**
    규칙 경로(카드 유형별 기본 행동 문구)로 대신하고 `generator="rule"`과 `fallback_reason`을 남긴다.
-5. 항목마다 결정 로그 자리: `decision`(None → 채택·보류·기각)과 `decision_log`(이력).
+6. 항목마다 결정 로그 자리: `decision`(None → 채택·보류·기각)과 `decision_log`(이력).
 
 카드(주장)와 행동(제안)은 따로 검증한다. 2차 의미검증(validate.py)이 카드를 '틀림'으로 강등해도
 이 모듈이 만든 행동은 지우지 않는다.
@@ -27,7 +32,8 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from typing import Any
 
-from neumann.models import Excerpt, PlanDocument, PremortemResult, RiskCard, RiskCode, StageStatus
+from neumann.analyze.gate import MISSING_CITATION, EvidenceIndex, evidence_link_problem
+from neumann.models import Excerpt, PlanDocument, PremortemResult, RiskCard, RiskCode, StageStatus, redact_pii
 
 log = logging.getLogger(__name__)
 
@@ -43,6 +49,8 @@ ACTION_MAX_CHARS = 300
 VERIFY_MAX_CHARS = 300
 DEFAULT_EFFORT = "medium"
 IMPL = "neumann.analyze.checklist:build_checklist"
+EVIDENCE_GATE = "checklist_evidence@v1"  # 근거 게이트 버전(E3-L1e)
+DROPPED_TEXT_MAX = 300
 
 DECISION_STATES: tuple[str, ...] = ("채택", "보류", "기각")
 
@@ -98,7 +106,8 @@ CHECKLIST_INSTRUCTIONS = """너는 연구계획서의 착수 전 점검을 돕�
 - action: 한국어 한 문장, "~한다"로 끝나는 행동. 이 계획서의 해당 줄 내용을 구체적으로 고치거나 보강하는 행동이어야 한다. 어느 계획서에나 붙는 일반론은 쓰지 않는다.
 - verify: 그 행동을 했는지 확인할 수 있는 완료 조건 한 문장(한국어).
 - plan_lines: 이 행동이 고치거나 보강하는 계획서 줄 번호. 입력 plan_lines에 있는 번호만 쓴다. 1개 이상.
-- evidence_ids: 이 행동의 근거가 된 그 카드의 excerpt_id 0~3개. 다른 카드의 id는 쓰지 않는다.
+- evidence_ids: 이 행동의 근거가 된 그 카드의 excerpt_id 1~3개. 다른 카드의 id는 쓰지 않는다.
+  그 카드의 근거로 뒷받침할 수 없는 행동은 쓰지 않는다(근거 id가 없는 행동은 버려진다).
 
 규칙
 - 인용문을 쓰지 않는다. 심사평 원문 문장을 옮겨 적지 않는다. 근거는 excerpt_id로만 가리킨다.
@@ -270,13 +279,71 @@ def _norm_key(text: str) -> str:
     return re.sub(r"[\s\W_]+", "", text).lower()
 
 
+def _drop_record(card_id: Any, reason: str, detail: str, action: Any, evidence: Any, *, where: str) -> dict[str, Any]:
+    """근거 게이트 폐기 기록 한 줄. 문구는 개인정보를 가리고 자른다(화면 항목으로는 내보내지 않는다)."""
+    text = redact_pii(action if isinstance(action, str) else repr(action))
+    ids = evidence if isinstance(evidence, list) else []
+    return {
+        "card_id": card_id if isinstance(card_id, str) else None,
+        "reason": reason,
+        "detail": detail,
+        "action": text if len(text) <= DROPPED_TEXT_MAX else text[: DROPPED_TEXT_MAX - 1] + "…",
+        "evidence_ids": [str(x)[:80] for x in ids[:6]],
+        "where": where,
+    }
+
+
+def gate_checklist_items(
+    items: Iterable[Any], result: PremortemResult, *, index: EvidenceIndex | None = None, where: str = "checklist"
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """체크리스트 항목 근거 게이트(E3-L1e). (남길 항목, 폐기 기록).
+
+    항목마다 `gate.evidence_link_problem(evidence, [card_id])`: 근거 1개 이상, 전부 결과 evidence 안,
+    연결 카드가 결과에 있고 근거가 전부 그 카드의 근거 안. 하나라도 어기면 항목을 **폐기**한다(고쳐 붙이지 않는다).
+    체크리스트 생성 직후(build_checklist)와 2차 검증(validate.py)이 같이 쓴다.
+    """
+    index = index or EvidenceIndex(result)
+    kept: list[dict[str, Any]] = []
+    drops: list[dict[str, Any]] = []
+    for it in items:
+        if not isinstance(it, dict):
+            drops.append(_drop_record(None, MISSING_CITATION, "항목이 객체가 아니다", it, [], where=where))
+            continue
+        ev = it.get("evidence", it.get("evidence_ids"))
+        reason, detail = evidence_link_problem(ev if isinstance(ev, list) else [], [it.get("card_id")], index)
+        if reason is None:
+            kept.append(it)
+        else:
+            rec = _drop_record(it.get("card_id"), reason, detail, it.get("action", ""), ev, where=where)
+            if it.get("item_id"):
+                rec["item_id"] = it["item_id"]
+            drops.append(rec)
+    return kept, drops
+
+
+def evidence_audit(drops: list[dict[str, Any]], n_items: int) -> dict[str, Any]:
+    """`result.verification["checklist_evidence"]`에 남기는 근거 게이트 기록."""
+    reasons: dict[str, int] = {}
+    for d in drops:
+        reasons[d["reason"]] = reasons.get(d["reason"], 0) + 1
+    return {
+        "gate": EVIDENCE_GATE,
+        "policy": "drop",  # 폐기(승계·재요청 없음)
+        "items": n_items,
+        "dropped": len(drops),
+        "reasons": reasons,
+        "dropped_detail": drops,
+    }
+
+
 def _clean_actions(
-    raw_actions: Any, card: RiskCard, valid_lines: set[int]
-) -> tuple[list[dict[str, Any]], dict[str, int]]:
-    """모델이 돌려준 한 카드의 행동들을 검사한다. (남길 행동, 폐기 통계)."""
-    stats = {"actions_dropped": 0, "plan_lines_dropped": 0, "evidence_dropped": 0}
+    raw_actions: Any, card: RiskCard, valid_lines: set[int], index: EvidenceIndex
+) -> tuple[list[dict[str, Any]], dict[str, int], list[dict[str, Any]]]:
+    """모델이 돌려준 한 카드의 행동들을 검사한다. (남길 행동, 폐기 통계, 근거 게이트 폐기 기록)."""
+    stats = {"actions_dropped": 0, "plan_lines_dropped": 0, "evidence_dropped": 0, "items_dropped_no_evidence": 0}
+    gate_drops: list[dict[str, Any]] = []
     if not isinstance(raw_actions, list):
-        return [], stats
+        return [], stats, gate_drops
     pool = set(card.evidence)
     card_lines, _ = split_plan_lines(card.why_applies.plan_lines, valid_lines)
     kept: list[dict[str, Any]] = []
@@ -306,6 +373,14 @@ def _clean_actions(
                 bad_ev.append(ex_id)
         stats["plan_lines_dropped"] += len(bad_lines)
         stats["evidence_dropped"] += len(bad_ev)
+        if not evidence:
+            # 근거 게이트(E3-L1e): 근거 id가 없거나 전부 풀 밖이면 행동을 버린다(카드 근거 승계·재요청 없음).
+            reason, detail = evidence_link_problem(raw_ev, [card.card_id], index)
+            if reason is None:  # 풀 밖 id는 위에서 걸렀으므로 오지 않는다. 와도 근거 없음으로 친다
+                reason, detail = MISSING_CITATION, "남은 근거 excerpt id가 없다"
+            stats["items_dropped_no_evidence"] += 1
+            gate_drops.append(_drop_record(card.card_id, reason, detail, action, raw_ev, where="checklist"))
+            continue
         source = "llm"
         if not lines:
             # 행동이 가리킨 줄이 전부 없는 줄이면, 카드가 인용한 줄로 잇는다(표시해 둔다).
@@ -321,7 +396,7 @@ def _clean_actions(
                 "dropped": {"plan_lines": bad_lines, "evidence": bad_ev},
             }
         )
-    return kept, stats
+    return kept, stats, gate_drops
 
 
 def rule_actions(card: RiskCard, valid_lines: set[int]) -> list[dict[str, Any]]:
@@ -380,11 +455,14 @@ def build_checklist(
     - `llm_call`이 None이거나 실패하면 그 묶음의 카드는 규칙 문구(`generator="rule"`)로 대신한다.
     - `generator`·`model`: LLM 결과의 표기. 인자가 없으면 `llm_call.generator`·`.model` 속성을 쓴다.
       둘 다 없으면 ValueError(기본값으로 astra라고 쓰지 않는다). provider에서는 `llm.generator_for(name)`을 넘긴다.
-    - `stats`: 넘기면 호출·폐기 통계를 채운다(단계 기록용).
+    - `stats`: 넘기면 호출·폐기 통계를 채운다(단계 기록용). 근거 게이트 폐기 수는 `items_dropped_no_evidence`,
+      폐기 기록은 `evidence_drops`.
+    - 반환 항목은 모두 근거가 1개 이상이고 그 카드의 근거 안에 있다(근거 게이트, E3-L1e).
     """
     gen, mdl = llm_label(llm_call, generator, model)
     cards = list(result.risk_cards)
     by_id = {ex.excerpt_id: ex for ex in result.evidence}
+    index = EvidenceIndex(result)
     valid_lines = valid_plan_line_numbers(plan)
     plan_payload = plan_lines_payload(plan)
     st: dict[str, Any] = {
@@ -394,11 +472,13 @@ def build_checklist(
         "actions_dropped": 0,
         "plan_lines_dropped": 0,
         "evidence_dropped": 0,
+        "items_dropped_no_evidence": 0,
         "cards_rule": 0,
         "failures": [],
+        "evidence_drops": [],
     }
 
-    Row = tuple[RiskCard, list[dict[str, Any]], str | None, dict[str, int]]
+    Row = tuple[RiskCard, list[dict[str, Any]], str | None, dict[str, int], list[dict[str, Any]]]
 
     def run(batch: list[RiskCard]) -> tuple[list[Row], str | None]:
         """묶음 하나 → (카드별 결과, 호출 실패 사유)."""
@@ -417,12 +497,14 @@ def build_checklist(
         rows: list[Row] = []
         for card in batch:
             if fail is not None:
-                rows.append((card, [], fail, {}))
+                rows.append((card, [], fail, {}, []))
             elif card.card_id not in answers:  # 입력에 없는 card_id는 answers에 있어도 쓰이지 않는다
-                rows.append((card, [], "llm_missing_card", {}))
+                rows.append((card, [], "llm_missing_card", {}, []))
             else:
-                acts, s = _clean_actions(answers[card.card_id], card, valid_lines)
-                rows.append((card, acts, None if acts else "llm_no_valid_action", s))
+                acts, s, drops = _clean_actions(answers[card.card_id], card, valid_lines, index)
+                # 행동이 전부 빠졌는데 근거 없음 때문이면 사유를 따로 적는다(규칙 경로로 대신한 이유)
+                why = None if acts else ("llm_no_grounded_action" if drops else "llm_no_valid_action")
+                rows.append((card, acts, why, s, drops))
         return rows, fail
 
     batches = batched(cards, CARDS_PER_CALL)
@@ -431,9 +513,10 @@ def build_checklist(
     st["calls_failed"] = sum(1 for _, fail in outcomes if fail is not None and llm_call is not None)
 
     items: list[dict[str, Any]] = []
-    for card, acts, reason, s in (row for rows, _ in outcomes for row in rows):
+    for card, acts, reason, s, drops in (row for rows, _ in outcomes for row in rows):
         for k, v in s.items():
             st[k] += v
+        st["evidence_drops"].extend(drops)
         if reason is None:
             items.extend(_new_item(card, a, generator=gen, model=mdl, fallback_reason=None) for a in acts)
             continue
@@ -443,6 +526,10 @@ def build_checklist(
             _new_item(card, a, generator="rule", model=None, fallback_reason=reason)
             for a in rule_actions(card, valid_lines)
         )
+    # 마지막 근거 게이트: 규칙 항목까지 모든 항목을 같은 검사로 거른다(번호는 거른 뒤에 매긴다)
+    items, final_drops = gate_checklist_items(items, result, index=index, where="checklist_final")
+    st["items_dropped_no_evidence"] += len(final_drops)
+    st["evidence_drops"].extend(final_drops)
     for i, item in enumerate(items, start=1):
         item["item_id"] = f"C{i}"
     if stats is not None:
@@ -464,6 +551,7 @@ def checklist_stage(items: list[dict[str, Any]], stats: dict[str, Any], *, elaps
         "plan_lines_dropped": int(stats.get("plan_lines_dropped", 0)),
         "evidence_dropped": int(stats.get("evidence_dropped", 0)),
         "actions_dropped": int(stats.get("actions_dropped", 0)),
+        "items_dropped_no_evidence": int(stats.get("items_dropped_no_evidence", 0)),
     }
     if n_cards == 0:
         state, detail, impl = "skipped", "카드 0장 — 체크리스트 없음", IMPL
@@ -474,6 +562,10 @@ def checklist_stage(items: list[dict[str, Any]], stats: dict[str, Any], *, elaps
         state = "degraded"
         detail = f"카드 {counts['cards_rule']}/{n_cards}장 규칙 문구로 대신함: {', '.join(reasons)}"
         impl = IMPL if counts["items_llm"] else "fallback:rule_actions"
+    if counts["items_dropped_no_evidence"]:
+        # 근거 게이트 폐기는 강등이 아니다(심사평 게이트와 같게 ok 유지). 수는 counts와 detail에 남긴다.
+        note = f"근거 없는 항목 {counts['items_dropped_no_evidence']}개 제외"
+        detail = f"{detail} · {note}" if detail else note
     return StageStatus(
         stage="checklist", state=state, detail=detail, phase="analyze", impl=impl,
         elapsed_s=round(elapsed_s, 3), counts=counts,
@@ -491,7 +583,8 @@ def attach_checklist(
     stats: dict[str, Any] = {}
     items = build_checklist(result, plan, llm_call, stats=stats, **kwargs)
     stage = checklist_stage(items, stats, elapsed_s=time.perf_counter() - t0)
-    return with_stage(result, stage, checklist=items)
+    verification = {**result.verification, "checklist_evidence": evidence_audit(stats.get("evidence_drops", []), len(items))}
+    return with_stage(result, stage, checklist=items, verification=verification)
 
 
 # ── 결정 로그 ────────────────────────────────────────────────────────────
@@ -556,6 +649,7 @@ def decision_entries(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
 __all__ = [
     "CHECKLIST_INSTRUCTIONS",
     "DECISION_STATES",
+    "EVIDENCE_GATE",
     "RULE_ACTIONS",
     "attach_checklist",
     "build_checklist",
@@ -563,6 +657,8 @@ __all__ = [
     "checklist_stage",
     "decision_entries",
     "decision_log",
+    "evidence_audit",
+    "gate_checklist_items",
     "record_decision",
     "rule_actions",
 ]
