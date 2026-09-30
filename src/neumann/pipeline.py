@@ -23,6 +23,12 @@
   결과·단계 기록 순서는 순차 실행과 같다(`V1_STAGES` 순서로 합친다). `manifest.v1_parallel`·`v1_wall_s`.
 - 진행 보고(E3-L1y): `on_stage(stage, state, elapsed_s)` — 단계 시작에 state="running"(elapsed 0.0), 끝에
   최종 상태(ok|degraded|error|skipped)와 그 단계 소요. 콜백은 run_premortem을 부른 스레드에서만 불린다.
+- 입력 분량 단계(E3-L1s, 적합성 모듈의 `input_quality`): `plan_checks.input_quality`·`manifest.input_quality`에 싣는다.
+  reject(판정할 거리가 없음)는 LLM 호출 없이 거절하고 무엇을 더 적을지 안내한다. warn(짧지만 분야·방법이 보임)은
+  경고를 notices에 싣고 끝까지 분석한다: 적합성 보류 + 검색어 단계의 "계획서 아님"이어도 규칙 신호가 무관한 글이 아니고
+  유사 연구 검색이 강하게 맞으면(관련도 RESEARCH_GATE_MIN_TOP 이상 논문 RESEARCH_GATE_MIN_WORKS편 이상) 멈추지 않고
+  "적합성 보류였으나 유사 연구 근거로 진행"을 `plan_checks.research_gate`·notices에 남긴다. 검색 점수 하한을 넘은
+  논문이 없으면 하한 없이 상위 k편을 "낮은 유사도"로 쓰고, 카드가 0장이면 분야 수준 카드(규칙 합성, degraded)를 만든다.
 
 명령줄: python -m neumann.pipeline PLAN.md [--provider openai|mock|off] [--backend index|fixture --corpus X.json]
 """
@@ -31,6 +37,7 @@ from __future__ import annotations
 
 import argparse
 import contextvars
+import inspect
 import json
 import logging
 import re
@@ -235,6 +242,38 @@ def _llm_call_for(llm: LLMProvider, task: str, settings: Any) -> tuple[Any | Non
     return call, opts, None
 
 
+LOW_SIMILARITY_FLOOR = 0.0  # 짧은 입력에서 하한을 넘은 논문이 없을 때 다시 찾는 하한(= 하한 없음, 상위 k편)
+# 적합성 보류 + 검색어 단계 "계획서 아님"인 경고 단계 입력을 진행시키는 유사 연구 근거 기준(E3-L1s 실측, bge-m3 하이브리드).
+# 관련도 = max(dense, score)(E2 하한과 같은 값). 무관한 글 7건(조리법·여행·광고·일기) 상위 관련도 최대 0.426·0.50 이상 0편,
+# 경고 단계 입력 24건(직접 만든 21 + 백테스트 3) 최소 0.541·0.50 이상 최소 6편. 보고서 docs/reports/E3-L1s.md 표.
+RESEARCH_GATE_MIN_TOP = 0.50
+RESEARCH_GATE_MIN_WORKS = 3
+
+
+def _search_strength(hits: list[Hit]) -> tuple[float | None, int]:
+    """(상위 관련도, 관련도 RESEARCH_GATE_MIN_TOP 이상 논문 수). 관련도 = max(dense, score)."""
+    rels = [max(h.score, h.dense or 0.0) for h in hits]
+    return (max(rels) if rels else None), sum(1 for r in rels if r >= RESEARCH_GATE_MIN_TOP)
+
+
+def _search_below_floor(backend: EvidenceBackend, queries: list[str], k: int,
+                        exclude: set[str] | None) -> list[Hit] | None:
+    """점수 하한 없이 상위 k편(백엔드가 score_floor 인자를 받을 때만). 못 하면 None."""
+    try:
+        params = inspect.signature(backend.search).parameters
+    except (TypeError, ValueError):
+        return None
+    if "score_floor" not in params:
+        return None
+    return backend.search(queries, k=k, exclude_work_ids=exclude, score_floor=LOW_SIMILARITY_FLOOR)  # type: ignore[call-arg]
+
+
+def _on_topic_rule_signal(fit: dict[str, Any]) -> bool:
+    """적합성 모듈의 규칙 신호가 '무관한 글'(unfit)이 아니다. 규칙 신호가 없으면(가짜 모듈 등) False."""
+    rule = fit.get("rule")
+    return isinstance(rule, dict) and rule.get("verdict") in ("fit", "uncertain")
+
+
 def run_premortem(
     plan_text: str,
     *,
@@ -306,6 +345,8 @@ def run_premortem(
 
     # 2. 입력 적합성(E3-L1c) — 검색 전에. 분석하지 않음(unfit)이면 카드 0장·사유로 끝 ─────────────
     fit: dict[str, Any] | None = None
+    iq: dict[str, Any] = {}
+    iq_level = "unknown"  # 입력 분량 단계(E3-L1s): reject|warn|ok, 적합성 모듈이 없거나 실패하면 unknown
     fitness_mod = _load_fitness()
     if no_card_reason is not None:
         run.skip("fitness", "INPUT", no_card_reason)
@@ -321,9 +362,19 @@ def run_premortem(
                 st["detail"] = f"{st['detail']}; {why}"
         if fit is not None:
             extras["plan_checks"]["fitness"] = fit
+            got_iq = fit.get("input_quality")
+            if isinstance(got_iq, dict):
+                iq = got_iq
+                extras["plan_checks"]["input_quality"] = iq
+                iq_level = str(iq.get("level") or "ok")
             if fit.get("notice"):
                 run.notice(fit["notice"])
-            if not fit.get("analyze", True):
+            if iq_level == "warn" and iq.get("message"):
+                run.notice(iq["message"])
+            if not fit.get("analyze", True) and fit.get("decided_by") == "precheck":
+                no_card_reason = ("입력이 너무 짧아 분석하지 않았다(규칙 판정, LLM 호출 없음) — "
+                                  "연구 질문·방법·데이터·평가를 더 적어 주세요; 검색 안 함")
+            elif not fit.get("analyze", True):
                 no_card_reason = f"입력이 연구계획서가 아니다({fit.get('generator')} 판단: {fit.get('reason')}); 검색 안 함"
                 extras["plan_checks"]["suitability"] = {
                     "is_research_plan": False,
@@ -388,11 +439,27 @@ def run_premortem(
         with run.stage("search", "EVIDENCE") as st:
             st["impl"] = getattr(backend, "impl", backend.name)
             search_queries = qp.queries or rules.fallback_queries(plan)
+            queries_source = "llm" if qp.queries else "rule"  # 검색어 단계가 검색어를 안 주면 규칙 대체(표시한다, E5-L2d)
             hits = backend.search(search_queries, k=k, exclude_work_ids=exclude_work_ids)
+            low_similarity = False
+            on_topic = fit is not None and _on_topic_rule_signal(fit) and fit.get("verdict") != "unfit"
+            if not hits and iq_level == "warn" and on_topic:  # E3-L1s: 짧은 입력은 하한 아래라도 상위 k편을 "낮은 유사도"로
+                low = _search_below_floor(backend, search_queries, k, exclude_work_ids)
+                if low:
+                    hits, low_similarity = low, True
             top = max((h.score for h in hits), default=None)
             kept = [h for h in hits if h.score >= min_similarity]
-            st["counts"] = {"hits": len(hits), "kept": len(kept), "queries": len(search_queries)}
+            st["counts"] = {"hits": len(hits), "kept": len(kept), "queries": len(search_queries),
+                            "low_similarity": int(low_similarity)}
             st["detail"] = f"상위 점수 {top:.3f}" if top is not None else "검색 결과 0건"
+            if queries_source == "rule":
+                st["detail"] += f"; 검색어 {len(search_queries)}개는 규칙 대체(검색어 단계가 검색어를 주지 않음)"
+                run.notice(f"검색어 단계가 검색어를 주지 않아 규칙 검색어 {len(search_queries)}개(계획서의 영문 기술어·첫 줄)로 "
+                           "유사 연구를 찾았다(검색어 규칙 대체).")
+            if low_similarity and top is not None:
+                st["detail"] += f"; 점수 하한을 넘은 논문이 없어 하한 없이 상위 {len(hits)}편을 낮은 유사도로 사용"
+                run.notice(f"유사 연구가 검색 점수 하한 아래라 상위 {len(hits)}편을 '낮은 유사도'로 표시하고 분석했다"
+                           f"(상위 점수 {top:.3f}). 결과가 이 계획서와 멀 수 있다.")
             # E2 검색 상태: 사유 문자열(경로가 들어갈 수 있다)은 빼고 공개해도 되는 키만 싣는다.
             raw_status = backend.status() if hasattr(backend, "status") else {}
             be_status = {k: raw_status[k] for k in _SEARCH_STATUS_KEYS if k in raw_status}
@@ -404,6 +471,8 @@ def run_premortem(
                 "min_similarity": min_similarity,
                 "scores": [round(h.score, 4) for h in hits],
                 "backend_status": be_status,
+                "queries_source": queries_source,
+                "low_similarity": low_similarity,
             }
             hits = kept
             for h in hits:
@@ -420,7 +489,37 @@ def run_premortem(
     # 적합성 판정이 있으면 그것이 기준이다: fit이면 astra ①의 판정과 무관하게 진행, uncertain이면 astra ①도
     # 연구계획서가 아니라고 볼 때만 멈춘다. 적합성 판정이 없으면(모듈 없음·오류) astra ①의 판정만 본다(E3-L0).
     fit_verdict = fit.get("verdict") if fit is not None else None
-    if qp is not None and not qp.is_research and fit_verdict in (None, "uncertain"):
+    # E3-L1s: 적합성 보류(uncertain)라도 규칙 신호가 무관한 글이 아니면 멈추지 않는다(연구 배경만 적은 짧은 초록 등).
+    # 백테스트 n=5에서 짧은 입력 3편이 여기서 카드 0장으로 끝났다(적합성 보류 + 검색어 단계 "계획서 아님").
+    gate_pass = False
+    gate_why = ""
+    if qp is not None and not qp.is_research and fit_verdict == "uncertain" and fit is not None and no_card_reason is None:
+        rule_sig = fit.get("rule") or {}
+        low_sim = bool(extras["plan_checks"].get("search", {}).get("low_similarity"))
+        top_rel, n_strong = _search_strength(hits)
+        checks = {
+            "input_warn": iq_level == "warn",
+            "rule_on_topic": _on_topic_rule_signal(fit),
+            "search_strong": (top_rel is not None and top_rel >= RESEARCH_GATE_MIN_TOP
+                              and n_strong >= RESEARCH_GATE_MIN_WORKS and not low_sim),
+        }
+        gate_pass = all(checks.values())
+        gate_why = ", ".join(k for k, v in checks.items() if not v)
+        extras["plan_checks"]["research_gate"] = {
+            "passed": gate_pass,
+            "status": "proceeded_on_similar_work_evidence" if gate_pass else "stopped",
+            "note": "적합성 보류였으나 유사 연구 근거로 진행" if gate_pass else None,
+            "failed_checks": [k for k, v in checks.items() if not v],
+            "fitness_verdict": fit_verdict, "query_axes_is_research": False,
+            "rule_verdict": rule_sig.get("verdict"), "rule_elements": rule_sig.get("n_elements"),
+            "top_relevance": round(top_rel, 4) if top_rel is not None else None, "n_strong_works": n_strong,
+            "min_top_relevance": RESEARCH_GATE_MIN_TOP, "min_strong_works": RESEARCH_GATE_MIN_WORKS,
+        }
+        if gate_pass:
+            extras["plan_checks"].setdefault("suitability", {})["thin_input"] = True  # E5-L2d 표기와 같은 키
+            run.notice(f"적합성 보류였으나 유사 연구 근거로 진행: 상위 관련도 {top_rel:.3f}(기준 {RESEARCH_GATE_MIN_TOP}), "
+                       f"기준 이상 유사 연구 {n_strong}편. 검색어 단계도 연구계획서로 보지 않았으니 결과 신뢰도가 낮다.")
+    if qp is not None and not qp.is_research and fit_verdict in (None, "uncertain") and not gate_pass:
         search_info = extras["plan_checks"].get("search", {})
         top = search_info.get("top_score")
         score_s = (
@@ -430,6 +529,8 @@ def run_premortem(
         no_card_reason = f"입력이 연구계획서가 아니다({qp.generator} 판단: {qp.reason}); {score_s}"
         if fit_verdict == "uncertain":
             no_card_reason += f"; 적합성 판정 보류({fit.get('generator') if fit else '-'})"
+            if gate_why:
+                no_card_reason += f"; 진행 조건 미충족({gate_why})"
 
     # 5. astra ② 지적 추출 ─────────────────────────────────────────────────
     extraction: extract_mod.ExtractionResult | None = None
@@ -480,8 +581,10 @@ def run_premortem(
         with run.stage("synthesize_cards", "RISK") as st:
             titles = {wid: getattr(w, "title", "") or "" for wid, w in works_meta.items()}
             similarity = {h.work_id: h.score for h in hits}
+            short = iq_level == "warn"
             synthesis = cards_mod.synthesize_cards(
-                plan, extraction.issues, titles, similarity, len(extraction.works_analyzed), llm, settings
+                plan, extraction.issues, titles, similarity, len(extraction.works_analyzed), llm, settings,
+                short_input=short,
             )
             st["counts"] = synthesis.counts()
             if synthesis.fallback_reason:
@@ -493,6 +596,23 @@ def run_premortem(
             else:
                 st["impl"] = f"{llm.name}:{llm.model}"
                 st["detail"] = synthesis.llm.reason() if synthesis.llm else None
+            if short and not synthesis.cards and extraction.issues:
+                # E3-L1s: 짧은 입력은 카드 0장으로 끝내지 않는다 → 분야 수준 카드(규칙 합성, LLM 결과라고 쓰지 않는다)
+                first_reason = synthesis.no_card_reason
+                field_syn = cards_mod.field_level_cards(plan, extraction.issues, similarity,
+                                                        len(extraction.works_analyzed))
+                extras["risk_synthesis"]["field_level"] = {
+                    "used": bool(field_syn.cards), "first_generator": synthesis.generator,
+                    "first_no_card_reason": first_reason, "cards": len(field_syn.cards),
+                }
+                if field_syn.cards:
+                    synthesis = field_syn
+                    st["state"], st["impl"] = "degraded", "fallback:cards.field_level_cards"
+                    st["detail"] = (f"분야 수준 카드(규칙 합성) {len(field_syn.cards)}장: 짧은 입력에서 "
+                                    f"카드 합성이 0장이라 대신함({first_reason or '사유 없음'})")
+                    st["counts"] = {**st["counts"], "field_level_cards": len(field_syn.cards)}
+                    run.notice("입력이 짧아 계획서 줄에 맞춘 위험카드가 나오지 않아, 유사 연구 심사평에서 반복된 "
+                               f"위험 유형으로 분야 수준 카드 {len(field_syn.cards)}장을 규칙으로 만들었다(LLM 생성 아님).")
             cards, evidence = synthesis.cards, synthesis.evidence
             no_card_reason = synthesis.no_card_reason if not cards else None
         if synthesis is None:
@@ -542,6 +662,7 @@ def run_premortem(
                 "pool_size": synthesis.pool_size,
                 "drops": dict(synthesis.drops),
                 "tags": [synthesis.tags[x].tag().model_dump(mode="json") for c in cards for x in c.evidence if x in synthesis.tags],
+                "notes": list(synthesis.notes),
             }
         )
     similar = [
@@ -565,6 +686,7 @@ def run_premortem(
         "timings_s": run.timings,
         "total_s": round(time.perf_counter() - t_start, 3),
         "query_cache": dict(qp.cache) if qp is not None else {"enabled": False, "hit": False, "stored": False},
+        "input_quality": {"level": iq_level, "status": iq.get("status") if iq else None},
     }
     try:
         result = PremortemResult(
