@@ -14,7 +14,10 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
+import threading
 import time
+import uuid
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
@@ -33,6 +36,7 @@ PROMPT_VERSION = "extract_issues.v1"
 POLARITIES = ("negative", "positive", "neutral")
 DEFAULT_BATCH = 50
 DEFAULT_PARALLEL = 24
+_REPLACE_TRIES = 40  # 캐시 교체 재시도(Windows 공유 위반: 다른 쪽이 같은 파일을 교체·읽는 중), 최대 약 1.4초
 
 INSTRUCTIONS = f"""\
 You label sentences from peer reviews of ONE scientific paper with research-risk types.
@@ -301,6 +305,32 @@ def cache_key(model: str, effort: str | None, excerpts: list[Excerpt]) -> str:
     return hashlib.sha256(body.encode("utf-8")).hexdigest()
 
 
+def _atomic_write(final: Path, text: str) -> None:
+    """임시 파일(`{key}.{pid}.{thread_id}.{uuid 8자}.tmp`, 쓰는 쪽마다 고유)에 쓰고 os.replace로 원자 교체한다.
+
+    같은 키를 여러 스레드·프로세스가 동시에 써도 임시 파일이 겹치지 않아 반쯤 쓴 파일이 캐시 이름으로 올라가지 않는다.
+    Windows에서 다른 쪽이 대상 파일을 교체·읽는 중이면 교체가 잠깐 거부(PermissionError)될 수 있어 다시 시도한다.
+    실패하면 OSError를 올리고(호출부가 경고로 받는다) 임시 파일은 지운다.
+    """
+    tmp = final.with_name(f"{final.stem}.{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex[:8]}.tmp")
+    try:
+        tmp.write_text(text, encoding="utf-8")
+        for attempt in range(_REPLACE_TRIES):
+            try:
+                os.replace(tmp, final)
+                return
+            except PermissionError:
+                if attempt == _REPLACE_TRIES - 1:
+                    raise
+                time.sleep(min(0.002 * (attempt + 1), 0.05))
+    finally:
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+
+
 def _cache_read(cache_dir: Path | None, key: str) -> list[dict[str, Any]] | None:
     if cache_dir is None:
         return None
@@ -318,9 +348,8 @@ def _cache_write(cache_dir: Path | None, key: str, issues: list[dict[str, Any]],
         return
     try:
         cache_dir.mkdir(parents=True, exist_ok=True)
-        tmp = cache_dir / f"{key}.tmp"
-        tmp.write_text(json.dumps({"v": PROMPT_VERSION, "model": model, "issues": issues}, ensure_ascii=False), encoding="utf-8")
-        tmp.replace(cache_dir / f"{key}.json")
+        _atomic_write(cache_dir / f"{key}.json",
+                      json.dumps({"v": PROMPT_VERSION, "model": model, "issues": issues}, ensure_ascii=False))
     except OSError as exc:
         log.warning("추출 캐시 쓰기 실패: %s", type(exc).__name__)
 
