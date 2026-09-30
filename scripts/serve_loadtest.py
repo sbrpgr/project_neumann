@@ -2,14 +2,15 @@
 
 실제 분석(bge-m3·OpenAI)은 부르지 않는다(scripts/serve_fake_app.py). 결과 캐시·감시 로그는 임시 폴더에 쓰고 지운다.
 
-    python scripts/serve_loadtest.py --port 8122 --out docs/reports/E4-L2c_loadtest.log
+    python scripts/serve_loadtest.py --port 8122 --out docs/reports/E4-L2c_loadtest.txt
 
 시나리오
   A 동시 10건(서로 다른 계획서·IP): 동시 상한 2, 나머지는 대기 순번 1~8로 차례대로
   B 같은 10건 다시: 모두 캐시 적중(즉시)
   C 동시 12건(대기열 상한 8): 2 실행 + 8 대기 + 2건 503(사용자 문구)
   D 한 IP에서 7건: 분당 6건 넘는 1건 429(사용자 문구)
-  E 서버 강제 종료(/__crash) → 감시 스크립트가 다시 띄움 → 디스크 캐시로 A의 결과 즉시 응답
+  E 데모 계획서 1건 → 디스크 캐시(허용 목록). 사용자 입력 결과는 디스크에 0개(메모리만)
+  F 서버 강제 종료(/__crash) → 감시 스크립트가 다시 띄움 → 데모는 디스크 캐시로 즉시, 사용자 입력은 다시 분석
 """
 
 from __future__ import annotations
@@ -43,7 +44,7 @@ def say(msg: str = "") -> None:
 
 
 def plan_text(tag: str) -> str:
-    return f"{PLAN}\n\n부하 시험 계획서 변형: {tag}\n"
+    return PLAN if tag == "DEMO" else f"{PLAN}\n\n부하 시험 계획서 변형: {tag}\n"
 
 
 def post(base: str, tag: str, ticket: str, ip: str) -> dict[str, Any]:
@@ -134,7 +135,8 @@ def main() -> int:
     env = dict(os.environ, PYTHONIOENCODING="utf-8", NEUMANN_PUBLIC="1", NEUMANN_WARMUP="0",
                NEUMANN_FAKE_RUN_S=str(a.run_s), NEUMANN_AVG_RUN_S=str(a.run_s), NEUMANN_MAX_CONCURRENT="2",
                NEUMANN_QUEUE_MAX="8", NEUMANN_RATE_PER_MIN="6", NEUMANN_RESULT_CACHE_DIR=str(tmp / "results"),
-               NEUMANN_FAKE_CRASH="1")
+               NEUMANN_BUDGET_FILE=str(tmp / "budget.json"), NEUMANN_BLOCK_FILE=str(tmp / "block.flag"),
+               NEUMANN_DAILY_BUDGET="100", NEUMANN_FAKE_CRASH="1")
     env["PYTHONPATH"] = os.pathsep.join([str(ROOT / "src"), str(ROOT)])
     server_log = tmp / "server_stdout.log"
     cmd = [sys.executable, str(ROOT / "scripts" / "serve.py"), "--app", "scripts.serve_fake_app:app",
@@ -162,18 +164,32 @@ def main() -> int:
         st = httpx.get(base + "/queue/status").json()
         say(f"카운터: {json.dumps(st['counters'], ensure_ascii=False)}")
         # E
-        say("== E 서버 강제 종료 → 감시 스크립트 재시작")
+        say("== E 데모 계획서(공개 입력) 1건 → 디스크 캐시")
+        demo = post(base, "DEMO", "tk_E_demo", "198.51.100.200")
+        rdir = tmp / "results"
+        files = sorted(x.name for x in rdir.glob("*.json")) if rdir.exists() else []
+        n_user = len(res_a) + len(res_c) + len(res_d)
+        say(f"  데모: code={demo['code']} cache={demo['cache']} | 결과 캐시 폴더 파일 {len(files)}개 "
+            f"(사용자 입력 {n_user}건 요청 뒤): {[f[:12] for f in files]}")
+        body_hits = [f for f in rdir.glob("*.json") if "부하 시험 계획서 변형" in f.read_text(encoding="utf-8")]
+        say(f"  디스크 파일 중 사용자 입력 본문 조각이 든 파일: {len(body_hits)}개")
+        # F
+        say("== F 서버 강제 종료 → 감시 스크립트 재시작")
         try:
             httpx.post(base + "/__crash", timeout=3)
         except httpx.HTTPError:
             pass
         time.sleep(0.5)
         say(f"다시 health 정상까지 {wait_health(base):.1f}s")
-        r = post(base, "A03", "tk_E_03", "198.51.100.99")
-        say(f"  재시작 뒤 A03 다시: code={r['code']} cache={r['cache']} 총={r['total']}s (디스크 캐시)")
+        r = post(base, "DEMO", "tk_F_demo", "198.51.100.99")
+        say(f"  재시작 뒤 데모 다시: code={r['code']} cache={r['cache']} 총={r['total']}s (디스크 캐시)")
+        u = post(base, "A03", "tk_F_A03", "198.51.100.98")
+        say(f"  재시작 뒤 사용자 입력 A03 다시: code={u['code']} cache={u['cache']} 총={u['total']}s "
+            "(메모리 캐시는 재시작으로 비워짐 → 다시 분석)")
         ok = (all(x["code"] == 200 for x in res_a) and all(x["cache"] == "hit" for x in res_b)
               and sorted(x["code"] for x in res_c).count(503) == 2 and [x["code"] for x in res_d].count(429) == 1
-              and r["cache"] == "hit" and max(x["pos"] or 0 for x in res_a) == 8)
+              and max(x["pos"] or 0 for x in res_a) == 8 and len(files) == 1 and not body_hits
+              and r["cache"] == "hit" and u["cache"] == "miss" and u["code"] == 200)
         say(f"판정: {'PASS' if ok else 'FAIL'}")
         rc = 0 if ok else 1
     finally:
