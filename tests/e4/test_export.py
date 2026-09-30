@@ -20,6 +20,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from neumann.api import export
 from neumann.api.export import FILE_NAMES, build_package, build_package_files, router
 from neumann.models import PremortemResult, sha256_text
 from tests.fixtures.loader import load_fixtures, plan_text
@@ -410,20 +411,10 @@ def test_api_rejects_bad_input(client: TestClient) -> None:
     assert client.post("/premortem/package", json={"result": {}, "extra": 1}).status_code == 422
 
 
-def test_api_plan_text_without_pipeline_is_honest(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setitem(sys.modules, "neumann.pipeline", None)  # import가 실패하게
-    resp = client.post("/premortem/package", json={"plan_text": plan_text("plan.md")})
-    assert resp.status_code == 200
-    assert resp.headers["x-neumann-status"] == "error"
-    assert resp.headers["x-neumann-cards"] == "0"
-    files = unzip(resp.content)
-    readme = text(files, "README.md")
-    assert "분석 파이프라인 미연결" in readme and "위험카드 0장" in readme
-    assert "16 | We randomly split" in text(files, "plan_annotated.md")  # 카드는 없어도 줄 번호·본문은 담는다
-    assert as_json(files, "manifest.json")["cards_by_generator"] == {"astra": 0, "rule": 0, "mock": 0}
-
-
-def test_api_plan_text_uses_pipeline_when_available(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_api_plan_text_only_is_rejected_without_running_pipeline(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """SEC-1 S-02: plan_text만 오면 파이프라인을 돌리지 않고 422 + 사용자 문구(내보내기는 결과만 받는다)."""
     calls: list[str] = []
 
     def fake_run_premortem(text_in: str, *, session_id: str | None = None) -> PremortemResult:
@@ -434,21 +425,16 @@ def test_api_plan_text_uses_pipeline_when_available(client: TestClient, monkeypa
     module.run_premortem = fake_run_premortem  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "neumann.pipeline", module)
     resp = client.post("/premortem/package", json={"plan_text": plan_text("plan.md")})
+    assert resp.status_code == 422
+    assert calls == []
+    assert "분석 결과가 필요합니다" in resp.text
+    assert "We randomly split" not in resp.text  # 입력을 되돌려 보내지 않는다
+    assert not hasattr(export, "_run_pipeline")  # 파이프라인 실행 경로 자체가 없다
+
+
+def test_api_result_with_plan_text_still_packages(client: TestClient) -> None:
+    """result가 있으면 plan_text는 계획서 줄 번호용으로만 쓴다(파이프라인 실행 없음)."""
+    body = {"result": variant(plan=None).model_dump(mode="json"), "plan_text": plan_text("plan.md")}
+    resp = client.post("/premortem/package", json=body)
     assert resp.status_code == 200
-    assert calls == [plan_text("plan.md")]
-    assert resp.headers["x-neumann-cards"] == "2"
-
-
-def test_api_pipeline_exception_becomes_error_package(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    def boom(text_in: str, *, session_id: str | None = None) -> PremortemResult:
-        raise RuntimeError("internal detail that should not leak")
-
-    module = types.ModuleType("neumann.pipeline")
-    module.run_premortem = boom  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "neumann.pipeline", module)
-    resp = client.post("/premortem/package", json={"plan_text": plan_text("plan.md")})
-    assert resp.status_code == 200
-    assert resp.headers["x-neumann-status"] == "error"
-    readme = text(unzip(resp.content), "README.md")
-    assert "분석 파이프라인 오류(RuntimeError)" in readme
-    assert "internal detail" not in readme
+    assert "16 [C1] | We randomly split" in text(unzip(resp.content), "plan_annotated.md")

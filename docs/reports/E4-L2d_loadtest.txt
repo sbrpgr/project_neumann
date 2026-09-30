@@ -1,0 +1,139 @@
+[+   0.00s] E4-L2d 동시 10건 시험 시작 (포트 8136, 가짜 분석 1건 60s)
+[+   1.45s] health 정상까지 1.5s (serve.py --app tests.e4.test_jobs_live:app --port 8136)
+[+   1.58s] == 동시 10건을 POST /premortem/jobs로(서로 다른 사용자 IP·계획서, 가짜 분석 1건 60s, 동시 상한 4)
+[+   1.62s]   POST L0: code=202 0.031s job_id=tVWkk2… status=queued position=0 eta_s=0.0 message="곧 분석을 시작합니다"
+[+   1.62s]   POST L1: code=202 0.015s job_id=MwoJ5z… status=queued position=0 eta_s=0.0 message="곧 분석을 시작합니다"
+[+   1.62s]   POST L2: code=202 0.015s job_id=-traza… status=queued position=0 eta_s=0.0 message="곧 분석을 시작합니다"
+[+   1.62s]   POST L3: code=202 0.015s job_id=OMakFW… status=queued position=0 eta_s=0.0 message="곧 분석을 시작합니다"
+[+   1.62s]   POST L4: code=202 0.031s job_id=rODxfS… status=queued position=1 eta_s=60.0 message="대기 1번째 · 약 60초"
+[+   1.62s]   POST L5: code=202 0.031s job_id=K1MYT3… status=queued position=2 eta_s=60.0 message="대기 2번째 · 약 60초"
+[+   1.62s]   POST L6: code=202 0.031s job_id=cvfeK_… status=queued position=3 eta_s=60.0 message="대기 3번째 · 약 60초"
+[+   1.62s]   POST L7: code=202 0.031s job_id=CRPWlN… status=queued position=4 eta_s=60.0 message="대기 4번째 · 약 60초"
+[+   1.62s]   POST L8: code=202 0.031s job_id=o9gm88… status=queued position=5 eta_s=120.0 message="대기 5번째 · 약 120초"
+[+   1.62s]   POST L9: code=202 0.031s job_id=k3FxUn… status=queued position=6 eta_s=120.0 message="대기 6번째 · 약 120초"
+[+   3.16s]   L0: running pos=0 stage=plan_normalize eta_s=58.5 elapsed_s=1.5 message="분석 중 · 계획서 정리 · 약 58초 남음"
+[+   3.16s]   L1: running pos=0 stage=plan_normalize eta_s=58.5 elapsed_s=1.5 message="분석 중 · 계획서 정리 · 약 58초 남음"
+[+   3.16s]   L2: running pos=0 stage=plan_normalize eta_s=58.5 elapsed_s=1.5 message="분석 중 · 계획서 정리 · 약 58초 남음"
+[+   3.16s]   L3: running pos=0 stage=plan_normalize eta_s=58.5 elapsed_s=1.5 message="분석 중 · 계획서 정리 · 약 58초 남음"
+[+   3.16s]   L4: queued  pos=1 stage=queued eta_s=58.5 elapsed_s=1.5 message="대기 1번째 · 약 58초"
+[+   3.16s]   L5: queued  pos=2 stage=queued eta_s=58.5 elapsed_s=1.5 message="대기 2번째 · 약 58초"
+[+   3.16s]   L6: queued  pos=3 stage=queued eta_s=58.5 elapsed_s=1.5 message="대기 3번째 · 약 58초"
+[+   3.16s]   L7: queued  pos=4 stage=queued eta_s=58.5 elapsed_s=1.5 message="대기 4번째 · 약 58초"
+[+   3.16s]   L8: queued  pos=5 stage=queued eta_s=118.5 elapsed_s=1.5 message="대기 5번째 · 약 118초"
+[+   3.16s]   L9: queued  pos=6 stage=queued eta_s=118.5 elapsed_s=1.5 message="대기 6번째 · 약 118초"
+[+   3.16s]   queue active=4 waiting=6 avg_run_s=60.0
+[+  12.27s]   L0: running pos=0 stage=query_axes eta_s=49.4 elapsed_s=10.6 message="분석 중 · 검색 질의 만들기 · 약 49초 남음"
+[+  12.27s]   L1: running pos=0 stage=query_axes eta_s=49.4 elapsed_s=10.6 message="분석 중 · 검색 질의 만들기 · 약 49초 남음"
+[+  12.27s]   L2: running pos=0 stage=query_axes eta_s=49.3 elapsed_s=10.7 message="분석 중 · 검색 질의 만들기 · 약 49초 남음"
+[+  12.27s]   L3: running pos=0 stage=query_axes eta_s=49.4 elapsed_s=10.6 message="분석 중 · 검색 질의 만들기 · 약 49초 남음"
+[+  22.89s]   L0: running pos=0 stage=search eta_s=38.7 elapsed_s=21.3 message="분석 중 · 유사 연구 검색 · 약 39초 남음"
+[+  22.89s]   L1: running pos=0 stage=search eta_s=38.7 elapsed_s=21.3 message="분석 중 · 유사 연구 검색 · 약 39초 남음"
+[+  22.89s]   L2: running pos=0 stage=search eta_s=38.7 elapsed_s=21.3 message="분석 중 · 유사 연구 검색 · 약 39초 남음"
+[+  22.89s]   L3: running pos=0 stage=search eta_s=38.7 elapsed_s=21.3 message="분석 중 · 유사 연구 검색 · 약 39초 남음"
+[+  24.41s]   queue active=4 waiting=6 avg_run_s=60.0
+[+  32.00s]   L0: running pos=0 stage=extract_issues eta_s=29.6 elapsed_s=30.4 message="분석 중 · 지적 추출 · 약 30초 남음"
+[+  32.00s]   L1: running pos=0 stage=extract_issues eta_s=29.6 elapsed_s=30.4 message="분석 중 · 지적 추출 · 약 30초 남음"
+[+  32.00s]   L2: running pos=0 stage=extract_issues eta_s=29.6 elapsed_s=30.4 message="분석 중 · 지적 추출 · 약 30초 남음"
+[+  32.00s]   L3: running pos=0 stage=extract_issues eta_s=29.6 elapsed_s=30.4 message="분석 중 · 지적 추출 · 약 30초 남음"
+[+  42.64s]   L0: running pos=0 stage=synthesize_cards eta_s=19.0 elapsed_s=41.0 message="분석 중 · 위험카드 합성 · 약 19초 남음"
+[+  42.64s]   L1: running pos=0 stage=synthesize_cards eta_s=19.0 elapsed_s=41.0 message="분석 중 · 위험카드 합성 · 약 19초 남음"
+[+  42.64s]   L2: running pos=0 stage=synthesize_cards eta_s=19.0 elapsed_s=41.0 message="분석 중 · 위험카드 합성 · 약 19초 남음"
+[+  42.64s]   L3: running pos=0 stage=synthesize_cards eta_s=19.0 elapsed_s=41.0 message="분석 중 · 위험카드 합성 · 약 19초 남음"
+[+  45.70s]   queue active=4 waiting=6 avg_run_s=60.0
+[+  51.81s]   L0: running pos=0 stage=verify_evidence eta_s=9.8 elapsed_s=50.2 message="분석 중 · 원문 대조 · 약 10초 남음"
+[+  51.81s]   L1: running pos=0 stage=verify_evidence eta_s=9.8 elapsed_s=50.2 message="분석 중 · 원문 대조 · 약 10초 남음"
+[+  51.81s]   L2: running pos=0 stage=verify_evidence eta_s=9.8 elapsed_s=50.2 message="분석 중 · 원문 대조 · 약 10초 남음"
+[+  51.81s]   L3: running pos=0 stage=verify_evidence eta_s=9.8 elapsed_s=50.2 message="분석 중 · 원문 대조 · 약 10초 남음"
+[+  62.50s]   L0: done    pos=0 stage=done eta_s=0.0 elapsed_s=60.9 message="분석이 끝났습니다."
+[+  62.50s]   L0: 결과 받음 status=done 카드 2장 계획서 줄 18줄 대기 0.0s 실행 60.0s 작업 등록→결과 60.9s
+[+  62.50s]   L1: done    pos=0 stage=done eta_s=0.0 elapsed_s=60.9 message="분석이 끝났습니다."
+[+  62.50s]   L1: 결과 받음 status=done 카드 2장 계획서 줄 18줄 대기 0.0s 실행 60.0s 작업 등록→결과 60.9s
+[+  62.50s]   L2: done    pos=0 stage=done eta_s=0.0 elapsed_s=60.9 message="분석이 끝났습니다."
+[+  62.50s]   L2: 결과 받음 status=done 카드 2장 계획서 줄 18줄 대기 0.0s 실행 60.0s 작업 등록→결과 60.9s
+[+  62.50s]   L3: done    pos=0 stage=done eta_s=0.0 elapsed_s=60.9 message="분석이 끝났습니다."
+[+  62.50s]   L3: 결과 받음 status=done 카드 2장 계획서 줄 18줄 대기 0.0s 실행 60.0s 작업 등록→결과 60.9s
+[+  62.50s]   L4: running pos=0 stage=plan_normalize eta_s=59.1 elapsed_s=60.9 message="분석 중 · 계획서 정리 · 약 59초 남음"
+[+  62.50s]   L5: running pos=0 stage=plan_normalize eta_s=59.1 elapsed_s=60.9 message="분석 중 · 계획서 정리 · 약 59초 남음"
+[+  62.50s]   L6: running pos=0 stage=plan_normalize eta_s=59.1 elapsed_s=60.9 message="분석 중 · 계획서 정리 · 약 59초 남음"
+[+  62.50s]   L7: running pos=0 stage=plan_normalize eta_s=59.1 elapsed_s=60.9 message="분석 중 · 계획서 정리 · 약 59초 남음"
+[+  62.50s]   L8: queued  pos=1 stage=queued eta_s=59.1 elapsed_s=60.9 message="대기 1번째 · 약 59초"
+[+  62.50s]   L9: queued  pos=2 stage=queued eta_s=59.1 elapsed_s=60.9 message="대기 2번째 · 약 59초"
+[+  67.05s]   queue active=4 waiting=2 avg_run_s=60.0
+[+  73.12s]   L4: running pos=0 stage=query_axes eta_s=48.5 elapsed_s=71.5 message="분석 중 · 검색 질의 만들기 · 약 48초 남음"
+[+  73.12s]   L5: running pos=0 stage=query_axes eta_s=48.5 elapsed_s=71.5 message="분석 중 · 검색 질의 만들기 · 약 48초 남음"
+[+  73.12s]   L6: running pos=0 stage=query_axes eta_s=48.5 elapsed_s=71.5 message="분석 중 · 검색 질의 만들기 · 약 48초 남음"
+[+  73.12s]   L7: running pos=0 stage=query_axes eta_s=48.5 elapsed_s=71.5 message="분석 중 · 검색 질의 만들기 · 약 48초 남음"
+[+  82.22s]   L4: running pos=0 stage=search eta_s=39.4 elapsed_s=80.6 message="분석 중 · 유사 연구 검색 · 약 39초 남음"
+[+  82.22s]   L5: running pos=0 stage=search eta_s=39.4 elapsed_s=80.6 message="분석 중 · 유사 연구 검색 · 약 39초 남음"
+[+  82.22s]   L6: running pos=0 stage=search eta_s=39.4 elapsed_s=80.6 message="분석 중 · 유사 연구 검색 · 약 39초 남음"
+[+  82.22s]   L7: running pos=0 stage=search eta_s=39.4 elapsed_s=80.6 message="분석 중 · 유사 연구 검색 · 약 39초 남음"
+[+  88.30s]   queue active=4 waiting=2 avg_run_s=60.0
+[+  92.84s]   L4: running pos=0 stage=extract_issues eta_s=28.8 elapsed_s=91.2 message="분석 중 · 지적 추출 · 약 29초 남음"
+[+  92.84s]   L5: running pos=0 stage=extract_issues eta_s=28.8 elapsed_s=91.2 message="분석 중 · 지적 추출 · 약 29초 남음"
+[+  92.84s]   L6: running pos=0 stage=extract_issues eta_s=28.8 elapsed_s=91.2 message="분석 중 · 지적 추출 · 약 29초 남음"
+[+  92.84s]   L7: running pos=0 stage=extract_issues eta_s=28.8 elapsed_s=91.2 message="분석 중 · 지적 추출 · 약 29초 남음"
+[+ 101.97s]   L4: running pos=0 stage=synthesize_cards eta_s=19.7 elapsed_s=100.4 message="분석 중 · 위험카드 합성 · 약 20초 남음"
+[+ 101.97s]   L5: running pos=0 stage=synthesize_cards eta_s=19.7 elapsed_s=100.3 message="분석 중 · 위험카드 합성 · 약 20초 남음"
+[+ 101.97s]   L6: running pos=0 stage=synthesize_cards eta_s=19.7 elapsed_s=100.3 message="분석 중 · 위험카드 합성 · 약 20초 남음"
+[+ 101.97s]   L7: running pos=0 stage=synthesize_cards eta_s=19.7 elapsed_s=100.3 message="분석 중 · 위험카드 합성 · 약 20초 남음"
+[+ 109.55s]   queue active=4 waiting=2 avg_run_s=60.0
+[+ 112.58s]   L4: running pos=0 stage=verify_evidence eta_s=9.0 elapsed_s=111.0 message="분석 중 · 원문 대조 · 약 9초 남음"
+[+ 112.58s]   L5: running pos=0 stage=verify_evidence eta_s=9.0 elapsed_s=111.0 message="분석 중 · 원문 대조 · 약 9초 남음"
+[+ 112.58s]   L6: running pos=0 stage=verify_evidence eta_s=9.0 elapsed_s=111.0 message="분석 중 · 원문 대조 · 약 9초 남음"
+[+ 112.58s]   L7: running pos=0 stage=verify_evidence eta_s=9.0 elapsed_s=111.0 message="분석 중 · 원문 대조 · 약 9초 남음"
+[+ 121.70s]   L4: done    pos=0 stage=done eta_s=0.0 elapsed_s=120.1 message="분석이 끝났습니다."
+[+ 121.70s]   L4: 결과 받음 status=done 카드 2장 계획서 줄 18줄 대기 60.0s 실행 60.0s 작업 등록→결과 120.1s
+[+ 121.70s]   L5: done    pos=0 stage=done eta_s=0.0 elapsed_s=120.1 message="분석이 끝났습니다."
+[+ 121.70s]   L5: 결과 받음 status=done 카드 2장 계획서 줄 18줄 대기 60.0s 실행 60.0s 작업 등록→결과 120.1s
+[+ 121.70s]   L6: done    pos=0 stage=done eta_s=0.0 elapsed_s=120.1 message="분석이 끝났습니다."
+[+ 121.70s]   L6: 결과 받음 status=done 카드 2장 계획서 줄 18줄 대기 60.0s 실행 60.0s 작업 등록→결과 120.1s
+[+ 121.70s]   L7: done    pos=0 stage=done eta_s=0.0 elapsed_s=120.1 message="분석이 끝났습니다."
+[+ 121.70s]   L7: 결과 받음 status=done 카드 2장 계획서 줄 18줄 대기 60.0s 실행 60.0s 작업 등록→결과 120.1s
+[+ 121.70s]   L8: running pos=0 stage=plan_normalize eta_s=59.9 elapsed_s=120.1 message="분석 중 · 계획서 정리 · 약 60초 남음"
+[+ 121.70s]   L9: running pos=0 stage=plan_normalize eta_s=59.9 elapsed_s=120.1 message="분석 중 · 계획서 정리 · 약 60초 남음"
+[+ 130.77s]   queue active=2 waiting=0 avg_run_s=60.0
+[+ 132.27s]   L8: running pos=0 stage=query_axes eta_s=49.4 elapsed_s=130.6 message="분석 중 · 검색 질의 만들기 · 약 49초 남음"
+[+ 132.27s]   L9: running pos=0 stage=query_axes eta_s=49.4 elapsed_s=130.6 message="분석 중 · 검색 질의 만들기 · 약 49초 남음"
+[+ 142.84s]   L8: running pos=0 stage=search eta_s=38.8 elapsed_s=141.2 message="분석 중 · 유사 연구 검색 · 약 39초 남음"
+[+ 142.84s]   L9: running pos=0 stage=search eta_s=38.8 elapsed_s=141.2 message="분석 중 · 유사 연구 검색 · 약 39초 남음"
+[+ 151.89s]   L8: running pos=0 stage=extract_issues eta_s=29.7 elapsed_s=150.3 message="분석 중 · 지적 추출 · 약 30초 남음"
+[+ 151.89s]   L9: running pos=0 stage=extract_issues eta_s=29.8 elapsed_s=150.3 message="분석 중 · 지적 추출 · 약 30초 남음"
+[+ 151.89s]   queue active=2 waiting=0 avg_run_s=60.0
+[+ 162.42s]   L8: running pos=0 stage=synthesize_cards eta_s=19.2 elapsed_s=160.8 message="분석 중 · 위험카드 합성 · 약 19초 남음"
+[+ 162.42s]   L9: running pos=0 stage=synthesize_cards eta_s=19.2 elapsed_s=160.8 message="분석 중 · 위험카드 합성 · 약 19초 남음"
+[+ 172.97s]   L8: running pos=0 stage=verify_evidence eta_s=8.7 elapsed_s=171.3 message="분석 중 · 원문 대조 · 약 9초 남음"
+[+ 172.97s]   L9: running pos=0 stage=verify_evidence eta_s=8.7 elapsed_s=171.3 message="분석 중 · 원문 대조 · 약 9초 남음"
+[+ 172.98s]   queue active=2 waiting=0 avg_run_s=60.0
+[+ 182.02s]   L8: done    pos=0 stage=done eta_s=0.0 elapsed_s=180.4 message="분석이 끝났습니다."
+[+ 182.02s]   L8: 결과 받음 status=done 카드 2장 계획서 줄 18줄 대기 120.0s 실행 60.0s 작업 등록→결과 180.4s
+[+ 182.02s]   L9: done    pos=0 stage=done eta_s=0.0 elapsed_s=180.4 message="분석이 끝났습니다."
+[+ 182.02s]   L9: 결과 받음 status=done 카드 2장 계획서 줄 18줄 대기 120.0s 실행 60.0s 작업 등록→결과 180.4s
+[+ 182.02s] == HTTP 응답 733건(POST 10, GET 723): 가장 긴 응답 0.032s (GET code=200), POST 최장 0.031s, GET 최장 0.032s, 100초 이상 0건
+[+ 182.02s]    응답 코드: {"202": 10, "200": 723}
+[+ 182.02s] == 결과 받은 작업 10/10건, 등록→결과 시간 60.9s, 60.9s, 60.9s, 60.9s, 120.1s, 120.1s, 120.1s, 120.1s, 180.4s, 180.4s
+[+ 182.02s]    (동기 방식이었다면 마지막 건은 HTTP 응답 하나가 180s 걸려 Cloudflare 약 100초 상한에 끊긴다)
+[+ 190.94s] 서버 종료 확인(포트 8136 닫힘)
+[+ 190.94s] 판정: PASS
+[+ 190.95s] -- 서버 로그(neumann.jobs 작업 완료 줄)
+   2026-09-30 20:22:55,629 INFO neumann.jobs job -traza ticket=4e10192a68514df4 ip_44f60a4954 plan_id=4e9cb5c60610 chars=669 status=done cache=off queue=queued pos=0 waited_s=0.0 run_s=60.0 total_s=60.6
+   2026-09-30 20:22:55,629 INFO neumann.jobs job tVWkk2 ticket=abc86d54fe1144b0 ip_cf325041aa plan_id=644c6f952bb6 chars=669 status=done cache=off queue=queued pos=0 waited_s=0.0 run_s=60.0 total_s=60.6
+   2026-09-30 20:22:55,731 INFO neumann.jobs job MwoJ5z ticket=455fa8f99e694a40 ip_e1162d3a3d plan_id=42d1829cbbd2 chars=669 status=done cache=off queue=queued pos=0 waited_s=0.0 run_s=60.0 total_s=60.7
+   2026-09-30 20:22:55,768 INFO neumann.jobs job OMakFW ticket=29f18aee3fa44b4f ip_20576d9a4b plan_id=25117eb62121 chars=669 status=done cache=off queue=queued pos=0 waited_s=0.0 run_s=60.0 total_s=60.8
+   2026-09-30 20:23:55,045 INFO neumann.jobs job rODxfS ticket=d98246bbcb674bb7 ip_c7b13d8138 plan_id=c1287fb9047c chars=669 status=done cache=off queue=queued pos=1 waited_s=60.0 run_s=60.0 total_s=120.0
+   2026-09-30 20:23:55,055 INFO neumann.jobs job K1MYT3 ticket=fa8d2a5537924085 ip_d4a1940d81 plan_id=ca6b1f882e11 chars=669 status=done cache=off queue=queued pos=2 waited_s=60.0 run_s=60.0 total_s=120.0
+   2026-09-30 20:23:55,059 INFO neumann.jobs job cvfeK_ ticket=322216724c374a38 ip_f155a14c83 plan_id=c87440297162 chars=669 status=done cache=off queue=queued pos=3 waited_s=60.0 run_s=60.0 total_s=120.0
+   2026-09-30 20:23:55,063 INFO neumann.jobs job CRPWlN ticket=0816c19fb6cd440b ip_f7ad212117 plan_id=4de009814488 chars=669 status=done cache=off queue=queued pos=4 waited_s=60.0 run_s=60.0 total_s=120.0
+   2026-09-30 20:24:55,050 INFO neumann.jobs job o9gm88 ticket=348415fd710c47d5 ip_2beca53c04 plan_id=3b645c3d1472 chars=669 status=done cache=off queue=queued pos=5 waited_s=120.0 run_s=60.0 total_s=180.0
+   2026-09-30 20:24:55,055 INFO neumann.jobs job k3FxUn ticket=4b78ce001778426d ip_cd3c4c74dc plan_id=fd60421cf289 chars=669 status=done cache=off queue=queued pos=6 waited_s=120.0 run_s=60.0 total_s=180.0
+[+ 190.95s] -- 서버 로그(neumann.serving, POST /premortem/jobs 10줄)
+   2026-09-30 20:21:55,026 INFO neumann.serving req ticket=abc86d54fe1144b0 ip_cf325041aa path=/premortem/jobs mode=analysis plan_id=644c6f952bb6 chars=669 status=202 cache=miss queue=job pos=0 waited_s=0.0 run_s=0.0 total_s=0.00
+   2026-09-30 20:21:55,026 INFO neumann.serving req ticket=455fa8f99e694a40 ip_e1162d3a3d path=/premortem/jobs mode=analysis plan_id=42d1829cbbd2 chars=669 status=202 cache=miss queue=job pos=0 waited_s=0.0 run_s=0.0 total_s=0.00
+   2026-09-30 20:21:55,026 INFO neumann.serving req ticket=4e10192a68514df4 ip_44f60a4954 path=/premortem/jobs mode=analysis plan_id=4e9cb5c60610 chars=669 status=202 cache=miss queue=job pos=0 waited_s=0.0 run_s=0.0 total_s=0.00
+   2026-09-30 20:21:55,031 INFO neumann.serving req ticket=29f18aee3fa44b4f ip_20576d9a4b path=/premortem/jobs mode=analysis plan_id=25117eb62121 chars=669 status=202 cache=miss queue=job pos=0 waited_s=0.0 run_s=0.0 total_s=0.00
+   2026-09-30 20:21:55,033 INFO neumann.serving req ticket=d98246bbcb674bb7 ip_c7b13d8138 path=/premortem/jobs mode=analysis plan_id=c1287fb9047c chars=669 status=202 cache=miss queue=job pos=1 waited_s=0.0 run_s=0.0 total_s=0.02
+   2026-09-30 20:21:55,034 INFO neumann.serving req ticket=fa8d2a5537924085 ip_d4a1940d81 path=/premortem/jobs mode=analysis plan_id=ca6b1f882e11 chars=669 status=202 cache=miss queue=job pos=2 waited_s=0.0 run_s=0.0 total_s=0.02
+   2026-09-30 20:21:55,035 INFO neumann.serving req ticket=322216724c374a38 ip_f155a14c83 path=/premortem/jobs mode=analysis plan_id=c87440297162 chars=669 status=202 cache=miss queue=job pos=3 waited_s=0.0 run_s=0.0 total_s=0.02
+   2026-09-30 20:21:55,037 INFO neumann.serving req ticket=0816c19fb6cd440b ip_f7ad212117 path=/premortem/jobs mode=analysis plan_id=4de009814488 chars=669 status=202 cache=miss queue=job pos=4 waited_s=0.0 run_s=0.0 total_s=0.02
+   2026-09-30 20:21:55,038 INFO neumann.serving req ticket=348415fd710c47d5 ip_2beca53c04 path=/premortem/jobs mode=analysis plan_id=3b645c3d1472 chars=669 status=202 cache=miss queue=job pos=5 waited_s=0.0 run_s=0.0 total_s=0.02
+   2026-09-30 20:21:55,040 INFO neumann.serving req ticket=4b78ce001778426d ip_cd3c4c74dc path=/premortem/jobs mode=analysis plan_id=fd60421cf289 chars=669 status=202 cache=miss queue=job pos=6 waited_s=0.0 run_s=0.0 total_s=0.02
+[+ 190.95s] 서버 로그 861줄 중 계획서 본문·트레이스가 든 줄: 0
