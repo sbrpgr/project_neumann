@@ -1,0 +1,193 @@
+{
+  "_note": "DECK-FREEZE: 확정 수치와 출처. 제품 호출 없이 보고서만 반영.",
+  "frozen_at": "2026-10-01T06:29:03+09:00",
+  "merged": {
+    "rebirth": true,
+    "final_check": true,
+    "_src": "FINAL-LIVE-B 서버 commit 983f3e9의 revise/finalize HTTP 200. 구현과 성공 판정은 구분."
+  },
+  "live_full_flow": {
+    "_src": "out/codex/final-live/docs/reports/FINAL-LIVE-2.md, main 9ffaceb",
+    "revise": "수정안 3개",
+    "revise_sub": "31.281초 · degraded",
+    "confirm": "적용 3/3",
+    "confirm_sub": "문안 대조 3/3 · 누락 0",
+    "final_check": "partial · 48.078초",
+    "final_check_sub": "Z3/Pint/NX 0/0/2",
+    "draft": "서버 ZIP 13파일",
+    "draft_sub": "최종 초안 포함 · partial",
+    "e2e_line": "FINAL-LIVE-2: API 전체 흐름 2/2 완료, 제품 최종 검증 partial. 각 편 Z3/Pint/NetworkX/citation 실제 실행 0/0/2/0회, 자동 수정 0건. 필수 4종 기준 미달."
+  },
+  "s11_analysis": {
+    "_src": "FINAL-LIVE-2.md example-battery",
+    "similar": "소재 샘플",
+    "sub": "카드 4장 · 82.344초",
+    "source": "실측: FINAL-LIVE-2 소재 · 화면 예시: 시험 데이터",
+    "source_mark": ""
+  },
+  "s11_shots": {
+    "_note": "UI-FINAL 1440 단계별 화면 상단 발췌. 화면 예시 · 시험 데이터. 실서비스 측정과 구분.",
+    "1": {
+      "src": "C:\\Users\\User\\Desktop\\project_neumann\\out\\codex\\ui-final\\docs\\reports\\UI-FINAL_shots\\UI-FINAL_1440_1_input.png",
+      "crop": [
+        0,
+        0,
+        1440,
+        837
+      ],
+      "title": [
+        "① 입력 화면  ",
+        "계획서 입력"
+      ],
+      "desc": "화면 예시 · 시험 데이터 (상단 발췌)"
+    },
+    "2": {
+      "src": "C:\\Users\\User\\Desktop\\project_neumann\\out\\codex\\ui-final\\docs\\reports\\UI-FINAL_shots\\UI-FINAL_1440_3_adopt.png",
+      "crop": [
+        0,
+        0,
+        1440,
+        837
+      ],
+      "title": [
+        "② 채택 화면  ",
+        "카드와 근거"
+      ],
+      "desc": "화면 예시 · 시험 데이터 (상단 발췌)"
+    },
+    "3": {
+      "src": "C:\\Users\\User\\Desktop\\project_neumann\\out\\codex\\ui-final\\docs\\reports\\UI-FINAL_shots\\UI-FINAL_1440_6_done.png",
+      "crop": [
+        0,
+        0,
+        1440,
+        837
+      ],
+      "title": [
+        "③ 완성 화면  ",
+        "최종 초안"
+      ],
+      "desc": "화면 예시 · 시험 데이터 (상단 발췌)"
+    }
+  },
+  "backtest": {
+    "_src": "data/eval/judge_n5v3/answers/J1~J3 + judge_n5v3_key/pairing.json에서 독립 재계산; NUMBERS-AUDIT.recomputed.json v3. v2는 민감도, posthoc는 별도.",
+    "baseline_p3": "26.7%",
+    "baseline_p3_ci": "[6.7, 46.7]",
+    "baseline_a_slots": "A 4/15자리",
+    "baseline_a_risks": "A-rate 4/15 = 26.7%",
+    "baseline_hit3": "논문 단위 hit@3 0.6",
+    "neumann_p3": "20.0%",
+    "neumann_p3_ci": "[0.0, 60.0]",
+    "neumann_a_slots": "A 3/15자리(빈 11)",
+    "neumann_a_risks": "A-rate 3/4 = 75.0%",
+    "neumann_hit3": "논문 단위 hit@3 0.2",
+    "posthoc_baseline": "A 1/3",
+    "posthoc_baseline_sub": "같은 1편 · hit@3 1.0",
+    "posthoc_neumann": "B 1/1",
+    "posthoc_neumann_sub1": "1/3편에서 카드 1장",
+    "posthoc_neumann_sub2": "hit@3 0",
+    "limits": "n=5, 통계적 결론 없음 · 사전 등록 5편(거절 3·채택 2, PDE 4편) · 빈 11자리 포함 · 셔플 대조 없음 · v3 블라인드 다수결, 일치 18/19. 대표 판정 일치율은 미측정.",
+    "human_agreement": "미측정",
+    "macro": "Macro-F1 0.4864는 별도 역사 평가, 목표 0.70 미달. DISAPERE 148건, 1회 채점. 현재 제품 모델 성능을 입증하지 않음. 사람 상한 0.725는 기획서 인용.",
+    "e2e": "v0 검사 수 5/5(전체 흐름 성공 아님) · v1 시연 계획서 1/3 통과, 무관 입력 차단 포함 총 2/4. 분석→리포트의 역사 측정.",
+    "e2e_mark": ""
+  },
+  "stage_line": {
+    "_src": "사용자 지정 main 9ffaceb mock 테스트 결과",
+    "reached": "현재 상태는 17쪽",
+    "reached_mark": "",
+    "repo_tail": " · main 9ffaceb · mock 2,979 통과 / 66 건너뜀"
+  },
+  "s14": {
+    "ops_value": "$4.0065 (보고서 합산 추정)",
+    "ops_note": "누계 추정: FINAL-LIVE $1.1901 + LIVE-B $1.0002 + LIVE-2 $1.8162 = $4.0065. 미반환 usage 제외·실청구액 미확인. 가정 단가 입력 $5/출력 $20 (백만 토큰). 인건비 절감액은 800만 원×1개월×20건의 가정."
+  },
+  "_audit": {
+    "base_commit": "87d3597",
+    "candidate_report": "docs/reports/NUMBERS-AUDIT.md",
+    "recomputed_evidence": "docs/reports/NUMBERS-AUDIT.recomputed.json",
+    "default_judgment": "v3",
+    "confirmed": {
+      "baseline_precision_at_3": "4/15 = 26.7%",
+      "neumann_precision_at_3": "3/15 = 20.0%",
+      "baseline_a_rate": "4/15 = 26.7%",
+      "neumann_a_rate": "3/4 = 75.0%",
+      "baseline_hit_at_3": "3/5 = 0.6",
+      "neumann_hit_at_3": "1/5 = 0.2"
+    },
+    "not_a_0700_measurement": true,
+    "freeze_note": "감사 후보 검토 반영. 현장 최종 측정은 FINAL-LIVE-2. 07:00 실측이라고 주장하지 않음. 원 판정 유지."
+  },
+  "definition": "Neumann의 에이전트는 불완전한 연구계획을, 불완전한 거절 기록들을 모아 설명해 주고, 완전한 기획으로 다시 재탄생시켜 주는 에이전트.",
+  "evidence_table": [
+    "카드 4장 · 7장",
+    "원문 대조 17/17 · 26/26",
+    "FINAL-LIVE-2 두 샘플"
+  ],
+  "evidence_summary": "FINAL-LIVE-2: 소재 카드 4장·원문 17/17, 단백질 카드 7장·원문 26/26. 원문 누락 0",
+  "analysis_overview": "FINAL-LIVE-2 분석: 소재 82.344초 / 단백질 104.547초. main 9ffaceb, gpt-6.1-sol.",
+  "live_source_label": "FINAL-LIVE-2 · main 9ffaceb",
+  "live_rows": [
+    [
+      "소재 · 82.344초",
+      "4장 · 원문 17/17",
+      "3/3 · 누락 0",
+      "0 / 0 / 2회",
+      "$0.7332 · partial"
+    ],
+    [
+      "단백질 · 104.547초",
+      "7장 · 원문 26/26",
+      "18/18 · 누락 0",
+      "0 / 0 / 2회",
+      "$1.0830 · partial"
+    ]
+  ],
+  "final_verdict": "API 전체 흐름 2/2 완료 · 최종 점검 partial · 필수 4종 도구 실행 기준 미달",
+  "live_footer": "NetworkX 실행 각 2회(최초·재검사), missing_sections 실패·미해결. Z3/Pint/citation 각 0회, 자동 수정 각 0건. 서버 ZIP 초안 포함, F-9 완료 고지: 아니오. 비용은 추정.",
+  "latest_live": {
+    "source": "FINAL-LIVE-2.md",
+    "commit": "9ffaceb",
+    "verdict": "불가 — 전체 흐름 2/2편; 필수 4종 도구 실행 기준 충족=False",
+    "battery": {
+      "analysis_s": 82.344,
+      "revise_s": 31.281,
+      "finalize_s": 48.078,
+      "cards": 4,
+      "quote_exact": "17/17",
+      "applied": "3/3",
+      "direct_text": "3/3",
+      "silent_omissions": 0,
+      "tool_runs": {
+        "z3": 0,
+        "pint": 0,
+        "networkx": 2,
+        "citation": 0
+      },
+      "auto_corrections": 0,
+      "status": "partial",
+      "estimated_usd": 0.7332
+    },
+    "binding": {
+      "analysis_s": 104.547,
+      "revise_s": 73.657,
+      "finalize_s": 82.797,
+      "cards": 7,
+      "quote_exact": "26/26",
+      "applied": "18/18",
+      "direct_text": "18/18",
+      "silent_omissions": 0,
+      "tool_runs": {
+        "z3": 0,
+        "pint": 0,
+        "networkx": 2,
+        "citation": 0
+      },
+      "auto_corrections": 0,
+      "status": "partial",
+      "estimated_usd": 1.083
+    },
+    "cost_sum_estimated_usd": 4.0065
+  }
+}
