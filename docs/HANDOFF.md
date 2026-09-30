@@ -11,6 +11,8 @@ PM이 병합할 때마다 갱신한다. Claude 한도가 다 되면 이 문서�
 | ~08:30 | 발표자료(키트 `발표자료/본선_발표자료.pptx`) 빈칸 10·11·12·13쪽 + 주소·영상 채우기 |
 | 09:00 전 | PDF 저장과 제출 |
 
+- **실제 OpenAI 호출 제한(대표 상시 규칙):** OpenAI API는 실제 서비스(사람이 쓰는 8010·공개 서버)와 태그급 성공 뒤 대표가 승인한 확인 테스트에서만 쓴다. `NEUMANN_LLM_PROVIDER=openai`와 `NEUMANN_LIVE_TESTS=1`은 PM이 대표 승인을 받은 과제에서만 켠다. 개발·빌드·검증·단위 테스트·측정은 mock이나 로컬로 한다. 설정 기본 provider는 mock이다. 구독(Claude·Codex) 에이전트가 만든 오프라인 결과를 제품 데이터에 쓰면 생성 방식을 "Claude/Codex 오프라인"으로 표기한다
+
 ## Codex PM이 20:00에 이어받으면 할 일 (순서대로)
 
 1. `docs/tasks/QUEUE.md` 최신 현황 요약을 읽는다. 검증 보고서(`docs/reports/<ID>.verify.md`)가 PASS인데 main에 없는 브랜치를 병합한다(`git merge --no-ff task/<ID>`, 검증 보고서도 커밋). PASS-조건부는 조건이 해소된 커밋이 있을 때만
@@ -32,13 +34,15 @@ PM이 병합할 때마다 갱신한다. Claude 한도가 다 되면 이 문서�
 - Codex 빌더·검증: `bash scripts/codex_task.sh build <과제ID>`(astra), `bash scripts/codex_task.sh verify <과제ID>`(sol, 빌더와 다른 모델). 백그라운드로 여러 개 띄워도 된다. 인계 뒤 병합 조건은 `python scripts/verify.py` 통과와 sol 검증 PASS.
 - **평가 판정은 Codex로 하지 않는다**(계획서 §5.7). 21:40 뒤 Claude가 한다. Claude로 못 하게 되면 §5.7 비상 판정.
 
-## 지금 상태 (2026-09-30 18:58)
+## 지금 상태 (2026-09-30 20:0x, PM "로컬 세팅")
 
-- 과제 현황과 다음 할 일은 **`docs/tasks/QUEUE.md`**가 기준이다
-- main에 병합: E0·E0b·E5-L0·E5-L1a·E4-L0·E4-L2a. 모두 push됨
+- 과제 현황과 다음 할 일은 **`docs/tasks/QUEUE.md`의 "★ 20:00 교대 스냅숏"**이 기준이다
+- main: v0 태그(19:19) 뒤 E2-L1(검색 보정)·E4-L1a(업로드 파서, 2e38839)까지 병합, push됨
 - `main.py`에 선택 라우터(export·upload·precomputed·templates·meta) 자동 연결. 모듈이 main에 들어오면 서버 재시작만 하면 붙는다. 상태는 `/health`의 `routers`
-- 점검 서버 `http://127.0.0.1:8010`: E4-L0 빌더 worktree에서 띄운 **샘플 모드** 서버. v0 통합 뒤 main 체크아웃에서 다시 띄운다(`.claude/launch.json` 또는 E4-L2c의 `scripts/serve.py`)
-- 사용량(18:52): Claude 5시간 창 17%, 주간 5%. 대표 방침: 20:00 전에 풀로 쓴다
+- 점검 서버 **`http://127.0.0.1:8020`**(구축 세션, main 체크아웃, openai·gpt-6.1-sol). 8010은 내림
+- **터널 공개 금지**: E4-L2c FAIL(BOM·UTF-16 본문으로 입장 검사 우회, IPv6 /64 속도 제한 우회) 재작업 중 → 재검증 → E4-L2d 재검증 → SEC-2 뒤에만 공개
+- `/upload/plan`은 공개 전에 속도 제한 보호 경로에 넣어야 한다(E4-L1a 검증 지적 2)
+- verify는 **venv 파이썬**으로: `PYTHONPATH="src;." C:/Users/User/.venvs/neumann/Scripts/python.exe scripts/verify.py` (시스템 파이썬엔 pytest 없음)
 
 ## 도구·경로
 

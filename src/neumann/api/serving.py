@@ -37,6 +37,7 @@ import contextvars
 import copy
 import hashlib
 import heapq
+import hmac
 import importlib
 import inspect
 import ipaddress
@@ -87,8 +88,14 @@ MESSAGES = {
                 "끝난 결과를 바로 받을 수 있습니다(요청 번호 {ticket})."),
     "timeout_aux": "처리가 {limit}초 안에 끝나지 않았습니다. 잠시 뒤 다시 시도해 주세요(요청 번호 {ticket}).",
     "invalid": "요청 형식이 올바르지 않습니다. 보낸 내용을 확인하고 다시 시도해 주세요.",
+    "long_token": ("계획서에 띄어쓰기 없이 {limit:,}자가 넘게 이어진 부분이 있습니다(가장 긴 부분 {longest:,}자). "
+                   "긴 링크·인코딩된 데이터·표 서식을 줄여서 다시 올려 주세요."),
     "internal": "처리 중 문제가 생겼습니다. 잠시 뒤 다시 시도해 주세요. 계속되면 요청 번호 {ticket}를 알려 주세요.",
     "not_found": "없는 주소입니다.",
+    # 업로드(E4-L1a upload.py와 같은 문구: 화면이 같은 안내를 보게)
+    "upload_type": "multipart/form-data 형식으로 file 필드에 계획서 파일을 담아 보내 주세요",
+    "upload_boundary": "multipart 경계(boundary)가 없습니다",
+    "busy_ip": "이 주소에서 올린 파일을 아직 처리하고 있습니다. 끝난 뒤 다시 올려 주세요.",
 }
 
 
@@ -164,9 +171,11 @@ DEMO_PLAN_GLOB = ("tests/fixtures/plans", "plan*.md")  # 데모 계획서 3건(E
 class ServingConfig:
     max_concurrent: int = 2
     queue_max: int = 20
+    sync_queue_max: int = 0             # 동기 경로(/premortem, /view) 입장 때 대기 수 상한(0이면 queue_max). 작업 경로는 queue_max
     rate_per_min: int = 0
     rate_window_s: float = 60.0
     max_plan_chars: int = 50_000
+    max_token_chars: int = 20_000       # 공백 없이 이어진 토큰 하나의 글자 상한(E4-L2d 재작업: 정규식 O(n²) 방어 겹)
     max_body_bytes: int = 0             # 0이면 max_plan_chars*6 + 64KB
     max_export_bytes: int = 4 * 1024 * 1024
     max_upload_bytes: int = 10 * 1024 * 1024 + 65_536
@@ -176,6 +185,8 @@ class ServingConfig:
     aux_queue_max: int = 10
     aux_timeout_s: float = 60.0
     aux_rate_per_min: int = 0
+    upload_rate_per_min: int = 0        # 업로드 전용 IP(/64)별 분당 상한(공개 10)
+    upload_per_ip: int = 0              # 업로드 IP(/64)별 동시 처리 상한(공개 1). 0이면 끔
     daily_budget: int = 0               # 0이면 끔
     budget_file: Path | None = None
     block_new: bool = False
@@ -189,6 +200,7 @@ class ServingConfig:
     disk_allow: frozenset[str] = frozenset()
     trust_proxy: str = "loopback"       # loopback | always | never
     xff_pick: str = "first"             # first | last
+    trust_xff: bool = True              # 공개 프로필 기본 False: X-Forwarded-For는 위조할 수 있다
     hide_docs: bool = False
     protected: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_PROTECTED))
     warmup: bool = False
@@ -219,20 +231,25 @@ class ServingConfig:
         block_file = _env("NEUMANN_BLOCK_FILE")
         budget_file = _env("NEUMANN_BUDGET_FILE")
         return cls(
-            max_concurrent=int(_env_num("NEUMANN_MAX_CONCURRENT", 2, 1, 64)),
-            queue_max=int(_env_num("NEUMANN_QUEUE_MAX", 20, 0, 10_000)),
+            # 공개 기본값(다중 사용자, E4-L2d 대표 지시): 동시 4·대기 30(작업 방식), 동기 경로는 대기 4까지만
+            max_concurrent=int(_env_num("NEUMANN_MAX_CONCURRENT", 4 if public else 2, 1, 64)),
+            queue_max=int(_env_num("NEUMANN_QUEUE_MAX", 30 if public else 20, 0, 10_000)),
+            sync_queue_max=int(_env_num("NEUMANN_SYNC_QUEUE_MAX", 4 if public else 0, 0, 10_000)),
             rate_per_min=int(_env_num("NEUMANN_RATE_PER_MIN", 6 if public else 0, 0, 100_000)),
             max_plan_chars=int(_env_num("NEUMANN_MAX_PLAN_CHARS", 50_000, 1, 10_000_000)),
+            max_token_chars=int(_env_num("NEUMANN_MAX_TOKEN_CHARS", 20_000, 64, 10_000_000)),
             max_body_bytes=int(_env_num("NEUMANN_MAX_BODY_BYTES", 0, 0, 1 << 31)),
             max_export_bytes=int(_env_num("NEUMANN_MAX_EXPORT_BYTES", 4 * 1024 * 1024, 1024, 1 << 31)),
             max_upload_bytes=int(_env_num("NEUMANN_MAX_UPLOAD_BYTES", 10 * 1024 * 1024 + 65_536, 1024, 1 << 31)),
-            request_timeout_s=_env_num("NEUMANN_REQUEST_TIMEOUT_S", 300.0, 0.05, 86_400),
+            request_timeout_s=_env_num("NEUMANN_REQUEST_TIMEOUT_S", 90.0 if public else 300.0, 0.05, 86_400),
             avg_run_s=_env_num("NEUMANN_AVG_RUN_S", 60.0, 0.1, 86_400),
             aux_concurrent=int(_env_num("NEUMANN_AUX_CONCURRENT", 2, 1, 64)),
             aux_queue_max=int(_env_num("NEUMANN_AUX_QUEUE_MAX", 10, 0, 10_000)),
             aux_timeout_s=_env_num("NEUMANN_AUX_TIMEOUT_S", 60.0, 0.05, 86_400),
             aux_rate_per_min=int(_env_num("NEUMANN_AUX_RATE_PER_MIN", 30 if public else 0, 0, 100_000)),
-            daily_budget=int(_env_num("NEUMANN_DAILY_BUDGET", 200 if public else 0, 0, 10_000_000)),
+            upload_rate_per_min=int(_env_num("NEUMANN_UPLOAD_RATE_PER_MIN", 10 if public else 0, 0, 100_000)),
+            upload_per_ip=int(_env_num("NEUMANN_UPLOAD_PER_IP", 1 if public else 0, 0, 1000)),
+            daily_budget=int(_env_num("NEUMANN_DAILY_BUDGET", 0, 0, 10_000_000)),  # 대표 결정: 기본 끔
             budget_file=Path(budget_file) if budget_file else data_dir / "cache" / "serving_budget.json",
             block_new=_env_bool("NEUMANN_BLOCK_NEW", False),
             block_file=Path(block_file) if block_file else data_dir / "serving_block.flag",
@@ -244,6 +261,7 @@ class ServingConfig:
             disk_allow=frozenset(allow),
             trust_proxy=trust if trust in {"loopback", "always", "never"} else "loopback",
             xff_pick="last" if (_env("NEUMANN_XFF_PICK") or "").lower() == "last" else "first",
+            trust_xff=_env_bool("NEUMANN_TRUST_XFF", not public),  # 공개: CF-Connecting-IP만 믿는다
             hide_docs=_env_bool("NEUMANN_HIDE_DOCS", public),
             protected=_parse_protected(_env("NEUMANN_PROTECTED_PATHS")),
             warmup=_env_bool("NEUMANN_WARMUP", public),
@@ -253,9 +271,9 @@ class ServingConfig:
 
     def public_view(self) -> dict[str, Any]:
         return {
-            "max_concurrent": self.max_concurrent, "queue_max": self.queue_max, "rate_per_min": self.rate_per_min,
+            "max_concurrent": self.max_concurrent, "queue_max": self.queue_max, "sync_queue_max": self.sync_queue_max, "rate_per_min": self.rate_per_min,
             "max_plan_chars": self.max_plan_chars, "request_timeout_s": self.request_timeout_s,
-            "daily_budget": self.daily_budget, "cache": self.cache_enabled, "public": self.public,
+            "cache": self.cache_enabled, "public": self.public,
         }
 
 
@@ -354,6 +372,23 @@ def _scrub_ok_str(s: str) -> str:
     return scrub_public(s)
 
 
+def longest_token(text: str) -> int:
+    """공백 없이 이어진 가장 긴 토큰의 글자 수. str.split(C 구현, 선형)만 쓴다(정규식 역추적 없음)."""
+    return max((len(t) for t in text.split()), default=0)
+
+
+_JOB_PATH_RE = re.compile(r"(/premortem/jobs/)([A-Za-z0-9_\-]{1,6})[A-Za-z0-9_\-%]*")
+
+
+def mask_job_paths(text: str) -> str:
+    """로그용: ``/premortem/jobs/<job_id>``의 id를 앞 6자만 남긴다(job_id는 결과 열람 자격이다)."""
+    return _JOB_PATH_RE.sub(lambda m: m.group(1) + m.group(2) + "…", text) if "/premortem/jobs/" in text else text
+
+
+def _scrub_log(text: str) -> str:
+    return mask_job_paths(scrub_secrets(text))
+
+
 def scrub_ok_payload(data: Any) -> Any:
     """정상 분석 응답의 진단 필드에서 키·절대 경로·상류 API 문구·트레이스를 가린다(미들웨어와 같은 규칙)."""
     return _walk_diag(data, _scrub_ok_str)
@@ -368,11 +403,11 @@ class RedactingFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         try:
             if isinstance(record.msg, str):
-                record.msg = scrub_secrets(record.msg)
+                record.msg = _scrub_log(record.msg)
             if isinstance(record.args, tuple):
-                record.args = tuple(scrub_secrets(a) if isinstance(a, str) else a for a in record.args)
+                record.args = tuple(_scrub_log(a) if isinstance(a, str) else a for a in record.args)
             elif isinstance(record.args, dict):
-                record.args = {k: scrub_secrets(v) if isinstance(v, str) else v for k, v in record.args.items()}
+                record.args = {k: _scrub_log(v) if isinstance(v, str) else v for k, v in record.args.items()}
             if record.exc_info:
                 exc = record.exc_info[1]
                 note = f" [트레이스 생략: {type(exc).__name__ if exc else '?'}]"
@@ -382,7 +417,7 @@ class RedactingFilter(logging.Filter):
                     record.msg = record.msg + note
             record.stack_info = None
             msg = record.getMessage()
-            clean = scrub_secrets(msg)
+            clean = _scrub_log(msg)
             if clean != msg and record.name != "uvicorn.access":  # 인자를 합쳐야 드러나는 키
                 record.msg, record.args = clean, None
         except Exception:  # noqa: BLE001 - 로그 필터가 로그를 막지 않게
@@ -419,9 +454,34 @@ def ensure_log_handler() -> None:
         lg.setLevel(logging.INFO)
 
 
+def ip_key(ip: str) -> str:
+    """속도 제한·로그용 IP 묶음. IPv6는 /64(한 가입자가 보통 /64를 통째로 가진다), IPv4-매핑은 IPv4로."""
+    try:
+        addr = ipaddress.ip_address(ip.strip().strip("[]").split("%")[0])
+    except ValueError:
+        return ip
+    if addr.version == 6:
+        if addr.ipv4_mapped is not None:
+            return str(addr.ipv4_mapped)
+        return str(ipaddress.ip_network(f"{addr}/64", strict=False))
+    return str(addr)
+
+
+_IP_SALT: bytes | None = None
+
+
+def _ip_salt() -> bytes:
+    """로그 IP 해시용 솔트: NEUMANN_PSEUDONYM_SALT(있으면, 값은 어디에도 쓰지 않는다) 또는 프로세스마다 무작위."""
+    global _IP_SALT
+    if _IP_SALT is None:
+        env = os.getenv("NEUMANN_PSEUDONYM_SALT")
+        _IP_SALT = env.encode("utf-8") if env and env.strip() else os.urandom(16)
+    return _IP_SALT
+
+
 def _ip_tag(ip: str) -> str:
-    """로그용 IP 표시: 원래 값 대신 해시 앞 10자(같은 IP끼리 묶어 볼 수만 있다)."""
-    return "ip_" + hashlib.sha256(("neumann-ip:" + ip).encode("utf-8")).hexdigest()[:10]
+    """로그용 IP 표시: 솔트를 섞은 HMAC 앞 10자(같은 IP끼리 묶어 볼 수만 있고, 전수 대입으로 되돌릴 수 없다)."""
+    return "ip_" + hmac.new(_ip_salt(), ip_key(ip).encode("utf-8"), hashlib.sha256).hexdigest()[:10]
 
 
 # ───────────────────────── plan_id ─────────────────────────
@@ -435,7 +495,7 @@ def plan_key(plan_text: str) -> str:
         body = redact_pii(normalize_text(plan_text))
     except Exception:  # noqa: BLE001 - models가 없거나 실패하면 줄바꿈만 맞춘다
         body = plan_text.replace("\r\n", "\n").replace("\r", "\n")
-    return hashlib.sha256(body.encode("utf-8")).hexdigest()
+    return hashlib.sha256(body.encode("utf-8", "surrogatepass")).hexdigest()
 
 
 def public_plan_ids(paths: Any) -> list[str]:
@@ -458,7 +518,7 @@ class RequestCtx:
     ip: str = "internal"
     path: str = ""
     kind: str = "analysis"
-    mode: str = "analysis"        # analysis | analysis_mw | aux
+    mode: str = "analysis"        # analysis | aux
     started: float = field(default_factory=time.monotonic)
     plan_id: str = ""
     chars: int = 0
@@ -469,7 +529,11 @@ class RequestCtx:
     position_at_arrival: int = 0
     waited_s: float = 0.0
     run_s: float = 0.0
-    error_kind: str | None = None  # timeout | internal | None
+    error_kind: str | None = None  # timeout | internal | refused | None
+    internal: bool = False         # 예열 등 서버 내부 실행(입장 검사 대신 force 예약)
+    refusal: tuple[int, str, str, int] | None = None  # run()이 거절했을 때 (HTTP 코드, error_code, 문구, retry 초)
+    upload_key: str | None = None  # 업로드 IP별 동시 처리 수를 센 키(반납 전까지)
+    task_started: bool = False     # 보조 관문에서 하위 앱 작업을 시작했는가
 
 
 _CTX: contextvars.ContextVar[RequestCtx | None] = contextvars.ContextVar("neumann_serving_ctx", default=None)
@@ -844,6 +908,10 @@ class AnalysisTimeout(Exception):
     """요청 시간 상한 초과(분석 자체는 계속 돈다)."""
 
 
+class AdmissionRefused(Exception):
+    """새 분석 입장 거절(차단·속도 제한·예산·대기열). 미들웨어가 ctx.refusal로 사용자 문구 응답을 만든다."""
+
+
 def _to_jsonable(result: Any) -> dict[str, Any]:
     dump = getattr(result, "model_dump", None)
     if callable(dump):
@@ -873,6 +941,8 @@ class Serving:
         self.aux_gate = Gate(c.aux_concurrent, c.aux_queue_max, min(c.aux_timeout_s, 10.0), "aux")
         self.limiter = RateLimiter(c.rate_per_min, c.rate_window_s)
         self.aux_limiter = RateLimiter(c.aux_rate_per_min, c.rate_window_s)
+        self.upload_limiter = RateLimiter(c.upload_rate_per_min, c.rate_window_s)
+        self.upload_active: dict[str, int] = {}  # IP(/64)별 처리 중인 업로드 수
         self.budget = DailyBudget(c.daily_budget, c.budget_file if c.daily_budget > 0 else None)
         self.cache = ResultCache(c.cache_dir, enabled=c.cache_enabled, mem_items=c.cache_mem_items,
                                  variant=c.cache_variant, statuses=c.cache_statuses, ttl_s=c.cache_ttl_s,
@@ -885,18 +955,66 @@ class Serving:
         self._warm_task: asyncio.Task[Any] | None = None
         # 코드가 등록하는 보호 경로(E4-L2d: POST /premortem/jobs). 설정(NEUMANN_PROTECTED_PATHS)보다 우선한다.
         self.extra_protected: dict[str, str] = {}
+        self.async_paths: set[str] = set()  # 응답을 기다리지 않는 경로(작업 방식): 대기열 전체(queue_max)를 쓴다
 
-    def protect(self, path: str, kind: str = "analysis") -> None:
+    def protect(self, path: str, kind: str = "analysis", *, async_: bool = False) -> None:
         """경로를 보호 경로로 등록한다. 설정으로 빼거나 다른 종류로 바꿀 수 없다(우회 경로 방지)."""
-        self.extra_protected[path.rstrip("/") or "/"] = kind if kind in KINDS else "gated"
+        key = path.rstrip("/") or "/"
+        self.extra_protected[key] = kind if kind in KINDS else "gated"
+        if async_:
+            self.async_paths.add(key)
+
+    def sync_wait_full(self, ctx: RequestCtx) -> bool:
+        """동기 경로 요청인데 대기가 동기 상한 이상이면 True(응답 하나가 터널 시간 상한을 넘지 않게)."""
+        lim = self.config.sync_queue_max
+        return lim > 0 and (ctx.path.rstrip("/") or "/") not in self.async_paths and self.gate.waiting >= lim
 
     def kind_for(self, path: str) -> str | None:
         key = path.rstrip("/") or "/"
         return self.extra_protected.get(key) or self.config.protected.get(key)
 
-    def admit_new_analysis(self, ctx: RequestCtx) -> tuple[int, dict[str, Any], dict[str, str]] | None:
-        """새 분석 입장 관문(차단 스위치 → IP 속도 제한 → 일일 예산 → 대기열). 미들웨어와 같은 코드다."""
-        return ServingMiddleware(None, self)._admit_new_analysis(ctx)
+    def admit_new(self, ctx: RequestCtx) -> tuple[int, str, str, int] | None:
+        """새 분석 입장 검사: 차단 스위치 → IP(/64) 속도 제한 → 일일 예산 → 대기열.
+
+        입장이면 None(대기열 자리를 잡고 예산 1건을 뗀다. 쓰지 않으면 _drop_reservation이 돌려준다).
+        거절이면 (HTTP 코드, error_code, 사용자 문구, retry 초).
+        """
+        cfg = self.config
+        if self.blocked():
+            self.counters["blocked_503"] += 1
+            return 503, "blocked", user_message("blocked"), 600
+        ok, retry = self.limiter.hit(ip_key(ctx.ip))
+        if not ok:
+            self.counters["rate_429"] += 1
+            r = max(int(math.ceil(retry)), 1)
+            return 429, "rate_limited", user_message("rate", retry=r, limit=cfg.rate_per_min), r
+        if self.budget.exhausted():
+            self.counters["budget_503"] += 1
+            return 503, "budget_exhausted", user_message("budget", limit=cfg.daily_budget), 3600
+        if self.sync_wait_full(ctx):
+            self.counters["busy_503"] += 1
+            r = max(int(math.ceil(min(self.gate.eta(self.gate.waiting + 1), 600))), 5)
+            return 503, "busy", user_message("busy", retry=r), r
+        try:
+            ctx.reservation = self.gate.reserve(ctx.ticket, ctx.plan_id)
+        except QueueFull as exc:
+            self.counters["busy_503"] += 1
+            r = max(int(math.ceil(min(exc.retry_after_s, 600))), 5)
+            return 503, "busy", user_message("busy", retry=r), r
+        ctx.position_at_arrival = self.gate.position(ctx.reservation.id)
+        self.budget.spend()
+        ctx.budget_spent = True
+        return None
+
+    def release_upload(self, ctx: RequestCtx) -> None:
+        """업로드 IP별 동시 처리 수를 돌려준다(여러 번 불러도 한 번만)."""
+        key, ctx.upload_key = ctx.upload_key, None
+        if key is not None:
+            n = self.upload_active.get(key, 0) - 1
+            if n > 0:
+                self.upload_active[key] = n
+            else:
+                self.upload_active.pop(key, None)
 
     def blocked(self) -> bool:
         """차단 스위치: 환경변수(NEUMANN_BLOCK_NEW) 또는 파일 플래그가 있으면 새 분석을 받지 않는다."""
@@ -930,14 +1048,23 @@ class Serving:
             ctx.cache = "hit"
             self.cache.hits += 1
             self.counters["cache_hits"] += 1
-            return self.cache.restore(entry, plan_text)
+            return await asyncio.to_thread(self.cache.restore, entry, plan_text)
         ctx.cache = "miss" if self.cache.enabled else "off"
         self.cache.misses += 1
         job = self.inflight.get(pid)
         if job is None:
-            t = ctx.reservation or self.gate.reserve(ctx.ticket, pid, force=True)
             if ctx.reservation is None:
-                self.budget.spend()  # 미들웨어를 거치지 않은 실행(예열 등)도 센다
+                # 미들웨어가 자리를 잡지 않은 실행: 두 번째 방어선. 예열(internal)만 검사 없이 force로 들어간다.
+                if ctx.internal:
+                    ctx.reservation = self.gate.reserve(ctx.ticket, pid, force=True)
+                    self.budget.spend()
+                else:
+                    refusal = self.admit_new(ctx)
+                    if refusal is not None:
+                        ctx.refusal, ctx.error_kind = refusal, "refused"
+                        raise AdmissionRefused(refusal[1])
+            t = ctx.reservation
+            assert t is not None
             ctx.reservation, ctx.budget_spent = None, False
             t.plan_id = pid
             ctx.position_at_arrival = ctx.position_at_arrival or self.gate.position(t.id)
@@ -1002,14 +1129,16 @@ class Serving:
             "accepting": g.active + g.waiting < g.max_active + g.max_waiting and not self.blocked()
             and not self.budget.exhausted(),
             "blocked": self.blocked(),
-            "budget": self.budget.status(),
             "aux": self.aux_gate.summary(),
             "limits": self.config.public_view(),
-            "counters": dict(self.counters, completed=g.completed),
-            "cache": {"enabled": self.cache.enabled, "memory_items": self.cache.memory_items, "hits": self.cache.hits,
-                      "stores": self.cache.stores},
-            "warmup": dict(self.warmup_state),
         }
+        if not self.config.public:  # 공개 프로필은 운영 수치(카운터·캐시·예열)를 내보내지 않는다. 예산 수치는 항상 뺀다
+            out.update({
+                "counters": dict(self.counters, completed=g.completed),
+                "cache": {"enabled": self.cache.enabled, "memory_items": self.cache.memory_items,
+                          "hits": self.cache.hits, "stores": self.cache.stores},
+                "warmup": dict(self.warmup_state),
+            })
         if ticket:
             if not _TICKET_RE.match(ticket):
                 out["ticket"] = {"id": "", "state": "unknown"}
@@ -1056,7 +1185,7 @@ class Serving:
                 log.info("예열: 차단 스위치·예산 때문에 plan_id=%s 건너뜀", pid[:12])
                 continue
             t0 = time.monotonic()
-            token = _CTX.set(RequestCtx(ticket="warm_" + pid[:12], path="warmup"))
+            token = _CTX.set(RequestCtx(ticket="warm_" + pid[:12], path="warmup", internal=True))
             try:
                 await self.run(fn, text)
                 ws["cached"] += int(self.cache.has(pid))
@@ -1094,10 +1223,11 @@ def wrap_pipeline(fn: Callable[..., Any]) -> Callable[..., Awaitable[dict[str, A
 # ───────────────────────── 미들웨어 ─────────────────────────
 
 
-def client_ip(scope: dict[str, Any], trust: str, pick: str = "first") -> str:
+def client_ip(scope: dict[str, Any], trust: str, pick: str = "first", use_xff: bool = True) -> str:
     """실제 클라이언트 IP. 터널(cloudflared)은 로컬(127.0.0.1)에서 들어오므로 그때만 프록시 헤더를 믿는다(trust=loopback).
 
-    CF-Connecting-IP → 없으면 X-Forwarded-For(기본 첫 값, NEUMANN_XFF_PICK=last면 마지막 값) → 없으면 client.host.
+    CF-Connecting-IP → 없으면 X-Forwarded-For(use_xff일 때만. 기본 첫 값, NEUMANN_XFF_PICK=last면 마지막 값)
+    → 없으면 client.host. 공개 프로필은 use_xff=False(XFF는 클라이언트가 위조할 수 있다).
     trust=never면 헤더를 보지 않고, always면 peer와 무관하게 헤더를 믿는다.
     """
     peer = (scope.get("client") or ("unknown", 0))[0] or "unknown"
@@ -1113,7 +1243,7 @@ def client_ip(scope: dict[str, Any], trust: str, pick: str = "first") -> str:
     cf = (_header(scope, "cf-connecting-ip") or "").strip()
     if cf:
         return cf[:64]
-    xff = [p.strip() for p in (_header(scope, "x-forwarded-for") or "").split(",") if p.strip()]
+    xff = [p.strip() for p in (_header(scope, "x-forwarded-for") or "").split(",") if p.strip()] if use_xff else []
     if xff:
         return (xff[-1] if pick == "last" else xff[0])[:64]
     return peer
@@ -1131,7 +1261,26 @@ _APP_BUSY_CODES = frozenset({"busy", "unavailable"})  # 앱이 503으로 돌려�
 
 
 def _err(code: str, message: str, ticket: str, **extra: Any) -> dict[str, Any]:
-    return {"status": "error", "error_code": code, "message": message, "request_id": ticket, "ticket": ticket, **extra}
+    """오류 본문. ``detail``은 FastAPI 기본 오류 모양을 읽는 화면(업로드 등)을 위해 같은 문구를 한 번 더 싣는다."""
+    return {"status": "error", "error_code": code, "message": message, "detail": message, "request_id": ticket,
+            "ticket": ticket, **extra}
+
+
+def _upload_type_refusal(content_type: str | None) -> tuple[int, str] | None:
+    """업로드 Content-Type 검사. 앱(upload.py)과 같은 python-multipart 파서를 쓴다. 거절이면 (코드, 문구)."""
+    try:
+        from python_multipart.multipart import parse_options_header
+
+        ctype, params = parse_options_header(content_type)
+        ok_type = ctype.strip().lower() == b"multipart/form-data"
+        boundary = params.get(b"boundary")
+    except Exception:  # noqa: BLE001 - 파서가 못 읽으면 거절(fail-closed)
+        return 415, user_message("upload_type")
+    if not ok_type:
+        return 415, user_message("upload_type")
+    if not boundary:
+        return 400, user_message("upload_boundary")
+    return None
 
 
 def _is_validation_body(data: Any) -> bool:
@@ -1178,8 +1327,8 @@ class ServingMiddleware:
         srv, cfg = self.serving, self.serving.config
         raw_ticket = _header(scope, TICKET_HEADER) or ""
         ticket = raw_ticket if _TICKET_RE.match(raw_ticket) else uuid.uuid4().hex[:16]
-        ctx = RequestCtx(ticket=ticket, ip=client_ip(scope, cfg.trust_proxy, cfg.xff_pick), path=scope.get("path", ""),
-                         kind=kind)
+        ctx = RequestCtx(ticket=ticket, ip=client_ip(scope, cfg.trust_proxy, cfg.xff_pick, cfg.trust_xff),
+                         path=scope.get("path", ""), kind=kind)
         srv.counters["requests"] += 1
         limit = cfg.body_limit(kind)
 
@@ -1191,6 +1340,14 @@ class ServingMiddleware:
             srv.counters["too_large_413"] += 1
             return _err("too_large", user_message("too_large_bytes", limit_mb=round(limit / 1048576, 1),
                                                    chars=cfg.max_plan_chars), ticket)
+
+        # 0) 업로드: 앱(upload.py)과 같은 파서로 Content-Type을 먼저 본다. multipart가 아니거나 경계가 없으면
+        #    본문을 읽지 않고 앱과 같은 문구로 거절한다(fail-closed). 입장 검사는 본문 해석과 무관하게 모두 적용된다.
+        if kind == "upload":
+            refusal = _upload_type_refusal(_header(scope, "content-type"))
+            if refusal is not None:
+                await reply(refusal[0], _err("invalid_request", refusal[1], ticket))
+                return
 
         # 1) 바이트 상한: Content-Length 먼저, 그다음 스트리밍 누적(파싱 전)
         clen = _header(scope, "content-length")
@@ -1213,52 +1370,68 @@ class ServingMiddleware:
         body = b"".join(chunks)
 
         # 2) 종류 결정, 글자 수 상한, plan_id
-        payload: Any = None
-        if kind != "upload":
+        #    앱(FastAPI·Starlette)과 같은 파서로 읽는다: json.loads(bytes)는 BOM·UTF-16·UTF-32를 스스로 판별한다.
+        #    분석 경로는 plan_text를 문자열로 못 읽으면 앱에 넘기지 않고 거절한다(fail-closed: 파서 차이로 관문 우회 금지).
+        ctx.mode = "analysis" if kind == "analysis" else "aux"
+        if ctx.mode == "analysis":
+            plan_text: str | None = None
             try:
-                payload = json.loads(body.decode("utf-8")) if body else None
-            except (ValueError, UnicodeDecodeError):
-                payload = None
-        plan_text = payload.get("plan_text") if isinstance(payload, dict) else None
-        plan_text = plan_text if isinstance(plan_text, str) else None
-        if kind == "analysis":
-            ctx.mode = "analysis"
-        elif kind == "export" and plan_text is not None and plan_text.strip() and payload.get("result") is None:
-            ctx.mode = "analysis_mw"  # 옛 내보내기 경로(plan_text → 파이프라인): 분석과 같은 관문
-        else:
-            ctx.mode = "aux"
-        if plan_text is not None and ctx.mode != "aux":
-            ctx.chars = len(plan_text)
-            if ctx.chars > cfg.max_plan_chars:
+                payload = json.loads(body) if body else None
+                if isinstance(payload, dict) and isinstance(payload.get("plan_text"), str):
+                    plan_text = payload["plan_text"]
+                    ctx.chars = len(plan_text)
+            except (ValueError, UnicodeError, RecursionError, TypeError):
+                plan_text = None
+            if plan_text is not None and ctx.chars > cfg.max_plan_chars:
                 srv.counters["too_large_413"] += 1
                 await reply(413, _err("too_large", user_message("too_large", limit=cfg.max_plan_chars, chars=ctx.chars),
                                       ticket))
                 return
-            if plan_text.strip():
-                ctx.plan_id = plan_key(plan_text)
+            # 공백 없는 긴 토큰은 plan_key(이메일 정규식이 O(n²))·파이프라인을 부르기 전에 거절한다(E4-L2d 재작업).
+            # 검사는 str.split(선형)뿐이고, plan_key(해시·정규식)는 이벤트 루프 밖(스레드)에서 계산한다.
+            longest = longest_token(plan_text) if plan_text is not None else 0
+            if longest > cfg.max_token_chars:
+                await reply(422, _err("long_token", user_message("long_token", limit=cfg.max_token_chars,
+                                                                 longest=longest), ticket))
+                return
+            if plan_text is not None and plan_text.strip():
+                ctx.plan_id = await asyncio.to_thread(plan_key, plan_text)
+            if not ctx.plan_id:
+                await reply(422, _err("invalid_request", user_message("invalid"), ticket))
+                return
 
         # 3) 입장 관문
         if ctx.mode == "aux":
-            ok, retry = srv.aux_limiter.hit(ctx.ip)
+            key = ip_key(ctx.ip)
+            if kind == "upload" and cfg.upload_per_ip > 0 and srv.upload_active.get(key, 0) >= cfg.upload_per_ip:
+                srv.counters["rate_429"] += 1  # 한 IP가 느린 파일로 슬롯을 모두 잡지 못하게
+                await reply(429, _err("busy_ip", user_message("busy_ip"), ticket, retry_after_s=10), {"retry-after": "10"})
+                return
+            limiter, lim = ((srv.upload_limiter, cfg.upload_rate_per_min) if kind == "upload"
+                            else (srv.aux_limiter, cfg.aux_rate_per_min))
+            ok, retry = limiter.hit(key)
             if not ok:
-                await reply(*self._rate_reply(ctx, retry, cfg.aux_rate_per_min))
+                await reply(*self._rate_reply(ctx, retry, lim))
                 return
             try:
                 ctx.reservation = srv.aux_gate.reserve(ticket)
                 ctx.position_at_arrival = srv.aux_gate.position(ctx.reservation.id)
+                if kind == "upload" and cfg.upload_per_ip > 0:
+                    srv.upload_active[key] = srv.upload_active.get(key, 0) + 1
+                    ctx.upload_key = key
             except QueueFull as exc:
                 srv.counters["busy_503"] += 1
                 retry_s = max(int(math.ceil(min(exc.retry_after_s, 600))), 5)
                 await reply(503, _err("busy", user_message("busy_aux", retry=retry_s), ticket, retry_after_s=retry_s),
                             {"retry-after": str(retry_s)})
                 return
-        elif ctx.plan_id:
-            cached = ctx.mode == "analysis" and srv.cache.has(ctx.plan_id)
-            joining = ctx.mode == "analysis" and (ctx.plan_id in srv.inflight or srv.gate.has_plan(ctx.plan_id))
+        else:
+            cached = srv.cache.has(ctx.plan_id)
+            joining = ctx.plan_id in srv.inflight or srv.gate.has_plan(ctx.plan_id)
             if not cached and not joining:
-                refusal = self._admit_new_analysis(ctx)
+                refusal = srv.admit_new(ctx)
                 if refusal is not None:
-                    await reply(*refusal)
+                    await reply(*self._refusal_reply(ctx, refusal))
                     return
 
         # 4) 본문을 다시 흘려보내고 응답을 모은다
@@ -1286,9 +1459,7 @@ class ServingMiddleware:
             if ctx.mode == "analysis":
                 await self.app(scope, replay, capture)
             else:
-                gate = srv.aux_gate if ctx.mode == "aux" else srv.gate
-                timeout = cfg.aux_timeout_s if ctx.mode == "aux" else cfg.request_timeout_s
-                await self._gated_call(scope, replay, capture, ctx, gate, timeout)
+                await self._gated_call(scope, replay, capture, ctx, srv.aux_gate, cfg.aux_timeout_s)
         except Exception as exc:  # noqa: BLE001 - 어떤 예외도 사용자 문구로
             ctx.error_kind = ctx.error_kind or "internal"
             log.warning("처리 중 예외 ticket=%s kind=%s", ticket, type(exc).__name__)
@@ -1296,7 +1467,12 @@ class ServingMiddleware:
         finally:
             _CTX.reset(token)
             srv._drop_reservation(ctx)
+            if not ctx.task_started:
+                srv.release_upload(ctx)  # 하위 작업을 시작했으면 그 작업이 끝날 때 반납한다
 
+        if ctx.refusal is not None:  # run()의 두 번째 입장 검사가 거절
+            await reply(*self._refusal_reply(ctx, ctx.refusal))
+            return
         if not start or ctx.error_kind == "timeout" and ctx.mode != "analysis":
             code = 504 if ctx.error_kind == "timeout" else 500
             srv.counters["timeout_504" if code == 504 else "error_5xx"] += 1
@@ -1310,32 +1486,13 @@ class ServingMiddleware:
         return (429, _err("rate_limited", user_message("rate", retry=retry_s, limit=limit), ctx.ticket,
                           retry_after_s=retry_s), {"retry-after": str(retry_s)})
 
-    def _admit_new_analysis(self, ctx: RequestCtx) -> tuple[int, dict[str, Any], dict[str, str]] | None:
-        """새 분석 입장: 차단 스위치 → IP 속도 제한 → 일일 예산 → 대기열. 거절이면 (코드, 본문, 헤더)."""
-        srv, cfg = self.serving, self.serving.config
-        if srv.blocked():
-            srv.counters["blocked_503"] += 1
-            return 503, _err("blocked", user_message("blocked"), ctx.ticket), {"retry-after": "600"}
-        ok, retry = srv.limiter.hit(ctx.ip)
-        if not ok:
-            return self._rate_reply(ctx, retry, cfg.rate_per_min)
-        if srv.budget.exhausted():
-            srv.counters["budget_503"] += 1
-            return (503, _err("budget_exhausted", user_message("budget", limit=cfg.daily_budget), ctx.ticket),
-                    {"retry-after": "3600"})
-        try:
-            ctx.reservation = srv.gate.reserve(ctx.ticket, ctx.plan_id)
-        except QueueFull as exc:
-            srv.counters["busy_503"] += 1
-            retry_s = max(int(math.ceil(min(exc.retry_after_s, 600))), 5)
-            err = _err("busy", user_message("busy", retry=retry_s), ctx.ticket, retry_after_s=retry_s)
-            err["queue"] = {k: v for k, v in srv.queue_status().items() if k in
-                            {"active", "waiting", "max_active", "max_waiting", "eta_new_s"}}
-            return 503, err, {"retry-after": str(retry_s)}
-        ctx.position_at_arrival = srv.gate.position(ctx.reservation.id)
-        srv.budget.spend()
-        ctx.budget_spent = True
-        return None
+    def _refusal_reply(self, ctx: RequestCtx, refusal: tuple[int, str, str, int]
+                       ) -> tuple[int, dict[str, Any], dict[str, str]]:
+        code, error_code, message, retry_s = refusal
+        err = _err(error_code, message, ctx.ticket, retry_after_s=retry_s)
+        if error_code == "busy":
+            err["queue"] = self.serving.gate.summary()
+        return code, err, {"retry-after": str(retry_s)}
 
     async def _gated_call(self, scope: dict[str, Any], replay: Any, capture: Any, ctx: RequestCtx, gate: Gate,
                           timeout: float) -> None:
@@ -1352,10 +1509,12 @@ class ServingMiddleware:
         t0 = time.monotonic()
         ctx.waited_s = round(t0 - t.enq_at, 3)
         task = asyncio.ensure_future(self.app(scope, replay, capture))
+        ctx.task_started = True
 
         def _done(job: asyncio.Future[Any]) -> None:
             ctx.run_s = round(time.monotonic() - t0, 3)
             gate.release(t, ctx.run_s)
+            self.serving.release_upload(ctx)
             if not job.cancelled() and job.exception() is not None:
                 log.info("하위 처리 실패 ticket=%s kind=%s", ctx.ticket, type(job.exception()).__name__)
 
@@ -1519,9 +1678,9 @@ def install(app: Any, serving: Serving | None = None, *, pipeline: Callable[...,
 
 
 __all__ = [
-    "MESSAGES", "AnalysisTimeout", "DailyBudget", "Gate", "QueueFull", "RateLimiter", "RedactingFilter", "RequestCtx",
+    "MESSAGES", "AdmissionRefused", "AnalysisTimeout", "DailyBudget", "Gate", "QueueFull", "RateLimiter", "RedactingFilter", "RequestCtx",
     "ResultCache", "Serving", "ServingConfig", "ServingMiddleware", "client_ip", "current_request",
-    "ensure_log_handler", "get_serving", "install", "install_exception_handlers", "install_log_filter", "plan_key",
-    "public_plan_ids", "router", "scrub_ok_payload", "scrub_public", "scrub_secrets", "user_message",
+    "ensure_log_handler", "get_serving", "install", "ip_key", "install_exception_handlers", "install_log_filter",
+    "longest_token", "mask_job_paths", "plan_key", "public_plan_ids", "router", "scrub_ok_payload", "scrub_public", "scrub_secrets", "user_message",
     "wrap_pipeline",
 ]

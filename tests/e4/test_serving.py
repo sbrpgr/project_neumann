@@ -536,19 +536,24 @@ def test_redacting_filter_hides_real_env_secret(monkeypatch):
 def test_config_defaults_and_public_profile(monkeypatch):
     for k in ("NEUMANN_PUBLIC", "NEUMANN_RATE_PER_MIN", "NEUMANN_RESULT_CACHE", "NEUMANN_WARMUP",
               "NEUMANN_MAX_CONCURRENT", "NEUMANN_QUEUE_MAX", "NEUMANN_MAX_PLAN_CHARS", "NEUMANN_DAILY_BUDGET",
-              "NEUMANN_HIDE_DOCS", "NEUMANN_AUX_RATE_PER_MIN", "NEUMANN_PROTECTED_PATHS"):
+              "NEUMANN_HIDE_DOCS", "NEUMANN_AUX_RATE_PER_MIN", "NEUMANN_PROTECTED_PATHS", "NEUMANN_REQUEST_TIMEOUT_S",
+              "NEUMANN_TRUST_XFF"):
         monkeypatch.delenv(k, raising=False)
     c = serving.ServingConfig.from_env()
     assert (c.max_concurrent, c.queue_max, c.max_plan_chars) == (2, 20, 50_000)
     assert (c.rate_per_min, c.cache_enabled, c.warmup) == (0, False, False)  # 테스트·개발: 꺼짐
-    assert c.daily_budget == 0 and not c.hide_docs
+    assert c.daily_budget == 0 and not c.hide_docs and c.trust_xff
+    assert (c.request_timeout_s, c.queue_max) == (300.0, 20)
     assert c.protected == {"/premortem": "analysis", "/premortem/view": "analysis",
                            "/premortem/package": "export", "/upload/plan": "upload"}
     assert c.cache_dir is not None and c.cache_dir.parts[-2:] == ("cache", "results")
     monkeypatch.setenv("NEUMANN_PUBLIC", "1")
     c = serving.ServingConfig.from_env()
     assert (c.rate_per_min, c.cache_enabled, c.warmup) == (6, True, True)
-    assert c.daily_budget == 200 and c.hide_docs and c.aux_rate_per_min == 30
+    assert c.hide_docs and c.aux_rate_per_min == 30
+    # FAIL 대응 4: 공개 기본값 — 시간 상한 90초(Cloudflare 약 100초보다 먼저), 대기 4, 일일 예산 끔(대표 결정)
+    assert (c.request_timeout_s, c.queue_max, c.daily_budget) == (90.0, 4, 0)
+    assert c.trust_xff is False  # 공개: X-Forwarded-For 무시, CF-Connecting-IP만
     monkeypatch.setenv("NEUMANN_RATE_PER_MIN", "10")
     monkeypatch.setenv("NEUMANN_MAX_CONCURRENT", "abc")
     c = serving.ServingConfig.from_env()

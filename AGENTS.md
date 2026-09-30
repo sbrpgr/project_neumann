@@ -22,6 +22,8 @@
 - 훅을 우회하지 않는다(`--no-verify` 금지). 훅이 막으면 원인을 고친다.
 - 비밀값이 커밋·push·로그에 들어갔으면 즉시 작업을 멈추고 PM(대표)에게 알린다. 키는 폐기하고 새로 발급하는 것이 먼저다. 이력만 지우는 것으로는 안 된다.
 
+- **실제 OpenAI 호출 제한(대표 상시 규칙):** OpenAI API는 실제 서비스(사람이 쓰는 8010·공개 서버)와 태그급 성공 뒤 대표가 승인한 확인 테스트에서만 쓴다. `NEUMANN_LLM_PROVIDER=openai`와 `NEUMANN_LIVE_TESTS=1`은 PM이 대표 승인을 받은 과제에서만 켠다. 개발·빌드·검증·단위 테스트·측정은 mock이나 로컬로 한다. 설정 기본 provider는 mock이다. 구독(Claude·Codex) 에이전트가 만든 오프라인 결과를 제품 데이터에 쓰면 생성 방식을 "Claude/Codex 오프라인"으로 표기한다
+
 ## 올리지 않는 것
 
 - `.env`, `data/`, 모델 가중치, 색인, 캐시, parquet, 에이전트·Codex 실행 로그. `.gitignore`와 `scripts/verify.py`가 막는다.

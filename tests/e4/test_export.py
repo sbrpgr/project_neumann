@@ -264,7 +264,7 @@ def test_degraded_stages_and_rule_cards_are_labelled_honestly() -> None:
         assert "astra 호출 시간 초과 → 규칙 태거" in doc
         assert "카드 합성 스키마 검증 실패" in doc
         assert "**rule** 1장: 규칙(비상 경로" in doc and "LLM 결과가 아니다" in doc
-        assert "**astra** 1장: 제품 LLM(gpt-6-astra)" in doc
+        assert "**astra** 1장: 제품 LLM(OpenAI, 모델은 manifest 참조)" in doc
     assert "- C1 `card-fx-leak` — rule(규칙 비상 경로)" in readme
     assert "- C2 `card-fx-seed` — astra(LLM), 모델 gpt-6-astra" in readme
     assert "| extract | degraded | fallback:rule_tagger |" in readme
