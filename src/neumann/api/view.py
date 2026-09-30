@@ -949,25 +949,75 @@ def build_ui_view(
         return view
 
 
-def export_result(result: Any) -> tuple[dict[str, Any] | None, str | None]:
-    """내보내기(``POST /premortem/package``)에 그대로 넘길 원결과(E4-L2f). 실패하면 ``(None, 사유)``.
+# 원결과의 자유형 dict 칸(계약이 dict[str, Any]로 둔 곳)에서 화면·내보내기로 넘길 키(E4-L2f F2). 나머지 키는 뺀다.
+# manifest: pipeline.py·precomputed.py가 쓰는 키와 view가 읽는 모델 이름 키. checklist: E3 checklist.py 항목 키와 별칭.
+MANIFEST_EXPORT_KEYS = frozenset({
+    "backend", "llm_model", "llm_provider", "pipeline_version", "prompt_versions", "query_cache", "stage_limits_s",
+    "timings_s", "total_s", "v1_parallel", "v1_wall_s", "model_id", "model_provider", "model", "provider",
+    "precomputed",
+})
+CHECKLIST_EXPORT_KEYS = frozenset({
+    "item_id", "id", "action", "t", "text", "title", "card_id", "risk_code", "r", "risk", "subcode", "evidence",
+    "evidence_ids", "plan_lines", "plan_lines_source", "verify", "generator", "model", "fallback_reason",
+    "card_verdict", "validation", "dropped", "decision", "s", "choice", "note", "m", "memo", "decided_at",
+    "decision_log", "why",
+})
 
-    ``PremortemResult`` 계약으로 검증한 뒤 계약 필드만 JSON으로 되돌린다(모델이 extra=forbid라 설정·경로·키 같은
-    계약 밖 값은 실리지 않는다). 값은 화면과 같다: 계획서 줄·인용·카드는 결과 값 그대로이고, 계획서의 이메일·ORCID는
-    분석 입구(``PlanDocument``)에서 이미 가려졌다. 화면이 이 값을 들고 있다가 내보내기 때 보내므로 재분석이 없다.
+
+def _whitelist(data: dict[str, Any]) -> list[str]:
+    """manifest·checklist 항목의 모르는 키를 뺀다. 뺀 키 이름(값 아님) 목록을 돌려준다."""
+    dropped: set[str] = set()
+    man = data.get("manifest")
+    if isinstance(man, dict):
+        dropped.update(f"manifest.{k}" for k in man if k not in MANIFEST_EXPORT_KEYS)
+        data["manifest"] = {k: v for k, v in man.items() if k in MANIFEST_EXPORT_KEYS}
+    items = []
+    for it in data.get("checklist") or []:
+        if isinstance(it, dict):
+            dropped.update(f"checklist[].{k}" for k in it if k not in CHECKLIST_EXPORT_KEYS)
+            it = {k: v for k, v in it.items() if k in CHECKLIST_EXPORT_KEYS}
+        items.append(it)
+    data["checklist"] = items
+    return sorted(dropped)
+
+
+def export_result(result: Any) -> tuple[dict[str, Any] | None, str | None, list[str]]:
+    """내보내기(``POST /premortem/package``)에 그대로 넘길 원결과(E4-L2f). 실패하면 ``(None, 사유, [])``.
+
+    - ``PremortemResult`` 계약으로 검증한 뒤 JSON으로 되돌린다. 모델이 extra=forbid라 계약에 없는 **최상위** 필드는
+      검증에서 걸린다(그런 결과는 싣지 않는다). 계약이 자유형 dict로 둔 칸(manifest·checklist 항목·expected_review·
+      plan_checks 등)은 검증을 통과하므로, manifest·checklist 항목은 아는 키만 남긴다(뺀 키 이름을 셋째 값으로 돌려준다).
+      그 밖의 자유형 칸은 결과 값 그대로다.
+    - 진단 문구 칸(notices·detail 등)은 서빙 계층과 같은 규칙(``serving.scrub_ok_payload``: 키·절대 경로·트레이스 가림)을
+      미리 적용한다. 그래야 jobs 응답이 한 번 더 가려도 값이 같아 서명이 맞는다.
+    - 계획서 줄·인용·카드는 결과 값 그대로다(화면과 같다). 계획서의 이메일·ORCID는 분석 입구(``PlanDocument``)에서 가려졌다.
     """
     try:
         from neumann.models import PremortemResult
 
         res = result if isinstance(result, PremortemResult) else PremortemResult.model_validate(_as_dict(result))
-        return res.model_dump(mode="json"), None
+        data = res.model_dump(mode="json")
+        dropped = _whitelist(data)
+        try:
+            from neumann.api.serving import scrub_ok_payload
+        except ImportError:  # 서빙 계층이 없는 배포: 진단 가림 없이 그대로
+            pass
+        else:
+            data = scrub_ok_payload(data)
+        return PremortemResult.model_validate(data).model_dump(mode="json"), None, dropped
     except Exception as exc:  # noqa: BLE001 - 화면은 그대로 그리고, 내보내기만 막는다
-        return None, f"원결과가 계약(PremortemResult)과 맞지 않음: {type(exc).__name__}"
+        return None, f"원결과가 계약(PremortemResult)과 맞지 않음: {type(exc).__name__}", []
 
 
 def _attach_result(view: dict[str, Any], result: Any, *, sample: bool, error: str | None) -> None:
-    """뷰에 ``result``(원결과 또는 None)와 ``_status.export``(실렸는지·사유)를 붙인다. 계약(ui_view)은 추가 필드를 허용한다."""
+    """뷰에 ``result``(원결과 또는 None)·``result_sig``(서버 서명)·``_status.export``를 붙인다.
+
+    계약(ui_view)은 루트 추가 필드를 허용한다. 서명은 ``neumann.api.signing``(HMAC, 키는 환경변수·기동 시 무작위)이
+    만들고 ``/premortem/package``가 확인한다. 서명 키·키 설정 여부는 싣지 않는다.
+    """
     data: dict[str, Any] | None = None
+    sig: str | None = None
+    dropped: list[str] = []
     if sample:
         reason: str | None = "샘플 데이터라 원결과를 싣지 않음"
     elif error or not result:
@@ -975,9 +1025,18 @@ def _attach_result(view: dict[str, Any], result: Any, *, sample: bool, error: st
     elif view.get("_status", {}).get("contract_ok") is False:
         reason = "화면 계약을 어긴 결과라 싣지 않음"
     else:
-        data, reason = export_result(result)
+        data, reason, dropped = export_result(result)
+        if data is not None:
+            try:
+                from neumann.api.signing import sign_result
+
+                sig = sign_result(data)
+            except Exception as exc:  # noqa: BLE001 - 서명을 못 하면 원결과도 싣지 않는다(서명 없는 결과를 만들지 않게)
+                data, reason = None, f"원결과 서명 실패: {type(exc).__name__}"
     view["result"] = data
-    view.setdefault("_status", {})["export"] = {"result": data is not None, "reason": reason}
+    view["result_sig"] = sig
+    view.setdefault("_status", {})["export"] = {"result": data is not None, "signed": sig is not None,
+                                                "reason": reason, "dropped_keys": dropped}
 
 
 def _status_block(*, sample: bool, pipeline_state: str, result_status: str | None, error: str | None,
