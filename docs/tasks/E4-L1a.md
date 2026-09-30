@@ -5,7 +5,6 @@
 
 ## 읽을 것
 - 계획서 §4 E4 L1(`POST /upload/plan`: txt·md·pdf·docx, 10MB, 디스크 미저장, HWP 거부)
-- `01_구조_뼈대.md`의 upload 설명(참고만)
 
 ## 만들 것
 1. `api/upload.py`: `parse_plan_upload(filename: str, data: bytes) -> str` — 확장자·매직바이트로 판별, pdf(pypdf)·docx(python-docx)·txt/md(인코딩 추정: utf-8 → cp949) 텍스트 추출, 10MB 초과 거부, HWP/HWPX는 415와 "HWP는 PDF나 DOCX로 저장해 올려 주세요" 안내, 디스크에 저장하지 않음. FastAPI `router`에 `POST /upload/plan`(텍스트와 줄 수, 추출 경고 반환). `main.py` 연결은 PM이 한다

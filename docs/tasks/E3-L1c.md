@@ -5,7 +5,6 @@
 
 ## 읽을 것
 - 계획서 §2 INPUT, §3 L0 완료 기준 7(음성 대조), §3 L2 분석, §4 E3 L3
-- `06_교훈_함정.md`의 PII 전화번호 교훈(형식 열거가 아니라 숫자열 기반 탐지 + 유니코드 숫자 + 경계 가드)
 - `src/neumann/models.py`(redact_pii, PlanDocument)
 
 ## 만들 것
