@@ -25,6 +25,8 @@ export NEUMANN_EMBED_MODEL="C:/Users/User/Desktop/노이만_본선자료/공개�
 - `OPENAI_API_KEY`는 이미 환경변수로 들어와 있다. 있는지 확인할 때는 참·거짓만 본다. 값을 출력·기록하지 않는다.
 - 제품 LLM은 OpenAI Responses API `gpt-6-astra`다(9/30 호출 확인: `client.responses.create(model="gpt-6-astra", input=..., reasoning={"effort": "low"})`, 짧은 요청 약 3초).
 
+- **실제 OpenAI 호출 제한(대표 상시 규칙):** OpenAI API는 실제 서비스(사람이 쓰는 8010·공개 서버)와 태그급 성공 뒤 대표가 승인한 확인 테스트에서만 쓴다. `NEUMANN_LLM_PROVIDER=openai`와 `NEUMANN_LIVE_TESTS=1`은 PM이 대표 승인을 받은 과제에서만 켠다. 개발·빌드·검증·단위 테스트·측정은 mock이나 로컬로 한다. 설정 기본 provider는 mock이다. 구독(Claude·Codex) 에이전트가 만든 오프라인 결과를 제품 데이터에 쓰면 생성 방식을 "Claude/Codex 오프라인"으로 표기한다
+
 ## 작업 방식
 
 - 자기 worktree에서만 작업한다. 시작하면 `git switch -c task/<과제ID>`(이미 있으면 그대로). 커밋은 그 브랜치에만 한다. main 병합과 push는 PM이 한다.

@@ -67,7 +67,7 @@ def test_dotenv_used_when_env_missing_and_empty_means_none(tmp_path: Path, clean
 
 def test_missing_dotenv_is_ignored_and_defaults(tmp_path: Path, clean_env: pytest.MonkeyPatch) -> None:
     s = Settings(_env_file=tmp_path / "nope.env")
-    assert s.llm_provider == "openai"
+    assert s.llm_provider == "mock"
     assert s.llm_model == "gpt-6.1-sol"
     assert s.llm_timeout_s == 60.0
     assert s.api_host == "127.0.0.1" and s.api_port == 8000

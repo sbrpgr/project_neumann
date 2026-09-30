@@ -412,7 +412,7 @@ def make_llm(settings: Any = None, provider: str | None = None) -> LLMProvider:
 
     모델명이 비었거나 키가 없으면 조용히 끄지 않는다: 호출마다 config_error 실패를 돌려 status에 드러난다.
     """
-    name = (provider or setting(settings, "llm_provider", "NEUMANN_LLM_PROVIDER", "openai") or "openai").lower()
+    name = (provider or setting(settings, "llm_provider", "NEUMANN_LLM_PROVIDER", "mock") or "mock").lower()
     if name == "openai":
         model = str(setting(settings, "llm_model", "NEUMANN_LLM_MODEL", DEFAULT_MODEL))
         key = getattr(settings, "openai_api_key", None) if settings is not None else None
