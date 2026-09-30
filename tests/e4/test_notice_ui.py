@@ -32,9 +32,9 @@ DEFAULT_PORT = 8131
 FORBIDDEN_PORT = 8010
 VW, VH = 1440, 900
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
-SEND_LINE = "입력한 계획서는 분석을 위해 OpenAI API(gpt-6-astra)로 전송됩니다. 개인정보·미공개 기밀은 넣지 마세요."
+SEND_LINE = "입력한 계획서는 분석을 위해 OpenAI API로 전송됩니다. 개인정보·미공개 기밀은 넣지 마세요."
 STORE_LINE = "이 서버는 계획서 본문을 파일로 저장하지 않습니다."
-SUMMARY = "OpenAI API(gpt-6-astra)로 전송 · 개인정보·미공개 기밀 입력 금지 · 본문 파일 저장 없음"
+SUMMARY = "OpenAI API로 전송 · 개인정보·미공개 기밀 입력 금지 · 본문 파일 저장 없음"
 NEAR_PX = 60  # 스크롤해 버튼이 보일 때, 고지 아래 끝 ~ 실행 버튼 위 끝 거리 상한
 COLLAPSED_MAX_H = 44  # 접힌 고지(한 줄) 높이 상한. 입력칸을 가리는 폭을 줄이려는 것(첫 판 두 줄 64px)
 
