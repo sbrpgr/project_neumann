@@ -1,9 +1,9 @@
 # 실행 방법
 
-- 기준: 이 문서를 병합하기 직전의 `main`(작성 때 확인한 커밋 `2c37557`). 이 문서의 명령은 `304e91e`·`588da63`에서 Windows 11 + Git Bash + Python 3.12.10으로 실행해 확인했다(결과는 `docs/reports/E6-docs.md`). 실행하지 않은 명령은 그렇다고 적었다.
+- 기준: 이 문서를 병합하기 직전의 `main`(작성 때 확인한 커밋 `234b0f3`). 이 문서의 명령은 `304e91e`·`588da63`에서 Windows 11 + Git Bash + Python 3.12.10으로 실행해 확인했다(결과는 `docs/reports/E6-docs.md`). 실행하지 않은 명령은 그렇다고 적었다.
 - 구조와 상태는 [ARCHITECTURE.md](ARCHITECTURE.md), 엔드포인트는 [API.md](API.md).
 
-> **비용 주의:** 기본 설정(`NEUMANN_LLM_PROVIDER=openai`)에서는 서버의 분석 요청(`/premortem`, `/premortem/view`, `plan_text`만 보낸 `/premortem/package`)과 파이프라인 명령이 OpenAI API(`gpt-6-astra`)를 부른다. 시험·개발은 `NEUMANN_LLM_PROVIDER=mock`으로 한다. mock 결과는 분석이 아니며 결과에 그렇게 표시된다.
+> **비용 주의:** 기본 설정(`NEUMANN_LLM_PROVIDER=openai`)에서는 서버의 분석 요청(`/premortem`, `/premortem/view`, `plan_text`만 보낸 `/premortem/package`)과 파이프라인 명령이 OpenAI API(기본 모델 `gpt-6.1-sol`)를 부른다. 시험·개발은 `NEUMANN_LLM_PROVIDER=mock`으로 한다. mock 결과는 분석이 아니며 결과에 그렇게 표시된다.
 
 ## 1. 설치
 
@@ -35,7 +35,7 @@ cp .env.example .env      # .env는 .gitignore로 막혀 있다. 절대 커밋�
 | `OPENAI_API_KEY` | 제품 LLM 키. **환경변수로만 넣는다.** 값을 파일·문서·로그에 쓰지 않는다 | 없음 |
 | `NEUMANN_PSEUDONYM_SALT` | 리뷰어 가명 해시 솔트. 비어 있으면 가명 생성을 거부한다 | 없음 |
 | `NEUMANN_LLM_PROVIDER` | `openai`(실제 호출, 비용) 또는 `mock`(시험용 결정적 응답) | `openai` |
-| `NEUMANN_LLM_MODEL` | 제품 모델 | `gpt-6-astra` |
+| `NEUMANN_LLM_MODEL` | 제품 모델(평가 수치는 `gpt-6-astra`로 잰 것) | `gpt-6.1-sol` |
 | `NEUMANN_LLM_TIMEOUT_S` | 호출 시간 상한(초). 넘으면 그 단계만 비상 규칙 경로. 호출별로는 `NEUMANN_LLM_TIMEOUT_<TASK>_S` | `60` |
 | `NEUMANN_LLM_EFFORT_<TASK>` | 호출별 추론 강도 덮어쓰기(예: `NEUMANN_LLM_EFFORT_SYNTHESIZE_CARDS`) | 호출별 기본값(`llm.py`) |
 | `NEUMANN_EXTRACT_STAGE_TIMEOUT_S` | 지적 추출 단계 전체 시간 상한 | 호출 상한 + 60초 |
@@ -177,7 +177,7 @@ NEUMANN_LIVE_TESTS=1 python -m pytest -q   # 실제 API 테스트까지(키 필�
 ```
 
 - 재측정(main `588da63` 병합 상태, `NEUMANN_DATA_DIR` = 공유 데이터 폴더, mock): `908 passed, 22 skipped`. 건너뛰는 것은 실제 API 테스트(`NEUMANN_LIVE_TESTS=1`), 실제 bge-m3(`NEUMANN_E2_MODEL_TESTS=1`), 브라우저 화면(`NEUMANN_UI_TESTS=1`), 실색인 회귀(`NEUMANN_REAL_DATA_TESTS=1`)다.
-- 라이브 E2E(`tests/e2e/test_live.py`)는 실서버와 실제 astra를 쓰므로 `NEUMANN_LIVE_TESTS=1`일 때만 돈다(`--e2e-base-url`로 서버 지정, 비용). 판정 함수는 기본 pytest(`tests/e2e/test_e2e_checks.py`)가 검사한다. 이 문서에서는 라이브로 돌리지 않았다.
+- 라이브 E2E(`tests/e2e/test_live.py`)는 실서버와 실제 OpenAI 호출을 쓰므로 `NEUMANN_LIVE_TESTS=1`일 때만 돈다(`--e2e-base-url`로 서버 지정, 비용). 판정 함수는 기본 pytest(`tests/e2e/test_e2e_checks.py`)가 검사한다. 이 문서에서는 라이브로 돌리지 않았다.
 - 공개자료 폴더(`NEUMANN_RAW_DIR`)나 공유 데이터 폴더가 없으면 원본·실데이터 테스트(`tests/e1/test_e1_corpus_real.py`, `test_retraction_real.py` 등)도 건너뛴다. 위 재측정은 두 폴더를 모두 준 상태다.
 
 화면 스크린샷(Playwright, 1440×900). 스크립트가 uvicorn을 하위 프로세스로 띄우고 끝나면 끈다(시험은 mock으로):
@@ -207,7 +207,7 @@ python -m eval.report_card --inputs <지표 JSON …> --out <파일.md>
 
 확인한 출력: 빈도 기준선 `Macro-F1 0.3308 [95% 0.2980, 0.3623]  Micro-F1 0.5379 … n=148`, 근거 연결 `8/8 = 1.000 · 카드 통과 2/2 · 폐기율 없음 · 판정 pass`(fixture라 폐기율이 없다), 백테스트 표본 30편 출력, `report_card --help`.
 
-DISAPERE 골드에 제품 지적 추출기를 돌리는 `python -m eval.disapere_extract extract|tune|predict`(astra 호출)와 백테스트의 나머지 단계(`eval.backtest_run_neumann`, `eval.baseline_llm`, `eval.judge_run`)는 파이프라인·일반 LLM 호출·판정자 실행이 들어가 이 문서에서 실행하지 않았다. 사용법은 각 모듈 머리말에 있다.
+DISAPERE 골드에 제품 지적 추출기를 돌리는 `python -m eval.disapere_extract extract|tune|predict`(OpenAI 호출)와 백테스트의 나머지 단계(`eval.backtest_run_neumann`, `eval.baseline_llm`, `eval.judge_run`)는 파이프라인·일반 LLM 호출·판정자 실행이 들어가 이 문서에서 실행하지 않았다. 사용법은 각 모듈 머리말에 있다.
 
 ## 9. verify (병합·push 전 필수)
 

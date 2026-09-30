@@ -1,6 +1,6 @@
 # API
 
-- 기준: 이 문서를 병합하기 직전의 `main`(작성 때 확인한 커밋 `2c37557`).
+- 기준: 이 문서를 병합하기 직전의 `main`(작성 때 확인한 커밋 `234b0f3`).
 - 아래 응답 예시는 `304e91e`의 서버를 `NEUMANN_LLM_PROVIDER=mock`, 임베딩 모델 없이(어휘 검색만) 포트 8125에서 띄워 실제로 요청해 받은 값을 줄인 것이다. **mock 응답이라 카드 내용은 분석 결과가 아니다.** 실제 서비스(provider `openai`)에서는 `generator`가 `astra`이고 검색 강등이 없다(임베딩 모델이 있을 때).
 - **있음** = main의 서버에 라우트가 있다. **예정** = main에 없다(지금 요청하면 404).
 - 서버 실행은 [RUNNING.md §5](RUNNING.md#5-분석-실행). 기본 주소 `http://127.0.0.1:8000`.
@@ -114,7 +114,7 @@ Windows Git Bash에서는 한글을 `-d '…'`로 직접 넘기면 인코딩이 
 - `plan_id`는 계획서 본문의 sha256이다.
 - 카드의 `evidence`는 발췌 id 목록이고, 인용문은 `evidence[]`의 `text`(원문 `[start:end]`)다. 모든 근거는 `verify_evidence` 단계에서 원문과 다시 대조된다.
 - `score.total` = 유사도 × 빈도 × 심각도 × 신뢰도(곱, 가중치 없음).
-- `generator`: `astra`(LLM) · `rule`(비상 규칙) · `mock`(테스트용 가짜).
+- `generator`: `astra`(제품 LLM, OpenAI. 값 이름은 계약이고 실제 모델은 카드 `model`·`manifest.llm_model`, 기본 `gpt-6.1-sol`) · `rule`(비상 규칙) · `mock`(테스트용 가짜).
 - 카드가 0장이면 사유가 `risk_synthesis.no_card_reason`과 `notices`에 들어간다. 실측(무관한 글 `tests/fixtures/plans/negative_recipe.md`, mock): 카드 0장, 사유 "입력이 연구계획서가 아니다(mock 판단: …); 유사 연구 검색 상위 점수 0.031".
 
 오류:
